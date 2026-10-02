@@ -37,3 +37,4 @@ export function checkRulesSave(previousRules, nextRules) {
   if (shape.length) return result(shape);
   return result(checkRulesAppendOnly(previousRules, nextRules));
 }
+export { ruleInEffect, rulesInEffect, reportingCategory, checkCategoryMapSave } from "./rules.js";
