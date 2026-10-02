@@ -38,19 +38,17 @@ export function checkReferences(state, transaction, entries) {
 }
 
 // 2. Reserve balance >= card outstanding (pending + posted).
-// The register itself starts in breach (opening gap, spec Table 3.1), so a blanket
-// block would refuse every save. We block only saves that CREATE or WORSEN a shortfall
-// and warn about one that already existed.
+// WARN ONLY, never block: the card purchase already happened in real life, so refusing
+// to record it would make the ledger lie. `worsened` tells the UI whether this save
+// created or deepened the shortfall.
 export function checkReserve(accounts, entriesBefore, entriesAfter) {
   const before = new Map(reserveShortfalls(accounts, entriesBefore).map((r) => [r.reserve_id, r.shortfall]));
   const out = [];
   for (const r of reserveShortfalls(accounts, entriesAfter)) {
     if (r.shortfall === 0) continue;
-    const detail = { reserve_id: r.reserve_id, card_id: r.card_id, shortfall: r.shortfall };
-    const msg = "reserve " + r.reserve_id + " is " + r.shortfall + " centavos short of card outstanding";
-    const was = before.get(r.reserve_id) ?? 0;
-    out.push(r.shortfall > was ? err("RESERVE_BELOW_OUTSTANDING", msg, detail)
-                               : warn("RESERVE_STILL_SHORT", msg, detail));
+    out.push(warn("RESERVE_BELOW_OUTSTANDING",
+      "reserve " + r.reserve_id + " is " + r.shortfall + " centavos short of card outstanding",
+      { reserve_id: r.reserve_id, card_id: r.card_id, shortfall: r.shortfall, worsened: r.shortfall > (before.get(r.reserve_id) ?? 0) }));
   }
   return out;
 }

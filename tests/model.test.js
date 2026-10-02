@@ -128,63 +128,55 @@ test("outstanding = posted + pending", () => {
   assert.equal(naturalBalance(s.accounts[2], s.entries), 40000);
 });
 
-// ---------- 7.1: reserve covers the card ----------
-test("a card purchase with no reserve set-aside is blocked", () => {
+// ---------- 7.1: reserve covers the card (warn only) ----------
+const reserveWarning = (r) => r.violations.find((v) => v.code === "RESERVE_BELOW_OUTSTANDING");
+
+test("a card purchase with no reserve set-aside warns but is still saved", () => {
   const r = checkTransactionSave(makeState(), cardPurchase("a", 20000));
-  assert.equal(r.ok, false);
-  assert.equal(r.violations.find((v) => v.code === "RESERVE_BELOW_OUTSTANDING").shortfall, 20000);
+  assert.equal(r.ok, true);
+  assert.equal(reserveWarning(r).severity, "warning");
+  assert.equal(reserveWarning(r).shortfall, 20000);
+  assert.equal(reserveWarning(r).worsened, true);
 });
 test("a pending charge counts toward what the reserve must cover", () => {
-  const r = checkTransactionSave(makeState(), cardPurchase("a", 20000, "pending"));
-  assert.ok(codes(r).includes("RESERVE_BELOW_OUTSTANDING"));
+  assert.equal(reserveWarning(checkTransactionSave(makeState(), cardPurchase("a", 20000, "pending"))).shortfall, 20000);
 });
-test("purchase plus reserve set-aside, saved in order, is accepted", () => {
+test("purchase covered by the reserve gives no warning", () => {
   const s = makeState();
-  // Set-aside first (reserve above outstanding), then the purchase it covers.
-  const setAside = reserveSetAside("r", 20000);
-  assert.equal(checkTransactionSave(s, setAside).ok, true);
-  commit(s, setAside);
-  const buy = checkTransactionSave(s, cardPurchase("a", 20000));
-  assert.deepEqual(buy, { ok: true, violations: [] });
+  commit(s, reserveSetAside("r", 20000));
+  assert.deepEqual(checkTransactionSave(s, cardPurchase("a", 20000)), { ok: true, violations: [] });
   commit(s, cardPurchase("a", 20000));
   assert.equal(naturalBalance(s.accounts[1], s.entries), 20000);
 });
 test("reserve exactly equal to outstanding passes (>=, not >)", () => {
   const s = makeState();
   commit(s, reserveSetAside("r", 15000));
-  assert.equal(checkTransactionSave(s, cardPurchase("a", 15000)).ok, true);
-  assert.equal(checkTransactionSave(s, cardPurchase("a", 15001)).ok, false);
+  assert.equal(reserveWarning(checkTransactionSave(s, cardPurchase("a", 15000))), undefined);
+  assert.equal(reserveWarning(checkTransactionSave(s, cardPurchase("a", 15001))).shortfall, 1);
 });
-test("an existing shortfall does not block unrelated saves, only warns", () => {
+test("an existing shortfall warns on unrelated saves, flagged as not worsened", () => {
   const s = makeState();
-  s.accounts[2].opening_balance = 50000;   // starts in breach, like a freshly imported register
+  s.accounts[2].opening_balance = 50000;
   const r = checkTransactionSave(s, {
     transaction: tx(),
     entries: [entry({ category_id: "food", amount: 100 }), entry({ account_id: "chk", amount: -100 })],
   });
   assert.equal(r.ok, true);
-  assert.deepEqual(codes(r), ["RESERVE_STILL_SHORT"]);
+  assert.equal(reserveWarning(r).worsened, false);
 });
-test("a save that worsens an existing shortfall is blocked", () => {
+test("a partial top-up shrinks the warning", () => {
   const s = makeState();
   s.accounts[2].opening_balance = 50000;
-  assert.equal(checkTransactionSave(s, cardPurchase("a", 100)).ok, false);
-});
-test("a partial top-up of the reserve is allowed and still warns", () => {
-  const s = makeState();
-  s.accounts[2].opening_balance = 50000;
-  const r = checkTransactionSave(s, reserveSetAside("r", 20000));
-  assert.equal(r.ok, true);
-  assert.equal(r.violations[0].shortfall, 30000);
+  const w = reserveWarning(checkTransactionSave(s, reserveSetAside("r", 20000)));
+  assert.equal(w.shortfall, 30000);
+  assert.equal(w.worsened, false);
 });
 test("editing a transaction replaces its old entries instead of double counting", () => {
   const s = makeState();
   commit(s, reserveSetAside("r", 20000));
   commit(s, cardPurchase("a", 20000));
-  // Re-save the same purchase unchanged: must still pass.
-  assert.equal(checkTransactionSave(s, cardPurchase("a", 20000)).ok, true);
-  // Raise it beyond the reserve: must fail.
-  assert.equal(checkTransactionSave(s, cardPurchase("a", 20001)).ok, false);
+  assert.equal(reserveWarning(checkTransactionSave(s, cardPurchase("a", 20000))), undefined);
+  assert.equal(reserveWarning(checkTransactionSave(s, cardPurchase("a", 20001))).shortfall, 1);
 });
 
 // ---------- 7.1: duplicates ----------
