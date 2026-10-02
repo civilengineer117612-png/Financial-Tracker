@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Storage Probe</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Probe">
+<meta name="theme-color" content="#222222">
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff;
+         margin: 0; padding: 16px; padding-top: max(16px, env(safe-area-inset-top)); line-height: 1.4; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  h2 { font-size: 14px; margin: 20px 0 6px; text-transform: uppercase; letter-spacing: .04em; color: #555; }
+  button { font: inherit; font-size: 17px; width: 100%; padding: 14px; color: #fff; background: #222;
+           border: 0; border-radius: 6px; }
+  button:active { background: #555; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid #ccc; vertical-align: top; }
+  th { color: #555; font-weight: normal; width: 45%; }
+  ol { margin: 0; padding-left: 28px; font-size: 14px; }
+  li { padding: 3px 0; border-bottom: 1px solid #eee; }
+  .gray { color: #777; }
+  .box { background: #f0f0f0; padding: 8px 10px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<h1>Storage Probe</h1>
+<button id="btn">Record check-in</button>
+
+<h2>Summary</h2>
+<table>
+  <tr><th>First check-in ever</th><td id="first">...</td></tr>
+  <tr><th>Total check-ins</th><td id="total">...</td></tr>
+  <tr><th>localStorage</th><td id="ls">...</td></tr>
+  <tr><th>IndexedDB</th><td id="idb">...</td></tr>
+</table>
+
+<h2>Persistent storage</h2>
+<table>
+  <tr><th>persist() result</th><td id="persistResult">...</td></tr>
+  <tr><th>persisted()</th><td id="persisted">...</td></tr>
+  <tr><th>Running as Home Screen app</th><td id="standalone">...</td></tr>
+</table>
+
+<h2>History (oldest first)</h2>
+<div class="box gray" id="legendBox">L = in localStorage, I = in IndexedDB</div>
+<ol id="history"></ol>
+
+<script>
+"use strict";
+const LS_KEY = "storageProbe.history";
+const DB_NAME = "storageProbe", STORE = "checkins";
+const $ = (id) => document.getElementById(id);
+
+/* ---------- localStorage: one JSON array of ISO timestamps ---------- */
+function lsRead() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) { return null; }           // null = storage unavailable or corrupt
+}
+function lsAppend(ts) {
+  const arr = lsRead() || [];
+  arr.push(ts);
+  localStorage.setItem(LS_KEY, JSON.stringify(arr));
+}
+
+/* ---------- IndexedDB: one record per check-in ---------- */
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE, { autoIncrement: true });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbReadAll() {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const r = db.transaction(STORE).objectStore(STORE).getAll();
+      r.onsuccess = () => { db.close(); resolve(r.result.map((o) => o.ts)); };
+      r.onerror = () => reject(r.error);
+    });
+  } catch (e) { return null; }
+}
+async function idbAppend(ts) {
+  const db = await idbOpen();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).add({ ts });
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+/* ---------- persistence request ---------- */
+async function requestPersist() {
+  if (!navigator.storage || !navigator.storage.persist) {
+    $("persistResult").textContent = "not supported";
+    $("persisted").textContent = "not supported";
+    return;
+  }
+  try {
+    const granted = await navigator.storage.persist();
+    $("persistResult").textContent = granted ? "granted" : "denied";
+    const now = await navigator.storage.persisted();
+    $("persisted").textContent = now ? "true" : "false";
+  } catch (e) {
+    $("persistResult").textContent = "error: " + e.message;
+  }
+}
+
+/* ---------- rendering ---------- */
+const fmt = (iso) => new Date(iso).toLocaleString() + "  (" + iso + ")";
+function describe(list) {
+  if (list === null) return "unavailable";
+  return list.length ? "holds data (" + list.length + " entries)" : "EMPTY";
+}
+
+async function render() {
+  const ls = lsRead();
+  const idb = await idbReadAll();
+  $("ls").textContent = describe(ls);
+  $("idb").textContent = describe(idb);
+
+  // Union of both stores, keyed by timestamp, so a partial wipe is visible.
+  const seen = new Map();
+  const mark = (t, key) => seen.set(t, { ...(seen.get(t) || { l: false, i: false }), [key]: true });
+  (ls || []).forEach((t) => mark(t, "l"));
+  (idb || []).forEach((t) => mark(t, "i"));
+  const all = [...seen.keys()].sort();
+
+  $("total").textContent = all.length
+    ? all.length + "  (localStorage: " + (ls ? ls.length : "n/a") + ", IndexedDB: " + (idb ? idb.length : "n/a") + ")"
+    : "0";
+  $("first").textContent = all.length ? fmt(all[0]) : "none yet";
+
+  const ol = $("history");
+  ol.innerHTML = "";
+  all.forEach((t) => {
+    const li = document.createElement("li");
+    const m = seen.get(t);
+    li.textContent = fmt(t) + "  [" + (m.l ? "L" : "-") + (m.i ? "I" : "-") + "]";
+    ol.appendChild(li);
+  });
+}
+
+$("btn").addEventListener("click", async () => {
+  const ts = new Date().toISOString();
+  try { lsAppend(ts); } catch (e) { alert("localStorage write failed: " + e.message); }
+  try { await idbAppend(ts); } catch (e) { alert("IndexedDB write failed: " + e.message); }
+  await render();
+  requestPersist();   // retry on a user gesture; some browsers only grant then
+});
+
+/* ---------- start ---------- */
+$("standalone").textContent =
+  (navigator.standalone === true || matchMedia("(display-mode: standalone)").matches) ? "yes" : "no (browser tab)";
+render();
+requestPersist();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
