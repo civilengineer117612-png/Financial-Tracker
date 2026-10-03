@@ -49,3 +49,4 @@ export { validateState, encryptBackup, decryptBackup, MIN_PASSPHRASE } from "./b
 export { weekEndingOn, autoFillSurvey, planSurveyResponse, surveyReview } from "./survey.js";
 export { editDraft } from "./inbox.js";
 export { detectPlatform, assessDevice } from "./device.js";
+export { buildReminderCalendar, defaultReminders, validateReminder, foldLine } from "./reminders.js";
