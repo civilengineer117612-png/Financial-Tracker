@@ -13,8 +13,16 @@ export function detectPlatform(userAgent) {
 
 const result = (status, message, allowEntry) => ({ status, message, allowEntry });
 
+// A trial copy (the address with ?trial on the end) lets the app be tried on any device EXCEPT the iPhone Home Screen app, which holds
+// the real ledger. The caller keeps a trial's data in its own separate storage, so it can never mix with a real ledger or be backed up as one.
+export const trialAllowed = ({ platform, standalone }) => !(platform === "ios" && standalone);
+
 // stores.local / stores.idb: true = holds data, false = empty, null = could not be read.
-export function assessDevice({ platform, standalone, stores }) {
+export function assessDevice({ platform, standalone, stores, trial = false }) {
+  if (trial && trialAllowed({ platform, standalone })) {
+    if (stores.local === null || stores.idb === null) return result("STORAGE_UNAVAILABLE", "This device's storage cannot be read, so even the trial cannot save.", false);
+    return result("TRIAL", "Trial copy. This is not your real ledger: it is separate from the iPhone and from every backup. Do not enter real financial data here.", true);
+  }
   if (platform === "android") {
     return result("ANDROID_NO_LEDGER",
       "This is not the finance phone. The ledger lives only on the iPhone, so an empty app here is normal, not lost data. Do not enter financial data here.",

@@ -48,7 +48,7 @@ export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOve
 export { validateState, encryptBackup, decryptBackup, encryptLedgerBackup, decryptLedgerBackup, MIN_PASSPHRASE } from "./backup.js";
 export { weekEndingOn, autoFillSurvey, planSurveyResponse, surveyReview, unloggedByWeek } from "./survey.js";
 export { editDraft } from "./inbox.js";
-export { detectPlatform, assessDevice } from "./device.js";
+export { detectPlatform, assessDevice, trialAllowed } from "./device.js";
 export { buildReminderCalendar, defaultReminders, validateReminder, foldLine } from "./reminders.js";
 export { parsePesos, formatPesos, formatPesosWhole } from "./money.js";
 export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID, ensureIncomeCategories, INCOME_CATEGORIES } from "./seed.js";

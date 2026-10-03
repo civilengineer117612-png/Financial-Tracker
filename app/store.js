@@ -1,8 +1,16 @@
 // The only file that touches storage. The SAME text is written to localStorage and IndexedDB,
 // so losing or failing one of them is noticed and repaired from the other (model/persist.js).
 // A value of undefined means "that store could not be read at all".
-const LS_KEY = "financialTracker.ledger";
-const DB_NAME = "financialTracker", STORE = "kv", KEY = "ledger", PHOTOS = "photos";
+let LS_KEY = "financialTracker.ledger", DB_NAME = "financialTracker";
+const STORE = "kv", KEY = "ledger", PHOTOS = "photos";
+
+// A trial copy keeps everything under other names, so it can never touch (or be mistaken for) a real ledger.
+export function useTrialStorage() { LS_KEY = "financialTracker.trial.ledger"; DB_NAME = "financialTracker-trial"; }
+export async function clearTrialStorage() {
+  if (!DB_NAME.endsWith("-trial")) return;   // only ever the trial copy
+  try { localStorage.removeItem(LS_KEY); } catch { /* nothing to remove */ }
+  await new Promise((resolve) => { const r = indexedDB.deleteDatabase(DB_NAME); r.onsuccess = r.onerror = r.onblocked = () => resolve(); });
+}
 
 function openDb() {
   return new Promise((resolve, reject) => {

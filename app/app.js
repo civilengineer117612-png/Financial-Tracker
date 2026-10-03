@@ -1,7 +1,7 @@
 // The screens. All money rules live in ../src/model; this file only draws and handles taps.
 // Plain and firm, never harsh: facts are stated once, nothing is red, nothing blocks logging.
 import * as M from "../src/model/index.js";
-import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto } from "./store.js";
+import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto, useTrialStorage, clearTrialStorage } from "./store.js";
 import { preparePhoto, readText } from "./ocr.js";
 
 const $ = (id) => document.getElementById(id);
@@ -128,10 +128,11 @@ function renderMenu() {
 function renderBanner() {
   const bars = [];
   if (ui.error) bars.push(`<div class="bar" role="alert">${esc(ui.error)}</div>`);
-  const showDevice = device.status !== "OK" && !(device.status === "EMPTY" && S().accounts.length > 0);
+  const showDevice = device.status === "TRIAL" || (device.status !== "OK" && !(device.status === "EMPTY" && S().accounts.length > 0));
   if (showDevice) {
     const repair = device.status === "PARTIAL_LOSS" && boot.ledger ? `<p><button data-action="repair">Copy the surviving data into the empty store</button></p>` : "";
-    bars.push(`<div class="bar" role="status">${esc(device.message)}${repair}</div>`);
+    const trial = device.status === "TRIAL" ? `<p><button data-action="reset-trial">${ui.confirmTrial ? "Tap again to erase the trial copy" : "Start the trial over"}</button></p>` : "";
+    bars.push(`<div class="bar" role="status">${esc(device.message)}${repair}${trial}</div>`);
   }
   $("banner").innerHTML = bars.join("");
 }
@@ -1356,6 +1357,10 @@ async function onClick(el) {
   const { action, id, tab } = el.dataset;
   const form = ui.form;
   switch (action) {
+    case "reset-trial": {
+      if (!ui.confirmTrial) { ui.confirmTrial = true; renderBanner(); break; }
+      await clearTrialStorage(); location.reload(); break;
+    }
     case "open-menu": ui.menu = true; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "true"); break;
     case "close-menu": ui.menu = false; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "false"); break;
     case "tab": $("toast").innerHTML = ""; ui.menu = false; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null; renderAll(); break;
@@ -1859,11 +1864,13 @@ window.addEventListener("unhandledrejection", (e) => showFault(String(e.reason?.
 
 // ---------- start ----------
 async function start() {
-  const { local, idb } = await readBoth();
   const platform = M.detectPlatform(navigator.userAgent);
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+  const trial = new URLSearchParams(location.search).has("trial") && M.trialAllowed({ platform, standalone });   // never on the iPhone Home Screen app
+  if (trial) useTrialStorage();
+  const { local, idb } = await readBoth();
   const present = (v) => (v === undefined ? null : v !== null && v.length > 0);
-  device = M.assessDevice({ platform, standalone, stores: { local: present(local), idb: present(idb) } });
+  device = M.assessDevice({ platform, standalone, stores: { local: present(local), idb: present(idb) }, trial });
   boot = M.chooseLedger(local ?? null, idb ?? null);
   if (boot.status === "CORRUPT") {
     device = { status: "CORRUPT", allowEntry: false, message: "The saved data on this phone could not be read, so nothing is shown and nothing will be overwritten. Restore from your encrypted backup." };
