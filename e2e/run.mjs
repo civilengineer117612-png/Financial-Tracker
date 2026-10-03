@@ -61,6 +61,7 @@ async function addAccount(page, name, kind, opening, covers) {
   if (opening) await page.fill("#a-open", opening);
   if (covers) await page.selectOption("#a-covers", { label: covers });
   await page.click('button:has-text("Add account")');
+  await page.waitForFunction((n) => [...document.querySelectorAll("#screen .row, #screen .choice, #screen li")].some((e) => e.innerText.includes(n)) || document.getElementById("screen").innerText.includes(n), name, { timeout: 8000 }).catch(() => {});   // saving is asynchronous: wait until the account is listed before going on
 }
 
 // ===== 1. first run, setup =====
@@ -1087,6 +1088,10 @@ check(incText.includes("₱10,300.00") && incText.includes("Overtime") && incTex
 check(incText.includes("Went to government this year: ₱1,200.00"), "deductions to government add up");
 check(await page.locator(".btrack.stack .bfill.ot").count() === 1, "the payday bar stacks base and overtime");
 await shot(page, "38-income");
+await page.click('button[aria-label="Earlier year"]');
+const prevYear = await text(page, "#screen");
+check(prevYear.includes("Nothing recorded for 2025") && !prevYear.includes("Sample Employer") && !prevYear.includes("View the photo") && !prevYear.includes("Plan against what arrived") && !prevYear.includes("Employers"), "another year shows only that year: nothing from 2026 appears under 2025");
+await page.click('button[aria-label="Later year"]');
 await page.click('#nav button:has-text("Verify")');
 check((await text(page, "#screen")).includes("Overtime to Emergency Fund") && (await text(page, "#screen")).includes("₱900.00"), "Verify holds the 60% draft: 60% of ₱1,500.00 is ₱900.00");
 await menuGo(page, "Income");

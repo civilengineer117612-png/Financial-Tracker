@@ -125,3 +125,16 @@ test("the free 40% stays put unless the owner picks where it goes; then it is a 
   assert.equal(overtimeFreeDraft(s, "ps1", { transaction_id: "x", to_account_id: "card" }, NOW).violations[0].code, "UNKNOWN_ACCOUNT");
   assert.equal(overtimeFreeDraft(planPayslip(ledger(), base(), NOW).state, "ps1", { transaction_id: "x", to_account_id: "ef" }, NOW), null);
 });
+
+test("looking at a year lists only that year's raises, employers and payslips, but a raise is still measured against the payslip before it", () => {
+  let s = ledger();
+  s = planPayslip(s, base({ id: "a", transaction_id: "ta", employer: "Old Employer", pay_date: "2025-12-15", period_from: "2025-12-01", period_to: "2025-12-15", printed_gross: 800000, printed_net: 800000, deposit: 800000, earnings: [{ kind: "basic", amount: 800000 }], deductions: [] }), NOW).state;
+  s = planPayslip(s, base({ id: "b", transaction_id: "tb", pay_date: "2026-10-15" }), NOW).state;
+  assert.deepEqual(raiseHistory(s, "2025").map((r) => [r.date, r.basic]), [["2025-12-15", 800000]]);
+  assert.deepEqual(raiseHistory(s, "2026").map((r) => [r.date, r.basic, r.change, r.raised]), [["2026-10-15", 900000, 100000, true]], "the first payslip of 2026 is compared with December 2025");
+  assert.deepEqual(raiseHistory(s, "2024"), []);
+  assert.deepEqual(employerHistory(s, "2025").map((e) => e.employer), ["Old Employer"]);
+  assert.deepEqual(employerHistory(s, "2026").map((e) => e.employer), ["Sample Employer Inc"]);
+  assert.deepEqual(employerHistory(s, "2024"), []);
+  assert.equal(employerHistory(s).length, 2, "with no year, all of them");
+});

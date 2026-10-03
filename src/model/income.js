@@ -148,11 +148,12 @@ export function netPerPayday(state, year) {
 }
 
 // Basic pay over time: each payslip's basic salary, and the change from the one before it.
-export function raiseHistory(state) {
+// With a year, only that year's payslips are listed, but each change is still measured against the payslip before it (even from an earlier year).
+export function raiseHistory(state, year = null) {
   const rows = (state.payslips ?? []).slice().sort((a, b) => a.pay_date.localeCompare(b.pay_date) || a.id.localeCompare(b.id))
     .map((p) => ({ date: p.pay_date, employer: p.employer, basic: sum(linesOf(state, p.id).filter((l) => l.side === "earning" && l.kind === "basic")) }))
     .filter((r) => r.basic > 0);
-  return rows.map((r, i) => ({ ...r, change: i === 0 ? null : r.basic - rows[i - 1].basic, raised: i > 0 && r.basic > rows[i - 1].basic }));
+  return rows.map((r, i) => ({ ...r, change: i === 0 ? null : r.basic - rows[i - 1].basic, raised: i > 0 && r.basic > rows[i - 1].basic })).filter((r) => year === null || r.date.startsWith(year + "-"));
 }
 
 // Deductions by month of pay date and for the year to date: government (tax, SSS, PhilHealth, Pag-IBIG), pay lost (absences,
@@ -173,9 +174,10 @@ export function deductionsByMonth(state, year) {
 }
 
 // Employers in the order they were worked for: first and last pay date, and how many payslips.
-export function employerHistory(state) {
+export function employerHistory(state, year = null) {
   const by = new Map();
   for (const p of state.payslips ?? []) {
+    if (year !== null && !p.pay_date.startsWith(year + "-")) continue;
     const e = by.get(p.employer) ?? { employer: p.employer, first: p.pay_date, last: p.pay_date, payslips: 0 };
     e.first = e.first < p.pay_date ? e.first : p.pay_date; e.last = e.last > p.pay_date ? e.last : p.pay_date; e.payslips += 1;
     by.set(p.employer, e);
