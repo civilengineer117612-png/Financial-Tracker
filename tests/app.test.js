@@ -7,7 +7,8 @@ import * as M from "../src/model/index.js";
 
 const read = (p) => readFileSync(new URL("../" + p, import.meta.url), "utf8");
 const sw = read("app/sw.js");
-const listed = [...sw.matchAll(/"([^"]+\.(?:js|json|png|html)|\.\/)"/g)].map((m) => m[1]);
+const filesBlock = sw.slice(sw.indexOf("const FILES = ["), sw.indexOf("];", sw.indexOf("const FILES = [")));   // only the offline list, not other strings in the worker
+const listed = [...filesBlock.matchAll(/"([^"]+\.(?:js|json|png|html)|\.\/)"/g)].map((m) => m[1]);
 
 test("the offline list contains every model file and every app file", () => {
   for (const f of readdirSync(new URL("../src/model/", import.meta.url))) assert.ok(listed.includes("../src/model/" + f), "missing from sw.js: src/model/" + f);

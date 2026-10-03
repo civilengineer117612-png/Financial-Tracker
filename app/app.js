@@ -30,7 +30,16 @@ const categoryName = (id) => S().categories.find((c) => c.id === id)?.name ?? "?
 const expenseCategories = () => S().categories.filter((c) => c.kind === "expense" && c.id !== M.UNLOGGED_CATEGORY_ID);
 
 // The picture the owner chose for an account, or a plain first-letter tile until they do.
+// A listed bank's logo, loaded once for every bank (see "bank logos" below) and kept in the phone's settings.
+function bankLogo(bankId) {
+  const l = bankId ? ledger.settings.bankLogos?.[bankId] : null;
+  if (l?.icon?.startsWith("data:image/")) return { icon: l.icon };
+  if (l?.icon_url?.startsWith("https://")) return { icon_url: l.icon_url };
+  return null;
+}
 function iconOf(a, size = 28) {
+  // An account's own picture wins; otherwise its bank's logo (linked, or plainly named after the bank); otherwise a letter.
+  if (!a.icon && !a.icon_url) { const l = bankLogo(a.bank ?? (a.name ? M.bankForName(a.name)?.id : null)); if (l) a = { ...a, ...l }; }
   if (a.icon) return `<img class="ico" src="${esc(a.icon)}" alt="" width="${size}" height="${size}">`;
   const letter = [...a.name][0]?.toUpperCase() ?? "?";
   const mono = `<span class="ico mono" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.5)}px" aria-hidden="true">${esc(letter)}</span>`;
@@ -65,13 +74,15 @@ const isGenerated = (t) => t.id.startsWith("rsv:");
 const dueDrafts = () => M.pendingDrafts(S(), addDays(today(), -1)).filter((t) => !isGenerated(t));
 
 // ---------- saving ----------
-async function commit(state, settings = ledger.settings) {
+async function commit(state, settings = ledger.settings, { quiet = false } = {}) {
   const next = M.nextLedger(ledger, state, settings);
   const r = await writeBoth(JSON.stringify(next));
   ledger = next;   // keep working in memory even if a store failed; the banner says so
   const failed = [!r.local && "localStorage", !r.idb && "IndexedDB"].filter(Boolean);
   ui.error = failed.length ? "Could not save to " + failed.join(" and ") + ". What you see is not safely stored yet. The next save tries again." : null;
-  renderAll();
+  // A background save (the logos) must not rebuild an open window and lose what is being done in it.
+  if (!quiet) renderAll(); else { renderBanner(); if (!document.activeElement?.matches("input, textarea, select")) renderScreen(); if (ui.sheet?.type === "banks") renderSheet(); }   // the screen behind a window may change; the window stays
+  if (!ledger.settings.bankLogosTried && !logoRun && failed.length === 0) loadBankLogos();   // a new install: logos after the first save
   return failed.length === 0;
 }
 
@@ -200,18 +211,20 @@ function viewVerify() {
       </div></div>`;
 }
 
-// ---------- bank logos (on the phone, only when asked) ----------
-// Asks an icon service for each bank's small icon and keeps it in the ledger on this phone. Nothing is in the repository.
-// Two ways to get a logo. COPY: services that allow the page to read the picture, so it is shrunk and kept on the phone.
-// LINK: services that only allow showing the picture (they refuse copying); the address is kept and the picture is shown
-// from there (and remembered offline by the app's cache). Copying is tried first.
+// ---------- bank logos: loaded for every listed bank, once, when the phone has internet ----------
+// The logos of ALL the listed banks are fetched together, so the icon service learns nothing about which banks you use.
+// They are kept in the phone's settings (never in the repository) and shown wherever an account belongs to that bank.
+// COPY: services that let the page read the picture (it is shrunk and kept). LINK: places that only allow showing it;
+// then only the address is kept. A bank's own site icon is tried before icon services, which may invent placeholders.
 const COPY_SOURCES = (domain) => [["Icon Horse", `https://icon.horse/icon/${domain}`], ["Favicon Kit", `https://api.faviconkit.com/${domain}/144`]];
 const LINK_SOURCES = (domain) => [
+  ["its website", `https://${domain}/apple-touch-icon.png`],
+  ["its website", `https://www.${domain.replace(/^www\./, "")}/apple-touch-icon.png`],
   // nfrp=2 makes the service answer "not found" for a site with no icon, instead of a generic grey placeholder picture
   ["Google icons", `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&nfrp=2&url=https://${domain}&size=128`],
   ["DuckDuckGo", `https://icons.duckduckgo.com/ip3/${domain}.ico`],
 ];
-// Some services invent a flat grey tile with a letter on it when a site has no icon. That is not a logo, so it is refused.
+// Some services invent a flat grey tile (a letter, or a grey circle) when a site has no icon. That is not a logo.
 function looksLikeLetterTile(ctx) {
   const d = ctx.getImageData(0, 0, ICON_PX, ICON_PX).data, buckets = new Map();
   let ink = 0;
@@ -225,7 +238,7 @@ function looksLikeLetterTile(ctx) {
   let best = 0, bestKey = 0;
   for (const [k, n] of buckets) if (n > best) { best = n; bestKey = k; }
   const r = (bestKey >> 8) * 16, g = ((bestKey >> 4) & 15) * 16, b = (bestKey & 15) * 16, mean = (r + g + b) / 3;
-  return best / ink > 0.8 && Math.abs(r - g) <= 16 && Math.abs(g - b) <= 16 && mean >= 90 && mean <= 235;   // one flat grey: a placeholder
+  return best / ink > 0.8 && Math.abs(r - g) <= 16 && Math.abs(g - b) <= 16 && mean >= 90 && mean <= 235;
 }
 function pictureIsLetterTile(url) {
   return new Promise((resolve) => {
@@ -250,7 +263,7 @@ function loadLogo(url, { copy = true, ms = 8000 } = {}) {
         const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, ICON_PX, ICON_PX);
         const k = Math.min((ICON_PX - 8) / img.naturalWidth, (ICON_PX - 8) / img.naturalHeight), w = img.naturalWidth * k, h = img.naturalHeight * k;
         ctx.drawImage(img, (ICON_PX - w) / 2, (ICON_PX - h) / 2, w, h);
-        if (looksLikeLetterTile(ctx)) { resolve({ why: "only a generated letter tile came back" }); return; }
+        if (looksLikeLetterTile(ctx)) { resolve({ why: "only a generated placeholder came back" }); return; }
         let out = c.toDataURL("image/png"); if (out.length > 38000) out = c.toDataURL("image/jpeg", 0.8);
         resolve({ url: out });
       } catch { resolve({ why: "the service does not allow the picture to be copied" }); }
@@ -258,60 +271,39 @@ function loadLogo(url, { copy = true, ms = 8000 } = {}) {
     img.src = url;
   });
 }
-// Accounts typed before the bank picker existed ("Gotyme") are linked to their bank first, by name.
-function withBankLinks(state) {
-  let next = state;
-  for (const a of state.accounts) {
-    const b = !a.bank && M.bankForName(a.name);
-    if (b) { const r = M.linkAccountBank(next, a.id, b.id); if (r.ok) next = r.state; }
+async function fetchBankLogo(b) {
+  const why = [];
+  for (const domain of [b.domain, ...(b.alt ?? [])]) {
+    for (const [label, src] of COPY_SOURCES(domain)) { const r = await loadLogo(src); if (r.url) return { icon: r.url }; why.push(domain + " " + label + ": " + r.why); }
+    for (const [label, src] of LINK_SOURCES(domain)) { const r = await loadLogo(src, { copy: false }); if (r.ok) return { icon_url: src }; why.push(domain + " " + label + ": " + r.why); }
   }
-  return next;
+  return { why: why.join("; ") };
 }
-// An address saved by an earlier version asked for a placeholder when a bank had no icon; those are thrown away and retried.
-const stalePlaceholder = (a) => M.isPlaceholderAddress(a.icon_url);
-const wantsLogo = (a) => a.bank || M.bankForName(a.name);
-async function getBankLogos() {
-  let state = withBankLinks(S());
-  for (const b of M.BANKS) if (state.accounts.some((a) => a.bank === b.id && stalePlaceholder(a))) state = M.setBankIconUrl(state, b.id, null).state;
-  // A copied picture that is only a generated letter tile (saved by an earlier version) is thrown away and retried.
-  for (const b of M.BANKS) {
-    const pic = state.accounts.find((a) => a.bank === b.id && a.icon)?.icon;
-    if (pic && await pictureIsLetterTile(pic)) state = M.setAccountIcon(state, state.accounts.find((a) => a.bank === b.id && a.icon).id, null).state;
+let logoRun = null;
+// Runs once at start (and from "Try again"): fetches the logos still missing. A bank that failed is retried after a week.
+async function loadBankLogos({ force = false } = {}) {
+  if (logoRun || !device.allowEntry || navigator.onLine === false) return;
+  const have = ledger.settings.bankLogos ?? {}, tried = ledger.settings.bankLogosTried ?? {}, t = today();
+  const due = (d) => !d || (Date.parse(t) - Date.parse(d)) / 86400000 >= 7;
+  const todo = M.BANKS.filter((b) => !bankLogo(b.id) && (force || due(tried[b.id])));
+  if (!todo.length) return;
+  ui.logoBusy = true; if (ui.sheet?.type === "banks") renderSheet();   // only the bank list shows progress
+  logoRun = (async () => {
+    const got = {}, report = [];
+    for (const b of todo) { const r = await fetchBankLogo(b); if (r.icon || r.icon_url) got[b.id] = r.icon ? { icon: r.icon } : { icon_url: r.icon_url }; else report.push(b.name + " (" + r.why + ")"); }
+    ui.logoReport = report.length ? "No logo found online for: " + report.join(" | ") : null;
+    ui.logoBusy = false;
+    await commit(S(), { ...ledger.settings, bankLogos: { ...(ledger.settings.bankLogos ?? {}), ...got }, bankLogosTried: { ...(ledger.settings.bankLogosTried ?? {}), ...Object.fromEntries(todo.map((b) => [b.id, t])) } }, { quiet: true });
+  })();
+  try { await logoRun; } finally { logoRun = null; ui.logoBusy = false; }
+}
+// Pictures saved on accounts by earlier versions that are only placeholders (an address or a flat grey copy) are dropped.
+async function dropOldPlaceholders() {
+  let state = M.dropPlaceholderAddresses(S());
+  for (const a of state.accounts) {
+    if (a.icon && (await pictureIsLetterTile(a.icon))) { const r = M.setAccountIcon(state, a.id, null); if (r.ok) state = r.state; }
   }
-  const wanted = M.BANKS.filter((b) => state.accounts.some((a) => a.bank === b.id && !a.icon && !a.icon_url));
-  if (!wanted.length) { showToast("Every bank you use already has a picture. Accounts with other names: tap the tile and choose the bank."); return; }
-  ui.logoBusy = true; ui.logoReport = null; renderScreen();
-  let copied = 0, linked = 0; const report = [];
-  for (const b of wanted) {
-    const why = [];
-    let done = false;
-    for (const domain of [b.domain, ...(b.alt ?? [])]) {
-      for (const [label, src] of COPY_SOURCES(domain)) {
-        const r = await loadLogo(src);
-        if (r.url) {
-          const set = M.setAccountIcon(state, state.accounts.find((a) => a.bank === b.id).id, r.url);
-          if (set.ok) { state = set.state; copied += 1; done = true; break; }
-        }
-        why.push(domain + " " + label + ": " + (r.why ?? "the picture was refused"));
-      }
-      if (done) break;
-      for (const [label, src] of LINK_SOURCES(domain)) {
-        const r = await loadLogo(src, { copy: false });
-        if (r.ok) {
-          const set = M.setBankIconUrl(state, b.id, src);
-          if (set.ok) { state = set.state; linked += 1; done = true; break; }
-          why.push(domain + " " + label + ": that address is not allowed");
-        } else why.push(domain + " " + label + ": " + r.why);
-      }
-      if (done) break;
-    }
-    if (!done) report.push(b.name + " (" + why.join("; ") + ")");
-  }
-  ui.logoBusy = false;
-  ui.logoReport = report.length ? "Could not get: " + report.join(" | ") : null;
-  if (copied + linked || state !== S()) await commit(state); else renderScreen();
-  const got = copied + linked;
-  showToast((got === wanted.length ? "Got " + got + (got === 1 ? " logo." : " logos.") : "Got " + got + " of " + wanted.length + ". The reason is under the button. For the rest, tap the tile in the list and add a screenshot.") + (linked ? " " + linked + " shown from the web, so they need internet the first time." : ""));
+  if (state !== S()) await commit(state);
 }
 
 const bankPictureOf = (bankId) => M.bankPicture(S().accounts, bankId);
@@ -329,11 +321,11 @@ function viewSetup() {
   // button never drifts down behind the keyboard. The list of accounts follows it.
   return `<h1>Setup</h1><p class="sub">Accounts. The ledger is on this phone only.</p>
     <h2>Add an account</h2>
-    <label id="a-bank-l">Choose a bank</label>
-    <div class="chips" role="group" aria-labelledby="a-bank-l">${[...M.BANKS, M.CASH].map((b) => `<button class="chip" data-action="pick-bank" data-id="${esc(b.id)}" aria-pressed="${f.bank === b.id}">${iconOf({ name: b.name, ...(bankPictureOf(b.id) ?? {}) }, 24)}<span>${esc(b.name)}</span></button>`).join("")}</div>
+    <label for="a-bank">Bank</label>
+    <button id="a-bank" class="bankpick" data-action="open-banks" data-for="add">${f.bank ? `${iconOf({ name: M.bankById(f.bank).name, bank: f.bank, ...(bankPictureOf(f.bank) ?? {}) }, 28)}<span>${esc(M.bankById(f.bank).name)}</span>` : `<span class="muted">Choose a bank</span>`}<span class="chev" aria-hidden="true">\u203A</span></button>
     ${f.bank ? `<label for="a-sub">Which part of ${esc(M.bankById(f.bank).name)}? (optional)</label><input id="a-sub" data-field="sub" value="${esc(f.sub)}" placeholder="e.g. Emergency Fund, Savings" autocomplete="off" enterkeyhint="next">
       <p class="note" id="a-preview">Saved as: ${esc(accountPreview(f))}</p>`
-      : `<label for="a-name">Not in the list? Type its name</label><input id="a-name" data-field="name" value="${esc(f.name)}" autocomplete="off" enterkeyhint="next">`}
+      : `<label for="a-name">Or type a name</label><input id="a-name" data-field="name" value="${esc(f.name)}" autocomplete="off" enterkeyhint="next">`}
     <label for="a-kind">Type</label><select id="a-kind" data-field="kind"><option value="asset"${f.kind === "asset" ? " selected" : ""}>Money I have (cash, bank, wallet)</option><option value="liability"${f.kind === "liability" ? " selected" : ""}>Money I owe (credit card)</option></select>
     <label for="a-open">${f.kind === "asset" ? "Balance today" : "Amount owed today"} (₱)</label><input id="a-open" data-field="opening" inputmode="decimal" value="${esc(f.opening)}" placeholder="0.00" autocomplete="off">
     ${f.kind === "asset" && cards.length ? `<label for="a-covers">This account is a reserve for a card (optional)</label><select id="a-covers" data-field="covers"><option value="">No</option>${cards.map((c) => `<option value="${esc(c.id)}"${f.covers === c.id ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select>` : ""}
@@ -341,8 +333,6 @@ function viewSetup() {
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}
-    ${S().accounts.some(wantsLogo) ? `<p class="note">Bank pictures: the app can ask an icon service for your banks' small icons (it tells that service which banks you use) and keep them on this phone only. It needs internet (not airplane mode). <button class="link" data-action="get-logos"${ui.logoBusy ? " disabled" : ""}>${ui.logoBusy ? "Getting logos..." : "Get bank logos"}</button></p>` : ""}
-    ${ui.logoReport ? `<p class="note" id="logo-report" role="status">${esc(ui.logoReport)}</p>` : ""}
     <h2>Pay plan</h2>
     <p class="note">${planOf() ? "A plan is in effect." : "No plan in effect."} <button class="link" data-action="${planOf() ? "tab" : "open-plan"}" data-tab="plan">${planOf() ? "Open it" : "Load a plan"}</button></p>
     <h2>Backup</h2>
@@ -438,7 +428,7 @@ function viewMoney() {
     }
   }
   const atEnd = p.kind === "month" ? p.month >= nowM : p.kind === "year" ? p.year >= nowY : true;
-  const title = `<button class="ptitle" data-action="open-period" aria-label="Choose the period: ${esc(label)}">${esc(label)} <span aria-hidden="true">\u25BE</span></button>`;
+  const title = `<button class="ptitle" data-action="open-period" aria-label="Choose the period: ${esc(label)}">${esc(label)}</button>`;
   const stepper = p.kind === "range" ? `<div class="stepper single">${title}</div>`
     : `<div class="stepper"><button data-action="period-step" data-step="-1" aria-label="Earlier">\u2039</button>${title}<button data-action="period-step" data-step="1" aria-label="Later"${atEnd ? " disabled" : ""}>\u203A</button></div>`;
   const hero = `<h1>Money</h1>${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">${esc(sub)}</p>${delta}${pendingNote(cat.pending)}${moneyViews()}`;
@@ -764,7 +754,16 @@ function renderSheet() {
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
-  if (sh.type === "period") {
+  if (sh.type === "banks") {
+    const forAdd = sh.for === "add", acct = forAdd ? null : S().accounts.find((x) => x.id === sh.for);
+    const current = forAdd ? ui.accountForm.bank : acct?.bank;
+    const rows = [...M.BANKS, M.CASH].map((b) => `<button class="bankrow" data-action="pick-bankrow" data-id="${esc(b.id)}" aria-pressed="${current === b.id}">${iconOf({ name: b.name, bank: b.id, ...(bankPictureOf(b.id) ?? {}) }, 32)}<span>${esc(b.name)}</span>${current === b.id ? '<span class="tick" aria-hidden="true">\u2713</span>' : ""}</button>`).join("");
+    const missing = M.BANKS.filter((b) => !bankLogo(b.id) && !bankPictureOf(b.id)).map((b) => b.name);
+    body = `<h3>${forAdd ? "Choose a bank" : "Which bank is it?"}</h3><div class="banklist" role="list">${rows}
+      <button class="bankrow" data-action="pick-bankrow" data-id=""><span class="ico mono" style="width:32px;height:32px;font-size:16px" aria-hidden="true">+</span><span>${forAdd ? "Not in the list (type a name)" : "No bank"}</span></button></div>
+      ${missing.length ? `<p class="note">${ui.logoBusy ? "Loading logos\u2026" : "No logo found online yet for " + esc(missing.join(", ")) + ". You can add one from a screenshot: tap that account's picture in Setup."} ${ui.logoBusy ? "" : `<button class="link" data-action="retry-logos">Try again</button>`}</p>` : ""}
+      ${ui.logoReport && !ui.logoBusy ? `<p class="note small" id="logo-report">${esc(ui.logoReport)}</p>` : ""}`;
+  } else if (sh.type === "period") {
     const d = ui.periodDraft, nowY = Number(today().slice(0, 4)), nowM = M.monthOf(today());
     const firstYear = Math.min(nowY - 4, ...S().transactions.map((t) => Number(t.date.slice(0, 4))));
     const tabs = `<div class="seg" role="group" aria-label="Kind of period">${[["month", "Month"], ["year", "Year"], ["range", "Date range"]].map(([k, t]) => `<button data-action="period-kind" data-kind="${k}" aria-pressed="${d.kind === k}">${t}</button>`).join("")}</div>`;
@@ -786,10 +785,12 @@ function renderSheet() {
     const [y, m] = ui.calMonth.split("-").map(Number), first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(), count = new Date(Date.UTC(y, m, 0)).getUTCDate();
     const withEntries = new Set(S().transactions.filter((t) => t.date.startsWith(ui.calMonth) && !isGenerated(t)).map((t) => t.date));
     const target = sh.target ?? "day", picked = calSelected(target);
-    const cells = Array.from({ length: first }, () => "<span></span>").concat(Array.from({ length: count }, (_, i) => {
+    const days = Array.from({ length: count }, (_, i) => {
       const date = ui.calMonth + "-" + String(i + 1).padStart(2, "0");
       return `<button data-action="cal-day" data-id="${date}" aria-pressed="${date === picked}" aria-label="${esc(longDate(date))}"${date > today() ? " disabled" : ""}${withEntries.has(date) ? ' class="has"' : ""}>${i + 1}</button>`;
-    })).join("");
+    });
+    // Always six weeks of cells, so the calendar keeps one size from month to month.
+    const cells = Array.from({ length: first }, () => '<span class="blank"></span>').concat(days, Array.from({ length: 42 - first - count }, () => '<span class="blank"></span>')).join("");
     const atNow = ui.calMonth >= M.monthOf(today());
     body = `<h3>${target === "from" ? "Start date" : target === "to" ? "End date" : "Select date"}</h3>
       <div class="stepper yr"><button data-action="cal-step" data-step="-12" aria-label="Earlier year">\u00AB</button><button data-action="cal-step" data-step="-1" aria-label="Earlier month">\u2039</button><b>${esc(M.monthLabel(ui.calMonth))}</b><button data-action="cal-step" data-step="1" aria-label="Later month"${atNow ? " disabled" : ""}>\u203A</button><button data-action="cal-step" data-step="12" aria-label="Later year"${atNow ? " disabled" : ""}>\u00BB</button></div>
@@ -869,8 +870,8 @@ function renderSheet() {
   } else if (sh.type === "icon") {
     const a = S().accounts.find((x) => x.id === sh.id);
     body = `<h3>Picture for ${esc(a.name)}</h3>
-      <label id="i-bank-l">Which bank is it?</label>
-      <div class="chips" role="group" aria-labelledby="i-bank-l">${[...M.BANKS, M.CASH].map((b) => `<button class="chip" data-action="link-bank" data-id="${esc(b.id)}" aria-pressed="${a.bank === b.id}"><span>${esc(b.name)}</span></button>`).join("")}</div>
+      <label for="i-bank">Which bank is it?</label>
+      <button id="i-bank" class="bankpick" data-action="open-banks" data-for="${esc(a.id)}">${a.bank ? `${iconOf({ name: M.bankById(a.bank).name, bank: a.bank }, 28)}<span>${esc(M.bankById(a.bank).name)}</span>` : `<span class="muted">Not linked to a bank</span>`}<span class="chev" aria-hidden="true">\u203A</span></button>
       <p class="note">Accounts of one bank share the picture. Take a screenshot of the app's icon, choose it here, then zoom and drag until only the icon fills the square.</p>
       <input id="i-file" type="file" accept="image/*" data-field="file" aria-label="Choose a picture">
       <div id="i-stage" class="stage"><img id="i-img" alt="" hidden></div>
@@ -1192,19 +1193,6 @@ async function onClick(el) {
       showToast("Target set from your plan");
       break;
     }
-    case "link-bank": {
-      const a = S().accounts.find((x) => x.id === ui.sheet.id), named = M.bankForName(a.name);
-      // An account whose name plainly means one bank is not linked to a different one by a single stray tap.
-      if (a.bank !== id && named && named.id !== id && ui.confirmLink !== id) {
-        ui.confirmLink = id;
-        showToast("This account is named " + a.name + ". Tap " + M.bankById(id).name + " again to link it to " + M.bankById(id).name + " anyway.");
-        break;
-      }
-      ui.confirmLink = null;
-      const r = M.linkAccountBank(S(), a.id, a.bank === id ? null : id);
-      if (r.ok) await commit(r.state);
-      break;
-    }
     case "open-cal": { const target = el.dataset.target ?? "day"; ui.calMonth = M.monthOf(calSelected(target) ?? today()); ui.sheet = { type: "cal", target }; renderSheet(); break; }
     case "cal-step": { let next = M.addMonths(ui.calMonth, Number(el.dataset.step)); if (next > M.monthOf(today())) next = M.monthOf(today()); ui.calMonth = next; renderSheet(); break; }
     case "cal-day": {
@@ -1216,8 +1204,24 @@ async function onClick(el) {
       ui.sheet = null; renderAll(); break;
     }
     case "reset-day": ui.dayPick = null; renderScreen(); break;
-    case "get-logos": await getBankLogos(); break;
-    case "pick-bank": ui.accountForm.bank = ui.accountForm.bank === id ? null : id; ui.accountForm.sub = ""; ui.setupError = null; renderScreen(); break;
+    case "open-banks": ui.sheetBack = ui.sheet; ui.sheet = { type: "banks", for: el.dataset.for }; renderSheet(); break;
+    case "retry-logos": await loadBankLogos({ force: true }); renderSheet(); break;
+    case "pick-bankrow": {
+      const target = ui.sheet.for;
+      if (target === "add") { ui.accountForm.bank = id || null; ui.accountForm.sub = ""; ui.setupError = null; ui.sheet = null; renderAll(); break; }
+      const a = S().accounts.find((x) => x.id === target), named = M.bankForName(a.name), want = id || null;
+      // An account whose name plainly means one bank is not linked to a different one by a single stray tap.
+      if (want && a.bank !== want && named && named.id !== want && ui.confirmLink !== want) {
+        ui.confirmLink = want;
+        showToast("This account is named " + a.name + ". Tap " + M.bankById(want).name + " again to link it anyway.");
+        break;
+      }
+      ui.confirmLink = null;
+      const r = M.linkAccountBank(S(), a.id, want);
+      ui.sheet = { type: "icon", id: a.id }; ui.form = {};
+      if (r.ok) await commit(r.state); else renderSheet();
+      break;
+    }
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
     case "save-icon": await saveIcon(); break;
     case "clear-icon": {
@@ -1496,10 +1500,12 @@ async function start() {
   }
   if (!device.allowEntry) ui.tab = "log";
   renderAll();
-  // Grey placeholder logos saved by an earlier version are dropped at once, so a letter tile shows instead of a wrong picture.
-  if (device.allowEntry && boot.status !== "NONE" && boot.status !== "CORRUPT") {
-    const cleaned = M.dropPlaceholderAddresses(S());
-    if (cleaned !== S()) await commit(cleaned);
+  if (device.allowEntry && boot.status === "OK") {
+    // Grey placeholder pictures saved by earlier versions are dropped at once, so a letter tile shows instead of a wrong one;
+    // then the listed banks' logos are loaded in the background, so they are there from the start. (On a brand-new phone
+    // this happens right after the first save instead; see commit.)
+    await dropOldPlaceholders();
+    loadBankLogos();
   }
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 }

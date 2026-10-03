@@ -75,6 +75,13 @@
   .rangepick small { color: var(--mid); font-weight: 400; font-size: 13px; } .rangepick b { font-size: 16px; }
   .cols.tight, .clabs.tight { gap: 3px; } .col.dim { opacity: .4; }
   .stepper.yr button { min-width: 44px; padding: 0 6px; }
+  .bankpick { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; min-height: 52px; padding: 8px 12px; }
+  .bankpick .muted { color: var(--mid); } .bankpick span:not(.ico):not(.chev):not(.muted) { flex: 1; } .bankpick .muted { flex: 1; } .bankpick .chev { font-size: 22px; color: var(--mid); }
+  .banklist { max-height: 55vh; overflow-y: auto; -webkit-overflow-scrolling: touch; border-top: 1px solid var(--line); margin: 8px 0; }
+  .bankrow { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; min-height: 56px; padding: 6px 4px; font-size: 17px; }
+  .bankrow span:nth-child(2) { flex: 1; } .bankrow .tick { font-weight: 700; } .bankrow[aria-pressed="true"] span:nth-child(2) { font-weight: 700; }
+  .note.small { font-size: 13px; }
+  .cal .blank { min-height: 44px; }
   .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 8px 0; }
   .cal .dow { text-align: center; color: var(--mid); font-size: 13px; padding: 4px 0; font-weight: 400; }
   .cal button { min-height: 44px; padding: 0; font-size: 16px; font-weight: 400; } .cal button.has { font-weight: 800; } .cal button:disabled { opacity: .3; }
