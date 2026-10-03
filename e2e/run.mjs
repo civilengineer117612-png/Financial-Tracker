@@ -451,7 +451,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3, "it is the three-line icon");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Pay plan,Checks,Trips,Check-in,Setup", "the menu lists Money, Budget, Goals, Pay plan, Checks, Trips, Check-in and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Pay plan,Checks,Trips,Buffer,Check-in,Setup", "the menu lists Money, Budget, Goals, Pay plan, Checks, Trips, Buffer, Check-in and Setup");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
 await shot(page, "17-menu");
 await page.keyboard.press("Escape");
@@ -626,6 +626,31 @@ await shot(page, "28-trips");
 await page.click('button:has-text("Tagging new entries")');
 await page.click('#nav button:has-text("Log")');
 check(!(await text(page, "#screen")).includes("Tagging new entries"), "tagging can be switched off");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+
+// ---- the overrun buffer ----
+await addAccount(page, "GCash", "asset", "1000"); await seen(page, "#toast", "Added GCash");
+await menuGo(page, "Buffer");
+check((await text(page, "#screen")).includes("Set up the buffer"), "the buffer starts unset");
+await page.click('button:has-text("Set up the buffer")');
+check(await page.locator("#f-save").isDisabled(), "setup needs the wallet chosen first");
+await page.click('#sheet .chip:has-text("GCash")');
+await page.fill("#b-buf", "600"); await page.fill("#b-allow", "500");
+check((await text(page, "#f-msg")).includes("more than the wallet holds") && await page.locator("#f-save").isDisabled(), "envelopes bigger than the wallet are refused, with the amount");
+await page.fill("#b-allow", "300");
+await page.click("#f-save"); await seen(page, "#toast", "Wallet split");
+const bt = await text(page, "#screen");
+check(bt.includes("₱600.00") && bt.includes("₱300.00"), "the buffer and the allowance are shown separately");
+await page.click('#nav button:has-text("Log")');
+await page.click('button:has-text("Other amount")'); await page.fill("#f-amount", "400"); await page.click('#sheet .chip:has-text("Upskill")'); await page.click('#sheet .chip:has-text("GCash")'); await page.click("#f-save");
+check(await seen(page, "#toast", "₱100.00 came out of the overrun buffer"), "spending past the allowance says how much came out of the buffer");
+await menuGo(page, "Buffer");
+const bt2 = await text(page, "#screen");
+check(bt2.includes("allowance is empty") && /Upskill[\s\S]*₱100\.00/.test(bt2) && bt2.includes("₱500.00"), "the draw is listed by category, and the empty allowance is said in words");
+await shot(page, "29-buffer");
+await page.click('#nav button:has-text("Verify")');
+check((await text(page, "#screen")).includes("Upskill"), "a draft that took from two envelopes still shows its category when verifying");
+await page.click('button:has-text("Correct")'); await seen(page, "#screen", "of");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- goals ----

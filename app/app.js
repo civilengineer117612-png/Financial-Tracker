@@ -49,8 +49,8 @@ function accountsFor(presetId) {
 function describe(t) {
   const es = S().entries.filter((e) => e.transaction_id === t.id);
   const cat = es.find((e) => e.category_id != null), acct = es.find((e) => e.account_id != null);
-  if (es.length === 2 && cat && acct) {
-    return { kind: "expense", editable: true, title: t.payee || categoryName(cat.category_id), category_id: cat.category_id, account_id: acct.account_id, amount: Math.abs(cat.amount), detail: accountName(acct.account_id) };
+  if (cat && acct && es.filter((e) => e.category_id == null).every((e) => e.account_id === acct.account_id) && es.filter((e) => e.category_id != null).length === 1) {
+    return { kind: "expense", editable: es.length === 2, title: t.payee || categoryName(cat.category_id), category_id: cat.category_id, account_id: acct.account_id, amount: Math.abs(cat.amount), detail: accountName(acct.account_id) };
   }
   if (es.length === 2 && es.every((e) => e.account_id != null)) {
     const from = es.find((e) => e.amount < 0), to = es.find((e) => e.amount > 0);
@@ -81,6 +81,7 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 // Plain line icons (drawn in the text colour). Groups are separated by thin lines, like a settings list.
 const ICONS = {
   money: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
+  buffer: '<path d="M4 14a8 6 0 0 1 16 0 8 6 0 0 1-16 0zM9 8V5M15 8V5"/>',
   trips: '<path d="M3 11l18-7-7 18-3-8z"/>',
   checks: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
   plan: '<path d="M4 6h16M4 12h16M4 18h10"/>',
@@ -89,7 +90,7 @@ const ICONS = {
   checkin: '<path d="M4 12l5 5L20 6"/>',
   setup: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
 };
-const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
+const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
@@ -126,7 +127,7 @@ function renderNav() {
 function renderScreen() {
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
-    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : viewLog();
+    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "buffer" ? viewBuffer() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
@@ -380,6 +381,32 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
 }
 
 // ---------- Budget: the monthly amounts ----------
+// ---------- overrun buffer ----------
+// The GCash wallet holds two envelopes the ledger tracks apart: the ride/load allowance and the overrun buffer.
+const gcashOf = () => (ledger.settings.gcash && S().accounts.some((a) => a.id === ledger.settings.gcash.account_id) ? ledger.settings.gcash : null);
+function viewBuffer() {
+  const g = gcashOf();
+  if (!g) return `<h1>Buffer</h1><p class="note">The overrun buffer is money set aside inside your GCash wallet, apart from the money for rides and load. It is only used when a category overruns, and every draw is recorded against that category.</p>
+    <p><button class="primary" data-action="open-bufsetup">Set up the buffer</button></p>`;
+  const month = M.monthOf(today());
+  const sum = M.bufferSummary(S(), { allowance_envelope_id: g.allowance_id, buffer_envelope_id: g.buffer_id, month });
+  const line = planOf()?.lines.find((l) => l.kind === "buffer");
+  const monthly = line ? line.first + line.second : null;
+  const acct = S().accounts.find((a) => a.id === g.account_id);
+  const empty = sum.allowance <= 0;
+  const draws = sum.draws.length ? `<table class="tbl"><tr><th>Category</th><th class="n">Drawn</th></tr>${sum.draws.map((d) => `<tr><td>${esc(d.name)}</td><td class="n">${d.amount === 0 && d.pending ? peso(d.pending) + "<small> not verified</small>" : peso(d.amount) + (d.pending ? `<small> + ${peso(d.pending)} not verified</small>` : "")}</td></tr>`).join("")}
+      <tr class="total"><td>Total drawn</td><td class="n">${peso(sum.drawn)}</td></tr></table>` : `<p class="note">Nothing has been drawn from the buffer this month.</p>`;
+  const flagged = M.underBudgetedCategories(S(), g.buffer_id, 2).map((c) => categoryName(c.category_id));
+  return `<h1>Buffer</h1><p class="sub">Inside ${esc(acct.name)}</p>
+    <div class="card"><dl><dt>Buffer left</dt><dd class="big">${peso(sum.buffer)}</dd>${monthly != null ? `<dt>Plan per month</dt><dd>${peso(monthly)}</dd>` : ""}<dt>Rides and load left</dt><dd>${peso(sum.allowance)}</dd></dl></div>
+    ${empty ? `<p class="note"><b>The rides and load allowance is empty.</b> More ${esc(acct.name)} spending will draw the buffer.</p>` : ""}
+    <h2>Drawn in ${esc(M.monthLabel(month))}</h2>${draws}
+    ${flagged.length ? `<p class="note">${esc(flagged.join(", "))} drew the buffer in more than one month. That line may be under-budgeted: set a new budget from next month.</p>` : ""}
+    <p><button class="primary" data-action="open-bufund" style="margin-top:8px">Add to the buffer</button></p>
+    <p><button data-action="sweep-buffer" style="width:100%">Sweep what is left (month end)</button></p>
+    <p class="note">The sweep moves the leftover to Mole Removal until it reaches its target, then to the Emergency Fund. It is saved as a draft for you to verify.</p>`;
+}
+
 // ---------- trips ----------
 // A trip is a tag with an optional budget. Switch one on and new entries are tagged with it, with no extra taps.
 function viewTrips() {
@@ -564,7 +591,22 @@ function renderSheet() {
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
-  if (sh.type === "trip") {
+  if (sh.type === "bufsetup") {
+    body = `<h3>Set up the buffer</h3>
+      <label>Which account is the GCash wallet?</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <p class="note" id="b-held"></p>
+      <label for="b-buf">Overrun buffer (\u20B1)</label><input id="b-buf" data-field="buf" inputmode="decimal" value="${esc(ui.form.buf ?? "")}" autocomplete="off">
+      <label for="b-allow">Rides and load allowance (\u20B1)</label><input id="b-allow" data-field="allow" inputmode="decimal" value="${esc(ui.form.allow ?? "")}" autocomplete="off">
+      <p class="note">Together they cannot be more than the wallet holds. The wallet's total does not change; it is only split into two parts.</p>
+      <p id="f-msg" role="alert" class="note"></p>
+      <p><button class="primary" id="f-save" data-action="save-bufsetup" style="margin-top:6px" disabled>Split the wallet</button></p>`;
+  } else if (sh.type === "bufund") {
+    body = `<h3>Add to the buffer</h3>
+      <label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label>Take it from</label>${chips(accountsFor(null).filter((a) => a.id !== gcashOf().account_id), ui.form.account_id, "pick-acct")}
+      <p class="note">Saved as verified, because you are choosing to set this money aside.</p>
+      <p><button class="primary" id="f-save" data-action="save-bufund" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "trip") {
     body = `<h3>New trip</h3>
       <label for="t-name">Name</label><input id="t-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
       <label for="f-amount">Trip budget (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
@@ -675,6 +717,17 @@ function refreshSave() {
     if (out) out.textContent = a.ok && acct ? "The ledger says " + peso(M.ledgerBalanceFor(acct, S().entries)) + ". " + differenceText(a.centavos - M.ledgerBalanceFor(acct, S().entries)) + "." : "";
   } else if (type === "survey") {
     btn.disabled = !f.ease;
+  } else if (type === "bufsetup") {
+    const buf = f.buf ? M.parsePesos(f.buf) : { ok: true, centavos: 0 }, allow = f.allow ? M.parsePesos(f.allow) : { ok: true, centavos: 0 };
+    const acct = S().accounts.find((a) => a.id === f.account_id), held = acct ? M.naturalBalance(acct, S().entries) : 0;
+    const msg = $("f-msg"), note = $("b-held");
+    if (note) note.textContent = acct ? acct.name + " holds " + peso(held) + "." : "";
+    const over = buf.ok && allow.ok && buf.centavos + allow.centavos > held;
+    if (msg) msg.textContent = over ? "That is " + peso(buf.centavos + allow.centavos - held) + " more than the wallet holds." : "";
+    btn.disabled = !(acct && buf.ok && allow.ok && !over && buf.centavos + allow.centavos > 0);
+  } else if (type === "bufund") {
+    const a = M.parsePesos(f.amount);
+    btn.disabled = !(a.ok && a.centavos > 0 && f.account_id);
   } else if (type === "trip") {
     const a = f.amount ? M.parsePesos(f.amount) : { ok: true };
     btn.disabled = !((f.name ?? "").trim() && a.ok);
@@ -715,14 +768,35 @@ const reserveNote = (violations) => {
 };
 
 // ---------- actions ----------
+const bufferNote = (violations) => {
+  const w = (c) => violations.find((x) => x.code === c);
+  if (w("BUFFER_EXHAUSTED")) return "This was more than the allowance and the buffer together.";
+  if (w("BUFFER_DRAWN")) return peso(w("BUFFER_DRAWN").drawn) + " came out of the overrun buffer.";
+  if (w("ALLOWANCE_EMPTY")) return "The rides and load allowance is empty. More spending from here draws the buffer.";
+  return "";
+};
+
 async function logExpense(input, label) {
   const tag_id = S().tags.some((t) => t.id === ledger.settings.active_tag_id) ? ledger.settings.active_tag_id : undefined;
-  const plan = M.planExpense(S(), { ...input, tag_id, date: today(), reserve_source_id: ledger.settings.reserve_source_id }, new Date());
-  if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); return; }
+  const g = gcashOf();
+  let drafts, note;
+  if (g && input.account_id === g.account_id) {
+    // Spending from the GCash wallet takes from the allowance first, then the buffer (spec 6.4).
+    const p = M.planGcashSpend(S(), { transaction_id: input.transaction_id, date: today(), payee: input.payee ?? "", category_id: input.category_id, amount: input.amount,
+      gcash_account_id: g.account_id, allowance_envelope_id: g.allowance_id, buffer_envelope_id: g.buffer_id }, new Date());
+    if (!p.ok) { showToast("Could not save: " + p.violations[0].message); return; }
+    drafts = [{ transaction: { ...p.transaction, source: input.source ?? "manual", ...(tag_id ? { tag_id } : {}) }, entries: p.entries }];
+    note = bufferNote(p.violations);
+  } else {
+    const plan = M.planExpense(S(), { ...input, tag_id, date: today(), reserve_source_id: ledger.settings.reserve_source_id }, new Date());
+    if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); return; }
+    drafts = plan.drafts;
+    note = reserveNote(plan.violations);
+  }
   const settings = { ...ledger.settings, last_account_id: input.account_id,
     last_account_by_preset: { ...(ledger.settings.last_account_by_preset ?? {}), ...(input.preset_id ? { [input.preset_id]: input.account_id } : {}) } };
-  const ok = await commit(M.applyDrafts(S(), plan.drafts), settings);
-  showToast((ok ? "Saved " : "Not safely stored: ") + label + " · " + accountName(input.account_id), plan.drafts[0].transaction.id, reserveNote(plan.violations));
+  const ok = await commit(M.applyDrafts(S(), drafts), settings);
+  showToast((ok ? "Saved " : "Not safely stored: ") + label + " · " + accountName(input.account_id), drafts[0].transaction.id, note);
 }
 
 async function onClick(el) {
@@ -804,6 +878,42 @@ async function onClick(el) {
       ui.sheet = null; renderSheet();
       await commit(plan.state);
       showToast(peso(amount.centavos) + " set for " + g.name + ". Verify it to count it.");
+      break;
+    }
+    case "open-bufsetup": {
+      const line = planOf()?.lines.find((l) => l.kind === "buffer");
+      ui.sheet = { type: "bufsetup" }; ui.form = { account_id: null, buf: line ? ((line.first + line.second) / 100).toFixed(2) : "", allow: "" }; renderSheet(); break;
+    }
+    case "save-bufsetup": {
+      const buf = ui.form.buf ? M.parsePesos(ui.form.buf) : { ok: true, centavos: 0 }, allow = ui.form.allow ? M.parsePesos(ui.form.allow) : { ok: true, centavos: 0 };
+      if (!buf.ok || !allow.ok) { showToast("Enter amounts like 2000"); break; }
+      const ids = { allow: newId("env"), buf: newId("env") };
+      const plan = M.planEnvelopeSetup(S(), { gcash_account_id: ui.form.account_id, allowance_envelope_id: ids.allow, buffer_envelope_id: ids.buf, allowance_amount: allow.centavos, buffer_amount: buf.centavos, date: today(), transaction_ids: [newId("tx"), newId("tx")] }, new Date());
+      if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      await commit(plan.state, { ...ledger.settings, gcash: { account_id: ui.form.account_id, allowance_id: ids.allow, buffer_id: ids.buf } });
+      showToast("Wallet split into two parts");
+      break;
+    }
+    case "open-bufund": ui.sheet = { type: "bufund" }; ui.form = { amount: "", account_id: accountsFor(null).find((a) => a.id !== gcashOf().account_id)?.id ?? null }; renderSheet(); break;
+    case "save-bufund": {
+      const amount = M.parsePesos(ui.form.amount), g = gcashOf();
+      if (!amount.ok) { showToast("Enter an amount like 1000"); break; }
+      const plan = M.planBufferFunding(S(), { transaction_id: newId("tx"), date: today(), amount: amount.centavos, from_account_id: ui.form.account_id, gcash_account_id: g.account_id, buffer_envelope_id: g.buffer_id }, new Date());
+      if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      await commit(plan.state);
+      showToast(peso(amount.centavos) + " added to the buffer");
+      break;
+    }
+    case "sweep-buffer": {
+      const g = gcashOf(), mole = S().goals.find((x) => /mole/i.test(x.name)), emerg = S().goals.find((x) => /emergency/i.test(x.name));
+      if (!mole || !emerg) { showToast("Add goals named Mole Removal and Emergency Fund first (Menu, Goals)."); break; }
+      const plan = M.planMonthEndSweep(S(), { transaction_id: newId("tx"), date: today(), gcash_account_id: g.account_id, buffer_envelope_id: g.buffer_id, mole_account_id: mole.account_id, emergency_account_id: emerg.account_id, mole_target: mole.target ?? 0 }, new Date());
+      if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
+      if (!plan.transaction) { showToast("Nothing left in the buffer to sweep."); break; }
+      await commit(M.applyDrafts(S(), [{ transaction: plan.transaction, entries: plan.entries }]));
+      showToast("Sweep saved as a draft. Verify it in Verify.");
       break;
     }
     case "open-trip": ui.sheet = { type: "trip" }; ui.form = { name: "", amount: "" }; renderSheet(); break;
