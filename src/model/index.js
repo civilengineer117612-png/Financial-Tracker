@@ -46,3 +46,5 @@ export { budgetStatus } from "./budget.js";
 export { pendingDrafts, verifyTransaction } from "./inbox.js";
 export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer } from "./goals.js";
 export { validateState, encryptBackup, decryptBackup, MIN_PASSPHRASE } from "./backup.js";
+export { weekEndingOn, autoFillSurvey, planSurveyResponse, surveyReview } from "./survey.js";
+export { editDraft } from "./inbox.js";
