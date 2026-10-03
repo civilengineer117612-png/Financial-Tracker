@@ -81,12 +81,13 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 // Plain line icons (drawn in the text colour). Groups are separated by thin lines, like a settings list.
 const ICONS = {
   money: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
+  plan: '<path d="M4 6h16M4 12h16M4 18h10"/>',
   goals: '<path d="M5 21V4M5 4h13l-3 4 3 4H5"/>',
   budget: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
   checkin: '<path d="M4 12l5 5L20 6"/>',
   setup: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
 };
-const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"], ["goals", "Goals"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
+const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
@@ -123,7 +124,7 @@ function renderNav() {
 function renderScreen() {
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
-    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : viewLog();
+    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
@@ -213,6 +214,8 @@ function viewSetup() {
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}
+    <h2>Pay plan</h2>
+    <p class="note">${planOf() ? "A plan is loaded." : "No plan loaded."} <button class="link" data-action="${planOf() ? "tab" : "open-plan"}" data-tab="plan">${planOf() ? "Open it" : "Load a plan"}</button></p>
     <h2>Backup</h2>
     <p class="note">${backupAgeText()}</p>
     <p><button class="primary" data-action="open-backup">Back up now</button></p>
@@ -314,10 +317,11 @@ function viewMoney() {
 // Each budget as a meter: how much of it is used, with a mark for how far through the month we are.
 // Budget | Actual | Variance for one month. Variance is budget minus actual: plus means under budget (blue),
 // minus means over (red). The sign and the words "under" / "over" carry the meaning; colour only backs them up.
+const vtext = (v) => v === 0 ? "On budget" : (v > 0 ? "+" : "\u2212") + peso(Math.abs(v)) + (v > 0 ? " under" : " over");
+const vcls = (v) => v > 0 ? "vu" : v < 0 ? "vo" : "";
+const vcell = (v) => `<td class="n ${vcls(v)}">${esc(vtext(v))}</td>`;
 function varianceTable(budgeted) {
-  const vtext = (v) => v === 0 ? "On budget" : (v > 0 ? "+" : "\u2212") + peso(Math.abs(v)) + (v > 0 ? " under" : " over");
-  const vcls = (v) => v > 0 ? "vu" : v < 0 ? "vo" : "";
-  const cell = (v) => `<td class="n ${vcls(v)}">${esc(vtext(v))}</td>`;
+  const cell = vcell;
   const sum = (k) => budgeted.reduce((n, r) => n + r[k], 0);
   return `<table class="tbl"><tr><th>Category</th><th class="n">Budget</th><th class="n">Actual</th><th class="n">Variance</th></tr>
     ${budgeted.map((r) => `<tr><td>${esc(categoryName(r.category_id))}</td><td class="n">${peso(r.budget)}</td><td class="n">${peso(r.spent)}</td>${cell(r.budget - r.spent)}</tr>`).join("")}
@@ -372,6 +376,30 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
 }
 
 // ---------- Budget: the monthly amounts ----------
+// ---------- pay plan ----------
+const planOf = () => ledger.settings.plan ?? null;
+function viewPlan() {
+  const plan = planOf();
+  if (!plan) return `<h1>Pay plan</h1><p class="note">No plan loaded yet. A plan says what to set aside from each of your two paydays.</p>
+    <p><button class="primary" data-action="open-plan">Load a plan</button></p>`;
+  const t = M.planTotals(plan), [p1, p2] = plan.paydays;
+  const lines = plan.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="n">${peso(l.first)}</td><td class="n">${peso(l.second)}</td><td class="n">${peso(l.first + l.second)}</td></tr>`).join("");
+  const prog = M.planProgress(S(), plan, today(), { categoryMaps: S().categoryMaps });
+  const mine = prog.rows.filter((r) => r.kind === "expense" && r.matched);
+  const unmatched = prog.rows.filter((r) => r.kind === "expense" && !r.matched);
+  const which = plan.paydays[prog.period.index - 1];
+  const rem = mine.map((r) => `<tr><td>${esc(r.name)}</td><td class="n">${peso(r.planned)}</td><td class="n">${peso(r.spent)}</td>${vcell(r.remaining)}</tr>`).join("");
+  return `<h1>Pay plan</h1><p class="sub">Paydays on the ${p1.day}${ord(p1.day)} and the ${p2.day}${ord(p2.day)}</p>
+    <table class="tbl"><tr><th>Line</th><th class="n">${esc(p1.label)}</th><th class="n">${esc(p2.label)}</th><th class="n">Monthly</th></tr>${lines}
+      <tr class="total"><td>Total</td><td class="n">${peso(t.first)}</td><td class="n">${peso(t.second)}</td><td class="n">${peso(t.month)}</td></tr></table>
+    <h2>This cutoff</h2><p class="note">${esc(which.label)} to the day before the next: ${esc(longDate(prog.period.start))} to ${esc(longDate(prog.period.end))}. Only verified spending counts.</p>
+    ${mine.length ? `<table class="tbl"><tr><th>Line</th><th class="n">Plan</th><th class="n">Spent</th><th class="n">Left</th></tr>${rem}</table>` : `<p class="note">No plan line matches one of your categories yet.</p>`}
+    ${unmatched.length ? `<p class="note">Not matched to a category, so not tracked: ${esc(unmatched.map((r) => r.name).join(", "))}.</p>` : ""}
+    <p><button data-action="open-plan" style="width:100%">Replace the plan</button></p>
+    <p><button class="link" data-action="remove-plan">${ui.confirmRemovePlan ? "Tap again to remove the plan" : "Remove the plan"}</button></p>`;
+}
+const ord = (n) => (n % 100 >= 11 && n % 100 <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[n % 10] ?? "th");
+
 // ---------- goals ----------
 // A goal points at an account where the money really sits. Balances are hidden until you choose to show them (spec 9).
 function viewGoals() {
@@ -381,12 +409,17 @@ function viewGoals() {
     const p = M.goalProgress(S(), g);
     if (!p) return "";
     const hidden = g.hidden_by_default && !ui.reveal;
+    const line = planOf()?.lines.find((l) => l.kind === "goal" && l.name.toLowerCase() === g.name.toLowerCase());
+    const monthly = line ? line.first + line.second : 0;
+    const eta = monthly > 0 && p.remaining ? Math.ceil(p.remaining / monthly) : null;
+    const suggest = planOf()?.essentials.length && /emergency/i.test(g.name) ? M.planEmergencyTarget(planOf()) : null;
     const need = g.deadline && p.remaining ? M.requiredPerMonth(p, g.deadline, today().slice(0, 7)) : null;
     const body = hidden ? `<p class="note">Hidden. Tap Show balances above.</p>`
       : `<div class="btop"><span class="bval">${peso(p.balance)}${p.target != null ? " of " + peso(p.target) : ""}</span></div>
          ${p.target != null ? `<div class="meter goal" role="img" aria-label="${p.percent}% of the goal"><span class="fill" style="width:${p.percent}%"></span></div>
-         <div class="status">${p.reached ? "Goal reached" : p.percent + "% \u00b7 " + peso(p.remaining) + " to go"}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div>` : `<div class="status">No target, just a place to build up.</div>`}`;
+         <div class="status">${p.reached ? "Goal reached" : p.percent + "% \u00b7 " + peso(p.remaining) + " to go"}${eta ? " \u00b7 about " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : ""}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div>` : `<div class="status">No target, just a place to build up.</div>`}`;
     return `<div class="bcard"><div class="btop"><span class="bname who">${iconOf(S().accounts.find((a) => a.id === g.account_id) ?? { name: g.name }, 24)}<span>${esc(g.name)}</span></span></div>${body}
+      ${suggest && suggest !== g.target && !hidden ? `<p class="note">Your plan suggests ${peso(suggest)} (${planOf().emergency_months} months of essentials). <button class="link" data-action="use-plan-target" data-id="${esc(g.id)}">Use it</button></p>` : ""}
       <p><button data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button></p></div>`;
   }).join("");
   return `<h1>Goals</h1><p class="sub">Savings you are building. Hidden by default so they do not tempt you.</p>${toggle}${cards || `<p class="note">No goals yet.</p>`}
@@ -467,7 +500,14 @@ function renderSheet() {
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
-  if (sh.type === "goal") {
+  if (sh.type === "plan") {
+    body = `<h3>Load a pay plan</h3>
+      <p class="note">Choose the plan file, or paste its text. It stays on this phone and in your encrypted backups.</p>
+      <label for="p-file">Plan file</label><input id="p-file" type="file" data-field="file" accept=".json,application/json,text/plain">
+      <label for="p-text">Or paste it here</label><textarea id="p-text" data-field="text" rows="5" autocomplete="off" autocapitalize="off" spellcheck="false">${esc(ui.form.text ?? "")}</textarea>
+      <div id="p-prev" role="status"></div>
+      <p><button class="primary" id="f-save" data-action="save-plan" style="margin-top:10px" disabled>Use this plan</button></p>`;
+  } else if (sh.type === "goal") {
     body = `<h3>New goal</h3>
       <label for="g-name">Name</label><input id="g-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
       <label for="f-amount">Target (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
@@ -559,6 +599,12 @@ function refreshSave() {
     if (out) out.textContent = a.ok && acct ? "The ledger says " + peso(M.ledgerBalanceFor(acct, S().entries)) + ". " + differenceText(a.centavos - M.ledgerBalanceFor(acct, S().entries)) + "." : "";
   } else if (type === "survey") {
     btn.disabled = !f.ease;
+  } else if (type === "plan") {
+    const r = (f.text ?? "").trim() ? M.parsePlan(f.text) : null, out = $("p-prev");
+    btn.disabled = !r?.ok;
+    if (out) out.innerHTML = !r ? "" : r.ok
+      ? `<p class="note"><b>Looks good:</b> paydays on the ${r.plan.paydays[0].day}${ord(r.plan.paydays[0].day)} and ${r.plan.paydays[1].day}${ord(r.plan.paydays[1].day)}, ${r.plan.lines.length} lines, ${peso(M.planTotals(r.plan).month)} a month.</p>`
+      : `<p role="alert" class="note"><b>${esc(r.error)}</b></p>`;
   } else if (type === "goal") {
     const a = f.amount ? M.parsePesos(f.amount) : { ok: true };
     btn.disabled = !((f.name ?? "").trim() && f.account_id && a.ok);
@@ -602,7 +648,7 @@ async function onClick(el) {
   switch (action) {
     case "open-menu": ui.menu = true; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "true"); break;
     case "close-menu": ui.menu = false; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "false"); break;
-    case "tab": $("toast").innerHTML = ""; ui.menu = false; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null; renderAll(); break;
+    case "tab": $("toast").innerHTML = ""; ui.menu = false; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.confirmRemovePlan = false; ui.sel = null; renderAll(); break;
     case "month-step": ui.month = M.addMonths(ui.month ?? M.monthOf(today()), Number(el.dataset.step)); ui.sel = null; renderScreen(); break;
     case "chart-view": ui.view = el.dataset.view; ui.sel = null; renderScreen(); break;
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
@@ -675,6 +721,29 @@ async function onClick(el) {
       ui.sheet = null; renderSheet();
       await commit(plan.state);
       showToast(peso(amount.centavos) + " set for " + g.name + ". Verify it to count it.");
+      break;
+    }
+    case "open-plan": ui.sheet = { type: "plan" }; ui.form = { text: "" }; renderSheet(); break;
+    case "save-plan": {
+      const r = M.parsePlan(ui.form.text ?? "");
+      if (!r.ok) { showToast(r.error); break; }
+      ui.sheet = null; renderSheet();
+      await commit(S(), { ...ledger.settings, plan: r.plan });
+      showToast("Plan loaded");
+      break;
+    }
+    case "remove-plan": {
+      if (!ui.confirmRemovePlan) { ui.confirmRemovePlan = true; renderScreen(); break; }
+      ui.confirmRemovePlan = false;
+      const { plan, ...rest } = ledger.settings;
+      await commit(S(), rest);
+      break;
+    }
+    case "use-plan-target": {
+      const r = M.setGoalTarget(S(), id, M.planEmergencyTarget(planOf()));
+      if (!r.ok) { showToast("Could not save: " + r.violations[0].message); break; }
+      await commit(r.state);
+      showToast("Target set from your plan");
       break;
     }
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
@@ -918,6 +987,11 @@ document.addEventListener("input", (e) => {
 });
 document.addEventListener("change", (e) => {
   if (e.target.type === "file" && ui.sheet) {
+    if (ui.sheet.type === "plan") {
+      const file = e.target.files[0];
+      if (file) file.text().then((t) => { ui.form.text = t; $("p-text").value = t; refreshSave(); });
+      return;
+    }
     if (ui.sheet.type === "icon") loadIcon(e.target.files[0]);
     else { ui.form.file = e.target.files[0] ?? null; refreshSave(); }
     return;

@@ -78,6 +78,20 @@ budgets, paid from (by account), and by month (six columns). Every view has a "S
 Only verified spending counts; unverified drafts are mentioned, not counted. Without budgets every bar is one color;
 amounts sit at the bar tip, and tapping a bar states its share in words.
 
+**Pay plan (menu, Overview):** load a small plan file (Setup or the Pay plan screen) with your two paydays and, per line, what to set aside from each. It shows the plan table and, for the current cutoff (from one payday to the day before the next), what is planned, spent and left per line, using verified spending only. Lines are matched to categories by name; an unmatched line is said out loud, not guessed. The plan lives in the phone's settings and in encrypted backups, never in this repository. File shape (invented numbers, pesos):
+
+```json
+{ "v": 1,
+  "paydays": [{"day": 15, "label": "1st payday"}, {"day": 30, "label": "2nd payday"}],
+  "lines": [{"name": "Rent", "first": 0, "second": 5000},
+            {"name": "Food", "first": 1500, "second": 2500},
+            {"name": "Emergency Fund", "kind": "goal", "first": 500, "second": 500}],
+  "essentials": ["Rent", "Food"],
+  "emergency_months": 3 }
+```
+
+`kind` is `expense` (default) or `goal`. `essentials` names the lines that make up the emergency target (months x their monthly totals).
+
 **Goals (menu, Overview):** a goal points at an account where the money really sits, with an optional target and finish date. Balances are hidden until you tap Show balances. "Put money in" saves a draft transfer from another account, counted once you verify it.
 
 **Trend:** under "By month", a line chart of total budget against total actual for six months. A month with nothing budgeted or logged is a gap in the line, never an error or a fake zero. Tap a month to open its budgets.

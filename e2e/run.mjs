@@ -451,7 +451,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3, "it is the three-line icon");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Check-in,Setup", "the menu lists Money, Budget, Goals, Check-in and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Pay plan,Check-in,Setup", "the menu lists Money, Budget, Goals, Pay plan, Check-in and Setup");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
 await shot(page, "17-menu");
 await page.keyboard.press("Escape");
@@ -608,6 +608,27 @@ await page.fill("#f-amount", "500");
 await page.click("#f-save"); await seen(page, "#toast", "set for Apartment");
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.state.goals.length === 1 && ledgerNow.state.transactions.some((t) => t.payee === "To Apartment" && t.status === "draft"), "the deposit is a draft transfer until verified");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+
+// ---- the pay plan ----
+await menuGo(page, "Pay plan");
+check((await text(page, "#screen")).includes("No plan loaded"), "the pay plan starts empty");
+await page.click('button:has-text("Load a plan")');
+await page.fill("#p-text", "{ not a plan");
+check((await text(page, "#p-prev")).includes("could not be read") && await page.locator("#f-save").isDisabled(), "a broken plan is refused in plain words");
+const plan = { v: 1, paydays: [{ day: 15 }, { day: 30 }], lines: [{ name: "Food", first: 1500, second: 2500 }, { name: "Shopping", first: 400, second: 600 }, { name: "Apartment", kind: "goal", first: 500, second: 500 }, { name: "Mystery", first: 10, second: 10 }], essentials: ["Food"] };
+await page.fill("#p-text", JSON.stringify(plan));
+check((await text(page, "#p-prev")).includes("Looks good") && !(await page.locator("#f-save").isDisabled()), "a good plan shows a one-line summary before it is used");
+await page.click("#f-save"); await seen(page, "#toast", "Plan loaded");
+const ptxt = await text(page, "#screen");
+if (!ptxt.includes("15th and the 30th")) console.log("   plan screen:", JSON.stringify(ptxt.slice(0, 400)));
+check(ptxt.includes("15th and the 30th") && ptxt.includes("₱1,500.00") && ptxt.includes("₱4,000.00") && ptxt.includes("₱6,020.00") && ptxt.toLowerCase().includes("this cutoff"), "the plan shows both paydays and the monthly total per line");
+check(ptxt.includes("Mystery") && ptxt.includes("not tracked"), "a line with no matching category is said out loud, not guessed");
+await shot(page, "26-plan");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.settings.plan.lines[0].first === 150000, "the plan is kept in the phone's settings in centavos");
+await menuGo(page, "Goals");
+check((await text(page, "#screen")).includes("at your plan's ₱1,000.00 a month"), "a goal shows how long the plan takes");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // pictures survive a reload and appear where you choose an account

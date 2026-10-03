@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit, naturalBalance } from "../src/model/index.js";
+import { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit, setGoalTarget, naturalBalance } from "../src/model/index.js";
 import { makeState, account, commit } from "./fixtures.js";
 
 function s0() {
@@ -100,4 +100,12 @@ test("putting money in makes a draft transfer that moves the pocket balance only
   for (const [o, code] of [[{ amount: 0 }, "BAD_AMOUNT"], [{ amount: 1.5 }, "BAD_AMOUNT"], [{ from_account_id: "goalacct" }, "SAME_ACCOUNT"], [{ from_account_id: "x" }, "UNKNOWN_ACCOUNT"], [{ goal_id: "zz" }, "UNKNOWN_GOAL"]]) {
     assert.equal(planGoalDeposit(s, { transaction_id: "t9", date: "2026-03-01", goal_id: "g1", from_account_id: "ef", amount: 5000, ...o }).violations[0].code, code);
   }
+});
+
+test("a goal's target can be set, changed or removed; bad ones are refused", () => {
+  const s = planGoal(s0(), { id: "g1", account_id: "goalacct", name: "Emergency", target: 100 }).state;
+  assert.equal(setGoalTarget(s, "g1", 250000).state.goals[0].target, 250000);
+  assert.equal("target" in setGoalTarget(s, "g1", null).state.goals[0], false);
+  assert.equal(setGoalTarget(s, "g1", -1).violations[0].code, "BAD_TARGET");
+  assert.equal(setGoalTarget(s, "zz", 5).violations[0].code, "UNKNOWN_GOAL");
 });
