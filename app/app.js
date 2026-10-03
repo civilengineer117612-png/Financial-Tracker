@@ -249,25 +249,25 @@ function stackedPaydays(rows) {   // base and overtime stacked, one ramp of one 
     <span class="btrack stack"><span class="bfill" style="width:${Math.max(1, Math.round((r.base * 100) / max))}%"></span>${r.overtime ? `<span class="bfill ot" style="width:${Math.max(1, Math.round((r.overtime * 100) / max))}%"></span>` : ""}</span></div>`).join("")}</div>`;
 }
 function viewIncome() {
-  const year = incomeYear(), y = M.incomeByMonth(S(), year), rows = y.months.filter((m) => m.total !== 0);
-  const slips = (S().payslips ?? []).slice().sort((a, b) => (a.pay_date < b.pay_date ? 1 : -1));
+  const year = incomeYear(), ytdLabel = year === today().slice(0, 4) ? "Year to date" : "Whole year", y = M.incomeByMonth(S(), year), rows = y.months.filter((m) => m.total !== 0);
+  const slips = (S().payslips ?? []).filter((p) => p.pay_date.startsWith(year + "-")).sort((a, b) => (a.pay_date < b.pay_date ? 1 : -1));   // only the year being looked at
   const step = `<div class="stepper"><button data-action="income-year" data-step="-1" aria-label="Earlier year">‹</button><span>${esc(year)}</span><button data-action="income-year" data-step="1" aria-label="Later year"${year >= today().slice(0, 4) ? " disabled" : ""}>›</button></div>`;
   const head = `<h1>Income</h1>${step}<p><button class="primary" data-action="open-payslip-choice">Add a payslip</button></p><p><button data-action="open-income" style="width:100%">Add other income</button></p>`;
   if (!rows.length && !slips.length) return head + `<p class="note">Nothing recorded for ${esc(year)} yet. Add a payslip to see where your income comes from, your raises, and what went to government.</p>`;
   const bySrc = M.SOURCES.map(([id, label]) => ({ label, amount: y.ytd[id] })).filter((r) => r.amount !== 0);
   const monthTable = `<table class="tbl"><tr><th>Month</th><th class="n">Base</th><th class="n">Overtime</th><th class="n">Other</th><th class="n">Total</th></tr>${rows.map((m) => `<tr><td>${esc(MONTH3[Number(m.month.slice(5)) - 1])}</td><td class="n">${peso(m.base)}</td><td class="n">${peso(m.overtime)}</td><td class="n">${peso(m.interest + m.refunds + m.other)}</td><td class="n">${peso(m.total)}</td></tr>`).join("")}
-    <tr class="total"><td>Year to date</td><td class="n">${peso(y.ytd.base)}</td><td class="n">${peso(y.ytd.overtime)}</td><td class="n">${peso(y.ytd.interest + y.ytd.refunds + y.ytd.other)}</td><td class="n">${peso(y.ytd.total)}</td></tr></table>`;
+    <tr class="total"><td>${ytdLabel}</td><td class="n">${peso(y.ytd.base)}</td><td class="n">${peso(y.ytd.overtime)}</td><td class="n">${peso(y.ytd.interest + y.ytd.refunds + y.ytd.other)}</td><td class="n">${peso(y.ytd.total)}</td></tr></table>`;
   const pd = M.netPerPayday(S(), year);
   const paydays = pd.length ? `<h2>Net pay per payday</h2>${stackedPaydays(pd)}<table class="tbl"><tr><th>Payday</th><th class="n">Base</th><th class="n">Overtime</th><th class="n">Net</th></tr>${pd.map((r) => `<tr><td>${esc(longDate(r.date))}<small> ${esc(r.employer)}</small></td><td class="n">${peso(r.base)}</td><td class="n">${peso(r.overtime)}</td><td class="n">${peso(r.net)}</td></tr>`).join("")}</table>` : "";
-  const raises = M.raiseHistory(S());
+  const raises = M.raiseHistory(S(), year);
   const raiseTable = raises.length ? `<h2>Basic pay over time</h2><table class="tbl"><tr><th>Payday</th><th class="n">Basic</th><th class="n">Change</th></tr>${raises.map((r) => `<tr><td>${esc(fullDate(r.date))}</td><td class="n">${peso(r.basic)}</td><td class="n">${r.change === null ? "" : r.change === 0 ? "No change" : (r.raised ? "▲ raised " : "▼ down ") + peso(Math.abs(r.change))}</td></tr>`).join("")}</table>` : "";
   const dd = M.deductionsByMonth(S(), year);
   const dedTable = dd.months.length ? `<h2>Deductions</h2><table class="tbl"><tr><th>Month</th><th class="n">Tax</th><th class="n">SSS</th><th class="n">PhilHealth</th><th class="n">Pag-IBIG</th></tr>${dd.months.map((m) => `<tr><td>${esc(MONTH3[Number(m.month.slice(5)) - 1])}</td><td class="n">${peso(m.tax)}</td><td class="n">${peso(m.sss)}</td><td class="n">${peso(m.philhealth)}</td><td class="n">${peso(m.pagibig)}</td></tr>`).join("")}
-    <tr class="total"><td>Year to date</td><td class="n">${peso(dd.ytd.tax)}</td><td class="n">${peso(dd.ytd.sss)}</td><td class="n">${peso(dd.ytd.philhealth)}</td><td class="n">${peso(dd.ytd.pagibig)}</td></tr></table>
+    <tr class="total"><td>${ytdLabel}</td><td class="n">${peso(dd.ytd.tax)}</td><td class="n">${peso(dd.ytd.sss)}</td><td class="n">${peso(dd.ytd.philhealth)}</td><td class="n">${peso(dd.ytd.pagibig)}</td></tr></table>
     <p class="note">Went to government this year: ${peso(dd.ytd.government)}. Lost to absences and lates: ${peso(dd.ytd.lost)}.${dd.ytd.loan ? " Loans: " + peso(dd.ytd.loan) + "." : ""}</p>` : "";
-  const emps = M.employerHistory(S());
+  const emps = M.employerHistory(S(), year);
   const empTable = emps.length ? `<h2>Employers</h2><table class="tbl"><tr><th>Employer</th><th class="n">From</th><th class="n">Latest</th></tr>${emps.map((e) => `<tr><td>${esc(e.employer)}<small> ${e.payslips} ${e.payslips === 1 ? "payslip" : "payslips"}</small></td><td class="n">${esc(fullDate(e.first))}</td><td class="n">${esc(fullDate(e.last))}</td></tr>`).join("")}</table>` : "";
-  const plan = planOf();
+  const plan = year === today().slice(0, 4) ? planOf() : null;   // the plan in force speaks only of this year
   const ivar = (v) => v === 0 ? "As planned" : (v > 0 ? "+" : "−") + peso(Math.abs(v)) + (v > 0 ? " more" : " less");
   const pv = plan ? [M.planIncome(S(), plan, today())].map((v) => `<h2>Plan against what arrived</h2><table class="tbl"><tr><th>Payday</th><th class="n">Plan</th><th class="n">Received</th><th class="n">Difference</th></tr><tr><td>${esc(v.label)}<small> ${esc(longDate(v.period.start))}</small></td><td class="n">${peso(v.planned)}</td><td class="n">${peso(v.actual)}</td><td class="n">${esc(ivar(v.variance))}</td></tr></table><p class="note">The plan is never edited; the difference is only shown.</p>`)[0] : "";
   const list = slips.length ? `<h2>Payslips</h2>${slips.slice(0, 12).map((p) => {
