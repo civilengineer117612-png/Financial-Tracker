@@ -65,5 +65,6 @@ test("the bottom bar holds only Log and Verify; everything else is in the menu",
   assert.match(js, /\$\("nav"\)\.innerHTML = tab\("log", "Log"\) \+ tab\("verify"/);
   assert.ok(!/tab\("(money|setup|budget)"/.test(js), "no menu screen is on the bottom bar");
   const menu = /const MENU = \[(.*?)\];/s.exec(js)[1];
-  for (const id of ["money", "budget", "setup"]) assert.ok(menu.includes('"' + id + '"'), id + " is in the menu");
+  for (const id of ["money", "budget"]) assert.ok(menu.includes('"' + id + '"'), id + " is in the menu");
+  assert.match(js, /item\("setup", "Setup"\)/, "Setup is pinned at the bottom of the menu");
 });

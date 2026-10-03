@@ -78,7 +78,7 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 
 // Everything that is not Log or Verify lives in the menu at the upper left, so new screens (and later photo
 // and audio capture beside Log and Verify) can be added without crowding the bottom bar.
-const MENU = [["money", "Money"], ["budget", "Budget"], ["setup", "Setup"]];
+const MENU = [["Money", [["money", "Money"], ["budget", "Budget"]]]];   // grouped like folders; Setup is pinned at the bottom
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
@@ -87,9 +87,13 @@ function renderTop(title) {
 
 function renderMenu() {
   if (!ui.menu || !device.allowEntry) { $("menu").innerHTML = ""; return; }
-  $("menu").innerHTML = `<div class="scrim" data-action="close-menu"></div><aside class="drawer" role="dialog" aria-label="Menu"><h2>Menu</h2>
-    ${MENU.map(([id, label]) => `<button class="item" data-action="tab" data-tab="${id}"${ui.tab === id ? ' aria-current="page"' : ""}>${label}</button>`).join("")}
-    <button class="item" data-action="close-menu" style="margin-top:18px">Close</button></aside>`;
+  const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}"${ui.tab === id ? ' aria-current="page"' : ""}>${label}</button>`;
+  const age = M.daysSinceBackup(ledger.settings, today());
+  const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
+  $("menu").innerHTML = `<div class="scrim" data-action="close-menu"></div><aside class="drawer" role="dialog" aria-label="Menu">
+    <div class="groups">${MENU.map(([group, items]) => `<h2>${group}</h2>${items.map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
+    <div class="foot"><p class="note">${backup}</p>${item("setup", "Setup")}
+    <button class="item" data-action="close-menu">Close</button></div></aside>`;
 }
 
 function renderBanner() {
@@ -132,7 +136,7 @@ function viewLog() {
   return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${dueNote}${backupNote}
     <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
     <p><button class="primary" data-action="open-other" style="margin-top:12px">Other amount</button></p>
-    <h2>Today</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged today.</p>`}`;
+    <h2 class="today">Today</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged today.</p>`}`;
 }
 
 function rowFor(t) {

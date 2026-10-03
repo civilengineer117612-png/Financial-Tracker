@@ -38,7 +38,11 @@
   .menubtn svg { display: block; }
   #menu .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); }
   #menu .drawer { position: fixed; top: 0; bottom: 0; left: 0; z-index: 21; width: min(80%, 320px); background: var(--paper); border-right: 2px solid var(--ink);
-                  padding: max(16px, env(safe-area-inset-top)) 16px 16px; overflow: auto; }
+                  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); overflow: auto;
+                  display: flex; flex-direction: column; }
+  #menu .drawer .groups { flex: 1; }
+  #menu .drawer .foot { border-top: 1px solid var(--line); padding-top: 8px; }
+  h2.today { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
   #menu .drawer h2 { margin-top: 4px; }
   #menu .drawer button.item { display: block; width: 100%; text-align: left; margin: 6px 0; font-size: 18px; min-height: 52px; }
   #menu .drawer button.item[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
