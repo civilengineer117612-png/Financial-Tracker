@@ -21,10 +21,11 @@ const browser = await chromium.launch();
 
 // Every request for a bank logo goes through this, so the network is faked: by default nothing answers.
 let iconServe = (r) => r.abort();
+const iconAsked = [];   // every address the app asked an icon service or bank site for
 async function open({ ua = IPHONE, standalone = true, blockSw = false } = {}) {
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
-  await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png/, (r) => iconServe(r));
+  await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png/, (r) => { iconAsked.push(r.request().url()); iconServe(r); });
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -768,8 +769,9 @@ const gotymeImg = await page.locator('#sheet .bankrow:has-text("GoTyme") img.ico
 check(gotymeImg?.startsWith("data:image/"), "a copyable logo is copied and kept on the phone");
 check((await page.locator('#sheet .bankrow:has-text("Landbank") img.ico').getAttribute("src")) === "https://landbank.com/apple-touch-icon.png", "a bank's own site icon is shown from there");
 check((await page.locator('#sheet .bankrow:has-text("UnionBank") img').count()) === 0, "a generated grey placeholder is refused, so UnionBank keeps its letter");
+check(!iconAsked.some((u) => /maya|paymaya/.test(u)) && (await text(page, "#sheet")).includes("Maya: its logo cannot be fetched online"), "Maya is never looked up (the services only return a grey arrow for it); the list says to add it from a screenshot");
 const rep = await text(page, "#logo-report");
-check(rep.includes("UnionBank") && rep.includes("only a generated placeholder came back") && rep.includes("Maya") && rep.includes("its website: could not be loaded"), "and the reasons are listed for each bank and source");
+check(rep.includes("UnionBank") && rep.includes("only a generated placeholder came back") && rep.includes("GCash") && rep.includes("its website: could not be loaded") && !rep.includes("Maya"), "and the reasons are listed for each bank and source");
 await shot(page, "31-logos");
 await page.click('#sheet button:has-text("Cancel")');
 check((await page.locator("#screen .row", { hasText: "GoTyme" }).locator("img.ico").count()) === 2, "every GoTyme account shows the bank's logo without anything being set on it");
@@ -778,6 +780,12 @@ check((await page.locator('#screen .row:has-text("Landbank") img.ico').count()) 
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.settings.bankLogos.gotyme.icon.startsWith("data:image/") && ledgerNow.settings.bankLogos.landbank.icon_url.endsWith("/apple-touch-icon.png") && !ledgerNow.settings.bankLogos.unionbank, "the logos live in the phone's settings, one per bank");
 check(ledgerNow.state.accounts.every((a) => !a.icon_url), "nothing is copied onto the accounts themselves");
+// a wrong logo can be removed, and stays removed
+await page.click('#screen .row:has-text("GoTyme") .icobtn >> nth=0');
+await page.click('#sheet button:has-text("Remove the picture")');
+ledgerNow = JSON.parse((await stored(page)).local);
+check(!ledgerNow.settings.bankLogos.gotyme && ledgerNow.settings.bankLogosBlocked.gotyme === true, "Remove the picture drops the bank's logo and marks it so it is not fetched again");
+check((await page.locator("#screen .row", { hasText: "GoTyme" }).locator("img.ico").count()) === 0, "the accounts go back to a letter tile");
 // linking an account to a bank from its picture window
 await addAccount(page, "Euf", "asset", "10"); await seen(page, "#toast", "Added Euf");
 await page.click('#screen .row:has-text("Euf") .icobtn');
@@ -864,7 +872,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 // pictures survive a reload and appear where you choose an account
 await page.reload(); await page.waitForSelector("#nav button");
 await page.click('#nav button:has-text("Log")'); await page.click('button.tile:has-text("Breakfast")');
-check((await page.locator("#sheet .chip img.ico").count()) >= 4, "pictures and bank logos are on the account buttons when you log, so you can tell them apart at a glance");
+check((await page.locator("#sheet .chip img.ico").count()) >= 3, "pictures and bank logos are on the account buttons when you log, so you can tell them apart at a glance");
 await shot(page, "16-pay-with-pictures");
 await page.click('#sheet button:has-text("Cancel")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));

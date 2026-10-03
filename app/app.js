@@ -285,7 +285,8 @@ async function loadBankLogos({ force = false } = {}) {
   if (logoRun || !device.allowEntry || navigator.onLine === false) return;
   const have = ledger.settings.bankLogos ?? {}, tried = ledger.settings.bankLogosTried ?? {}, t = today();
   const due = (d) => !d || (Date.parse(t) - Date.parse(d)) / 86400000 >= 7;
-  const todo = M.BANKS.filter((b) => !bankLogo(b.id) && (force || due(tried[b.id])));
+  const blocked = ledger.settings.bankLogosBlocked ?? {};
+  const todo = M.BANKS.filter((b) => !b.noLookup && !blocked[b.id] && !bankLogo(b.id) && (force || due(tried[b.id])));
   if (!todo.length) return;
   ui.logoBusy = true; if (ui.sheet?.type === "banks") renderSheet();   // only the bank list shows progress
   logoRun = (async () => {
@@ -299,6 +300,9 @@ async function loadBankLogos({ force = false } = {}) {
 }
 // Pictures saved on accounts by earlier versions that are only placeholders (an address or a flat grey copy) are dropped.
 async function dropOldPlaceholders() {
+  // A logo saved for a bank that cannot be looked up (an earlier version kept a grey placeholder for it) is thrown away.
+  const logos = ledger.settings.bankLogos ?? {}, bad = M.BANKS.filter((b) => b.noLookup && logos[b.id]);
+  if (bad.length) { const rest = { ...logos }; for (const b of bad) delete rest[b.id]; await commit(S(), { ...ledger.settings, bankLogos: rest }, { quiet: true }); }
   let state = M.dropPlaceholderAddresses(S());
   for (const a of state.accounts) {
     if (a.icon && (await pictureIsLetterTile(a.icon))) { const r = M.setAccountIcon(state, a.id, null); if (r.ok) state = r.state; }
@@ -759,9 +763,11 @@ function renderSheet() {
     const current = forAdd ? ui.accountForm.bank : acct?.bank;
     const rows = [...M.BANKS, M.CASH].map((b) => `<button class="bankrow" data-action="pick-bankrow" data-id="${esc(b.id)}" aria-pressed="${current === b.id}">${iconOf({ name: b.name, bank: b.id, ...(bankPictureOf(b.id) ?? {}) }, 32)}<span>${esc(b.name)}</span>${current === b.id ? '<span class="tick" aria-hidden="true">\u2713</span>' : ""}</button>`).join("");
     const missing = M.BANKS.filter((b) => !bankLogo(b.id) && !bankPictureOf(b.id)).map((b) => b.name);
+    const shotOnly = M.BANKS.filter((b) => b.noLookup && missing.includes(b.name)).map((b) => b.name);
     body = `<h3>${forAdd ? "Choose a bank" : "Which bank is it?"}</h3><div class="banklist" role="list">${rows}
       <button class="bankrow" data-action="pick-bankrow" data-id=""><span class="ico mono" style="width:32px;height:32px;font-size:16px" aria-hidden="true">+</span><span>${forAdd ? "Not in the list (type a name)" : "No bank"}</span></button></div>
-      ${missing.length ? `<p class="note">${ui.logoBusy ? "Loading logos\u2026" : "No logo found online yet for " + esc(missing.join(", ")) + ". You can add one from a screenshot: tap that account's picture in Setup."} ${ui.logoBusy ? "" : `<button class="link" data-action="retry-logos">Try again</button>`}</p>` : ""}
+      ${shotOnly.length ? `<p class="note">${esc(shotOnly.join(", "))}: its logo cannot be fetched online. Add it once from a screenshot (tap the account's picture in Setup).</p>` : ""}
+      ${missing.filter((n) => !shotOnly.includes(n)).length ? `<p class="note">${ui.logoBusy ? "Loading logos\u2026" : "No logo found online yet for " + esc(missing.filter((n) => !shotOnly.includes(n)).join(", ")) + ". You can add one from a screenshot: tap that account's picture in Setup."} ${ui.logoBusy ? "" : `<button class="link" data-action="retry-logos">Try again</button>`}</p>` : ""}
       ${ui.logoReport && !ui.logoBusy ? `<p class="note small" id="logo-report">${esc(ui.logoReport)}</p>` : ""}`;
   } else if (sh.type === "period") {
     const d = ui.periodDraft, nowY = Number(today().slice(0, 4)), nowM = M.monthOf(today());
@@ -878,7 +884,7 @@ function renderSheet() {
       <label for="i-zoom">Zoom</label><input id="i-zoom" data-field="zoom" type="range" min="1" max="4" step="0.01" value="1" disabled>
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="save-icon" disabled>Use this picture</button></p>
-      ${a.icon || a.icon_url ? `<p><button data-action="clear-icon" style="width:100%">Remove the picture</button></p>` : ""}`;
+      ${a.icon || a.icon_url || bankLogo(a.bank ?? M.bankForName(a.name)?.id) ? `<p><button data-action="clear-icon" style="width:100%">Remove the picture</button></p>` : ""}`;
   } else if (sh.type === "backup") {
     body = `<h3>Back up now</h3>
       <p class="note">Choose a passphrase of at least ${M.MIN_PASSPHRASE} characters. Write it down in two places, away from this phone. Without it nobody can open the backup, not even me.</p>
@@ -1225,9 +1231,14 @@ async function onClick(el) {
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
     case "save-icon": await saveIcon(); break;
     case "clear-icon": {
-      const r = M.setAccountIcon(S(), ui.sheet.id, null);
+      const a = S().accounts.find((x) => x.id === ui.sheet.id);
+      const r = M.setAccountIcon(S(), a.id, null);
       ui.sheet = null; renderSheet();
-      if (r.ok) await commit(r.state);
+      // A logo that came from the bank is removed for the bank, and not fetched again, so a wrong one can be replaced by a screenshot.
+      const key = a.bank ?? M.bankForName(a.name)?.id;
+      let settings = ledger.settings;
+      if (key && bankLogo(key)) { const rest = { ...(settings.bankLogos ?? {}) }; delete rest[key]; settings = { ...settings, bankLogos: rest, bankLogosBlocked: { ...(settings.bankLogosBlocked ?? {}), [key]: true } }; }
+      if (r.ok) await commit(r.state, settings);
       break;
     }
     case "open-preset": ui.sheet = { type: "pay", id }; renderSheet(); break;
