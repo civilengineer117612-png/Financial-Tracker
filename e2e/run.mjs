@@ -1223,6 +1223,9 @@ const earned = [await val("e_basic"), await val("e_rice"), await val("e_skills")
 check(earned === "9000.00|1000.00|500.00", "and the earnings (" + earned + ")");
 const head = [await val("p-gross"), await val("p-net"), await val("p-emp"), await val("p-from"), await val("p-to")].join("|");
 check(head === "10500.00|9075.00|PHIL SAMPLE, INC.|2026-04-16|2026-04-30", "the printed gross and net with the P sign, the company under the title, and a date range (" + head + ")");
+check((await text(page, "#sheet .chip[data-action='pick-employer']")).includes("Sample Employer Inc"), "employers already saved are offered as buttons next to the employer box");
+await page.click("#sheet .chip[data-action='pick-employer']");
+check(await val("p-emp") === "Sample Employer Inc", "tapping one fills the employer in");
 await shot(page, "46-crooked-payslip");
 await page.click('#sheet button:has-text("Cancel")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));

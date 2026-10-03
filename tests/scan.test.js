@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readScan, readPayslip, linesFromWords, wordsToCentavos, categoryFromHistory } from "../src/model/index.js";
+import { readScan, readPayslip, linesFromWords, snapEmployer, wordsToCentavos, categoryFromHistory } from "../src/model/index.js";
 
 const TODAY = "2026-10-20";   // all texts below are invented
 
@@ -253,4 +253,23 @@ test("a payslip dated as a range, with the company's name under a title, is read
 });
 test("Pag-IBIG is found under the spellings a photo gives it", () => {
   for (const label of ["Pag-IBIG", "Pag-Ibig Premium Cont.", "Pag-big Premium Cont.", "PAGIBIG", "HDMF"]) assert.deepEqual(readPayslip(label + " 100.00", TODAY).deductions.map((l) => l.kind), ["pagibig"], label);
+});
+
+test("the employer is the company's name, never a figure, a label, a date or a signature line", () => {
+  const emp = (lines) => readPayslip(lines.join("\n"), "2026-10-03").employer;
+  assert.equal(emp(["L SAMPLE CO, INC. Apr 16-30, 2026", "PAYSLIP", "Net Pay: P 100.00"]), "SAMPLE CO, INC.", "a date and a stray letter on the same line are dropped");
+  assert.equal(emp(["Withholding Tax 794.22", "SSS Premium Cont. 1,700.00", "SAMPLE CO, INC.", "PAYSLIP"]), "SAMPLE CO, INC.", "figure lines and deduction labels are skipped");
+  assert.equal(emp(["PAYSLIP", "SAMPLE ENGINEERING CONSULTANCY", "DESIGNERS - ENGINEERS", "Covered Period: Sept 26, 2025 to Oct 12, 2025"]), "SAMPLE ENGINEERING CONSULTANCY", "company words beyond Inc and Corp are known");
+  assert.equal(emp(["Employer: Another Co", "SAMPLE CO, INC."]), "Another Co", "a labelled employer wins");
+  assert.equal(emp(["EARNINGS", "Basic Salary 9,000.00", "Withholding Tax"]), null, "nothing company-like gives nothing, not a wrong line");
+});
+test("an employer read from a photo snaps to one already saved, and a different name is left alone", () => {
+  const known = ["PHIL. JAC, INC.", "TSI CORE ENGINEERING CONSULTANCY"];
+  assert.equal(snapEmployer("L PHIL. JAC, INC. Apr 16-30", known), "PHIL. JAC, INC.");
+  assert.equal(snapEmployer("PHIL JAG INC", known), "PHIL. JAC, INC.");
+  assert.equal(snapEmployer("TSI CORE ENGINEERING CONSULTANCY", known), "TSI CORE ENGINEERING CONSULTANCY");
+  assert.equal(snapEmployer("Some Other Company Ltd", known), "Some Other Company Ltd");
+  assert.equal(snapEmployer("Te SULTANGY", known), "Te SULTANGY");
+  assert.equal(snapEmployer("", known), "");
+  assert.equal(snapEmployer("PHIL. JAC, INC.", []), "PHIL. JAC, INC.");
 });

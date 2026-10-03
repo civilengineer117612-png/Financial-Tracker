@@ -307,10 +307,16 @@ export function readPayslip(text, today) {
 
   // the employer: a line that starts "Employer:" or "Company:", else the first name-like line at the top (usually the company's own name)
   const labelled = lines.map((l) => /^\s*(?:employer|company)(?:\s+name)?\s*[:\-]\s*(.{3,})$/i.exec(l)?.[1]).find(Boolean);
-  const company = lines.slice(0, 10).find((l) => /\b(inc|corp|corporation|co|company|ltd|llc|enterprises?|services|group|hospital|school|bank)\b\.?/i.test(l) && (l.match(/[A-Za-z]/g) ?? []).length >= 5 && !amountsIn(l).length);
-  const title = /payslip|pay\s*slip|period|earnings|deductions|net\s*pay|amount|gross/i;
-  const named = lines.slice(0, 8).find((l) => !title.test(l) && payeeFor("receipt", [l]));
-  const employer = (labelled ?? company ?? (named ? payeeFor("receipt", [named]) : null))?.replace(/\d{6,}/g, "").replace(/^[:\s]+/, "").trim() || null;
+  // A line that is a figure, a payslip label or a date is never the employer. The company's name is the top line that looks like one.
+  const MONTH_RANGE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:\s*(?:-|–|to)\s*\d{1,2})?,?\s*\d{4}\b/gi;
+  const NOT_EMPLOYER = new RegExp([...EARNING_LABELS, ...DEDUCTION_LABELS].map(([, re]) => re.source).join("|") + "|payslip|pay\\s*slip|period|earnings|deductions|net\\s*pay|amount|gross|signature|certified|accountant|employee|name:|total", "i");
+  const clean = (t) => t.replace(MONTH_RANGE, " ").replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, " ").replace(/\d{6,}/g, "").replace(/^(?:[^A-Za-z0-9]|\b[A-Za-z]\b)+\s*/, "").replace(/[\s:,;|-]+$/, "").replace(/\s{2,}/g, " ").trim();
+  const COMPANY_WORD = /\b(inc|corp|corporation|co|company|ltd|llc|enterprises?|services|group|hospital|school|bank|consultanc[a-z]*|engineering|construction|trading|industries|resources|solutions|technolog[a-z]*|manpower|realty|development|holdings|partners|associates|international|foundation|institute|university|college)\b\.?/i;
+  const top = lines.slice(0, 12).filter((l) => !amountsIn(l).length && !NOT_EMPLOYER.test(l));
+  const letters = (t) => (t.match(/[A-Za-z]/g) ?? []).length;
+  const company = top.map(clean).find((l) => COMPANY_WORD.test(l) && letters(l) >= 5);
+  const named = top.map(clean).find((l) => letters(l) >= 5 && letters(l) >= l.length * 0.6 && l.length <= 45);
+  const employer = (labelled ? clean(labelled) : null) || company || named || null;
   return { employer, period_from, period_to, pay_date, printed_gross, printed_net, earnings, deductions, notes };
 }
 
@@ -360,4 +366,23 @@ export function linesFromWords(words) {
     for (const s of segs) lines.push((s.label + " " + s.amounts.join(" ")).trim());
   }
   return lines.join("\n");
+}
+
+// An employer name read from a photo, matched to the employers already saved (so a garbled "L PHIL. JAC, INC. Apr 16-30" or "PHIL JAG INC"
+// becomes "PHIL. JAC, INC."). Letters and digits only, ignoring case; matched when one contains the other, or all but about a fifth of
+// the letters agree. Returns the saved name, or the name as read when nothing is close.
+export function snapEmployer(read, known) {
+  const norm = (t) => String(t ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const r = norm(read);
+  if (r.length < 4) return read;
+  const dist = (a, b) => { const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]); for (let j = 1; j <= b.length; j++) d[0][j] = j; for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; };
+  let best = null;
+  for (const k of known ?? []) {
+    const n = norm(k); if (n.length < 4) continue;
+    const near = r.includes(n) || n.includes(r) || dist(r, n) <= Math.floor(Math.max(r.length, n.length) / 5);
+    // when the reading holds extra words around the saved name, compare the saved name with the best same-length stretch of it
+    const part = r.length > n.length ? Math.min(...Array.from({ length: r.length - n.length + 1 }, (_, i) => dist(r.slice(i, i + n.length), n))) : Infinity;
+    if (near || part <= Math.floor(n.length / 5)) { const score = r.includes(n) ? 0 : Math.min(dist(r, n), part); if (!best || score < best.score) best = { name: k, score }; }
+  }
+  return best ? best.name : read;
 }
