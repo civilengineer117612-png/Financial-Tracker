@@ -147,3 +147,24 @@ export function planAttachment(state, { id, transaction_id }, now = new Date()) 
   return { ok: true, violations: [], state: { ...state, attachments: [...(state.attachments ?? []), row] }, attachment: row };
 }
 export const attachmentsFor = (state, transactionId) => (state.attachments ?? []).filter((a) => a.transaction_id === transactionId);
+
+// One purchase that belongs to more than one category (Food and Essentials on one receipt). Same rules as planExpense, for the
+// whole amount; only the category side is split. input: planExpense's fields, but with `lines: [{category_id, amount}]` (at least two
+// different expense categories) instead of category_id and amount. The account is charged the total once.
+export function splitCategoryEntry(entries, transactionId, lines) {
+  return [...lines.map((l) => ({ transaction_id: transactionId, category_id: l.category_id, amount: l.amount })), ...entries.filter((e) => e.category_id == null)];
+}
+export function planSplitExpense(state, input, now = new Date()) {
+  const { lines, ...rest } = input;
+  if (!Array.isArray(lines) || lines.length < 2) return fail("BAD_SPLIT", "a split needs at least two parts");
+  if (new Set(lines.map((l) => l.category_id)).size !== lines.length) return fail("BAD_SPLIT", "each part needs a different category");
+  if (!lines.every((l) => Number.isSafeInteger(l.amount) && l.amount > 0)) return fail("BAD_SPLIT", "each part must be more than zero");
+  if (!lines.every((l) => state.categories.find((c) => c.id === l.category_id)?.kind === "expense")) return fail("UNKNOWN_CATEGORY", "every part needs an expense category");
+  const total = lines.reduce((n, l) => n + l.amount, 0);
+  const base = planExpense(state, { ...rest, category_id: lines[0].category_id, amount: total }, now);
+  if (!base.ok) return base;
+  const [main, ...others] = base.drafts;
+  const entries = splitCategoryEntry(main.entries, main.transaction.id, lines);
+  const result = checkTransactionSave(applyDrafts(state, others), { transaction: main.transaction, entries });
+  return { ok: result.ok, violations: result.violations, drafts: [{ transaction: main.transaction, entries }, ...others] };
+}

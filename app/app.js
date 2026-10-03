@@ -65,6 +65,11 @@ function describe(t) {
     if (S().categories.find((c) => c.id === cat.category_id)?.kind === "income") return { kind: "income", editable: false, title: t.payee || categoryName(cat.category_id), category_id: cat.category_id, account_id: acct.account_id, amount: Math.abs(cat.amount), detail: accountName(acct.account_id) };
     return { kind: "expense", editable: es.length === 2, title: t.payee || categoryName(cat.category_id), category_id: cat.category_id, account_id: acct.account_id, amount: Math.abs(cat.amount), detail: accountName(acct.account_id) };
   }
+  const parts = es.filter((e) => e.category_id != null), accts = es.filter((e) => e.category_id == null);
+  if (parts.length >= 2 && accts.length === 1 && parts.every((e) => S().categories.find((c) => c.id === e.category_id)?.kind === "expense")) {
+    return { kind: "split", editable: false, title: t.payee || "Split purchase", account_id: accts[0].account_id, amount: parts.reduce((n, e) => n + e.amount, 0), detail: accountName(accts[0].account_id),
+      parts: parts.map((e) => ({ name: categoryName(e.category_id), amount: e.amount })) };
+  }
   if (es.length === 2 && es.every((e) => e.account_id != null)) {
     const from = es.find((e) => e.amount < 0), to = es.find((e) => e.amount > 0);
     return { kind: "transfer", editable: false, title: t.payee || "Transfer", amount: to.amount, detail: accountName(from.account_id) + " to " + accountName(to.account_id) };
@@ -216,6 +221,7 @@ function viewVerify() {
   const partner = S().transactions.find((x) => x.id === "rsv:" + t.id);
   const fields = d.kind === "expense"
     ? `<dt>Category</dt><dd>${esc(categoryName(d.category_id))}</dd><dt>Paid from</dt><dd class="who">${withIcon(S().accounts.find((a) => a.id === d.account_id), 22)}</dd>`
+    : d.kind === "split" ? `${d.parts.map((p, i) => `<dt>${i ? "&nbsp;" : "Split"}</dt><dd>${esc(p.name)} ${peso(p.amount)}</dd>`).join("")}<dt>Paid from</dt><dd class="who">${withIcon(S().accounts.find((a) => a.id === d.account_id), 22)}</dd>`
     : d.kind === "income" ? `<dt>Arrived in</dt><dd class="who">${withIcon(S().accounts.find((a) => a.id === d.account_id), 22)}</dd>`
     : d.detail ? `<dt>Between</dt><dd>${esc(d.detail)}</dd>` : "";
   const reserve = partner ? `<dt>Also</dt><dd>reserve transfer ${peso(describe(partner).amount)}</dd>` : "";
@@ -435,7 +441,8 @@ async function saveScan() {
       ok = a.ok && await commit(a.state, { ...ledger.settings, last_account_id: f.account_id, ...(queueId ? { scan_queue: scanQueue().filter((q) => q.id !== queueId) } : {}) });
     } else showToast("Could not save: " + p.violations[0].message);
   } else {
-    ok = await logExpense({ transaction_id: id, date: f.date, payee: f.payee.trim(), category_id: f.category_id, amount, account_id: f.account_id, source: "photo", photo_id: photoId, drop_scan: queueId }, (f.payee.trim() || categoryName(f.category_id)) + " " + peso(amount));
+    const second = f.split ? M.parsePesos(f.split_amt).centavos : 0, lines = f.split ? [{ category_id: f.category_id, amount: amount - second }, { category_id: f.split_cat, amount: second }] : undefined;
+    ok = await logExpense({ transaction_id: id, date: f.date, payee: f.payee.trim(), category_id: f.category_id, amount, account_id: f.account_id, source: "photo", photo_id: photoId, drop_scan: queueId, ...(lines ? { lines } : {}) }, (f.payee.trim() || categoryName(f.category_id)) + " " + peso(amount));
   }
   if (!ok) { if (!queueId) deletePhoto(photoId).catch(() => {}); return; }   // the window stays open so nothing typed is lost
   URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null;
@@ -1187,6 +1194,10 @@ function renderSheet() {
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(f.date)}">
       <label for="f-payee">${into ? "From" : "Paid to"} (optional)</label><input id="f-payee" data-field="payee" value="${esc(f.payee ?? "")}" autocomplete="off">
       <label>Category</label>${chips(into ? incomeCategories() : expenseCategories(), f.category_id, "pick-cat")}
+      ${into ? "" : `<p><button class="link" data-action="toggle-split" aria-pressed="${f.split === true}">${f.split ? "Do not split this receipt" : "Split between two categories"}</button></p>
+      ${f.split ? `<label>Second category</label>${chips(expenseCategories().filter((c) => c.id !== f.category_id), f.split_cat, "pick-split")}
+        <label for="f-split">Amount that belongs to the second category (\u20B1)</label><input id="f-split" data-field="split_amt" inputmode="decimal" value="${esc(f.split_amt ?? "")}" autocomplete="off">
+        <p class="note" id="split-note" role="status"></p>` : ""}`}
       <label>${into ? "Arrived in" : "Paid from"}</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
       <details><summary>What the reader saw</summary><pre class="rawtext">${esc(f.text || "(nothing)")}</pre></details>
       <p><button class="primary" id="f-save" data-action="save-scan" style="margin-top:14px" disabled>Save to Verify</button></p>
@@ -1280,8 +1291,11 @@ function refreshSave() {
       out.innerHTML = (lines.length ? `<p class="note">The lines add to gross ${peso(t.gross)}; minus deductions, net ${peso(t.net)}.</p>` : "") + (p.errors.length ? `<p class="note flag">\u25B2 Check the amount typed for: ${esc(p.errors.join(", "))}.</p>` : "") + flags.map(flagLine).join("");
     }
   } else if (type === "scan") {
-    const a = M.parsePesos(f.amount);
-    btn.disabled = !(a.ok && a.centavos > 0 && M.isPhDate(f.date) && f.category_id && f.account_id);
+    const a = M.parsePesos(f.amount), second = M.parsePesos(f.split_amt ?? "");
+    const splitOk = !f.split || (f.split_cat && f.split_cat !== f.category_id && second.ok && second.centavos > 0 && a.ok && second.centavos < a.centavos);
+    const note = $("split-note");
+    if (note) note.textContent = splitOk && f.split ? categoryName(f.category_id) + " gets " + peso(a.centavos - second.centavos) + ", " + categoryName(f.split_cat) + " gets " + peso(second.centavos) + "." : "Choose the second category and its amount, which must be less than the total.";
+    btn.disabled = !(a.ok && a.centavos > 0 && M.isPhDate(f.date) && f.category_id && f.account_id && splitOk);
   } else if (type === "income") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && f.account_id && f.date);
@@ -1331,15 +1345,17 @@ async function logExpense(input, label) {
   const tag_id = S().tags.some((t) => t.id === ledger.settings.active_tag_id) ? ledger.settings.active_tag_id : undefined;
   const g = gcashOf();
   let drafts, note;
+  const swapLines = (d) => (input.lines ? { transaction: d.transaction, entries: M.splitCategoryEntry(d.entries, d.transaction.id, input.lines) } : d);   // a split keeps every other rule of the purchase
   if (g && input.account_id === g.account_id) {
     // Spending from the buffer's account takes from the allowance first, then the buffer (spec 6.4).
     const p = M.planGcashSpend(S(), { transaction_id: input.transaction_id, date: input.date ?? today(), payee: input.payee ?? "", category_id: input.category_id, amount: input.amount,
       gcash_account_id: g.account_id, allowance_envelope_id: g.allowance_id, buffer_envelope_id: g.buffer_id }, new Date());
     if (!p.ok) { showToast("Could not save: " + p.violations[0].message); return false; }
-    drafts = [{ transaction: { ...p.transaction, source: input.source ?? "manual", ...(input.source === "photo" ? { edited_before_verify: false } : {}), ...(input.payee ? { payee: input.payee } : {}), ...(tag_id ? { tag_id } : {}) }, entries: p.entries }];
+    drafts = [swapLines({ transaction: { ...p.transaction, source: input.source ?? "manual", ...(input.source === "photo" ? { edited_before_verify: false } : {}), ...(input.payee ? { payee: input.payee } : {}), ...(tag_id ? { tag_id } : {}) }, entries: p.entries })];
     note = bufferNote(p.violations);
   } else {
-    const plan = M.planExpense(S(), { ...input, tag_id, date: input.date ?? today(), reserve_source_id: ledger.settings.reserve_source_id }, new Date());
+    const args = { ...input, tag_id, date: input.date ?? today(), reserve_source_id: ledger.settings.reserve_source_id };
+    const plan = input.lines ? M.planSplitExpense(S(), args, new Date()) : M.planExpense(S(), args, new Date());
     if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); return false; }
     drafts = plan.drafts;
     note = reserveNote(plan.violations);
@@ -1590,7 +1606,9 @@ async function onClick(el) {
       break;
     }
     case "open-other": ui.sheet = { type: "other" }; ui.form = { amount: "", category_id: null, account_id: accountsFor(null)[0]?.id }; renderSheet(); break;
-    case "pick-cat": form.category_id = id; renderSheet(); break;
+    case "pick-cat": form.category_id = id; if (form.split_cat === id) form.split_cat = null; renderSheet(); break;
+    case "toggle-split": form.split = !form.split; renderSheet(); break;
+    case "pick-split": form.split_cat = id; renderSheet(); break;
     case "open-queue": { const next = scanQueue().find((q) => q.needs); if (next) await openQueuedScan(next.id); break; }
     case "read-queue": await processScanQueue({ interactive: true }); break;
     case "discard-scan": {
