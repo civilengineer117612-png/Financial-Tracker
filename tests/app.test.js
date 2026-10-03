@@ -90,3 +90,10 @@ test("the photo reader is a set of files of this site, deployed with it, and nev
   assert.match(ocr, /new URL\("\.\.\/src\/vendor\/ocr\/", import\.meta\.url\)/);
   assert.ok(!/cdn\.jsdelivr|unpkg|cdnjs/.test(ocr), "no CDN");
 });
+
+test("windows cannot scroll sideways: the phone's date box is held inside the window", () => {
+  const css = read("app/index.html");
+  assert.match(css, /\.sheet \{[^}]*overflow-x: hidden/);
+  assert.match(css, /input\[type=date\] \{[^}]*appearance: none[^}]*max-width: 100%/);
+  assert.match(css, /html \{[^}]*overflow-x: hidden/);
+});

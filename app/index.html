@@ -13,8 +13,8 @@
 <style>
   :root { --chart: #2a78d6; --good: #0ca30c; --warn: #fab219; --serious: #ec835a; --critical: #d03b3b; --ink: #111; --mid: #555; --soft: #999; --line: #ccc; --wash: #f0f0f0; --paper: #fff; }
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  body { margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.4; color: var(--ink); background: var(--paper);
+  html { -webkit-text-size-adjust: 100%; overflow-x: hidden; overscroll-behavior-x: none; }
+  body { overflow-x: hidden; margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.4; color: var(--ink); background: var(--paper);
          padding: max(12px, env(safe-area-inset-top)) 16px calc(88px + env(safe-area-inset-bottom)); }
   h1 { font-size: 22px; margin: 4px 0 2px; }
   h2 { font-size: 15px; margin: 22px 0 8px; color: var(--mid); text-transform: uppercase; letter-spacing: .04em; }
@@ -176,6 +176,8 @@
   input[type=range] { accent-color: var(--ink); padding: 0; }
   input:focus, select:focus, textarea:focus, button:focus-visible { outline: 3px solid var(--ink); outline-offset: 1px; }
   label { display: block; margin: 12px 0 4px; color: var(--mid); }
+  /* the phone date box is wider than its window unless told otherwise, which made the window wobble sideways */
+  input[type=date] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; text-align: left; }
   input, select, textarea { font: inherit; width: 100%; padding: 12px; border: 1px solid var(--ink); border-radius: 8px; background: var(--paper); color: var(--ink); min-height: 48px; }
   #banner .bar { background: var(--wash); border: 1px solid var(--ink); border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; }
   #nav { z-index: 1; position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(2, 1fr); background: var(--paper); border-top: 1px solid var(--line);
@@ -183,7 +185,7 @@
   #nav button { border-radius: 8px; padding: 12px 4px; font-size: 15px; }
   #nav button[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   #scrim { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.45); }
-  .sheet { z-index: 11; position: fixed; left: 0; right: 0; bottom: 0; max-height: 86vh; overflow: auto; background: var(--paper); border-top: 2px solid var(--ink);
+  .sheet { z-index: 11; position: fixed; left: 0; right: 0; bottom: 0; max-height: 86vh; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; touch-action: pan-y; overflow-wrap: anywhere; background: var(--paper); border-top: 2px solid var(--ink);
            border-radius: 14px 14px 0 0; padding: 16px 16px calc(20px + env(safe-area-inset-bottom)); }
   .sheet h3 { margin: 0 0 4px; font-size: 20px; }
   #toast { position: fixed; left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 5; }

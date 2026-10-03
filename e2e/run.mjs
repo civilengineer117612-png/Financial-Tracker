@@ -917,6 +917,7 @@ await ctx.close();
 console.log("Scan");
 ({ ctx, page, errors } = await open({ blockSw: true }));
 await addAccount(page, "Wallet", "asset", "1000");
+await addAccount(page, "MariBank", "asset", "0");
 // An invented receipt drawn in the page, so no real paper is ever in the repository.
 const receiptPng = await page.evaluate(() => {
   const c = document.createElement("canvas"); c.width = 900; c.height = 1000;
@@ -934,6 +935,8 @@ check(await page.inputValue("#f-date") === "2026-10-02", "it found the date on t
 check(/BURGER/i.test(await page.inputValue("#f-payee")), "it found the store name (" + await page.inputValue("#f-payee") + ")");
 check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Food")').count() === 1, "and guessed the Food category from the store");
 await shot(page, "35-scan-result");
+check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Wallet")').count() === 0 && await page.locator("#f-save").isDisabled(), "when the paper does not name the account, none is chosen for you and saving waits");
+await page.click('#sheet .chip:has-text("Wallet")');
 await page.click("#f-save");
 check(await seen(page, "#screen", "as a draft with its photo"), "saving keeps it as a draft, with its photo");
 await page.click('#nav button:has-text("Verify")');
@@ -957,6 +960,21 @@ await seen(page, "#screen", "Nothing to verify");
 await page.waitForTimeout(300);
 const left = await page.evaluate(() => new Promise((res) => { const r = indexedDB.open("financialTracker"); r.onsuccess = () => { const g = r.result.transaction("photos").objectStore("photos").count(); g.onsuccess = () => res(g.result); }; }));
 check(left === 0, "deleting the draft deletes its photo from the phone");
+// A bank app screenshot: the bank on the From line paid, and nothing else is guessed over it.
+const bankPng = await page.evaluate(() => {
+  const c = document.createElement("canvas"); c.width = 900; c.height = 1000;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 900, 1000); x.fillStyle = "#000"; x.font = "bold 40px sans-serif";
+  ["Transaction Details", "PHP 592.50", "From MariBank", "To SAMPLE SUPERMARKET", "Transaction Amount PHP 592.50", "Transaction Type Credit Card Transaction", "Transaction Time 01 Oct 2026, 19:52"].forEach((l, i) => x.fillText(l, 40, 80 + i * 90));
+  return c.toDataURL("image/png").split(",")[1];
+});
+await menuGo(page, "Scan");
+await page.setInputFiles("input[data-scan]", { name: "bank.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
+check(await seen(page, "#sheet", "Check what I read", 180000), "a bank screenshot is read too");
+check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("MariBank")').count() === 1, "it chose MariBank, the bank on the From line, as the account that paid");
+check(/SAMPLE SUPERMARKET/i.test(await page.inputValue("#f-payee")) && await page.inputValue("#f-amount") === "592.50" && await page.inputValue("#f-date") === "2026-10-01", "and read the payee, the amount and the date");
+check(await page.evaluate(() => { const sh = document.querySelector("#sheet .sheet"), d = document.querySelector("#sheet input[type=date]").getBoundingClientRect(), r = sh.getBoundingClientRect(); return sh.scrollWidth <= sh.clientWidth && d.left >= r.left && d.right <= r.right; }), "the window does not scroll sideways and its date box stays inside it");
+await shot(page, "42-scan-bank");
+await page.click('#sheet button:has-text("Cancel")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 await ctx.close();
 

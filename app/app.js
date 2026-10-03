@@ -333,6 +333,16 @@ function scanDefaults(kind, guess) {
   return { category_id: expenseCategories().find((c) => guess && c.name.toLowerCase() === guess.toLowerCase())?.id ?? null };
 }
 
+// The account the paper names: the bank on its From line, matched to the owner's own accounts. A credit card screen prefers a card
+// account. When the paper does not say, nothing is chosen for you: a wrong silent default (the first account) was worse than a tap.
+function accountForScan(r) {
+  if (!r.bankId) return { id: null, note: "I could not tell which account paid. Choose one." };
+  const bank = M.bankById(r.bankId).name, hits = accountsFor(null).filter((a) => a.bank === r.bankId || (!a.bank && M.bankForName(a.name)?.id === r.bankId));
+  if (!hits.length) return { id: null, note: "The paper names " + bank + " but you have no account for it. Choose one." };
+  const pick = hits.find((a) => a.class === (r.creditCard ? "liability" : "asset")) ?? hits[0];
+  return { id: pick.id, note: hits.length > 1 ? "The paper names " + bank + "; I chose " + pick.name + ". Check it." : "" };
+}
+
 async function startScan(file) {
   if (!file) return;
   const say = (msg) => { if (ui.scan) ui.scan.msg = msg; const el = $("scan-msg"); if (el) el.textContent = msg; };
@@ -346,9 +356,10 @@ async function startScan(file) {
   const r = M.readScan(text, today());
   if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.url);
   pendingPhoto = { blob, url: URL.createObjectURL(blob) };
-  const notes = failed ? ["The reader could not run (" + failed + "). Fill in the fields yourself; the photo is kept."] : r.readAnything ? r.notes : ["I could not read any words on the photo. Fill in the fields yourself; the photo is kept."];
+  const acct = accountForScan(r);
+  const notes = failed ? ["The reader could not run (" + failed + "). Fill in the fields yourself; the photo is kept."] : r.readAnything ? [...r.notes, ...(acct.note ? [acct.note] : [])] : ["I could not read any words on the photo. Fill in the fields yourself; the photo is kept."];
   ui.form = { kind: r.kind, guess: r.categoryGuess, amount: r.amount ? (r.amount / 100).toFixed(2) : "", date: r.date ?? today(), payee: r.payee ?? "", notes, text,
-    account_id: accountsFor(null)[0]?.id ?? null, ...scanDefaults(r.kind, r.categoryGuess) };
+    account_id: acct.id, ...scanDefaults(r.kind, r.categoryGuess) };
   ui.sheet = { type: "scan" }; renderSheet();
 }
 

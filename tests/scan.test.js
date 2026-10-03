@@ -114,3 +114,34 @@ test("empty or unreadable text gives an empty guess, never a crash", () => {
     assert.equal(r.date, null);
   }
 });
+
+// Texts below are invented; the layout imitates a bank app's "Transaction Details" screen.
+const CARD_SCREEN = `Transaction Details
+PHP 592.50
+From MariBank
+To SAMPLE SUPERMARKET MAKATI CITY PHL
+Card Number **** **** **** 1234
+Transaction Amount PHP 592.50
+Cashback +PHP 17.78
+Reference Number 20261001320100010000127337311000
+Transaction Type Credit Card Transaction
+Transaction Time 01 Oct 2026, 19:52
+Posted Time 03 Oct 2026, 10:47`;
+test("a bank app screenshot: the bank on the From line paid, not GCash; the amount, the date and the payee are read", () => {
+  const r = readScan(CARD_SCREEN, TODAY);
+  assert.equal(r.bankId, "maribank");
+  assert.equal(r.creditCard, true);
+  assert.equal(r.amount, 59250);
+  assert.equal(r.date, "2026-10-01");
+  assert.match(r.payee, /SAMPLE SUPERMARKET/);
+  assert.ok(!/\d{6,}/.test(r.payee));
+});
+test("the bank is found by the From line, forgiving one misread letter, and the recipient's bank is never taken as the payer", () => {
+  assert.equal(readScan("From Mari8ank\nTo Sample Store", TODAY).bankId, "maribank");
+  assert.equal(readScan("From GoTyme\nTo BDO\nPHP 10.00", TODAY).bankId, "gotyme");
+  assert.equal(readScan("From Security Bank\nPHP 10.00", TODAY).bankId, "securitybank");
+  assert.equal(readScan("Transfer\nBPI to BDO\nPHP 10.00", TODAY).bankId, null, "two banks and no From line: not guessed");
+  assert.equal(readScan("GCash\nExpress Send\nSent to\nSAMPLE PERSON\nAmount 350.00", TODAY).bankId, "gcash");
+  assert.equal(readScan("Sample Mart\nTOTAL 100.00", TODAY).bankId, null);
+  assert.equal(readScan("From BDX\nPHP 10.00", TODAY).bankId, null, "short names must be exact");
+});
