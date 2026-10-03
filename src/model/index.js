@@ -38,3 +38,4 @@ export function checkRulesSave(previousRules, nextRules) {
   return result(checkRulesAppendOnly(previousRules, nextRules));
 }
 export { ruleInEffect, rulesInEffect, reportingCategory, checkCategoryMapSave } from "./rules.js";
+export { validateRatchetParams, wasMet, nextRatchet, ratchetSchedule, splitRatchet } from "./ratchet.js";
