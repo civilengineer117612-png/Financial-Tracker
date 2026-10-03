@@ -30,6 +30,8 @@ jobs:
           # The finance app and the model code it imports live under /app and /src.
           cp app/* _site/app/
           cp -r src/model _site/src/model
+          # The on-phone photo reader (open-source, copied unchanged) is served from this site too, so a photo is never sent elsewhere.
+          cp -r src/vendor _site/src/vendor
           # A new version stamp per deploy makes every phone install the fresh offline worker.
           sed -i "s/__VERSION__/${GITHUB_SHA::12}/" _site/app/sw.js
       - uses: actions/configure-pages@v5

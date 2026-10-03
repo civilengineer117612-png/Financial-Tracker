@@ -8,12 +8,15 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 - `src/model/` all money rules, pure and tested. `app/` the screens. `index.html`, `sw.js` at the root are the storage
   probe, which must stay untouched while it is still running.
 - Screens: Log and Verify on the bottom bar; everything else is in the menu at the upper left (Spending, Budget, Goals,
-  Pay plan, Checks, Trips, Buffer, Check-in, Setup). The menu is plain icon-and-text rows, no filled highlight.
+  Pay plan, Checks, Trips, Buffer, Scan, Check-in, Setup). The menu is plain icon-and-text rows, no filled highlight.
 - Real plan numbers, paydays and account balances live only in the owner's phone (settings and ledger), never in this
   repo, tests or README: tests and examples use invented numbers. Plans are dated and append-only like budgets.
 - Bank logos: names and website domains only (`src/model/banks.js`). The phone fetches the logos of ALL listed banks by
   itself (so no service learns which banks the owner uses) and keeps them in its settings; a screenshot chosen on the
   phone wins over them. Logos are never committed.
+- Photo scanner: the reader (Tesseract, Apache 2.0) is copied unchanged into `src/vendor/ocr` and served from our own site, so no
+  photo ever leaves the phone; never load it from a CDN (a test enforces this). Picture files are kept only on the phone
+  (IndexedDB `photos`), never in the ledger text or backup. Never commit a real receipt or payslip image: e2e draws an invented one.
 - `npm test` (also runs in CI). `node e2e/run.mjs` drives the app in an iPhone-like browser (serve the repo with
   `python3 -m http.server 8124` first). A new file under `src/model/` must also be added to the list in `app/sw.js`;
   a test enforces it.

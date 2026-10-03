@@ -80,3 +80,13 @@ test("the icon lookup asks for 'not found' instead of a placeholder picture when
   const line = js.split("\n").find((l) => l.includes("t2.gstatic.com/faviconV2"));
   assert.ok(line && line.includes("nfrp=2") && !line.includes("fallback_opts"), "the Google icon address must not request a placeholder");
 });
+
+test("the photo reader is a set of files of this site, deployed with it, and never loaded from another address", () => {
+  const dir = "src/vendor/ocr/";
+  for (const f of ["tesseract.min.js", "worker.min.js", "tesseract-core-simd-lstm.wasm.js", "tesseract-core-lstm.wasm.js", "eng.traineddata.gz", "LICENSE-core.txt"]) assert.ok(existsSync(new URL("../" + dir + f, import.meta.url)), "missing " + dir + f);
+  assert.match(read(".github/workflows/pages.yml"), /cp -r src\/vendor _site\/src\/vendor/);
+  const ocr = read("app/ocr.js");
+  assert.ok(!/https?:\/\//.test(ocr.replace(/\/\/.*$/gm, "")), "ocr.js must not name any other site");
+  assert.match(ocr, /new URL\("\.\.\/src\/vendor\/ocr\/", import\.meta\.url\)/);
+  assert.ok(!/cdn\.jsdelivr|unpkg|cdnjs/.test(ocr), "no CDN");
+});

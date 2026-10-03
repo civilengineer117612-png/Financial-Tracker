@@ -7,7 +7,7 @@ import { phTimestamp } from "./util.js";
 import { validateShape } from "./schema.js";
 
 const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }], drafts: [] });
-const EXPENSE_SOURCES = ["manual", "preset", "template"];
+const EXPENSE_SOURCES = ["manual", "preset", "template", "photo"];
 const partnerId = (id) => "rsv:" + id;   // the generated card reserve transfer (templates.js)
 
 export function applyDrafts(state, drafts) {
@@ -33,7 +33,7 @@ export function planExpense(state, input, now = new Date()) {
 
   if (tag_id != null && !(state.tags ?? []).some((t) => t.id === tag_id)) return fail("UNKNOWN_TAG", "no tag " + tag_id);
 
-  const transaction = { id, date, payee, memo, status: "draft", source, created_at: phTimestamp(now), ...(tag_id != null ? { tag_id } : {}) };
+  const transaction = { id, date, payee, memo, status: "draft", source, created_at: phTimestamp(now), ...(source === "photo" ? { edited_before_verify: false } : {}), ...(tag_id != null ? { tag_id } : {}) };
   const entries = [
     { transaction_id: id, category_id, amount },
     { transaction_id: id, account_id, amount: -amount, ...(account.class === "liability" ? { card_state: "pending" } : {}) },
@@ -59,7 +59,8 @@ export function discardDraft(state, id) {
   const gone = new Set([id, ...state.transactions.filter((x) => x.id === partnerId(id) && x.status === "draft").map((x) => x.id)]);
   return {
     ok: true, violations: [],
-    state: { ...state, transactions: state.transactions.filter((x) => !gone.has(x.id)), entries: state.entries.filter((e) => !gone.has(e.transaction_id)) },
+    // The photo goes with its draft (the caller deletes the picture file itself, see attachmentsFor).
+    state: { ...state, transactions: state.transactions.filter((x) => !gone.has(x.id)), entries: state.entries.filter((e) => !gone.has(e.transaction_id)), attachments: (state.attachments ?? []).filter((a) => !gone.has(a.transaction_id)) },
   };
 }
 
@@ -87,7 +88,7 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
   if (t.status !== "draft") return { ok: false, violations: fail("NOT_A_DRAFT", id + " is already verified").violations, state };
   const entries = state.entries.filter((e) => e.transaction_id === id);
   const cat = entries.find((e) => e.category_id != null), acct = entries.find((e) => e.account_id != null);
-  const isExpense = entries.length === 2 && cat && acct && EXPENSE_SOURCES.includes(t.source) && !id.startsWith("rsv:");
+  const isExpense = entries.length === 2 && cat && acct && EXPENSE_SOURCES.includes(t.source) && !id.startsWith("rsv:") && state.categories.find((c) => c.id === cat.category_id)?.kind === "expense";
 
   if (isExpense) {
     const base = discardDraft(state, id).state;
@@ -98,7 +99,11 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
     }, now);
     if (!plan.ok) return { ok: false, violations: plan.violations, state };
     plan.drafts[0].transaction.created_at = t.created_at;   // an edit does not change when it was captured
-    return { ok: true, violations: plan.violations, state: applyDrafts(base, plan.drafts) };
+    if (t.source === "photo") {   // survey Q4: did the owner have to fix what the photo reader guessed?
+      const moved = plan.drafts[0].transaction.date !== t.date || plan.drafts[0].transaction.payee !== t.payee || (changes.amount !== undefined && changes.amount !== cat.amount) || (changes.category_id ?? cat.category_id) !== cat.category_id || (changes.account_id ?? acct.account_id) !== acct.account_id;
+      plan.drafts[0].transaction.edited_before_verify = t.edited_before_verify === true || moved;
+    }
+    return { ok: true, violations: plan.violations, state: { ...applyDrafts(base, plan.drafts), attachments: state.attachments ?? [] } };   // the photo stays with its draft
   }
 
   let next = entries;
@@ -111,6 +116,7 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
     if (Math.sign(a.amount) === Math.sign(b.amount)) return { ok: false, violations: fail("NOT_EDITABLE", "unexpected entry signs").violations, state };
   }
   const updated = { ...t, date: changes.date ?? t.date, payee: changes.payee ?? t.payee };
+  if (t.source === "photo") updated.edited_before_verify = t.edited_before_verify === true || updated.date !== t.date || updated.payee !== t.payee || (changes.amount !== undefined && changes.amount !== Math.abs(entries[0]?.amount));
   const probe = discardDraft(state, id).state;
   const result = checkTransactionSave(probe, { transaction: updated, entries: next });
   if (!result.ok) return { ok: false, violations: result.violations, state };
@@ -129,3 +135,15 @@ export function setAccountIcon(state, accountId, dataUrl) {
   if (problems.length) return { ok: false, violations: [{ code: "BAD_ICON", severity: "error", message: "that picture cannot be used" }], state };
   return { ok: true, violations: [], state: { ...state, accounts } };
 }
+
+// A photo kept with a transaction. The picture file itself lives in its own store on the phone (not in the ledger text,
+// not in the backup file); the ledger only records that it exists. `file` is the name the picture is stored under.
+export function planAttachment(state, { id, transaction_id }, now = new Date()) {
+  const bad = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }], state });
+  if (!state.transactions.some((t) => t.id === transaction_id)) return bad("UNKNOWN_TRANSACTION", "no transaction " + transaction_id);
+  const row = { id, transaction_id, type: "photo", file: id, file_timestamp: phTimestamp(now) };
+  const problems = validateShape("Attachment", row);
+  if (problems.length) return bad("BAD_ATTACHMENT", problems[0].message ?? "bad attachment");
+  return { ok: true, violations: [], state: { ...state, attachments: [...(state.attachments ?? []), row] }, attachment: row };
+}
+export const attachmentsFor = (state, transactionId) => (state.attachments ?? []).filter((a) => a.transaction_id === transactionId);

@@ -43,7 +43,7 @@ const seen = async (page, sel, sub, ms = 4000) => { try { await page.waitForFunc
 const gone = async (page, sel, sub, ms = 4000) => { try { await page.waitForFunction(([q, t]) => !document.querySelector(q)?.innerText.includes(t), [sel, sub], { timeout: ms }); return true; } catch { return false; } };
 const stored = (page) => page.evaluate(async () => {
   const local = localStorage.getItem("financialTracker.ledger");
-  const idb = await new Promise((res) => { const r = indexedDB.open("financialTracker", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => { const g = r.result.transaction("kv").objectStore("kv").get("ledger"); g.onsuccess = () => res(g.result ?? null); }; });
+  const idb = await new Promise((res) => { const r = indexedDB.open("financialTracker"); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => { const g = r.result.transaction("kv").objectStore("kv").get("ledger"); g.onsuccess = () => res(g.result ?? null); }; });
   return { local, idb };
 });
 const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: SHOTS + "/" + name + ".png" }); };
@@ -167,7 +167,7 @@ await page.click('.row:has-text("Spare") button:has-text("Remove")');
 check(await seen(page, "#screen", "Tap again to remove"), "removing an account asks for a second tap");
 await page.click('.row:has-text("Spare") button:has-text("Tap again to remove")');
 check(await gone(page, "#screen", "Spare"), "the second tap removes it");
-await page.waitForFunction(async () => { const r = await new Promise((res) => { const q = indexedDB.open("financialTracker", 1); q.onsuccess = () => { const g = q.result.transaction("kv").objectStore("kv").get("ledger"); g.onsuccess = () => res(g.result); }; q.onerror = () => res(null); }); return !!r; });
+await page.waitForFunction(async () => { const r = await new Promise((res) => { const q = indexedDB.open("financialTracker"); q.onsuccess = () => { const g = q.result.transaction("kv").objectStore("kv").get("ledger"); g.onsuccess = () => res(g.result); }; q.onerror = () => res(null); }); return !!r; });
 await page.evaluate(() => localStorage.removeItem("financialTracker.ledger"));
 await page.reload(); await page.waitForSelector("#nav button");
 check(await seen(page, "#banner", "localStorage is empty"), "the banner names the empty store");
@@ -457,7 +457,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3, "it is the three-line icon");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Spending,Budget,Goals,Pay plan,Checks,Trips,Buffer,Check-in,Setup", "the menu lists Spending, Budget, Goals, Pay plan, Checks, Trips, Buffer, Check-in and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Spending,Budget,Goals,Pay plan,Checks,Trips,Buffer,Scan,Check-in,Setup", "the menu lists Spending, Budget, Goals, Pay plan, Checks, Trips, Buffer, Scan, Check-in and Setup");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
 await shot(page, "17-menu");
 await page.keyboard.press("Escape");
@@ -878,6 +878,53 @@ await page.click('#nav button:has-text("Log")'); await page.click('button.tile:h
 check((await page.locator("#sheet .chip img.ico").count()) >= 3, "pictures and bank logos are on the account buttons when you log, so you can tell them apart at a glance");
 await shot(page, "16-pay-with-pictures");
 await page.click('#sheet button:has-text("Cancel")');
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+await ctx.close();
+
+// ===== 5f. scanning a photo =====
+console.log("Scan");
+({ ctx, page, errors } = await open({ blockSw: true }));
+await addAccount(page, "Wallet", "asset", "1000");
+// An invented receipt drawn in the page, so no real paper is ever in the repository.
+const receiptPng = await page.evaluate(() => {
+  const c = document.createElement("canvas"); c.width = 900; c.height = 1000;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 900, 1000); x.fillStyle = "#000"; x.font = "bold 44px monospace";
+  ["SAMPLE BURGER HOUSE", "Official Receipt", "Date: Oct 2, 2026", "1 Burger meal   150.00", "Subtotal   150.00", "VAT 12%   16.07", "TOTAL   150.00", "Cash   200.00", "Change   50.00", "Thank you"].forEach((l, i) => x.fillText(l, 40, 80 + i * 80));
+  return c.toDataURL("image/png").split(",")[1];
+});
+await menuGo(page, "Scan");
+check((await text(page, "#screen")).includes("never sent anywhere"), "the Scan screen says the photo never leaves the phone");
+await page.setInputFiles("input[data-scan]", { name: "receipt.png", mimeType: "image/png", buffer: Buffer.from(receiptPng, "base64") });
+check(await seen(page, "#sheet", "Check what I read", 180000), "a photo is read on the phone and a window opens to check the guess");
+check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Store receipt")').count() === 1, "it recognised a store receipt");
+check(await page.inputValue("#f-amount") === "150.00", "it found the total, not the subtotal, cash or change (" + await page.inputValue("#f-amount") + ")");
+check(await page.inputValue("#f-date") === "2026-10-02", "it found the date on the paper (" + await page.inputValue("#f-date") + ")");
+check(/BURGER/i.test(await page.inputValue("#f-payee")), "it found the store name (" + await page.inputValue("#f-payee") + ")");
+check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Food")').count() === 1, "and guessed the Food category from the store");
+await shot(page, "35-scan-result");
+await page.click("#f-save");
+check(await seen(page, "#screen", "as a draft with its photo"), "saving keeps it as a draft, with its photo");
+await page.click('#nav button:has-text("Verify")');
+check(await page.waitForSelector("img.shot[data-photo]:not([hidden])", { timeout: 4000 }).then(() => true, () => false), "Verify shows the photo beside the entry");
+check((await text(page, "#screen")).includes("Read from the photo"), "and says it was read from a photo");
+await shot(page, "36-verify-photo");
+await page.click('button[aria-label="Open the photo full size"]');
+check(await page.waitForSelector("#sheet img.shotfull:not([hidden])", { timeout: 4000 }).then(() => true, () => false), "tapping the photo opens it full size");
+await page.click('#sheet button:has-text("Close")');
+await page.click('button:has-text("Edit")'); await page.fill("#f-amount", "140"); await page.click("#f-save");
+await seen(page, "#screen", "₱140.00");
+let scanned = JSON.parse((await stored(page)).local);
+const tx = scanned.state.transactions.find((t) => t.source === "photo");
+check(tx && tx.status === "draft" && tx.edited_before_verify === true, "fixing the amount is recorded as an edit of a photo draft");
+check(scanned.state.attachments.length === 1 && scanned.state.attachments[0].transaction_id === tx.id, "the ledger records the attachment, not the picture itself");
+check(!JSON.stringify(scanned).includes("data:image/jpeg"), "the picture is not inside the ledger text");
+await page.reload(); await page.waitForSelector("#nav button"); await page.click('#nav button:has-text("Verify")');
+check(await page.waitForSelector("img.shot[data-photo]:not([hidden])", { timeout: 4000 }).then(() => true, () => false), "the photo is still there after the app is closed and reopened");
+await page.click('button:has-text("Delete")'); await page.click('button:has-text("Tap again to delete")');
+await seen(page, "#screen", "Nothing to verify");
+await page.waitForTimeout(300);
+const left = await page.evaluate(() => new Promise((res) => { const r = indexedDB.open("financialTracker"); r.onsuccess = () => { const g = r.result.transaction("photos").objectStore("photos").count(); g.onsuccess = () => res(g.result); }; }));
+check(left === 0, "deleting the draft deletes its photo from the phone");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 await ctx.close();
 

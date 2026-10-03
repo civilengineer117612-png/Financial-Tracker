@@ -37,7 +37,7 @@ const CATEGORY_CLUES = [
 ];
 
 // ---------- amounts ----------
-const cleanDigits = (s) => s.replace(/(?<=\d)[Oo](?=[\d.,])|(?<=[.,\d])[Oo](?=\d)/g, "0").replace(/(?<=\d)[Il](?=[\d.,])/g, "1");
+const cleanDigits = (s) => s.replace(/(?<=\d)[Oo](?=[\d/.,-])|(?<=[\d/.,-])[Oo](?=\d)/g, "0").replace(/(?<=\d)[Il](?=[\d/.,-])|(?<=[\d/.,-])[Il](?=\d)/g, "1");
 const AMOUNT_RE = /(?:₱|php|\bp\b|#|£)?\s*(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})\b/gi;
 
 function amountsIn(line) {
@@ -147,9 +147,9 @@ function pickAmount(kind, lines) {
     return hit;
   };
   if (kind === "payslip") return { c: find(/net\s*(pay|salary|income|amount)|take[- ]?home/), how: "net pay" };
-  const labelled = find(/total|amount due|amount paid|amount sent|^\s*amount\b|\bamount\b/, /sub\s?-?total|vat|change|tendered|cash\b|discount|tax|fee|balance/);
+  const labelled = find(/total|amount due|amount paid|amount sent|^\s*amount\b|\bamount\b/, /sub\s?-?total|vat|change|tendered|\bcash\b|discount|tax|fee|balance/);
   if (labelled) return { c: labelled, how: "total" };
-  const all = lines.flatMap((l) => (/change|tendered|cash\b|vat|sub\s?-?total|discount/i.test(l) ? [] : amountsIn(l)));
+  const all = lines.flatMap((l) => (/change|tendered|\bcash\b|vat|sub\s?-?total|discount/i.test(l) ? [] : amountsIn(l)));
   return all.length ? { c: Math.max(...all), how: "largest" } : { c: null, how: null };
 }
 

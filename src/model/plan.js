@@ -172,7 +172,7 @@ export function planPayReceived(state, input, now = new Date()) {
   if (!cat || cat.kind !== "income") return bad("UNKNOWN_CATEGORY", "no income category found");
   if (!isPhDate(input.date)) return bad("BAD_DATE", "date must be like 2026-10-15");
   const stamp = phTimestamp(now);
-  const transaction = { id: input.transaction_id, date: input.date, payee: "Pay received", memo: input.memo ?? "", status: "verified", source: "manual", created_at: stamp, verified_at: stamp };
+  const transaction = { id: input.transaction_id, date: input.date, payee: input.payee || "Pay received", memo: input.memo ?? "", ...(input.source === "photo" ? { status: "draft", source: "photo", edited_before_verify: false, created_at: stamp } : { status: "verified", source: "manual", created_at: stamp, verified_at: stamp }) };
   const entries = [
     { transaction_id: transaction.id, account_id: account.id, amount: input.amount },
     { transaction_id: transaction.id, category_id: cat.id, amount: -input.amount },
