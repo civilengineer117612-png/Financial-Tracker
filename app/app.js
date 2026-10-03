@@ -81,13 +81,14 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 // Plain line icons (drawn in the text colour). Groups are separated by thin lines, like a settings list.
 const ICONS = {
   money: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
+  checks: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
   plan: '<path d="M4 6h16M4 12h16M4 18h10"/>',
   goals: '<path d="M5 21V4M5 4h13l-3 4 3 4H5"/>',
   budget: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
   checkin: '<path d="M4 12l5 5L20 6"/>',
   setup: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
 };
-const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
+const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
@@ -124,7 +125,7 @@ function renderNav() {
 function renderScreen() {
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
-    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : viewLog();
+    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
@@ -376,6 +377,38 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
 }
 
 // ---------- Budget: the monthly amounts ----------
+// ---------- checks: card reserve and the weekly Unlogged habit ----------
+function viewChecks() {
+  const rs = M.reserveShortfalls(S().accounts, S().entries);
+  const reserve = rs.length ? rs.map((r) => {
+    const card = S().accounts.find((a) => a.id === r.card_id), res = S().accounts.find((a) => a.id === r.reserve_id), o = M.cardOutstanding(card, S().entries);
+    const ok = r.shortfall === 0;
+    return `<div class="bcard"><div class="btop"><span class="bname who">${iconOf(card, 24)}<span>${esc(card.name)}</span></span></div>
+      <dl><dt>${esc(res.name)} holds</dt><dd>${peso(r.reserve)}</dd><dt>${esc(card.name)} owes</dt><dd>${peso(r.outstanding)}<small> (${peso(o.pending)} pending + ${peso(o.posted)} posted)</small></dd></dl>
+      <div class="status">${glyph(ok ? "good" : "serious")}${ok ? "Covered" : "Short by " + peso(r.shortfall)}</div></div>`;
+  }).join("") : `<p class="note">No card reserve is set up. You can add one in Setup.</p>`;
+
+  const weeks = M.unloggedByWeek(S(), M.UNLOGGED_CATEGORY_ID, today(), 8);
+  const counted = weeks.filter((w) => w.amount !== null);
+  const wlabel = (w) => "Week to " + longDate(w.week_end);
+  let habit;
+  if (!counted.length) habit = `<p class="note">No weekly count yet. <button class="link" data-action="tab" data-tab="checkin">Do the check-in</button></p>`;
+  else if (ui.asList) habit = `<table class="tbl"><tr><th>Week</th><th class="n">Not accounted for</th></tr>${weeks.map((w) => `<tr><td>${esc(wlabel(w))}</td><td class="n">${w.amount === null ? "Not counted" : w.amount < 0 ? peso(-w.amount) + " found" : peso(w.amount)}</td></tr>`).join("")}</table>`;
+  else {
+    const rows = counted.map((w) => ({ id: w.week_end, label: esc(wlabel(w)), amount: Math.max(0, w.amount) }));
+    const hit = counted.find((w) => w.week_end === ui.sel);
+    habit = barChart(rows, ui.sel) + `<p class="caption" aria-live="polite">${hit ? esc(wlabel(hit) + ": " + (hit.amount < 0 ? peso(-hit.amount) + " more than your records said." : hit.amount === 0 ? "everything was accounted for." : peso(hit.amount) + " could not be accounted for.")) : "Tap a bar. Weeks you did not count are left out, not shown as zero."}</p>`;
+  }
+  const sv = M.surveyReview(S(), S().surveyResponses, M.UNLOGGED_CATEGORY_ID);
+  const survey = sv.weeks.length ? `<table class="tbl"><tr><th>Week to</th><th class="n">Ease</th><th class="n">Missed</th><th class="n">Fixes</th></tr>${sv.weeks.map((w) => `<tr><td>${esc(longDate(w.week_end))}</td><td class="n">${w.q2_ease}/5</td><td class="n">${w.q1_missed_count}</td><td class="n">${w.q4_corrections_count}</td></tr>`).join("")}</table>
+    <p class="note">${sv.ready ? "Enough weeks to look at the trend." : "A trend appears after about 4 weeks of answers."}</p>` : `<p class="note">The weekly questions appear after your first count.</p>`;
+  return `<h1>Checks</h1><p class="sub">Two things that keep the numbers honest.</p>
+    <h2>Card reserve</h2>${reserve}
+    <h2>Unlogged by week</h2><p class="note">Money your counts could not explain. A smaller number means better logging.</p>${habit}
+    ${counted.length ? `<p><button class="link" data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}">${ui.asList ? "Show as chart" : "Show as list"}</button></p>` : ""}
+    <h2>Weekly questions</h2>${survey}`;
+}
+
 // ---------- pay plan ----------
 const plansOf = () => ledger.settings.plans ?? [];
 const planOf = () => M.planInEffect(plansOf(), today());

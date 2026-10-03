@@ -64,3 +64,14 @@ export function surveyReview(state, responses, unloggedCategoryId, minWeeks = 4)
   };
   return { ready: rows.length >= minWeeks, weeks: rows, trend };
 }
+
+// Weekly Unlogged amounts for the habit chart (addendum item 8): the `weeks` weeks of 7 days ending on `endDate`,
+// oldest first. amount = net unexplained spending found that week; a week with no check-in at all is a gap (null),
+// never a zero, because "nothing was counted" is not the same as "nothing went missing".
+export function unloggedByWeek(state, unloggedCategoryId, endDate, weeks = 8) {
+  return Array.from({ length: weeks }, (_, i) => {
+    const { week_start, week_end } = weekEndingOn(iso(Date.parse(endDate) - (weeks - 1 - i) * 7 * DAY));
+    const counted = (state.checkIns ?? []).some((c) => c.date >= week_start && c.date <= week_end);
+    return { week_start, week_end, amount: counted ? unloggedTotal(state, unloggedCategoryId, week_start, week_end) : null };
+  });
+}

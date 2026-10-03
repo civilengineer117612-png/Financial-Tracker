@@ -46,7 +46,7 @@ export { budgetStatus, budgetTrend, budgetGrade, GRADE_AT, monthElapsedPercent, 
 export { pendingDrafts, verifyTransaction } from "./inbox.js";
 export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit, setGoalTarget } from "./goals.js";
 export { validateState, encryptBackup, decryptBackup, encryptLedgerBackup, decryptLedgerBackup, MIN_PASSPHRASE } from "./backup.js";
-export { weekEndingOn, autoFillSurvey, planSurveyResponse, surveyReview } from "./survey.js";
+export { weekEndingOn, autoFillSurvey, planSurveyResponse, surveyReview, unloggedByWeek } from "./survey.js";
 export { editDraft } from "./inbox.js";
 export { detectPlatform, assessDevice } from "./device.js";
 export { buildReminderCalendar, defaultReminders, validateReminder, foldLine } from "./reminders.js";

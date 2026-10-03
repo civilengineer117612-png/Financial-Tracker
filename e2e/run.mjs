@@ -451,7 +451,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3, "it is the three-line icon");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Pay plan,Check-in,Setup", "the menu lists Money, Budget, Goals, Pay plan, Check-in and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Pay plan,Checks,Check-in,Setup", "the menu lists Money, Budget, Goals, Pay plan, Checks, Check-in and Setup");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
 await shot(page, "17-menu");
 await page.keyboard.press("Escape");
@@ -589,6 +589,20 @@ check(/Spent today\s*₱\d/.test(await text(page, ".daycard")), "today's total i
 await page.fill("#d-pick", "2026-01-05");
 check((await text(page, "#d-out")).includes("₱0.00") && (await text(page, "#d-out")).includes("Jan"), "another date shows its own total");
 await shot(page, "23-day-totals");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+
+// ---- checks: card reserve and the Unlogged habit ----
+await menuGo(page, "Checks");
+const ctext = await text(page, "#screen");
+check(/No card reserve|Covered|Short by/.test(ctext), "the card reserve check says covered, short, or that none is set up");
+check(await page.locator(".bars .brow").count() === 1, "the Unlogged chart has one bar for the one week that was counted");
+await page.click(".bars .brow");
+check((await text(page, ".caption")).includes("could not be accounted for"), "tapping the bar says what it means in words");
+await page.click('button:has-text("Show as list")');
+check((await text(page, ".tbl >> nth=0")).includes("Not counted"), "the list twin marks weeks nobody counted instead of showing zero");
+check((await text(page, "#screen")).includes("4/5"), "the weekly questions review shows the answers");
+await shot(page, "27-checks");
+await page.click('button:has-text("Show as chart")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- goals ----

@@ -92,6 +92,8 @@ amounts sit at the bar tip, and tapping a bar states its share in words.
 
 `unit` is `PHP_whole_pesos` or `PHP_centavos`. `kind` is `expense` (tracked against the category of the same name), `goal` (savings, matched to a goal by name) or `buffer`. `ef_target_basis` and `ef_target_months` are optional, together: the emergency target is months times the monthly total of the basis lines. Amounts are stored as integer centavos.
 
+**Checks (menu, Overview):** the card reserve check (reserve balance against what the card owes, pending plus posted, in words: covered or short by how much), the weekly Unlogged chart (what your counts could not explain; a week nobody counted is left out, never shown as zero) and the weekly-questions review by week.
+
 **Goals (menu, Overview):** a goal points at an account where the money really sits, with an optional target and finish date. Balances are hidden until you tap Show balances. "Put money in" saves a draft transfer from another account, counted once you verify it.
 
 **Trend:** under "By month", a line chart of total budget against total actual for six months. A month with nothing budgeted or logged is a gap in the line, never an error or a fake zero. Tap a month to open its budgets.
