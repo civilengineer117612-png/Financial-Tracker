@@ -22,6 +22,7 @@ export const SCHEMAS = {
     opening_balance: centavos,   // natural sign: a liability's owed amount is positive
     opening_date: date,
     reserve_for: optional(id),   // ADDED: on a reserve account, the card account it must cover
+    icon: optional({ type: "icon" }),   // ADDED: a small picture the owner chose for this account, kept on the phone
   },
   Goal: { id, account_id: id, name, target: optional(centavos), deadline: optional(date), hidden_by_default: bool },
   Envelope: { id, account_id: id, name, purpose: text },
@@ -72,6 +73,8 @@ const TYPE_CHECKS = {
   timestamp: isPhTimestamp,
   count: (v) => Number.isSafeInteger(v) && v >= 0,
   ease: (v) => Number.isInteger(v) && v >= 1 && v <= 5,
+  // A small picture stored right in the record, so it travels with backups and never leaves the phone.
+  icon: (v) => typeof v === "string" && v.length <= 40000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(v),
   day: (v) => Number.isInteger(v) && v >= 1 && v <= 31,
   rate: (v) => typeof v === "number" && Number.isFinite(v) && v > 0,
   idList: (v) => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string" && x.length > 0),
