@@ -1060,13 +1060,7 @@ check(!(await text(page, "#screen")).includes("stays in the account the pay land
 await page.click('#nav button:has-text("Verify")');
 check((await text(page, "#screen")).includes("1 of 2"), "Verify now holds two drafts: the Emergency Fund part and the free part");
 await page.click('#nav button:has-text("Log")');
-const sum = await text(page, ".sumgrid");
-check(/In\s*₱10,300\.00/.test(sum) && /Spent\s*₱0\.00/.test(sum) && /Saved\s*₱0\.00/.test(sum) && /Left\s*₱10,300\.00/.test(sum), "the Log screen shows In, Spent, Saved and Left for the month (" + sum.replace(/\s+/g, " ") + ")");
-check((await text(page, "#screen")).includes("2 not verified yet"), "and counts the drafts that are not verified yet instead of adding them");
-await page.click('button[aria-label="Earlier month"]');
-check(/In\s*₱0\.00/.test(await text(page, ".sumgrid")), "the month arrows move to another month, which is empty");
-await shot(page, "39-home-summary");
-await page.click('button[aria-label="Later month"]');
+check(await page.locator(".sumgrid").count() === 0, "the Log screen has no In, Spent, Saved, Left card");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 await ctx.close();
 

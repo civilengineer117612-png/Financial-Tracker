@@ -185,19 +185,7 @@ function viewLog() {
     ${dayCard()}
     <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
     <p><button class="primary" data-action="open-other" style="margin-top:12px">Other amount</button></p>
-    ${homeSummaryCard()}
     <h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2>${tintLegend(todays)}${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
-}
-
-// IN, SPENT, SAVED, LEFT for a month (verified entries only). The month has its own arrows; it starts on this month.
-function homeSummaryCard() {
-  const month = ui.homeMonth ?? M.monthOf(today()), r = M.homeSummary(S(), { from: month + "-01", to: month + "-31" });
-  const tile = (label, text, amount) => `<div class="sumtile"><span>${label}</span><b>${amount}</b>${text ? `<small>${esc(text)}</small>` : ""}</div>`;
-  const left = r.left < 0 ? tile("Left", "\u25BC more went out than came in", "\u2212" + peso(-r.left)) : tile("Left", "", peso(r.left));
-  return `<h2>${esc(M.monthLabel(month))}</h2>
-    <div class="stepper"><button data-action="home-month" data-step="-1" aria-label="Earlier month">\u2039</button><span>In, spent, saved, left</span><button data-action="home-month" data-step="1" aria-label="Later month"${month >= M.monthOf(today()) ? " disabled" : ""}>\u203A</button></div>
-    <div class="sumgrid">${tile("In", "", peso(r.in))}${tile("Spent", "", peso(r.spent))}${tile("Saved", "", peso(r.saved))}${left}</div>
-    <p class="note">Left = In \u2212 Spent \u2212 Saved. Only verified entries count${r.drafts ? ` (<button class="link" data-action="tab" data-tab="verify">${r.drafts} not verified yet</button>)` : ""}. Moving money between your own accounts, and paying a card bill, are not counted again.</p>`;
 }
 
 // A light tint names what a row is. The words are written too (on each row, and in this key), so colour is never alone.
@@ -1607,7 +1595,6 @@ async function onClick(el) {
     }
     case "open-payslip": ui.sheet = { type: "payslip" }; ui.form = payslipDefaults(); renderSheet(); break;
     case "save-payslip": await savePayslip(); break;
-    case "home-month": ui.homeMonth = M.addMonths(ui.homeMonth ?? M.monthOf(today()), Number(el.dataset.step)); renderScreen(); break;
     case "open-otfree": ui.sheet = { type: "otfree", id }; ui.form = { account_id: null }; renderSheet(); break;
     case "save-otfree": {
       const d = M.overtimeFreeDraft(S(), ui.sheet.id, { transaction_id: "otf-" + ui.sheet.id, to_account_id: form.account_id }, new Date());
