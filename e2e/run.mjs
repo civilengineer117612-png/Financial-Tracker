@@ -22,9 +22,14 @@ const browser = await chromium.launch();
 // Every request for a bank logo goes through this, so the network is faked: by default nothing answers.
 let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
-async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false } = {}) {
+async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false } = {}) {
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
+  // A pretend phone speech service that, like many real ones, ends after a moment of quiet: round 1 hears "lunch 95", round 2 hears "at sample burger".
+  if (fakeSpeech) await ctx.addInitScript(() => {
+    const said = ["lunch 95", "at sample burger using gcash"]; let round = 0;
+    window.SpeechRecognition = window.webkitSpeechRecognition = class { start() { const words = said[round++] ?? ""; setTimeout(() => { if (words) this.onresult?.({ results: [{ 0: { transcript: words }, isFinal: true, length: 1 }] }); }, 80); setTimeout(() => this.onend?.(), 260); } stop() { setTimeout(() => this.onend?.(), 20); } };
+  });
   if (noSpeech) await ctx.addInitScript(() => { window.webkitSpeechRecognition = undefined; window.SpeechRecognition = undefined; });
   await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png|wikipedia\.org|wikimedia\.org/, (r) => { iconAsked.push(r.request().url()); iconServe(r); });
   const page = await ctx.newPage();
@@ -670,12 +675,7 @@ await shot(page, "40-survey-review");
 await page.clock.setFixedTime(T0); await page.reload(); await page.waitForSelector("#nav button");
 await shot(page, "22-checkin");
 await page.click('#nav button:has-text("Log")');
-const tinted = await page.locator('.row[class*="tint-"]').count();
-check(tinted > 0 && await page.locator(".tints").count() === 1, "rows in the Log list carry a light tint, with a key that names each tint in words");
-check((await text(page, ".row[class*='tint-'] >> nth=0")).match(/Fixed costs|Everyday spending|Into goals/) !== null, "and each tinted row says its group in words too");
-check(await page.evaluate(() => { const r = document.querySelector('.row[class*="tint-"]'); return getComputedStyle(r).color === getComputedStyle(document.body).color; }), "the text of a tinted row stays the same black");
-await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await page.waitForTimeout(200);
-await shot(page, "44-tints");
+check(await page.locator('.row[class*="tint-"]').count() === 0 && await page.locator(".tints").count() === 0 && !(await text(page, "#screen")).includes("Fixed costs"), "the Log list has no tints, no group words and no key: plain rows");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- quick day totals ----
@@ -1099,7 +1099,7 @@ check((await text(page, "#sheet")).includes("Speech is not available in this bro
 check((await text(page, "#sheet")).includes("audio leaves your phone") , "the window says plainly that the audio leaves the phone while speaking");
 await page.fill("#v-text", "lunch 95 pesos at Sample Burger using GCash yesterday");
 await page.click("#f-save");
-check(await seen(page, "#toast", "Saved Sample Burger"), "a clear sentence is saved as a draft at once");
+check(await seen(page, "#toast", "Saved Sample Burger", 15000), "a clear sentence is saved as a draft at once");
 let vl = JSON.parse((await stored(page)).local);
 const vt = vl.state.transactions.find((t) => t.source === "voice");
 const gc = vl.state.accounts.find((a) => a.name === "GCash"), vEntries = vl.state.entries.filter((e) => e.transaction_id === vt.id);
@@ -1121,6 +1121,64 @@ await page.click("#f-save");
 check(await seen(page, "#toast", "Saved Sample Mart") || await seen(page, "#screen", "as a draft"), "after choosing the account it is saved");
 vl = JSON.parse((await stored(page)).local);
 check(vl.state.transactions.filter((t) => t.source === "voice").length === 2 && vl.state.attachments.length === 0, "two voice drafts, and a spoken entry has no photo");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+await ctx.close();
+
+// ===== 5i. windows and speech on a phone-sized screen =====
+console.log("Windows and speech");
+({ ctx, page, errors } = await open({ blockSw: true, fakeSpeech: true }));
+await addAccount(page, "Wallet", "asset", "1000"); await addAccount(page, "GCash", "asset", "500");
+await page.click('#nav button:has-text("Log")');
+await page.setViewportSize({ width: 360, height: 520 });   // a short screen, so a window has to scroll
+await page.click('button:has-text("Other amount")');
+await page.fill("#f-amount", "50");
+await page.evaluate(() => { const s = document.querySelector("#sheet .sheet"); s.scrollTop = s.scrollHeight; });
+const before = await page.evaluate(() => document.querySelector("#sheet .sheet").scrollTop);
+check(before > 50, "the window is taller than the screen and was scrolled to the bottom (" + before + ")");
+check(await page.evaluate(() => document.body.classList.contains("locked") && getComputedStyle(document.body).position === "fixed"), "while a window is open the page behind it is held still");
+await page.click('#sheet .chip:has-text("GCash")');
+const after = await page.evaluate(() => document.querySelector("#sheet .sheet").scrollTop);
+check(after >= before - 2, "choosing something at the bottom does not throw the window back to the top (" + before + " to " + after + ")");
+await page.click('#sheet button:has-text("Cancel")');
+check(await page.evaluate(() => !document.body.classList.contains("locked") && getComputedStyle(document.body).position !== "fixed"), "closing the window lets the page move again");
+await page.click('button[aria-label="Say an entry out loud"]');
+await page.click("#v-mic");
+check(await page.waitForFunction(() => document.getElementById("v-text")?.value === "lunch 95 at sample burger using gcash", null, { timeout: 5000 }).then(() => true, () => false), "listening carries on after the phone ends a round, and the words are joined");
+check((await text(page, "#sheet")).includes("Listening"), "and it still says it is listening");
+await page.click("#v-mic");
+check(await page.waitForFunction(() => document.getElementById("v-mic")?.textContent.includes("Tap and speak"), null, { timeout: 3000 }).then(() => true, () => false), "tapping stop stops it");
+check(await page.evaluate(() => { const s = document.querySelector("#sheet .sheet"); return s.scrollWidth <= s.clientWidth && document.documentElement.scrollWidth <= innerWidth; }), "neither the window nor the page is wider than the screen");
+await page.click("#f-save");
+check(await seen(page, "#toast", "Saved") && (await text(page, "#toast")).toLowerCase().includes("sample burger"), "the joined sentence is saved as one draft");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+await ctx.close();
+
+// ===== 5j. a payslip photo, line by line =====
+console.log("Payslip photo");
+({ ctx, page, errors } = await open({ blockSw: true }));
+await addAccount(page, "Wallet", "asset", "1000");
+const slipPng = await page.evaluate(() => {   // an invented payslip, drawn in the page
+  const c = document.createElement("canvas"); c.width = 1100; c.height = 1400;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 1100, 1400); x.fillStyle = "#000"; x.font = "bold 38px monospace";
+  ["Sample Employer Inc", "PAYSLIP", "Pay period: 01/10/2026 - 02/10/2026", "Pay date: Oct 2, 2026", "EARNINGS", "Basic Salary   9,000.00", "Rice Subsidy   1,000.00", "Overtime   1,500.00", "Gross Pay   11,500.00", "DEDUCTIONS", "Withholding Tax   700.00", "SSS   300.00", "PhilHealth   100.00", "Pag-IBIG   100.00", "Net Pay   10,300.00"].forEach((l, i) => x.fillText(l, 40, 70 + i * 80));
+  return c.toDataURL("image/png").split(",")[1];
+});
+await menuGo(page, "Scan");
+await page.setInputFiles("input[data-scan]", { name: "payslip.png", mimeType: "image/png", buffer: Buffer.from(slipPng, "base64") });
+check(await seen(page, "#sheet", "Add a payslip", 180000), "a payslip photo opens the payslip window, not a one-line pay entry");
+const val = (id) => page.inputValue("#" + id);
+check([await val("d_tax"), await val("d_sss"), await val("d_philhealth"), await val("d_pagibig")].join("|") === "700.00|300.00|100.00|100.00", "tax, SSS, PhilHealth and Pag-IBIG are read from their lines (" + [await val("d_tax"), await val("d_sss"), await val("d_philhealth"), await val("d_pagibig")].join("|") + ")");
+check([await val("e_basic"), await val("e_rice"), await val("e_overtime")].join("|") === "9000.00|1000.00|1500.00", "the earnings lines are read too, overtime included");
+check([await val("p-gross"), await val("p-net"), await val("p-date"), await val("p-emp")].join("|") === "11500.00|10300.00|2026-10-02|Sample Employer Inc", "and the printed gross and net, the pay date and the employer (" + [await val("p-gross"), await val("p-net"), await val("p-date"), await val("p-emp")].join("|") + ")");
+check(await page.locator("#sheet img.shot").count() === 1 && await page.locator("#f-save").isDisabled(), "the photo is shown beside the figures, and saving waits until you say where it landed");
+await shot(page, "45-payslip-scan");
+await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save");
+check(await seen(page, "#toast", "Payslip saved"), "after checking, it is saved as a payslip");
+const ps = JSON.parse((await stored(page)).local);
+check(ps.state.payslipLines.filter((l) => l.side === "deduction").length === 4 && ps.state.payslipLines.filter((l) => l.side === "earning").length === 3, "with seven lines");
+check(ps.state.attachments.length === 1 && ps.state.attachments[0].transaction_id === ps.state.payslips[0].transaction_id, "and the photo kept with the pay");
+await menuGo(page, "Income");
+check((await text(page, "#screen")).includes("Went to government this year: ₱1,200.00") && (await text(page, "#screen")).includes("View the photo"), "the Income screen counts the government deductions and offers the photo");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 await ctx.close();
 

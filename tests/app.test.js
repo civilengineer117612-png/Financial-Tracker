@@ -97,3 +97,16 @@ test("windows cannot scroll sideways: the phone's date box is held inside the wi
   assert.match(css, /input\[type=date\] \{[^}]*appearance: none[^}]*max-width: 100%/);
   assert.match(css, /html \{[^}]*overflow-x: hidden/);
 });
+
+test("a window holds the page still behind it and keeps its place when redrawn", () => {
+  const css = read("app/index.html"), js = read("app/app.js");
+  assert.match(css, /body\.locked \{[^}]*position: fixed[^}]*overflow: hidden/);
+  assert.match(js, /function lockPage\(on\)/);
+  assert.match(js, /keepAt = lastSheetKey === key/, "the window's scroll position is kept when it is redrawn after a tap");
+});
+test("listening restarts when the phone ends it after a second of quiet, and stops by itself only after a long silence", () => {
+  const v = read("app/voice.js");
+  assert.match(v, /rec\.continuous = true/);
+  assert.match(v, /rec\.onend = \(\) => \{[\s\S]*begin\(\)/, "an ended recognition is started again");
+  assert.match(v, /IDLE_MS = 8000/);
+});

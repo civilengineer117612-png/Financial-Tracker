@@ -245,3 +245,62 @@ export function categoryFromHistory(state, payee) {
   const best = [...seen].sort((a, b) => b[1].n - a[1].n || (a[1].last < b[1].last ? 1 : -1))[0];
   return best ? best[0] : null;
 }
+
+// ---------- a payslip, line by line ----------
+// Reads the lines of a payslip photo's text: the earnings, the deductions (tax and what goes to government: SSS, PhilHealth, Pag-IBIG),
+// the printed gross and net, the employer, the pay period and the pay date. Only a guess: the owner checks every figure in the payslip
+// window, where the same four checks as for a typed payslip (src/model/income.js) point out what does not add up.
+// Payslips often print two columns (this pay, and the year so far): the FIRST figure on a line is taken, and nothing after a
+// "year to date" heading.
+const EARNING_LABELS = [["basic", /basic|monthly\s*(salary|rate)/], ["rice", /rice/], ["skills", /skill/], ["clothing", /cloth|uniform/], ["transport", /transport/],
+  ["overtime", /over\s*-?time|\bot\b/], ["thirteenth", /13\s*th|thirteenth/], ["bonus", /bonus/]];
+const DEDUCTION_LABELS = [["loan", /\bloans?\b/], ["tax", /withholding|w\/\s*tax|\bwtax\b|\btax\b(?!able)/], ["sss", /\bsss\b/], ["philhealth", /phil\s*-?health|\bphic\b/],
+  ["pagibig", /pag\s*-?\s*ibig|hdmf/], ["absences", /absen/], ["lates", /\blates?\b|undertime|tardi/]];
+const SKIP_LINE = /total\s*(earnings|deductions|pay)|taxable|net\s*taxable|ytd|year\s*-?\s*to\s*-?\s*date|balance|leave/;
+
+export function readPayslip(text, today) {
+  const lines = String(text ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const notes = [], earnings = [], deductions = [];
+  let printed_gross = null, printed_net = null;
+  const end = lines.findIndex((l) => /year\s*-?\s*to\s*-?\s*date|\bytd\b/i.test(l) && !amountsIn(l).length);
+  const body = end >= 0 ? lines.slice(0, end) : lines;
+  const seen = new Set();
+  body.forEach((line, i) => {
+    const low = line.toLowerCase();
+    const first = () => { const a = amountsIn(line); if (a.length) return a[0]; const next = body[i + 1]; return next && !/[a-z]{3}/i.test(next.replace(/php|peso/gi, "")) ? (amountsIn(next)[0] ?? null) : null; };
+    if (/\bgross\b/.test(low) && !/taxable/.test(low)) { printed_gross ??= first(); return; }
+    if (/net\s*(pay|salary|income|amount)|take[- ]?home/.test(low)) { printed_net ??= first(); return; }
+    if (SKIP_LINE.test(low)) return;
+    const ded = DEDUCTION_LABELS.find(([, re]) => re.test(low)), earn = EARNING_LABELS.find(([, re]) => re.test(low));
+    const hit = ded ? ["deduction", ded[0]] : earn ? ["earning", earn[0]] : null;
+    if (!hit || seen.has(hit.join(":"))) return;
+    const amount = first();
+    if (amount) { seen.add(hit.join(":")); (hit[0] === "earning" ? earnings : deductions).push({ kind: hit[1], amount }); }
+  });
+  if (amountsIn(lines.join("\n")).length && lines.some((l) => amountsIn(l).length > 1)) notes.push("Where a line shows two figures I took the first (this pay period). Check them.");
+  if (printed_gross === null) notes.push("I could not find the printed gross pay. Type it from the payslip.");
+  if (printed_net === null) notes.push("I could not find the printed net pay. Type it from the payslip.");
+
+  // dates: the pay period (two dates on a line that says period), and the pay date
+  let period_from = null, period_to = null, pay_date = null;
+  const ok = (iso) => iso <= addDaysIso(today, 1) && iso >= addDaysIso(today, -366);
+  const periodAt = lines.findIndex((l) => /period|covered|cutoff|cut-off/i.test(l) && datesIn(l).length >= 2);
+  if (periodAt >= 0) {
+    let [a, b] = datesIn(lines[periodAt]);
+    // "01/10/2026 - 15/10/2026": the second date can only be day first, so the first is too (the month-first habit applies to a date alone)
+    const dayFirst = (d) => /^(\d{1,2})[/-]/.exec(d.seen)?.[1] > 12;
+    const m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/.exec(a.seen);
+    if (m && dayFirst(b) && !dayFirst(a)) { const y = m[3].length === 2 ? 2000 + +m[3] : +m[3], swapped = iso(y, +m[2], +m[1]); if (isPhDate(swapped)) a = { ...a, iso: swapped }; }
+    if (ok(a.iso) && ok(b.iso)) { period_from = a.iso; period_to = b.iso; }
+  }
+  const payAt = lines.findIndex((l) => /pay\s*date|date\s*paid|payday|credit(ed)?\s*date|pay\s*out/i.test(l) && datesIn(l).length);
+  if (payAt >= 0) { const d = datesIn(lines[payAt])[0]; if (ok(d.iso)) pay_date = d.iso; }
+  if (!pay_date) { const any = datesIn(lines.join("\n")).find((d) => ok(d.iso)); if (any && periodAt < 0) pay_date = any.iso; }
+  if (!pay_date && period_to) pay_date = period_to;
+  if (!pay_date) notes.push("I could not find the pay date. Choose it.");
+
+  // the employer: a line that starts "Employer:" or "Company:", else the first name-like line at the top (usually the company's own name)
+  const labelled = lines.map((l) => /^\s*(?:employer|company)(?:\s+name)?\s*[:\-]\s*(.{3,})$/i.exec(l)?.[1]).find(Boolean);
+  const employer = (labelled ?? payeeFor("receipt", lines))?.replace(/\d{6,}/g, "").trim() || null;
+  return { employer, period_from, period_to, pay_date, printed_gross, printed_net, earnings, deductions, notes };
+}
