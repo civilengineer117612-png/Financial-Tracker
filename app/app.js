@@ -110,10 +110,15 @@ function rowFor(t) {
   return `<div class="row"><div>${esc(d.title)}<small>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}</small></div><div class="amt">${peso(d.amount)}</div></div>`;
 }
 
+// Everything waiting, oldest first. Nothing has to wait for tomorrow: verify whenever you have the time.
+// Only entries from BEFORE today count as "due" (the tab badge and the note on the Log page).
+const allDrafts = () => M.pendingDrafts(S(), today()).filter((t) => !isGenerated(t));
+
 function viewVerify() {
-  const list = dueDrafts();
-  const todays = S().transactions.filter((t) => t.date === today() && t.status === "draft" && !isGenerated(t)).length;
-  const head = `<h1>Verify</h1><p class="sub">${todays ? `Today's ${todays === 1 ? "entry is" : "entries are"} verified from tomorrow.` : "One at a time, look at each entry."}</p>`;
+  const list = allDrafts();
+  const due = dueDrafts().length, fresh = list.length - due;
+  const parts = [due && `${due} from before today`, fresh && `${fresh} from today, ready whenever you are`].filter(Boolean);
+  const head = `<h1>Verify</h1><p class="sub">${parts.length ? parts.join(" · ") : "One at a time, look at each entry."}</p>`;
   if (!list.length) return head + `<p class="note">Nothing to verify.</p>`;
   const t = list[0], d = describe(t);
   const partner = S().transactions.find((x) => x.id === "rsv:" + t.id);
@@ -140,15 +145,18 @@ function viewSetup() {
   const hosts = activeAccounts().filter((a) => a.class === "asset" && !a.reserve_for);
   const rows = S().accounts.map((a) => `<div class="row"><div>${esc(a.name)}<small>${a.class === "asset" ? "money you have" : "money you owe (card)"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}</small></div>
       <div class="amt">${peso(M.naturalBalance(a, S().entries))}${used.has(a.id) ? "" : `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`}</div></div>`).join("");
+  // The form comes FIRST so it stays in the same place however many accounts there are: the
+  // button never drifts down behind the keyboard. The list of accounts follows it.
   return `<h1>Setup</h1><p class="sub">Accounts. The ledger is on this phone only.</p>
-    ${rows || `<p class="note">No accounts yet.</p>`}
     <h2>Add an account</h2>
-    ${ui.setupError ? `<p role="alert"><b>${esc(ui.setupError)}</b></p>` : ""}
-    <label for="a-name">Name</label><input id="a-name" data-field="name" value="${esc(f.name)}" autocomplete="off">
+    <label for="a-name">Name</label><input id="a-name" data-field="name" value="${esc(f.name)}" autocomplete="off" enterkeyhint="next">
     <label for="a-kind">Type</label><select id="a-kind" data-field="kind"><option value="asset"${f.kind === "asset" ? " selected" : ""}>Money I have (cash, bank, wallet)</option><option value="liability"${f.kind === "liability" ? " selected" : ""}>Money I owe (credit card)</option></select>
     <label for="a-open">${f.kind === "asset" ? "Balance today" : "Amount owed today"} (₱)</label><input id="a-open" data-field="opening" inputmode="decimal" value="${esc(f.opening)}" placeholder="0.00" autocomplete="off">
     ${f.kind === "asset" && cards.length ? `<label for="a-covers">This account is a reserve for a card (optional)</label><select id="a-covers" data-field="covers"><option value="">No</option>${cards.map((c) => `<option value="${esc(c.id)}"${f.covers === c.id ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select>` : ""}
+    ${ui.setupError ? `<p id="a-error" role="alert"><b>${esc(ui.setupError)}</b></p>` : ""}
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>
+    <h2>Your accounts</h2>
+    ${rows || `<p class="note">No accounts yet.</p>`}
     ${reserveExists ? `<h2>Card reserve</h2><label for="r-src">Reserve transfers come out of</label><select id="r-src" data-action-change="set-reserve-source"><option value="">Choose an account</option>${hosts.map((a) => `<option value="${esc(a.id)}"${ledger.settings.reserve_source_id === a.id ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select>` : ""}`;
 }
 
@@ -295,7 +303,7 @@ async function onClick(el) {
 
 async function addAccount() {
   const f = ui.accountForm;
-  const fail = (m) => { ui.setupError = m; renderScreen(); };
+  const fail = (m) => { ui.setupError = m; renderScreen(); $("a-error")?.scrollIntoView({ block: "center" }); };
   const name = f.name.trim();
   if (!name) return fail("Give the account a name.");
   if (S().accounts.some((a) => a.name.toLowerCase() === name.toLowerCase())) return fail("You already have an account with that name.");
@@ -307,7 +315,10 @@ async function addAccount() {
   if (problems.length) return fail(problems[0].message);
   ui.setupError = null;
   ui.accountForm = { name: "", kind: f.kind, opening: "", covers: "" };
-  await commit({ ...S(), accounts: [...S().accounts, account] });
+  document.activeElement?.blur();   // close the keyboard so the result is visible
+  const ok = await commit({ ...S(), accounts: [...S().accounts, account] });
+  window.scrollTo(0, 0);
+  showToast((ok ? "Added " : "Not safely stored: ") + name);
 }
 
 document.addEventListener("click", (e) => {
@@ -325,6 +336,14 @@ document.addEventListener("change", (e) => {
   if (field && !ui.sheet) { ui.accountForm[field] = e.target.value; if (field === "kind") { ui.accountForm.covers = ""; renderScreen(); } }
   if (e.target.dataset?.actionChange === "set-reserve-source") commit(S(), { ...ledger.settings, reserve_source_id: e.target.value || undefined });
 });
+
+// ---------- anything unexpected is shown, never silent ----------
+function showFault(message) {
+  ui.error = "Something went wrong: " + message + ". Nothing was lost; tell me exactly what you tapped.";
+  renderBanner();
+}
+window.addEventListener("error", (e) => showFault(e.message));
+window.addEventListener("unhandledrejection", (e) => showFault(String(e.reason?.message ?? e.reason)));
 
 // ---------- start ----------
 async function start() {
