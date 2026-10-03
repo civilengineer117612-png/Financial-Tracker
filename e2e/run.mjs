@@ -608,9 +608,11 @@ check((await page.locator('input[data-day]').count()) === 1 && (await text(page,
 await page.fill('input[data-day]', "2026-01-05");
 check((await text(page, ".daytotal")).includes("₱0.00") && (await text(page, ".daycap")).includes("Jan"), "picking a date turns the big number into that day's total, with the date under it");
 check((await text(page, ".datelink")).includes("Change date") && (await text(page, "#screen")).includes("Back to today"), "and the links become Change date and Back to today");
+check((await text(page, "h2.today")).toLowerCase().includes("jan") && (await text(page, "#screen")).includes("Nothing logged that day"), "the list under the buttons follows the chosen day");
 await shot(page, "23-day-totals");
 await page.click('button:has-text("Back to today")');
 check((await text(page, ".daytotal")) === todayTotal && (await page.locator(".daycap").count()) === 0, "Back to today shows today's total again");
+check((await text(page, "h2.today")).toLowerCase() === "today" && !(await text(page, "#screen")).includes("Nothing logged that day"), "and today's entries");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- checks: card reserve and the Unlogged habit ----
