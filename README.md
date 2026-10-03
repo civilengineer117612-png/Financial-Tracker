@@ -70,10 +70,10 @@ least 12 characters, never stored) holding every record and the app's settings; 
 asks for a second tap. Wrong passphrase, damaged or edited files are refused, and the file's own key-stretching
 setting is range-checked.
 
-**Menu:** the three-line button at the upper left opens Money, Budget and Setup (and future items). The bottom bar
+**Menu:** the three-line button at the upper left opens Spending, Budget and Setup (and future items). The bottom bar
 holds only Log and Verify; photo and audio capture will join it later.
 
-**Money tab (charts):** one big number (verified spending this month), then four views: where it went (by category),
+**Spending tab (charts):** one big number (verified spending this month), then four views: by category,
 budgets, paid from (by account), and by month (six columns). Every view has a "Show as list" twin with the same numbers.
 Only verified spending counts; unverified drafts are mentioned, not counted. Without budgets every bar is one color;
 amounts sit at the bar tip, and tapping a bar states its share in words.
@@ -96,7 +96,7 @@ amounts sit at the bar tip, and tapping a bar states its share in words.
 
 **Buffer (menu, Overview):** splits one account you choose (a wallet such as GCash, say) into two envelopes the ledger tracks apart (an everyday allowance, and the overrun buffer) without changing what the account holds. Spending from that account takes from the allowance first, then the buffer; the app says how much came out of the buffer and warns when the allowance is empty. The Buffer screen shows what is left, this month's draws by category, a note when one category draws the buffer in more than one month, an "Add to the buffer" top-up, and a month-end sweep (to the Mole Removal goal up to its target, then the Emergency Fund) saved as a draft.
 
-**Money:** the period at the top ("October 2026 ▾") is a button: it opens a picker for a Month (by year), a whole Year, or a Date range (From and To on our own calendar with month and year arrows, plus This month, Last 30 days and This year). The arrows step a month or a year. Every view follows the period: Where it went, Paid from, By month (6 months for a month, 12 for a year, the months of a range); Budgets need a month. Tap the chart itself to flip bars and a donut; a tap shows nothing else.
+**Spending (menu):** the period at the top ("October 2026 ▾") is a button: it opens a picker for a Month (by year), a whole Year, or a Date range (From and To on our own calendar with month and year arrows, plus This month, Last 30 days and This year). The arrows step a month or a year. Every view follows the period: By category, By account, By month (6 months for a month, 12 for a year, the months of a range); Budgets need a month. Tap the chart itself to flip bars and a donut; a tap shows nothing else.
 
 **Trips (menu, Overview):** a trip is a tag with an optional budget (for example a trip abroad). Switch "Tag new entries with this trip" on and every new entry is tagged, with no extra taps; the Log screen says so and has a Stop link. A trip's page shows verified spending against its budget (graded, with words), spending by category, and unverified spending as a note. Trip spending still counts in the monthly charts like any other spending.
 
