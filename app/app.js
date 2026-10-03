@@ -118,8 +118,8 @@ const MENU = [["Overview", [["money", "Spending"], ["income", "Income"], ["budge
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
-  // One scanner button. With no `capture` setting the phone itself asks: take a photo, choose from the photo library, or choose a file.
-  const camera = device.allowEntry && ui.tab === "log" ? `<label class="camicon" aria-label="Scan a receipt or payment screen: take a photo or choose a file"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.scan}</svg><input type="file" accept="image/*" data-scan="quick" hidden></label>` : "";
+  // One scanner button: it opens the two choices, camera or photos/files.
+  const camera = device.allowEntry && ui.tab === "log" ? `<button class="camicon" data-action="open-scan-pick" aria-label="Scan a receipt or payment screen: take a photo or choose from photos or files"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.scan}</svg></button>` : "";
   const mic = device.allowEntry && ui.tab === "log" ? `<button class="camicon micbtn" data-action="open-voice" aria-label="Say an entry out loud"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.mic}</svg></button>` : "";
   $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + `<h1>${esc(title)}</h1>` + mic + camera;
 }
@@ -252,7 +252,7 @@ function viewIncome() {
   const year = incomeYear(), y = M.incomeByMonth(S(), year), rows = y.months.filter((m) => m.total !== 0);
   const slips = (S().payslips ?? []).slice().sort((a, b) => (a.pay_date < b.pay_date ? 1 : -1));
   const step = `<div class="stepper"><button data-action="income-year" data-step="-1" aria-label="Earlier year">‹</button><span>${esc(year)}</span><button data-action="income-year" data-step="1" aria-label="Later year"${year >= today().slice(0, 4) ? " disabled" : ""}>›</button></div>`;
-  const head = `<h1>Income</h1>${step}<p><button class="primary" data-action="open-payslip">Add a payslip</button></p><p><button data-action="open-income" style="width:100%">Add other income (interest, refund)</button></p>`;
+  const head = `<h1>Income</h1>${step}<p><button class="primary" data-action="open-payslip-choice">Add a payslip</button></p><p><button data-action="open-income" style="width:100%">Add other income</button></p>`;
   if (!rows.length && !slips.length) return head + `<p class="note">Nothing recorded for ${esc(year)} yet. Add a payslip to see where your income comes from, your raises, and what went to government.</p>`;
   const bySrc = M.SOURCES.map(([id, label]) => ({ label, amount: y.ytd[id] })).filter((r) => r.amount !== 0);
   const monthTable = `<table class="tbl"><tr><th>Month</th><th class="n">Base</th><th class="n">Overtime</th><th class="n">Other</th><th class="n">Total</th></tr>${rows.map((m) => `<tr><td>${esc(MONTH3[Number(m.month.slice(5)) - 1])}</td><td class="n">${peso(m.base)}</td><td class="n">${peso(m.overtime)}</td><td class="n">${peso(m.interest + m.refunds + m.other)}</td><td class="n">${peso(m.total)}</td></tr>`).join("")}
@@ -343,12 +343,17 @@ async function savePayslip() {
 let pendingPhoto = null;   // {blob, url}: the photo being checked, not yet saved
 const photoUrls = new Map();   // saved photos shown on this screen: attachment id -> object address
 
+// The two ways to give the app a photo, always both on offer: the camera, or an image you already have (photos or files).
+// mode: "quick" (saved at once when sure), "1" (check every field first), "payslip" (read as a payslip).
+const photoButtons = (mode, busy = false) => `<label class="filebtn" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="12.5" r="3.5"/></svg>&nbsp;${busy ? "Reading..." : "Take a photo"}<input type="file" accept="image/*" capture="environment" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>
+  <label class="filebtn alt" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>&nbsp;Choose from photos or files<input type="file" accept="image/*" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>`;
+
 function viewScan() {
   const s = ui.scan, busy = s?.busy === true;
   const status = busy ? `<p class="note" id="scan-msg" role="status">${esc(s.msg)}</p>` : s?.error ? `<p class="note" role="alert">${esc(s.error)}</p>` : s?.done ? `<p class="note" role="status">${esc(s.done)} <button class="link" data-action="tab" data-tab="verify">Go to Verify</button></p>` : "";
   return `<h1>Scan</h1><p class="sub">A receipt, payslip or payment screenshot</p>
     <p class="note">This phone reads the photo itself. The photo is never sent anywhere. It guesses what the paper is, the amount and the date. You check each guess, and the entry waits in Verify with the photo beside it.</p>
-    <label class="filebtn" aria-disabled="${busy}">${busy ? "Reading..." : "Take or choose a photo"}<input type="file" accept="image/*" data-scan="1" hidden${busy ? " disabled" : ""}></label>
+    ${photoButtons("1", busy)}
     ${status}
     <p class="note">The first photo downloads the reader (about 7 MB) while you are online. After that it works with no internet. For the best reading hold the phone straight above the paper, in good light, with the whole page in view. Handwriting is read poorly, so check every number on a handwritten receipt. Photos stay on this phone and are not in the backup file.</p>`;
 }
@@ -376,9 +381,9 @@ function accountForScan(r) {
 
 // Reads a photo. A payslip is read again from where its words sit on the page (so two columns stay apart and a tilted photo is straightened),
 // once as it is and once with shadows taken out, and the better reading is kept. Returns the text the rest of the app works from.
-async function readPhoto(blob, progress) {
+async function readPhoto(blob, progress, forcePayslip = false) {
   const first = await readPage(blob, progress);
-  if (M.readScan(first.text, today()).kind !== "payslip") return first.text;
+  if (!forcePayslip && M.readScan(first.text, today()).kind !== "payslip") return first.text;
   const score = (text) => { const r = M.readPayslip(text, today()); return r.earnings.length + r.deductions.length + (r.printed_gross ? 1 : 0) + (r.printed_net ? 1 : 0); };
   let best = M.linesFromWords(first.words) || first.text;
   try {
@@ -388,16 +393,17 @@ async function readPhoto(blob, progress) {
   return score(best) >= score(first.text) ? best : first.text;
 }
 
-async function startScan(file) {
+async function startScan(file, asPayslip = false) {
   if (!file) return;
   const say = (msg) => { if (ui.scan) ui.scan.msg = msg; const el = $("scan-msg"); if (el) el.textContent = msg; };
   ui.scan = { busy: true, msg: "Preparing the photo..." }; renderScreen();
   let blob, text = "", failed = null;
   try { blob = await preparePhoto(file); }
   catch (e) { ui.scan = { error: "That file could not be opened as a picture (" + e.message + ")." }; renderScreen(); return; }
-  try { text = await readPhoto(blob, (f, what) => say(what + (f ? " " + Math.round(f * 100) + "%" : "..."))); }
+  try { text = await readPhoto(blob, (f, what) => say(what + (f ? " " + Math.round(f * 100) + "%" : "...")), asPayslip); }
   catch (e) { failed = e.message; }
   ui.scan = null; renderScreen();
+  if (asPayslip) { openPayslipFromPhoto(blob, text, null); return; }   // chosen as a payslip: the payslip window, whatever the reader thought it was
   openScanSheet(blob, text, failed, null);
 }
 
@@ -1267,6 +1273,12 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>Save payslip</button></p>
       <p class="note">If something does not match it is shown, never changed. It is still saved.</p>
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
+  } else if (sh.type === "scanpick") {
+    body = `<h3>Scan</h3><p class="note">A receipt, a payment screen or a payslip. Take a photo now, or choose one you already have. If the app is sure of everything it saves a draft by itself; otherwise it asks.</p>${photoButtons("quick")}`;
+  } else if (sh.type === "payslipchoice") {
+    body = `<h3>Add a payslip</h3>
+      <p><button class="primary" data-action="open-payslip" style="margin-top:6px">Type it in</button></p>
+      <p class="note">Or read it from a photo (you check every figure before it is saved):</p>${photoButtons("payslip")}`;
   } else if (sh.type === "voice") {
     body = `<h3>Say it</h3>
       <p class="note">One sentence, for example: lunch 95 at Sample Burger using GCash. You can say the day (yesterday, last Friday) too.</p>
@@ -1717,6 +1729,8 @@ async function onClick(el) {
       if (await commit(S(), withQueue(scanQueue().filter((q) => q.id !== id)))) deletePhoto(id).catch(() => {});
       showToast("Photo thrown away."); break;
     }
+    case "open-scan-pick": ui.sheet = { type: "scanpick" }; renderSheet(); break;
+    case "open-payslip-choice": ui.sheet = { type: "payslipchoice" }; renderSheet(); break;
     case "open-payslip": ui.sheet = { type: "payslip" }; ui.form = payslipDefaults(); renderSheet(); break;
     case "save-payslip": await savePayslip(); break;
     case "open-otfree": ui.sheet = { type: "otfree", id }; ui.form = { account_id: null }; renderSheet(); break;
@@ -1957,7 +1971,12 @@ document.addEventListener("input", (e) => {
   else ui.accountForm[field] = e.target.value;
 });
 document.addEventListener("change", (e) => {
-  if (e.target.dataset?.scan) { const file = e.target.files[0], quick = e.target.dataset.scan === "quick"; e.target.value = ""; if (quick) quickCapture(file); else startScan(file); return; }
+  if (e.target.dataset?.scan) {
+    const file = e.target.files[0], mode = e.target.dataset.scan; e.target.value = "";
+    if (ui.sheet && (ui.sheet.type === "scanpick" || ui.sheet.type === "payslipchoice")) { ui.sheet = null; renderSheet(); }   // the choice is made: close it
+    if (mode === "quick") quickCapture(file); else startScan(file, mode === "payslip");
+    return;
+  }
   if (e.target.type === "file" && ui.sheet) {
     if (ui.sheet.type === "plan") {
       const file = e.target.files[0];

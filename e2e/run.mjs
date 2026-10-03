@@ -935,7 +935,8 @@ const receiptPng = await page.evaluate(() => {
 });
 await menuGo(page, "Scan");
 check((await text(page, "#screen")).includes("never sent anywhere"), "the Scan screen says the photo never leaves the phone");
-await page.setInputFiles("input[data-scan]", { name: "receipt.png", mimeType: "image/png", buffer: Buffer.from(receiptPng, "base64") });
+check(await page.locator('#screen input[data-scan="1"][capture="environment"]').count() === 1 && await page.locator('#screen input[data-scan="1"]:not([capture])').count() === 1 && (await text(page, "#screen")).includes("Take a photo") && (await text(page, "#screen")).includes("Choose from photos or files"), "the Scan screen offers both the camera and photos or files");
+await page.setInputFiles("input[data-scan]:not([capture])", { name: "receipt.png", mimeType: "image/png", buffer: Buffer.from(receiptPng, "base64") });
 check(await seen(page, "#sheet", "Check what I read", 180000), "a photo is read on the phone and a window opens to check the guess");
 check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Store receipt")').count() === 1, "it recognised a store receipt");
 check(await page.inputValue("#f-amount") === "150.00", "it found the total, not the subtotal, cash or change (" + await page.inputValue("#f-amount") + ")");
@@ -976,7 +977,7 @@ const bankPng = await page.evaluate(() => {
   return c.toDataURL("image/png").split(",")[1];
 });
 await menuGo(page, "Scan");
-await page.setInputFiles("input[data-scan]", { name: "bank.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
+await page.setInputFiles("input[data-scan]:not([capture])", { name: "bank.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
 check(await seen(page, "#sheet", "Check what I read", 180000), "a bank screenshot is read too");
 check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("MariBank")').count() === 1, "it chose MariBank, the bank on the From line, as the account that paid");
 check(/SAMPLE SUPERMARKET/i.test(await page.inputValue("#f-payee")) && await page.inputValue("#f-amount") === "592.50" && await page.inputValue("#f-date") === "2026-10-01", "and read the payee, the amount and the date");
@@ -986,7 +987,7 @@ await page.click('#sheet button:has-text("Cancel")');
 
 // ----- one receipt, two categories -----
 await menuGo(page, "Scan");
-await page.setInputFiles("input[data-scan]", { name: "receipt.png", mimeType: "image/png", buffer: Buffer.from(receiptPng, "base64") });
+await page.setInputFiles("input[data-scan]:not([capture])", { name: "receipt.png", mimeType: "image/png", buffer: Buffer.from(receiptPng, "base64") });
 check(await seen(page, "#sheet", "Check what I read", 180000), "the receipt is read again, to split it");
 await page.click('#sheet .chip:has-text("Wallet")');
 check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Food")').count() === 1, "Food is the first category");
@@ -1007,9 +1008,11 @@ await page.click('button:has-text("Delete")'); await page.click('button:has-text
 
 // ----- quick capture from the scanner button on the Log screen -----
 await page.click('#nav button:has-text("Log")');
-check(await page.locator('#top .camicon input[data-scan="quick"]').count() === 1 && await page.locator("#top .camicon input[capture]").count() === 0, "the Log screen has one scanner button, with no forced camera, so the phone offers camera, photo library or files");
-check((await page.getAttribute("#top label.camicon", "aria-label")).includes("take a photo or choose a file"), "and it says so");
-await page.setInputFiles('input[data-scan="quick"]', { name: "bank.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
+check(await page.locator('#top button[data-action="open-scan-pick"]').count() === 1, "the Log screen has one scanner button");
+await page.click('button[data-action="open-scan-pick"]');
+check(await page.locator('#sheet input[data-scan="quick"][capture="environment"]').count() === 1 && await page.locator('#sheet input[data-scan="quick"]:not([capture])').count() === 1 && (await text(page, "#sheet")).includes("Take a photo") && (await text(page, "#sheet")).includes("Choose from photos or files"), "it offers both: take a photo with the camera, or choose from photos or files");
+await page.click('#sheet button:has-text("Cancel")');
+await page.click('button[data-action="open-scan-pick"]'); await page.setInputFiles('input[data-scan="quick"]:not([capture])', { name: "bank.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
 check(await seen(page, "#toast", "Saved", 180000), "one photo is enough: it is read and saved as a draft by itself");
 let q = JSON.parse((await stored(page)).local);
 const quick = q.state.transactions.find((t) => t.source === "photo" && t.status === "draft");
@@ -1022,7 +1025,7 @@ await shot(page, "43-quick-verify");
 await page.click('#nav button:has-text("Log")');
 
 // closing the app right after the photo: nothing is lost, it is read the next time the app opens
-await page.setInputFiles('input[data-scan="quick"]', { name: "bank2.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
+await page.click('button[data-action="open-scan-pick"]'); await page.setInputFiles('input[data-scan="quick"]:not([capture])', { name: "bank2.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
 for (let i = 0; i < 100 && (JSON.parse((await stored(page)).local).settings.scan_queue ?? []).length === 0; i++) await page.waitForTimeout(100);
 check(JSON.parse((await stored(page)).local).settings.scan_queue?.length === 1, "the photo is kept in the queue the moment it is taken");
 await page.reload(); await page.waitForSelector("#nav button");
@@ -1032,7 +1035,7 @@ check(resumed, "after the app is closed and opened again, the waiting photo is r
 
 // when the paper does not name the account, the photo is kept and the app asks instead of guessing
 await page.click('#nav button:has-text("Log")');
-await page.setInputFiles('input[data-scan="quick"]', { name: "receipt.png", mimeType: "image/png", buffer: Buffer.from(receiptPng, "base64") });
+await page.click('button[data-action="open-scan-pick"]'); await page.setInputFiles('input[data-scan="quick"]:not([capture])', { name: "receipt.png", mimeType: "image/png", buffer: Buffer.from(receiptPng, "base64") });
 check(await seen(page, "#sheet", "Check what I read", 180000), "a photo that cannot be saved safely opens the window to ask");
 check(await page.locator('#sheet button:has-text("Throw this photo away")').count() === 1, "and lets you throw the photo away");
 await page.click('#sheet button:has-text("Cancel")');
@@ -1051,9 +1054,21 @@ await addAccount(page, "Savings", "asset", "0");
 await menuGo(page, "Goals");
 await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.click('#sheet .chip:has-text("Savings")'); await page.click("#f-save");
 await seen(page, "#screen", "Emergency Fund");
+const receiptPngForSlip = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = 600; c.height = 300; const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 600, 300); x.fillStyle = "#000"; x.font = "bold 36px sans-serif"; x.fillText("Net Pay   1,000.00", 30, 120); return c.toDataURL("image/png").split(",")[1]; });
 await menuGo(page, "Income");
 check((await text(page, "#screen")).includes("Nothing recorded"), "Income starts empty and says how to begin");
+check(!(await text(page, "#screen")).includes("(interest, refund)") && (await text(page, "#screen")).includes("Add other income"), "the other-income button is just 'Add other income'");
 await page.click('button:has-text("Add a payslip")');
+const choice = await text(page, "#sheet");
+check(choice.includes("Type it in") && choice.includes("Take a photo") && choice.includes("Choose from photos or files") && await page.locator('#sheet input[data-scan="payslip"][capture="environment"]').count() === 1, "Add a payslip offers two ways: type it in, or read it from a photo (camera, or photos and files)");
+await page.click('#sheet button:has-text("Type it in")');
+check(await page.locator("#p-emp").count() === 1, "'Type it in' opens the payslip form");
+await page.click('#sheet button:has-text("Cancel")');
+await page.click('button:has-text("Add a payslip")');
+await page.setInputFiles('#sheet input[data-scan="payslip"]:not([capture])', { name: "any.png", mimeType: "image/png", buffer: Buffer.from(receiptPngForSlip, "base64") });
+check(await seen(page, "#sheet", "Add a payslip", 180000) && await page.locator("#sheet img.shot").count() === 1, "choosing a photo from there opens the payslip window with the photo, whatever the reader thought it was");
+await page.click('#sheet button:has-text("Cancel")');
+await page.click('button:has-text("Add a payslip")'); await page.click('#sheet button:has-text("Type it in")');
 check(await page.locator("#sheet").innerText().then((t) => /tax id|employee|account number/i.test(t) && /Do not type/.test(t)), "the payslip window tells you not to type any id or account number");
 await page.fill("#p-emp", "Sample Employer Inc");
 await page.fill("#p-from", "2026-09-16"); await page.fill("#p-to", "2026-09-30"); await page.fill("#p-date", "2026-10-02");
@@ -1166,7 +1181,7 @@ const slipPng = await page.evaluate(() => {   // an invented payslip, drawn in t
   return c.toDataURL("image/png").split(",")[1];
 });
 await menuGo(page, "Scan");
-await page.setInputFiles("input[data-scan]", { name: "payslip.png", mimeType: "image/png", buffer: Buffer.from(slipPng, "base64") });
+await page.setInputFiles("input[data-scan]:not([capture])", { name: "payslip.png", mimeType: "image/png", buffer: Buffer.from(slipPng, "base64") });
 check(await seen(page, "#sheet", "Add a payslip", 180000), "a payslip photo opens the payslip window, not a one-line pay entry");
 const val = (id) => page.inputValue("#" + id);
 check([await val("d_tax"), await val("d_sss"), await val("d_philhealth"), await val("d_pagibig")].join("|") === "700.00|300.00|100.00|100.00", "tax, SSS, PhilHealth and Pag-IBIG are read from their lines (" + [await val("d_tax"), await val("d_sss"), await val("d_philhealth"), await val("d_pagibig")].join("|") + ")");
@@ -1195,7 +1210,7 @@ const crookedPng = await page.evaluate(() => {
   return c.toDataURL("image/png").split(",")[1];
 });
 await menuGo(page, "Scan");
-await page.setInputFiles("input[data-scan]", { name: "crooked.png", mimeType: "image/png", buffer: Buffer.from(crookedPng, "base64") });
+await page.setInputFiles("input[data-scan]:not([capture])", { name: "crooked.png", mimeType: "image/png", buffer: Buffer.from(crookedPng, "base64") });
 check(await seen(page, "#sheet", "Add a payslip", 240000), "a crooked two-column payslip photo opens the payslip window");
 const got = [await val("d_tax"), await val("d_sss"), await val("d_philhealth"), await val("d_pagibig"), await val("d_absences")].join("|");
 check(got === "650.00|400.00|225.00|100.00|50.00", "the deductions side by side with the earnings still land on their own labels: tax, SSS, PhilHealth, Pag-IBIG, absences (" + got + ")");
@@ -1224,7 +1239,7 @@ await ctx.close();
 console.log("Trial");
 ({ ctx, page, errors } = await open({ ua: ANDROID, standalone: false, blockSw: true, url: BASE + "?trial" }));
 check((await text(page, "#banner")).includes("Trial copy") && (await text(page, "#banner")).includes("not your real ledger"), "the Android phone with ?trial says it is a trial copy, not the real ledger");
-check((await page.locator("#top label.camicon").count()) === 1 && !(await text(page, "#screen")).includes("Entry is switched off"), "and entry is on, with the camera icon");
+check((await page.locator("#top button[data-action=\"open-scan-pick\"]").count()) === 1 && !(await text(page, "#screen")).includes("Entry is switched off"), "and entry is on, with the camera icon");
 await addAccount(page, "Wallet", "asset", "100");
 await page.click('#nav button:has-text("Log")'); await page.click('button.tile:has-text("Lunch")'); await page.click('#sheet .chip:has-text("Wallet")');
 check(await seen(page, "#toast", "Saved Lunch"), "something can be logged in the trial copy");
