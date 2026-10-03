@@ -172,6 +172,65 @@ check(s.local && s.idb && s.local === s.idb, "repair restored both stores");
 check(await seen(page, "#screen", "Add the accounts") === false && await seen(page, "#screen", "Log"), "the app is usable again");
 await ctx.close();
 
+// ===== 5b. several accounts in a row, by touch =====
+console.log("Adding accounts one after another");
+({ ctx, page, errors } = await open());
+async function tapAdd(page, name, kind, opening) {
+  await page.tap('#nav button:has-text("Setup")');
+  await page.tap("#a-name"); await page.keyboard.type(name);
+  await page.selectOption("#a-kind", kind);
+  await page.tap("#a-open"); await page.keyboard.type(opening);
+  await page.tap('button:has-text("Add account")');
+}
+await tapAdd(page, "Wallet", "asset", "250");
+check(await seen(page, "#toast", "Added Wallet"), "adding an account says so");
+await tapAdd(page, "Bank", "asset", "1,000.50");
+check(await seen(page, "#toast", "Added Bank"), "a second account can be added right after the first");
+await tapAdd(page, "Card", "liability", "");
+check(await seen(page, "#toast", "Added Card"), "a third, owed this time, with no balance typed");
+const rowsText = await text(page, "#screen");
+check(["Wallet", "Bank", "Card", "₱1,000.50"].every((x) => rowsText.includes(x)), "all three are listed with their balances");
+await page.tap("#a-name"); await page.keyboard.type("bank");
+await page.tap('button:has-text("Add account")');
+check(await seen(page, "#screen", "already have an account"), "a repeated name is refused");
+const box = await page.locator("#a-error").boundingBox();
+const vh = page.viewportSize().height;
+check(box && box.y >= 0 && box.y + box.height <= vh - 70, "the refusal is on screen where you are looking, not above the fold");
+await page.evaluate(() => { Promise.reject(new Error("boom")); });   // a timer would not fire under the test clock
+const sawFault = await seen(page, "#banner", "Something went wrong: boom");
+if (!sawFault) console.log("   banner was:", JSON.stringify(await text(page, "#banner")));
+check(sawFault, "an unexpected error is shown on screen, not swallowed");
+await ctx.close();
+
+// ===== 5c. verify the same day =====
+console.log("Verifying the same day");
+({ ctx, page, errors } = await open());
+await addAccount(page, "Test Cash", "asset", "500");
+await seen(page, "#screen", "Test Cash");
+await page.click('#nav button:has-text("Log")');
+await page.click('button.tile:has-text("Lunch")'); await page.click('#sheet .chip:has-text("Test Cash")');
+await seen(page, "#toast", "Saved Lunch");
+check(!(await text(page, "#nav")).includes("Verify ("), "today's entries do not nag from the Verify tab");
+check(!(await text(page, "#screen")).includes("need verifying"), "nor from the Log page");
+await page.click('#nav button:has-text("Verify")');
+check((await text(page, "#screen")).includes("1 from today, ready whenever you are") && (await text(page, "#screen")).includes("1 of 1"), "but today's entry is there to verify now");
+await page.click('button:has-text("Correct")');
+check(await seen(page, "#screen", "Nothing to verify"), "verified the same day it was logged");
+led = JSON.parse((await stored(page)).local);
+check(led.state.transactions.every((t) => t.status === "verified"), "and it is stored as verified");
+// A backlog builds up with no penalty and is shown oldest first.
+await page.click('#nav button:has-text("Log")');
+await page.click('button.tile:has-text("Breakfast")'); await page.click('#sheet .chip:has-text("Test Cash")');
+await seen(page, "#toast", "Saved Breakfast");
+await page.clock.setFixedTime(new Date(T0.getTime() + 86400000));
+await page.reload(); await page.waitForSelector("#nav button");
+await page.click('button.tile:has-text("Dinner")'); await page.click('#sheet .chip:has-text("Test Cash")');
+await seen(page, "#toast", "Saved Dinner");
+check((await text(page, "#nav")).includes("Verify (1)"), "only yesterday's entry is counted as due");
+await page.click('#nav button:has-text("Verify")');
+check((await text(page, ".card")).includes("Breakfast") && (await text(page, "#screen")).includes("1 of 2"), "yesterday's comes first, today's after it");
+await ctx.close();
+
 // ===== 6. wrong phone, wrong place =====
 console.log("Wrong device");
 ({ ctx, page } = await open({ ua: ANDROID }));
