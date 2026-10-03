@@ -94,7 +94,7 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 // Plain line icons (drawn in the text colour). Groups are separated by thin lines, like a settings list.
 const ICONS = {
   money: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
-  buffer: '<path d="M4 14a8 6 0 0 1 16 0 8 6 0 0 1-16 0zM9 8V5M15 8V5"/>',
+  buffer: '<path d="M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l2-3h11v3"/><path d="M21 12h-4a2 2 0 0 0 0 4h4"/>',
   trips: '<path d="M3 11l18-7-7 18-3-8z"/>',
   checks: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
   plan: '<path d="M4 6h16M4 12h16M4 18h10"/>',
@@ -103,7 +103,7 @@ const ICONS = {
   checkin: '<path d="M4 12l5 5L20 6"/>',
   setup: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
 };
-const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
+const MENU = [["Overview", [["money", "Spending"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
@@ -404,7 +404,7 @@ const periodLabel = (p) => (p.kind === "year" ? String(p.year) : p.kind === "ran
 const periodWords = (p) => (p.kind === "range" ? "from " + fullDate(p.from) + " to " + fullDate(p.to) : "in " + periodLabel(p));
 const MONTH3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const pendingNote = (n) => (n > 0 ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">plus ${peso(n)} not verified yet</button></p>` : "");
-const moneyViews = () => `<div class="seg" role="group" aria-label="What to show">${[["category", "Where it went"], ["budget", "Budgets"], ["account", "Paid from"], ["month", "By month"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
+const moneyViews = () => `<div class="seg" role="group" aria-label="What to show">${[["category", "By category"], ["budget", "Budgets"], ["account", "By account"], ["month", "By month"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
 
 // A chart you tap to flip: bars become a donut and the donut becomes bars. Nothing else happens on a tap.
 function flipChart(rows, total, { graded = false } = {}) {
@@ -447,7 +447,7 @@ function viewMoney() {
   const title = `<button class="ptitle" data-action="open-period" aria-label="Choose the period: ${esc(label)}">${esc(label)}</button>`;
   const stepper = p.kind === "range" ? `<div class="stepper single">${title}</div>`
     : `<div class="stepper"><button data-action="period-step" data-step="-1" aria-label="Earlier">\u2039</button>${title}<button data-action="period-step" data-step="1" aria-label="Later"${atEnd ? " disabled" : ""}>\u203A</button></div>`;
-  const hero = `<h1>Money</h1>${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">${esc(sub)}</p>${delta}${pendingNote(cat.pending)}${moneyViews()}`;
+  const hero = `<h1>Spending</h1>${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">${esc(sub)}</p>${delta}${pendingNote(cat.pending)}${moneyViews()}`;
   const modeLink = `<p><button class="link" data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}">${ui.asList ? "Show as chart" : "Show as list"}</button></p>`;
   const done = (html) => hero + html + modeLink;
   const empty = () => hero + (p.kind === "month" ? emptyMoney() : `<p class="note">Nothing verified in this period.</p>`);

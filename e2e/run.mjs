@@ -395,7 +395,7 @@ await page.clock.setFixedTime(T0);
 await logPreset("Lunch", "Wallet"); await logOther("300", "Shopping", "Bank"); await verifyAll();
 await logPreset("Dinner", "Wallet");   // left as a draft on purpose
 
-await menuGo(page, "Money");
+await menuGo(page, "Spending");
 await shot(page, "13-money-category");
 let screen = await text(page, "#screen");
 check(screen.includes("October 2026") && screen.includes("₱395.00"), "the hero number is this month's verified spending");
@@ -416,7 +416,7 @@ check((await page.locator("#screen .caption").count()) === 0, "and no descriptio
 await page.click("svg.donut");
 check((await page.locator(".bars .brow").count()) === 2 && (await page.locator("svg.donut").count()) === 0, "tapping the donut turns it back into bars");
 
-await page.click('button:has-text("Paid from")');
+await page.click('button:has-text("By account")');
 await shot(page, "14-money-account");
 const accRows = await page.locator(".brow").allInnerTexts();
 check(accRows.length === 2 && accRows[0].includes("Bank") && accRows[0].includes("₱300.00") && accRows[1].includes("Wallet") && accRows[1].includes("₱95.00"), "by account: where each peso came out of");
@@ -434,7 +434,7 @@ check((await text(page, ".caption")).includes("September 2026: ₱1,295.00 spent
 await page.click('button:has-text("Show as list")');
 screen = await text(page, "#screen");
 check(screen.includes("September 2026") && screen.includes("₱1,295.00") && screen.includes("August 2026") && screen.includes("₱690.00"), "the list says the same as the columns");
-await page.click('button:has-text("Where it went")');
+await page.click('button:has-text("By category")');
 screen = await text(page, "#screen");
 check(/Shopping\s+₱300\.00\s+75\.9%/.test(screen) && /Food\s+₱95\.00\s+24\.1%/.test(screen) && /Total\s+₱395\.00/.test(screen), "the list view has every number the chart has, plus the total");
 await page.click('button:has-text("Show as chart")');
@@ -457,7 +457,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3, "it is the three-line icon");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Pay plan,Checks,Trips,Buffer,Check-in,Setup", "the menu lists Money, Budget, Goals, Pay plan, Checks, Trips, Buffer, Check-in and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Spending,Budget,Goals,Pay plan,Checks,Trips,Buffer,Check-in,Setup", "the menu lists Spending, Budget, Goals, Pay plan, Checks, Trips, Buffer, Check-in and Setup");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
 await shot(page, "17-menu");
 await page.keyboard.press("Escape");
@@ -503,9 +503,9 @@ check(ledgerNow.state.rules.length === 6 && ledgerNow.state.rules.every((r) => r
 check(ledgerNow.state.rules.filter((r) => r.subject_id === "cat-shopping").map((r) => r.amount).join() === "35000,25000", "the first Shopping budget is still there, then the new one");
 
 // ---- the colours: green to red ----
-await menuGo(page, "Money");
+await menuGo(page, "Spending");
 for (let i = 0; i < 9; i++) if (await page.locator('button[aria-label="Later"]').isEnabled()) await page.click('button[aria-label="Later"]');
-await page.click('button:has-text("Where it went")');
+await page.click('button:has-text("By category")');
 await shot(page, "19-money-graded");
 const fills = await page.locator(".brow").evaluateAll((els) => els.map((e) => ({ name: e.innerText.split("\n")[0], cls: [...e.classList].find((c) => c.startsWith("g-")), color: getComputedStyle(e.querySelector(".bfill")).backgroundColor })));
 const food = fills.find((f) => f.name === "Food"), shop = fills.find((f) => f.name === "Shopping");
@@ -535,7 +535,7 @@ await page.click('#sheet button[data-action="period-year"][data-id="2026"]');
 check((await text(page, ".ptitle")).includes("2026") && !(await text(page, ".ptitle")).includes("October") && (await text(page, "#screen")).includes("spent in 2026"), "choosing a year shows the whole year");
 await page.click('button:has-text("By month")');
 check((await page.locator(".cols .col").count()) === 12, "and By month then shows its twelve months");
-await page.click('button:has-text("Where it went")');
+await page.click('button:has-text("By category")');
 await page.click('button[aria-label="Earlier"]');
 check((await text(page, ".ptitle")).includes("2025") && (await text(page, "#screen")).includes("Nothing verified in this period"), "the arrows step a whole year, and an empty one says so");
 await page.click('button[aria-label="Later"]');
@@ -569,7 +569,7 @@ check((await text(page, ".ptitle")).includes("Oct 1, 2026") && (await text(page,
 await page.click('button:has-text("Budgets")');
 check((await text(page, "#screen")).includes("Budgets are set per month"), "Budgets with a range asks for a month");
 await page.click('button:has-text("Show this month")');
-await page.click('button:has-text("Where it went")');
+await page.click('button:has-text("By category")');
 
 await page.click('button:has-text("Budgets")');
 await shot(page, "20-money-budgets");
@@ -601,7 +601,7 @@ await page.click('button:has-text("Other amount")'); await page.fill("#f-amount"
 await page.click('#nav button:has-text("Verify")');
 await page.click('button:has-text("Correct")'); await seen(page, "#screen", "of");
 await verifyAll();
-await menuGo(page, "Money");
+await menuGo(page, "Spending");
 for (let i = 0; i < 9; i++) if (await page.locator('button[aria-label="Later"]').isEnabled()) await page.click('button[aria-label="Later"]');
 await page.click('button:has-text("Budgets")');
 const noBud = await page.waitForFunction(() => document.getElementById("screen").innerText.toLowerCase().includes("no budget set"), null, { timeout: 4000 }).then(() => true, () => false);   // the heading is shown in capitals
@@ -610,7 +610,7 @@ check(noBud && /Upskill\s+₱80\.00/.test(await text(page, "#screen")), "spendin
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- the monthly trend ----
-await menuGo(page, "Money");
+await menuGo(page, "Spending");
 await page.click('button:has-text("By month")');
 check((await page.locator("svg.trend").count()) === 1 && (await page.locator(".tmonth").count()) === 6, "the trend line chart has one tappable label per month");
 const paths = await page.locator("svg.trend path.tl").count(), dots = await page.locator("svg.trend circle").count();
