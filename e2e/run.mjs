@@ -723,7 +723,7 @@ await page.click('button:has-text("Other amount")'); await page.fill("#f-amount"
 check(await seen(page, "#toast", "₱100.00 came out of the overrun buffer"), "spending past the allowance says how much came out of the buffer");
 await menuGo(page, "Buffer");
 const bt2 = await text(page, "#screen");
-check(bt2.includes("allowance is empty") && /Upskill[\s\S]*₱100\.00/.test(bt2) && bt2.includes("₱500.00"), "the draw is listed by category, and the empty allowance is said in words");
+check(bt2.includes("everyday allowance in GCash is empty") && /Upskill[\s\S]*₱100\.00/.test(bt2) && bt2.includes("₱500.00"), "the draw is listed by category, and the empty allowance is said in words");
 await shot(page, "29-buffer");
 await page.click('#nav button:has-text("Verify")');
 check((await text(page, "#screen")).includes("Upskill"), "a draft that took from two envelopes still shows its category when verifying");
