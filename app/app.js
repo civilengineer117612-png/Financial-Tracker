@@ -397,7 +397,7 @@ function viewPlan() {
       <tr class="total"><td>Total (= income)</td><td class="n">${peso(t.first)}</td><td class="n">${peso(t.second)}</td><td class="n">${peso(t.month)}</td></tr></table>
     <h2>This cutoff</h2><p class="note">${esc(which.label)} to the day before the next: ${esc(longDate(prog.period.start))} to ${esc(longDate(prog.period.end))}. Only verified spending counts.</p>
     ${mine.length ? `<table class="tbl"><tr><th>Line</th><th class="n">Plan</th><th class="n">Spent</th><th class="n">Left</th></tr>${rem}</table>` : `<p class="note">No plan line matches one of your categories yet.</p>`}
-    ${unmatched.length ? `<p class="note">Not matched to a category, so not tracked: ${esc(unmatched.map((r) => r.name + (r.missing.length && r.missing[0] !== r.name ? " (no category " + r.missing.join(", ") + ")" : "")).join("; "))}.</p>` : ""}
+    ${unmatched.length ? `<p class="note">Not matched to a category, so not tracked: ${esc(unmatched.map((r) => r.name).join(", "))}.</p>` : ""}
     ${history}<p class="note">A change is a new plan with a later start date. Saved plans are never edited.</p>
     <p><button data-action="open-plan" style="width:100%">Load a newer plan</button></p>`;
 }

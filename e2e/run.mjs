@@ -616,24 +616,24 @@ check((await text(page, "#screen")).includes("No plan loaded"), "the pay plan st
 await page.click('button:has-text("Load a plan")');
 await page.fill("#p-text", "{ not a plan");
 check((await text(page, "#p-prev")).includes("could not be read") && await page.locator("#f-save").isDisabled(), "a broken plan is refused in plain words");
-const plan = { schema: 2, units: "centavos", effective_from: "2026-10-01",
-  paydays: [{ day: 15, income: 410000 }, { day: "last", income: 610000 }],
-  lines: [{ name: "Daily spending", first: 300000, second: 300000, categories: [{ name: "Food", monthly: 400000 }, { name: "Shopping", monthly: 200000 }] },
-    { name: "Rent", first: 0, second: 200000 }, { name: "Apartment", kind: "goal", first: 100000, second: 100000 }, { name: "Mystery", first: 10000, second: 10000 }],
-  emergency: { months: 3, basis: ["Rent", "Food"] } };
-await page.fill("#p-text", JSON.stringify({ ...plan, units: undefined }));
-check((await text(page, "#p-prev")).includes("centavos") && await page.locator("#f-save").isDisabled(), "a plan that does not declare its units is refused");
-await page.fill("#p-text", JSON.stringify({ ...plan, paydays: [{ day: 15, income: 410001 }, plan.paydays[1]] }));
-check((await text(page, "#p-prev")).includes("short by 1") || (await text(page, "#p-prev")).includes("over by"), "a payday whose lines do not add up to its income is refused, with the difference");
+const plan = { schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-10-01",
+  paydays: [{ id: "first", day: 15, expected_income: 5100 }, { id: "second", day: "last", expected_income: 7100 }],
+  lines: [{ name: "Food", first: 3000, second: 3000 }, { name: "Shopping", first: 1000, second: 1000 }, { name: "Rent", first: 0, second: 2000 },
+    { name: "Apartment", kind: "goal", first: 1000, second: 1000 }, { name: "Mystery", first: 100, second: 100 }],
+  ef_target_basis: ["Rent", "Food"], ef_target_months: 3 };
+await page.fill("#p-text", JSON.stringify({ ...plan, unit: undefined }));
+check((await text(page, "#p-prev")).includes("declare its unit") && await page.locator("#f-save").isDisabled(), "a plan that does not declare its unit is refused");
+await page.fill("#p-text", JSON.stringify({ ...plan, paydays: [{ day: 15, expected_income: 5101 }, plan.paydays[1]] }));
+check((await text(page, "#p-prev")).includes("short by 1"), "a payday whose lines do not add up to its income is refused, with the difference");
 await page.fill("#p-text", JSON.stringify(plan));
 check((await text(page, "#p-prev")).includes("Looks good") && !(await page.locator("#f-save").isDisabled()), "a good plan shows a one-line summary before it is used");
-await page.click("#f-save"); await seen(page, "#toast", "Plan loaded");
+await page.click("#f-save"); if (!(await seen(page, "#toast", "Plan loaded"))) console.log("   toast was:", JSON.stringify(await text(page, "#toast")), "banner:", JSON.stringify(await text(page, "#banner")), "sheet:", JSON.stringify((await text(page, "#sheet")).slice(0, 200)));
 const ptxt = await text(page, "#screen");
 if (!ptxt.includes("last day of the month")) console.log("   plan screen:", JSON.stringify(ptxt.slice(0, 500)));
-check(ptxt.includes("last day of the month") && ptxt.includes("₱4,100.00") && ptxt.includes("₱6,100.00") && ptxt.includes("₱10,200.00") && ptxt.toLowerCase().includes("this cutoff"), "the plan shows both paydays (the second at month end) and the totals per payday and month");
+check(ptxt.includes("last day of the month") && ptxt.includes("₱5,100.00") && ptxt.includes("₱7,100.00") && ptxt.includes("₱12,200.00") && ptxt.toLowerCase().includes("this cutoff"), "the plan shows both paydays (the second at month end) and the totals per payday and month");
 check(ptxt.includes("Mystery") && ptxt.includes("not tracked") && ptxt.includes("In effect since"), "a line with no matching category is said out loud, and the start date is shown");
 await page.click('button:has-text("Load a newer plan")');
-await page.fill("#p-text", JSON.stringify({ ...plan, lines: plan.lines.map((l) => (l.name === "Rent" ? { ...l, second: 190000 } : l.name === "Apartment" ? { ...l, second: 110000 } : l)) }));
+await page.fill("#p-text", JSON.stringify({ ...plan, lines: plan.lines.map((l) => (l.name === "Rent" ? { ...l, second: 1900 } : l.name === "Apartment" ? { ...l, second: 1100 } : l)) }));
 await page.click("#f-save");
 check(await seen(page, "#toast", "never edited"), "loading a different plan with the same start date is refused: plans are never edited");
 await page.click('#sheet button:has-text("Cancel")');

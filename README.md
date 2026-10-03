@@ -78,21 +78,19 @@ budgets, paid from (by account), and by month (six columns). Every view has a "S
 Only verified spending counts; unverified drafts are mentioned, not counted. Without budgets every bar is one color;
 amounts sit at the bar tip, and tapping a bar states its share in words.
 
-**Pay plan (menu, Overview):** load a plan file (Setup or the Pay plan screen) with your two paydays, each payday's income and, per line, what is set aside from each. The app refuses a file unless every payday's lines add up to its income to the centavo, and unless it declares `"units": "centavos"`. The 2nd payday can be `"last"` (the last day of the month), so February and 31-day months are right. Plans are dated and append-only, like budgets: a change is a new plan with a later `effective_from`, a saved plan is never edited, and the plan in force on a date is the latest one that has started. The screen shows the plan table and, for the current cutoff (one payday up to the day before the next), what is planned, spent and left per line, using verified spending only. Names are matched to categories; anything unmatched is said out loud, not guessed. The plan lives in the phone's settings and in encrypted backups, never in this repository. File shape (invented numbers, centavos):
+**Pay plan (menu, Overview):** load a plan file (Setup or the Pay plan screen) with your two paydays, each payday's expected income and, per line, what is set aside from each. The app refuses a file unless every payday's lines add up to its expected income exactly, and unless the file declares its `unit`. The 2nd payday can be `"last"` (the last day of the month), so February and 31-day months are right. Plans are dated and append-only, like budgets: a change is a new plan with a later `effective_from`, a saved plan is never edited, and the plan in force on a date is the latest one that has started. The screen shows the plan table and, for the current cutoff (one payday up to the day before the next), what is planned, spent and left per line, using verified spending only. Expense lines are matched to categories by name; anything unmatched is said out loud, not guessed. The plan lives in the phone's settings and in encrypted backups, never in this repository. File shape (invented numbers, whole pesos):
 
 ```json
-{ "schema": 2, "units": "centavos", "effective_from": "2026-10-01",
-  "paydays": [{"label": "1st payday", "day": 15, "income": 1000000},
-              {"label": "2nd payday", "day": "last", "income": 2400000}],
-  "lines": [
-    {"name": "Daily spending", "kind": "expense", "first": 600000, "second": 600000,
-     "categories": [{"name": "Food", "monthly": 800000}, {"name": "Shopping", "monthly": 400000}]},
-    {"name": "Rent", "kind": "expense", "first": 0, "second": 500000},
-    {"name": "Apartment Fund", "kind": "goal", "first": 400000, "second": 1300000}],
-  "emergency": {"months": 3, "basis": ["Rent", "Food"]} }
+{ "schema_version": 1, "unit": "PHP_whole_pesos", "effective_from": "2026-10-15",
+  "paydays": [{"id": "first", "day": 15, "label": "1st payday", "expected_income": 1000},
+              {"id": "second", "day": "last", "label": "2nd payday", "expected_income": 2400}],
+  "lines": [{"name": "Food", "kind": "expense", "first": 600, "second": 600},
+            {"name": "Rent", "kind": "expense", "first": 0, "second": 500},
+            {"name": "Apartment Fund", "kind": "goal", "first": 400, "second": 1300}],
+  "ef_target_basis": ["Rent", "Food"], "ef_target_months": 3 }
 ```
 
-`kind` is `expense` (tracked against categories), `goal` (savings, matched to a goal by name) or `buffer`. A line's `categories` must add up to the line's monthly total. `emergency.basis` names the lines or categories that make up the target (months x their monthly amounts); leave `emergency` out for no target.
+`unit` is `PHP_whole_pesos` or `PHP_centavos`. `kind` is `expense` (tracked against the category of the same name), `goal` (savings, matched to a goal by name) or `buffer`. `ef_target_basis` and `ef_target_months` are optional, together: the emergency target is months times the monthly total of the basis lines. Amounts are stored as integer centavos.
 
 **Goals (menu, Overview):** a goal points at an account where the money really sits, with an optional target and finish date. Balances are hidden until you tap Show balances. "Put money in" saves a draft transfer from another account, counted once you verify it.
 
