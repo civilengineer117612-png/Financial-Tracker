@@ -94,6 +94,8 @@ amounts sit at the bar tip, and tapping a bar states its share in words.
 
 **Income variance:** the plan holds planning income (overtime excluded). On the Pay plan screen, "Record pay received" saves what the payslip really said, in pesos and centavos (overtime as its own amount), as a verified entry in an account. The Income table shows plan against received for the last and current cutoff as a signed difference; the plan is never edited to match. The emergency target is always computed from the plan's `ef_target_basis`, never stored.
 
+**Trips (menu, Overview):** a trip is a tag with an optional budget (for example a trip abroad). Switch "Tag new entries with this trip" on and every new entry is tagged, with no extra taps; the Log screen says so and has a Stop link. A trip's page shows verified spending against its budget (graded, with words), spending by category, and unverified spending as a note. Trip spending still counts in the monthly charts like any other spending.
+
 **Checks (menu, Overview):** the card reserve check (reserve balance against what the card owes, pending plus posted, in words: covered or short by how much), the weekly Unlogged chart (what your counts could not explain; a week nobody counted is left out, never shown as zero) and the weekly-questions review by week.
 
 **Goals (menu, Overview):** a goal points at an account where the money really sits, with an optional target and finish date. Balances are hidden until you tap Show balances. "Put money in" saves a draft transfer from another account, counted once you verify it.

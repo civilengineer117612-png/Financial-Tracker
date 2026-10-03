@@ -21,9 +21,9 @@ export function applyDrafts(state, drafts) {
 
 // An expense paid from one account becomes a DRAFT (spec 8.1). Paid by a card with a reserve
 // set up, a draft reserve transfer is generated alongside it. Warnings never block saving.
-// input: {transaction_id, date, payee?, category_id, amount, account_id, source?, memo?, reserve_source_id?}
+// input: {transaction_id, date, payee?, category_id, amount, account_id, source?, memo?, reserve_source_id?, tag_id?}
 export function planExpense(state, input, now = new Date()) {
-  const { transaction_id: id, date, payee = "", category_id, amount, account_id, source = "manual", memo = "", reserve_source_id } = input;
+  const { transaction_id: id, date, payee = "", category_id, amount, account_id, source = "manual", memo = "", reserve_source_id, tag_id } = input;
   if (!Number.isSafeInteger(amount) || amount <= 0) return fail("BAD_AMOUNT", "amount must be more than zero");
   const account = state.accounts.find((a) => a.id === account_id);
   if (!account) return fail("UNKNOWN_ACCOUNT", "no account " + account_id);
@@ -31,7 +31,9 @@ export function planExpense(state, input, now = new Date()) {
   if (!category || category.kind !== "expense") return fail("UNKNOWN_CATEGORY", "no expense category " + category_id);
   if (!EXPENSE_SOURCES.includes(source)) return fail("BAD_SOURCE", "unsupported source " + source);
 
-  const transaction = { id, date, payee, memo, status: "draft", source, created_at: phTimestamp(now) };
+  if (tag_id != null && !(state.tags ?? []).some((t) => t.id === tag_id)) return fail("UNKNOWN_TAG", "no tag " + tag_id);
+
+  const transaction = { id, date, payee, memo, status: "draft", source, created_at: phTimestamp(now), ...(tag_id != null ? { tag_id } : {}) };
   const entries = [
     { transaction_id: id, category_id, amount },
     { transaction_id: id, account_id, amount: -amount, ...(account.class === "liability" ? { card_state: "pending" } : {}) },
