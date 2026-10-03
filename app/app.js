@@ -18,7 +18,7 @@ let boot = { status: "NONE", repairTo: null };
 const ui = {
   tab: "log", menu: false, sheet: null, form: {}, error: null, confirmDelete: null, confirmRemove: null, setupError: null,
   accountForm: { name: "", bank: null, sub: "", kind: "asset", opening: "", covers: "" },
-  month: null, view: "category", shape: "bars", asList: false, sel: null,   // the Money tab
+  month: null, year: null, range: null, selMonth: null, view: "category", shape: "bars", asList: false, sel: null,   // the Money tab
 };
 let toastTimer = null;
 
@@ -209,17 +209,23 @@ const COPY_SOURCES = (domain) => [["Icon Horse", `https://icon.horse/icon/${doma
 const LINK_SOURCES = (domain) => [
   // nfrp=2 makes the service answer "not found" for a site with no icon, instead of a generic grey placeholder picture
   ["Google icons", `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&nfrp=2&url=https://${domain}&size=128`],
-  ["Google", `https://www.google.com/s2/favicons?sz=128&domain=${domain}`],
   ["DuckDuckGo", `https://icons.duckduckgo.com/ip3/${domain}.ico`],
 ];
 // Some services invent a flat grey tile with a letter on it when a site has no icon. That is not a logo, so it is refused.
 function looksLikeLetterTile(ctx) {
-  const d = ctx.getImageData(10, 10, ICON_PX - 20, ICON_PX - 20).data, buckets = new Map();
-  for (let i = 0; i < d.length; i += 4) { const k = (d[i] >> 4) * 256 + (d[i + 1] >> 4) * 16 + (d[i + 2] >> 4); buckets.set(k, (buckets.get(k) ?? 0) + 1); }
+  const d = ctx.getImageData(0, 0, ICON_PX, ICON_PX).data, buckets = new Map();
+  let ink = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] > 235 && d[i + 1] > 235 && d[i + 2] > 235) continue;   // white paper around a logo is not the logo
+    ink += 1;
+    const k = (d[i] >> 4) * 256 + (d[i + 1] >> 4) * 16 + (d[i + 2] >> 4);
+    buckets.set(k, (buckets.get(k) ?? 0) + 1);
+  }
+  if (ink < ICON_PX * ICON_PX * 0.05) return false;
   let best = 0, bestKey = 0;
   for (const [k, n] of buckets) if (n > best) { best = n; bestKey = k; }
   const r = (bestKey >> 8) * 16, g = ((bestKey >> 4) & 15) * 16, b = (bestKey & 15) * 16, mean = (r + g + b) / 3;
-  return best / (d.length / 4) > 0.75 && Math.abs(r - g) <= 16 && Math.abs(g - b) <= 16 && mean >= 140 && mean <= 235;
+  return best / ink > 0.8 && Math.abs(r - g) <= 16 && Math.abs(g - b) <= 16 && mean >= 90 && mean <= 235;   // one flat grey: a placeholder
 }
 function pictureIsLetterTile(url) {
   return new Promise((resolve) => {
@@ -323,7 +329,7 @@ function viewSetup() {
   return `<h1>Setup</h1><p class="sub">Accounts. The ledger is on this phone only.</p>
     <h2>Add an account</h2>
     <label id="a-bank-l">Choose a bank</label>
-    <div class="chips" role="group" aria-labelledby="a-bank-l">${[...M.BANKS, M.CASH].map((b) => `<button class="chip" data-action="pick-bank" data-id="${esc(b.id)}" aria-pressed="${f.bank === b.id}">${iconOf({ name: b.name, icon: S().accounts.find((a) => a.bank === b.id && a.icon)?.icon }, 24)}<span>${esc(b.name)}</span></button>`).join("")}</div>
+    <div class="chips" role="group" aria-labelledby="a-bank-l">${[...M.BANKS, M.CASH].map((b) => `<button class="chip" data-action="pick-bank" data-id="${esc(b.id)}" aria-pressed="${f.bank === b.id}">${iconOf({ name: b.name, ...(S().accounts.find((a) => a.bank === b.id && (a.icon || a.icon_url)) ?? {}) }, 24)}<span>${esc(b.name)}</span></button>`).join("")}</div>
     ${f.bank ? `<label for="a-sub">Which part of ${esc(M.bankById(f.bank).name)}? (optional)</label><input id="a-sub" data-field="sub" value="${esc(f.sub)}" placeholder="e.g. Emergency Fund, Savings" autocomplete="off" enterkeyhint="next">
       <p class="note" id="a-preview">Saved as: ${esc(accountPreview(f))}</p>`
       : `<label for="a-name">Not in the list? Type its name</label><input id="a-name" data-field="name" value="${esc(f.name)}" autocomplete="off" enterkeyhint="next">`}
@@ -395,7 +401,62 @@ function listTable(heads, rows, totalLabel, total) {
     <tr class="total"><td>${totalLabel}</td><td class="n">${peso(total)}</td>${heads.length > 2 ? "<td></td>" : ""}</tr></table>`;
 }
 
+// The Money views. Year and Date range sit beside the monthly ones.
+const moneyViews = () => `<div class="seg six" role="group" aria-label="What to show">${[["category", "Where it went"], ["budget", "Budgets"], ["account", "Paid from"], ["month", "By month"], ["year", "Year"], ["range", "Date range"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
+// One button that flips the category chart between bars and a donut each time it is tapped; it shows the chart you are on.
+const SHAPE_ICONS = { bars: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>', donut: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/>' };
+function shapeToggle() {
+  const donut = ui.shape === "donut";
+  return `<p class="right"><button class="shapebtn" data-action="chart-shape" data-shape="${donut ? "bars" : "donut"}" aria-label="${donut ? "Showing a donut. Tap for bars" : "Showing bars. Tap for a donut"}"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">${SHAPE_ICONS[donut ? "donut" : "bars"]}</svg></button></p>`;
+}
+const fullDate = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-PH", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+// Categories of any period as bars or a donut, with the share said in words when one is tapped.
+function categoryChart(cat, periodWords) {
+  const rows = cat.rows.filter((r) => r.amount > 0).map((r) => ({ id: r.category_id, name: r.name, label: esc(r.name), amount: r.amount, percent: r.percent }));
+  if (!rows.length) return `<p class="note">Nothing verified in this period.</p>`;
+  const hit = rows.find((r) => r.id === ui.sel);
+  const caption = hit ? esc(hit.name + ": " + peso(hit.amount) + ", " + hit.percent + "% of what you spent " + periodWords + ".") : "Tap " + (ui.shape === "donut" ? "a row" : "a bar") + " to see its share.";
+  return shapeToggle() + (ui.shape === "donut" ? donutChart(rows, ui.sel, cat.total) : barChart(foldRows(rows, cat.total), ui.sel)) + `<p class="caption" aria-live="polite">${caption}</p>`;
+}
+const categoryTable = (cat) => listTable(["Category", "Spent", "Share"], cat.rows.map((r) => [esc(r.name), peso(r.amount), r.percent + "%"]), "Total", cat.total);
+const pendingNote = (n) => (n > 0 ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">plus ${peso(n)} not verified yet</button></p>` : "");
+const MONTH3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function viewYear() {
+  const nowY = Number(today().slice(0, 4)), year = ui.year ?? nowY, maps = S().categoryMaps, asOf = today();
+  const cat = M.spendingByRange(S(), { from: year + "-01-01", to: year + "-12-31", categoryMaps: maps, asOf });
+  const series = M.monthlySpending(S(), { endMonth: year + "-12", months: 12, categoryMaps: maps, asOf });
+  const stepper = `<div class="stepper"><button data-action="year-step" data-step="-1" aria-label="Earlier year">\u2039</button><b>${year}</b><button data-action="year-step" data-step="1" aria-label="Later year"${year >= nowY ? " disabled" : ""}>\u203A</button></div>`;
+  const hero = `<h1>Money</h1>${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">spent in ${year}</p>${pendingNote(cat.pending)}${moneyViews()}`;
+  const modeLink = `<p><button class="link" data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}">${ui.asList ? "Show as chart" : "Show as list"}</button></p>`;
+  if (!cat.rows.length && !series.some((x) => x.amount !== 0)) return hero + `<p class="note">Nothing verified in ${year} yet.</p>`;
+  if (ui.asList) return hero + listTable(["Month", "Spent"], series.map((x) => [esc(M.monthLabel(x.month)), peso(x.amount)]), "Year", series.reduce((n, x) => n + x.amount, 0)) + "<h2>By category</h2>" + categoryTable(cat) + modeLink;
+  const max = Math.max(...series.map((x) => x.amount), 1), sel = ui.selMonth;
+  const cols = series.map((x) => `<button class="col${sel && sel !== x.month ? " dim" : ""}" data-action="pick-month" data-id="${x.month}" aria-pressed="${sel === x.month}" aria-label="${esc(M.monthLabel(x.month) + ": " + peso(x.amount))}">
+      <span class="cval">${x.month === sel ? M.formatPesosWhole(x.amount) : ""}</span><span class="cbar" style="height:${x.amount > 0 ? Math.max(4, Math.round((x.amount * 130) / max)) : 0}px"></span></button>`).join("");
+  const hit = series.find((x) => x.month === sel);
+  return hero + `<h2>By month</h2><div class="cols tight">${cols}</div><div class="clabs tight">${series.map((x) => `<span>${MONTH3[Number(x.month.slice(5)) - 1][0]}</span>`).join("")}</div>
+    <p class="caption" aria-live="polite">${hit ? esc(M.monthLabel(hit.month) + ": " + peso(hit.amount) + " spent.") : "Tap a column to see its month."}</p>
+    <h2>By category</h2>${categoryChart(cat, "in " + year)}${modeLink}`;
+}
+
+function viewRange() {
+  const t = today();
+  const r = ui.range ?? (ui.range = { from: t.slice(0, 8) + "01", to: t });
+  const cat = M.spendingByRange(S(), { from: r.from, to: r.to, categoryMaps: S().categoryMaps, asOf: t });
+  const days = Math.round((Date.parse(r.to) - Date.parse(r.from)) / 86400000) + 1;
+  const perDay = cat.total > 0 ? ` \u00b7 about ${peso(Math.round(cat.total / days))} a day` : "";
+  const presets = [["month", "This month"], ["30", "Last 30 days"], ["year", "This year"]].map(([id, label]) => `<button class="chip" data-action="range-preset" data-id="${id}">${label}</button>`).join("");
+  const hero = `<h1>Money</h1><div class="rangepick"><button data-action="open-cal" data-target="from"><small>From</small><b>${esc(fullDate(r.from))}</b></button><button data-action="open-cal" data-target="to"><small>To</small><b>${esc(fullDate(r.to))}</b></button></div>
+    <div class="chips">${presets}</div><div class="hero">${peso(cat.total)}</div><p class="sub">spent in ${days} ${days === 1 ? "day" : "days"}${perDay}</p>${pendingNote(cat.pending)}${moneyViews()}`;
+  const modeLink = `<p><button class="link" data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}">${ui.asList ? "Show as chart" : "Show as list"}</button></p>`;
+  if (!cat.rows.length) return hero + `<p class="note">Nothing verified between these dates.</p>`;
+  return hero + (ui.asList ? categoryTable(cat) : categoryChart(cat, "from " + fullDate(r.from) + " to " + fullDate(r.to))) + modeLink;
+}
+
 function viewMoney() {
+  if (ui.view === "year") return viewYear();
+  if (ui.view === "range") return viewRange();
   const now = M.monthOf(today()), month = ui.month ?? now;
   const maps = S().categoryMaps, asOf = today();
   const cat = M.spendingByCategory(S(), { month, categoryMaps: maps, asOf });
@@ -410,7 +471,7 @@ function viewMoney() {
   }
   const pending = cat.pending > 0 ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">plus ${peso(cat.pending)} not verified yet</button></p>` : "";
   const stepper = `<div class="stepper"><button data-action="month-step" data-step="-1" aria-label="Previous month">‹</button><b>${esc(label)}</b><button data-action="month-step" data-step="1" aria-label="Next month"${month >= now ? " disabled" : ""}>›</button></div>`;
-  const views = `<div class="seg" role="group" aria-label="What to show">${[["category", "Where it went"], ["budget", "Budgets"], ["account", "Paid from"], ["month", "By month"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
+  const views = moneyViews();
   const hero = `<h1>Money</h1>${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">spent in ${esc(label)}</p>${delta}${pending}${views}`;
   const modeLink = `<p><button class="link" data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}">${ui.asList ? "Show as chart" : "Show as list"}</button></p>`;
   const done = (html) => hero + html + modeLink;
@@ -453,7 +514,7 @@ function viewMoney() {
   if (ui.asList) return done(listTable(["Category", "Spent", "Share"], rows.map((r) => [r.label, peso(r.amount), r.percent + "%"]), "Total", cat.total));
   const hit = rows.find((r) => r.id === ui.sel);
   const hitWords = hit ? esc(hit.label + ": " + peso(hit.amount) + ", " + hit.percent + "% of what you spent in " + label + ".") + (hit.budget ? " " + esc("Budget " + peso(hit.budget) + ": " + hit.used + "% used" + (hit.grade === "critical" ? ", over by " + peso(hit.amount - hit.budget) : "") + ".") : "") : "Tap a bar to see its share.";
-  const shapes = `<div class="seg" role="group" aria-label="Chart shape">${[["bars", "Bars"], ["donut", "Donut"]].map(([v, t]) => `<button data-action="chart-shape" data-shape="${v}" aria-pressed="${ui.shape === v}">${t}</button>`).join("")}</div>`;
+  const shapes = shapeToggle();
   const positive = rows.filter((r) => r.amount > 0);
   if (ui.shape === "donut") return done(shapes + donutChart(positive, ui.sel, cat.total) + `<p class="caption" aria-live="polite">${hitWords.replace("Tap a bar", "Tap a row")}</p>`);
   return done(shapes + (graded ? legend() : "") + barChart(foldRows(positive, cat.total), ui.sel)
@@ -712,6 +773,7 @@ function chips(items, selectedId, action) {
   return `<div class="chips">${items.map((i) => `<button class="chip" data-action="${action}" data-id="${esc(i.id)}" aria-pressed="${i.id === selectedId}">${i.class ? withIcon(i, 24) : esc(i.name)}</button>`).join("")}</div>`;
 }
 
+const calSelected = (target) => (target === "from" ? ui.range?.from : target === "to" ? ui.range?.to : ui.dayPick && ui.dayPick !== today() ? ui.dayPick : today());
 function renderSheet() {
   const sh = ui.sheet;
   if (!sh) { $("sheet").innerHTML = ""; return; }
@@ -735,15 +797,17 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
   if (sh.type === "cal") {
+    // One small calendar for three jobs: the Log day, and the start or end of a date range.
     const [y, m] = ui.calMonth.split("-").map(Number), first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(), count = new Date(Date.UTC(y, m, 0)).getUTCDate();
     const withEntries = new Set(S().transactions.filter((t) => t.date.startsWith(ui.calMonth) && !isGenerated(t)).map((t) => t.date));
-    const picked = ui.dayPick && ui.dayPick !== today() ? ui.dayPick : today();
+    const target = sh.target ?? "day", picked = calSelected(target);
     const cells = Array.from({ length: first }, () => "<span></span>").concat(Array.from({ length: count }, (_, i) => {
       const date = ui.calMonth + "-" + String(i + 1).padStart(2, "0");
       return `<button data-action="cal-day" data-id="${date}" aria-pressed="${date === picked}" aria-label="${esc(longDate(date))}"${date > today() ? " disabled" : ""}${withEntries.has(date) ? ' class="has"' : ""}>${i + 1}</button>`;
     })).join("");
-    body = `<h3>Select date</h3>
-      <div class="stepper"><button data-action="cal-step" data-step="-1" aria-label="Earlier month">\u2039</button><b>${esc(M.monthLabel(ui.calMonth))}</b><button data-action="cal-step" data-step="1" aria-label="Later month"${ui.calMonth >= M.monthOf(today()) ? " disabled" : ""}>\u203A</button></div>
+    const atNow = ui.calMonth >= M.monthOf(today());
+    body = `<h3>${target === "from" ? "Start date" : target === "to" ? "End date" : "Select date"}</h3>
+      <div class="stepper yr"><button data-action="cal-step" data-step="-12" aria-label="Earlier year">\u00AB</button><button data-action="cal-step" data-step="-1" aria-label="Earlier month">\u2039</button><b>${esc(M.monthLabel(ui.calMonth))}</b><button data-action="cal-step" data-step="1" aria-label="Later month"${atNow ? " disabled" : ""}>\u203A</button><button data-action="cal-step" data-step="12" aria-label="Later year"${atNow ? " disabled" : ""}>\u00BB</button></div>
       <div class="cal" role="group" aria-label="Days">${["S", "M", "T", "W", "T", "F", "S"].map((d) => `<b class="dow">${d}</b>`).join("")}${cells}</div>
       <p class="note">Days in bold have entries.</p>`;
   } else if (sh.type === "bufsetup") {
@@ -828,7 +892,7 @@ function renderSheet() {
       <label for="i-zoom">Zoom</label><input id="i-zoom" data-field="zoom" type="range" min="1" max="4" step="0.01" value="1" disabled>
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="save-icon" disabled>Use this picture</button></p>
-      ${a.icon ? `<p><button data-action="clear-icon" style="width:100%">Remove the picture</button></p>` : ""}`;
+      ${a.icon || a.icon_url ? `<p><button data-action="clear-icon" style="width:100%">Remove the picture</button></p>` : ""}`;
   } else if (sh.type === "backup") {
     body = `<h3>Back up now</h3>
       <p class="note">Choose a passphrase of at least ${M.MIN_PASSPHRASE} characters. Write it down in two places, away from this phone. Without it nobody can open the backup, not even me.</p>
@@ -964,6 +1028,13 @@ async function onClick(el) {
     case "close-menu": ui.menu = false; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "false"); break;
     case "tab": $("toast").innerHTML = ""; ui.menu = false; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null; renderAll(); break;
     case "month-step": ui.month = M.addMonths(ui.month ?? M.monthOf(today()), Number(el.dataset.step)); ui.sel = null; renderScreen(); break;
+    case "year-step": ui.year = (ui.year ?? Number(today().slice(0, 4))) + Number(el.dataset.step); ui.selMonth = null; renderScreen(); break;
+    case "pick-month": ui.selMonth = ui.selMonth === id ? null : id; renderScreen(); break;
+    case "range-preset": {
+      const t = today(), d = (n) => new Date(Date.parse(t) - n * 86400000).toISOString().slice(0, 10);
+      ui.range = id === "month" ? { from: t.slice(0, 8) + "01", to: t } : id === "30" ? { from: d(29), to: t } : { from: t.slice(0, 4) + "-01-01", to: t };
+      ui.sel = null; renderScreen(); break;
+    }
     case "chart-shape": ui.shape = el.dataset.shape; ui.sel = null; renderScreen(); break;
     case "chart-view": ui.view = el.dataset.view; ui.sel = null; renderScreen(); break;
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
@@ -1133,9 +1204,15 @@ async function onClick(el) {
       if (r.ok) await commit(r.state);
       break;
     }
-    case "open-cal": ui.calMonth = M.monthOf(ui.dayPick && ui.dayPick !== today() ? ui.dayPick : today()); ui.sheet = { type: "cal" }; renderSheet(); break;
-    case "cal-step": { const next = M.addMonths(ui.calMonth, Number(el.dataset.step)); if (next <= M.monthOf(today())) ui.calMonth = next; renderSheet(); break; }
-    case "cal-day": ui.dayPick = id === today() ? null : id; ui.sheet = null; renderAll(); break;
+    case "open-cal": { const target = el.dataset.target ?? "day"; ui.calMonth = M.monthOf(calSelected(target) ?? today()); ui.sheet = { type: "cal", target }; renderSheet(); break; }
+    case "cal-step": { let next = M.addMonths(ui.calMonth, Number(el.dataset.step)); if (next > M.monthOf(today())) next = M.monthOf(today()); ui.calMonth = next; renderSheet(); break; }
+    case "cal-day": {
+      const target = ui.sheet.target ?? "day";
+      if (target === "from") { ui.range = { from: id, to: ui.range.to < id ? id : ui.range.to }; ui.sel = null; }
+      else if (target === "to") { ui.range = { from: ui.range.from > id ? id : ui.range.from, to: id }; ui.sel = null; }
+      else ui.dayPick = id === today() ? null : id;
+      ui.sheet = null; renderAll(); break;
+    }
     case "reset-day": ui.dayPick = null; renderScreen(); break;
     case "get-logos": await getBankLogos(); break;
     case "pick-bank": ui.accountForm.bank = ui.accountForm.bank === id ? null : id; ui.accountForm.sub = ""; ui.setupError = null; renderScreen(); break;

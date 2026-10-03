@@ -19,9 +19,9 @@ export const monthLabel = (month) => NAMES[Number(month.slice(5, 7)) - 1] + " " 
 
 const lastDayOf = (month) => month + "-31";   // string order is date order, so this safely means "the end of the month"
 
-// {total, pending, rows:[{category_id, name, amount, percent}]}, biggest first.
+// {total, pending, rows:[{category_id, name, amount, percent}]}, biggest first, for any date range (inclusive, YYYY-MM-DD).
 // `total` is net spending (refunds reduce it); `percent` is each positive row's share of it, to 0.1.
-export function spendingByCategory(state, { month, categoryMaps = [], asOf = lastDayOf(month) }) {
+export function spendingByRange(state, { from, to, categoryMaps = [], asOf }) {
   const expense = new Map(state.categories.filter((c) => c.kind === "expense").map((c) => [c.id, c]));
   const txById = new Map(state.transactions.map((t) => [t.id, t]));
   const totals = new Map();
@@ -29,9 +29,9 @@ export function spendingByCategory(state, { month, categoryMaps = [], asOf = las
   for (const e of state.entries) {
     if (e.category_id == null || !expense.has(e.category_id)) continue;
     const t = txById.get(e.transaction_id);
-    if (!t || monthOf(t.date) !== month) continue;
+    if (!t || t.date < from || t.date > to) continue;
     if (t.status !== "verified") { pending += e.amount; continue; }
-    const id = reportingCategory(categoryMaps, e.category_id, asOf);
+    const id = reportingCategory(categoryMaps, e.category_id, asOf ?? to);
     totals.set(id, (totals.get(id) ?? 0) + e.amount);
   }
   const rows = [...totals].filter(([, amount]) => amount !== 0)
@@ -39,6 +39,11 @@ export function spendingByCategory(state, { month, categoryMaps = [], asOf = las
     .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
   const total = rows.reduce((n, r) => n + r.amount, 0);
   return { total, pending, rows: rows.map((r) => ({ ...r, percent: r.amount > 0 && total > 0 ? Math.round((r.amount * 1000) / total) / 10 : 0 })) };
+}
+
+// The same for one month. Categories are grouped as of `asOf` (the day the report is run), so a merge regroups history.
+export function spendingByCategory(state, { month, categoryMaps = [], asOf = lastDayOf(month) }) {
+  return spendingByRange(state, { from: month + "-01", to: lastDayOf(month), categoryMaps, asOf });
 }
 
 // Which account the spending came out of. A card counts as the account the charge was made on.
