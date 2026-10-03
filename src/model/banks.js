@@ -7,7 +7,7 @@ import { validateShape } from "./schema.js";
 // `domain` is the bank's public website (`alt` lists other sites to try if the first has no icon). It is used only when the owner taps "Get bank logos" on the phone, which asks
 // an icon service for that site's small icon and keeps it on the phone. Nothing is downloaded or stored in the repository.
 export const BANKS = [
-  { id: "gcash", name: "GCash", domain: "gcash.com" }, { id: "maya", name: "Maya", domain: "maya.ph", alt: ["paymaya.com"] },
+  { id: "gcash", name: "GCash", domain: "gcash.com" }, { id: "maya", name: "Maya", domain: "maya.ph", alt: ["paymaya.com", "mayabank.ph", "www.maya.ph"] },
   { id: "gotyme", name: "GoTyme", domain: "gotyme.com.ph" }, { id: "maribank", name: "MariBank", domain: "maribank.ph" },
   { id: "bdo", name: "BDO", domain: "bdo.com.ph" }, { id: "bpi", name: "BPI", domain: "bpi.com.ph" },
   { id: "metrobank", name: "Metrobank", domain: "metrobank.com.ph" }, { id: "unionbank", name: "UnionBank", domain: "unionbankph.com", alt: ["unionbank.com.ph"] },
