@@ -78,6 +78,8 @@ budgets, paid from (by account), and by month (six columns). Every view has a "S
 Only verified spending counts; unverified drafts are mentioned, not counted. Without budgets every bar is one color;
 amounts sit at the bar tip, and tapping a bar states its share in words.
 
+**Trend:** under "By month", a line chart of total budget against total actual for six months. A month with nothing budgeted or logged is a gap in the line, never an error or a fake zero. Tap a month to open its budgets.
+
 **Check-in (menu, Weekly):** count each account against what the bank or wallet really shows. The app compares it with the ledger and records any gap as a verified Unlogged entry; it never blocks anything. After the first count, three short weekly questions appear (missed transactions are filled in for you, plus ease 1 to 5 and what annoyed you).
 
 **Budgets and thermal colors:** set a monthly budget per category in the Budget screen (a change starts next month).

@@ -548,6 +548,20 @@ if (!noBud) console.log("   screen was:", JSON.stringify((await text(page, "#scr
 check(noBud && /Upskill\s+₱80\.00/.test(await text(page, "#screen")), "spending in a category with no budget is shown under its own heading");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
+// ---- the monthly trend ----
+await menuGo(page, "Money");
+await page.click('button:has-text("By month")');
+check((await page.locator("svg.trend").count()) === 1 && (await page.locator(".tmonth").count()) === 6, "the trend line chart has one tappable label per month");
+const paths = await page.locator("svg.trend path.tl").count(), dots = await page.locator("svg.trend circle").count();
+check(paths === 2 && dots >= 2 && dots < 12, "two lines, with points only where a month has data (" + dots + " points)");
+await shot(page, "24-trend");
+await page.click('button:has-text("Show as list")');
+check((await text(page, "#screen")).includes("No data"), "the list twin says No data for empty months");
+await page.click('button:has-text("Show as chart")');
+await page.locator(".tmonth").last().click();
+check((await text(page, "#screen")).includes("October 2026") && await page.locator(".bcard").count() > 0, "tapping a month opens that month's budgets");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+
 // ---- the weekly check-in ----
 await menuGo(page, "Check-in");
 check((await text(page, "#top")).includes("Check-in") && (await text(page, "#screen")).includes("0 of"), "the check-in lists every account, none counted yet");

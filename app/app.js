@@ -270,14 +270,16 @@ function viewMoney() {
 
   if (ui.view === "month") {
     const series = M.monthlySpending(S(), { endMonth: month, months: 6, categoryMaps: maps, asOf });
-    if (!series.some((x) => x.amount !== 0)) return hero + emptyMoney();
-    if (ui.asList) return done(listTable(["Month", "Spent"], [...series].reverse().map((x) => [esc(M.monthLabel(x.month)), peso(x.amount)]), "Six months", series.reduce((n, x) => n + x.amount, 0)));
+    const trend = M.budgetTrend(S(), { endMonth: month, months: 6, categoryMaps: maps, asOf });
+    if (!series.some((x) => x.amount !== 0) && !trend.some((x) => x.budget !== null)) return hero + emptyMoney();
+    if (ui.asList) return done(listTable(["Month", "Spent"], [...series].reverse().map((x) => [esc(M.monthLabel(x.month)), peso(x.amount)]), "Six months", series.reduce((n, x) => n + x.amount, 0)) + "<h2>Budget vs actual</h2>" + trendTable(trend));
     const max = Math.max(...series.map((x) => x.amount), 1), sel = ui.sel;
     const cols = series.map((x) => `<button class="col${sel && sel !== x.month ? " dim" : ""}" data-action="pick-bar" data-id="${x.month}" aria-pressed="${sel === x.month}" aria-label="${esc(M.monthLabel(x.month) + ": " + peso(x.amount))}">
         <span class="cval">${x.month === month || x.month === sel ? M.formatPesosWhole(x.amount) : ""}</span><span class="cbar" style="height:${x.amount > 0 ? Math.max(4, Math.round((x.amount * 130) / max)) : 0}px"></span></button>`).join("");
     const hit = series.find((x) => x.month === sel);
     return done(`<div class="cols">${cols}</div><div class="clabs">${series.map((x) => `<span>${esc(M.monthLabel(x.month).slice(0, 3))}</span>`).join("")}</div>
-      <p class="caption" aria-live="polite">${hit ? esc(M.monthLabel(hit.month) + ": " + peso(hit.amount) + " spent.") : "Tap a column to see its month."}</p>`);
+      <p class="caption" aria-live="polite">${hit ? esc(M.monthLabel(hit.month) + ": " + peso(hit.amount) + " spent.") : "Tap a column to see its month."}</p>
+      <h2>Budget vs actual</h2>${trendChart(trend)}`);
   }
 
   if (ui.view === "budget") return viewBudgets(hero, month, maps, asOf, now, label);
@@ -319,6 +321,29 @@ function varianceTable(budgeted) {
   return `<table class="tbl"><tr><th>Category</th><th class="n">Budget</th><th class="n">Actual</th><th class="n">Variance</th></tr>
     ${budgeted.map((r) => `<tr><td>${esc(categoryName(r.category_id))}</td><td class="n">${peso(r.budget)}</td><td class="n">${peso(r.spent)}</td>${cell(r.budget - r.spent)}</tr>`).join("")}
     <tr class="total"><td>Total</td><td class="n">${peso(sum("budget"))}</td><td class="n">${peso(sum("spent"))}</td>${cell(sum("budget") - sum("spent"))}</tr></table>`;
+}
+
+// Budget line against actual line, one point per month. A month with nothing to show is a gap: the line breaks.
+// Each month is also a button that opens that month's budget view.
+function trendChart(trend) {
+  const W = 320, H = 150, L = 8, R = 8, T = 14, B = 8, n = trend.length;
+  const max = Math.max(1, ...trend.flatMap((x) => [x.budget ?? 0, x.actual ?? 0]));
+  const X = (i) => L + (i * (W - L - R)) / Math.max(1, n - 1), Y = (v) => T + (1 - v / max) * (H - T - B);
+  const line = (key, cls) => {
+    let d = "", pen = false;
+    trend.forEach((x, i) => { if (x[key] == null) { pen = false; return; } d += (pen ? "L" : "M") + X(i).toFixed(1) + " " + Y(x[key]).toFixed(1) + " "; pen = true; });
+    const dots = trend.map((x, i) => x[key] == null ? "" : `<circle class="${cls}" cx="${X(i).toFixed(1)}" cy="${Y(x[key]).toFixed(1)}" r="4.5"/>`).join("");
+    return `<path class="tl ${cls}" d="${d}"/>${dots}`;
+  };
+  const labels = trend.map((x) => `<button class="tmonth" data-action="open-month" data-id="${x.month}" aria-label="Open ${esc(M.monthLabel(x.month))}">${esc(M.monthLabel(x.month).slice(0, 3))}</button>`).join("");
+  return `<svg class="trend" viewBox="0 0 ${W} ${H}" role="img" aria-label="Budget and actual spending for the last ${n} months. The table below has the same numbers.">${line("budget", "tb")}${line("actual", "ta")}</svg>
+    <div class="tlabs">${labels}</div>
+    <p class="legend"><span><svg width="22" height="10" aria-hidden="true"><line x1="0" y1="5" x2="22" y2="5" class="tb" stroke-width="2" stroke-dasharray="4 3"/></svg>Budget</span><span><svg width="22" height="10" aria-hidden="true"><line x1="0" y1="5" x2="22" y2="5" class="ta" stroke-width="2"/></svg>Actual</span></p>
+    <p class="note">A missing point means nothing was budgeted or logged that month. Tap a month to open it.</p>`;
+}
+function trendTable(trend) {
+  const cell = (v) => v == null ? "No data" : peso(v);
+  return `<table class="tbl"><tr><th>Month</th><th class="n">Budget</th><th class="n">Actual</th></tr>${[...trend].reverse().map((x) => `<tr><td>${esc(M.monthLabel(x.month))}</td><td class="n">${cell(x.budget)}</td><td class="n">${cell(x.actual)}</td></tr>`).join("")}</table>`;
 }
 
 function viewBudgets(hero, month, maps, asOf, now, label) {
@@ -539,6 +564,7 @@ async function onClick(el) {
     case "month-step": ui.month = M.addMonths(ui.month ?? M.monthOf(today()), Number(el.dataset.step)); ui.sel = null; renderScreen(); break;
     case "chart-view": ui.view = el.dataset.view; ui.sel = null; renderScreen(); break;
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
+    case "open-month": ui.month = id; ui.view = "budget"; ui.sel = null; ui.asList = false; renderScreen(); break;
     case "pick-bar": ui.sel = ui.sel === id ? null : id; renderScreen(); break;
     case "open-budget": {
       const cur = M.budgetFor(S().rules, id, M.monthOf(today()));
