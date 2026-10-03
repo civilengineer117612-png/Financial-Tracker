@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readScan, wordsToCentavos, categoryFromHistory } from "../src/model/index.js";
+import { readScan, readPayslip, wordsToCentavos, categoryFromHistory } from "../src/model/index.js";
 
 const TODAY = "2026-10-20";   // all texts below are invented
 
@@ -156,4 +156,53 @@ test("the category used before for the same payee is remembered, verified entrie
   assert.equal(categoryFromHistory(st, "Tie Shop"), "ess", "a tie goes to the more recent");
   assert.equal(categoryFromHistory(st, "Never Seen"), null);
   assert.equal(categoryFromHistory(st, ""), null);
+});
+
+// An invented payslip, laid out like a typical one with two columns (this pay, and the year so far).
+const PAYSLIP = `Sample Employer Inc
+PAYSLIP
+Pay period: 01/10/2026 - 15/10/2026
+Pay date: Oct 15, 2026
+EARNINGS
+Basic Salary 9,000.00 18,000.00
+Rice Subsidy 1,000.00 2,000.00
+Skills Allowance 500.00 1,000.00
+Overtime 1,500.00 1,500.00
+Gross Pay 12,000.00 22,500.00
+DEDUCTIONS
+Withholding Tax 700.00 1,400.00
+SSS 300.00 600.00
+PhilHealth 100.00 200.00
+Pag-IBIG 100.00 200.00
+SSS Loan 50.00 50.00
+Late/Undertime 25.00
+Total Deductions 1,275.00
+Net Pay 10,725.00
+Year to date
+Basic Salary 18,000.00`;
+test("a payslip: every earnings and deduction line, tax and what went to government, the printed gross and net", () => {
+  const r = readPayslip(PAYSLIP, TODAY);
+  assert.deepEqual(r.earnings.map((l) => [l.kind, l.amount]), [["basic", 900000], ["rice", 100000], ["skills", 50000], ["overtime", 150000]]);
+  assert.deepEqual(r.deductions.map((l) => [l.kind, l.amount]), [["tax", 70000], ["sss", 30000], ["philhealth", 10000], ["pagibig", 10000], ["loan", 5000], ["lates", 2500]]);
+  assert.equal(r.printed_gross, 1200000);
+  assert.equal(r.printed_net, 1072500);
+  assert.equal(r.employer, "Sample Employer Inc");
+  assert.deepEqual([r.period_from, r.period_to, r.pay_date], ["2026-10-01", "2026-10-15", "2026-10-15"]);
+});
+test("a payslip: the first figure is taken, an SSS loan is a loan not SSS, taxable income is not tax, and nothing after the year-to-date heading counts", () => {
+  const r = readPayslip("Net Pay 100.00\nGross Pay 150.00\nTaxable Income 140.00\nSSS 10.00\nSSS Loan 5.00\nYear to date\nPhilHealth 99.00", TODAY);
+  assert.deepEqual(r.deductions.map((l) => [l.kind, l.amount]), [["sss", 1000], ["loan", 500]]);
+  assert.ok(!r.deductions.some((l) => l.kind === "tax" || l.kind === "philhealth"));
+});
+test("a payslip with a label alone on a line takes the figure from the next line; missing gross, net and dates are said in words", () => {
+  const r = readPayslip("Withholding Tax\n1,234.50\nPhilHealth 450.00", TODAY);
+  assert.deepEqual(r.deductions.map((l) => [l.kind, l.amount]), [["tax", 123450], ["philhealth", 45000]]);
+  assert.ok(r.notes.some((n) => /printed gross/.test(n)) && r.notes.some((n) => /printed net/.test(n)) && r.notes.some((n) => /pay date/.test(n)));
+});
+test("an old year on a payslip is not used as the pay date", () => {
+  const r = readPayslip("Pay date: Jan 15, 2016\nNet Pay 100.00", TODAY);
+  assert.equal(r.pay_date, null);
+});
+test("an unreadable payslip gives an empty reading, never a crash", () => {
+  for (const t of ["", null, undefined, "@@ ~~"]) { const r = readPayslip(t, TODAY); assert.deepEqual([r.earnings.length, r.deductions.length, r.printed_net], [0, 0, null]); }
 });

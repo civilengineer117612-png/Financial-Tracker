@@ -195,20 +195,13 @@ function viewLog() {
     ${dayCard()}
     <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
     <p><button class="primary" data-action="open-other" style="margin-top:12px">Other amount</button></p>
-    <h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2>${tintLegend(todays)}${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
-}
-
-// A light tint names what a row is. The words are written too (on each row, and in this key), so colour is never alone.
-function tintLegend(list) {
-  const used = new Set(list.map((t) => M.rowGroup(S(), t)).filter(Boolean));
-  return used.size ? `<p class="tints">${M.GROUPS.filter(([id]) => used.has(id)).map(([id, label]) => `<span><i class="sw tint-${id}"></i>${esc(label)}</span>`).join("")}</p>` : "";
+    <h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
 }
 
 function rowFor(t) {
   const d = describe(t);
   const acct = d.kind === "expense" ? S().accounts.find((a) => a.id === d.account_id) : null;
-  const g = M.rowGroup(S(), t);
-  return `<div class="row${g ? " tint-" + g : ""}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${g ? " · " + esc(M.GROUPS.find(([id]) => id === g)[1]) : ""}</span></small></div><div class="amt">${peso(d.amount)}</div></div>`;
+  return `<div class="row"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}</span></small></div><div class="amt">${peso(d.amount)}</div></div>`;
 }
 
 // Everything waiting, oldest first. Nothing has to wait for tomorrow: verify whenever you have the time.
@@ -279,8 +272,9 @@ function viewIncome() {
   const pv = plan ? [M.planIncome(S(), plan, today())].map((v) => `<h2>Plan against what arrived</h2><table class="tbl"><tr><th>Payday</th><th class="n">Plan</th><th class="n">Received</th><th class="n">Difference</th></tr><tr><td>${esc(v.label)}<small> ${esc(longDate(v.period.start))}</small></td><td class="n">${peso(v.planned)}</td><td class="n">${peso(v.actual)}</td><td class="n">${esc(ivar(v.variance))}</td></tr></table><p class="note">The plan is never edited; the difference is only shown.</p>`)[0] : "";
   const list = slips.length ? `<h2>Payslips</h2>${slips.slice(0, 12).map((p) => {
     const lines = M.linesOf(S(), p.id), flags = M.payslipChecks(p, lines), t = M.payslipTotals(lines);
+    const shot = M.attachmentsFor(S(), p.transaction_id)[0];
     const draft = S().transactions.some((x) => x.id === "ot-" + p.id), freeDone = S().transactions.some((x) => x.id === "otf-" + p.id);
-    return `<div class="row"><div>${esc(p.employer)}<small>${esc(fullDate(p.pay_date))} · gross ${peso(t.gross)} · deductions ${peso(t.deductions)}</small></div><div class="amt">${peso(p.deposit)}</div></div>${flags.map(flagLine).join("")}${t.overtime > 0 && !draft ? `<p class="note"><button class="link" data-action="ot-draft" data-id="${esc(p.id)}">Make the Emergency Fund draft for the overtime</button></p>` : ""}${t.overtime > 0 && !freeDone ? `<p class="note">The free ${peso(t.overtime - Math.round((t.overtime * M.OVERTIME_SHARE.num) / M.OVERTIME_SHARE.den))} of the overtime stays in the account the pay landed in. <button class="link" data-action="open-otfree" data-id="${esc(p.id)}">Move it somewhere else</button></p>` : ""}`;
+    return `<div class="row"><div>${esc(p.employer)}<small>${esc(fullDate(p.pay_date))} · gross ${peso(t.gross)} · deductions ${peso(t.deductions)}</small></div><div class="amt">${peso(p.deposit)}</div></div>${shot ? `<p class="note"><button class="link" data-action="open-photo" data-id="${esc(shot.id)}">View the photo</button></p>` : ""}${flags.map(flagLine).join("")}${t.overtime > 0 && !draft ? `<p class="note"><button class="link" data-action="ot-draft" data-id="${esc(p.id)}">Make the Emergency Fund draft for the overtime</button></p>` : ""}${t.overtime > 0 && !freeDone ? `<p class="note">The free ${peso(t.overtime - Math.round((t.overtime * M.OVERTIME_SHARE.num) / M.OVERTIME_SHARE.den))} of the overtime stays in the account the pay landed in. <button class="link" data-action="open-otfree" data-id="${esc(p.id)}">Move it somewhere else</button></p>` : ""}`;
   }).join("")}` : "";
   return `${head}<h2>Where it came from, ${esc(year)}</h2>${bySrc.length ? hbars(bySrc) : ""}${monthTable}${paydays}${raiseTable}${dedTable}${empTable}${pv}${list}`;
 }
@@ -289,6 +283,23 @@ const payslipDefaults = () => ({
   employer: ledger.settings.last_employer ?? "", period_from: today(), period_to: today(), pay_date: today(), account_id: ledger.settings.last_account_id ?? accountsFor(null)[0]?.id ?? null,
   ot_month: M.addMonths(M.monthOf(today()), -1), gross: "", net: "", deposit: "", words: "",
 });
+// A payslip photo, read line by line: opens the payslip window already filled in. The owner checks every figure (the same four checks as
+// for a typed payslip point out what does not add up), chooses where it landed, and saves. The photo stays with the pay.
+function openPayslipFromPhoto(blob, text, queueId) {
+  const r = M.readPayslip(text, today()), d = payslipDefaults(), two = (c) => (c / 100).toFixed(2);
+  const f = { ...d, account_id: null, employer: r.employer ?? d.employer, text, notes: [...r.notes, ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."]), "What really arrived is filled in with the printed net pay. Change it if the account got a different amount."] };
+  if (r.period_from) { f.period_from = r.period_from; f.period_to = r.period_to; }
+  if (r.pay_date) f.pay_date = r.pay_date;
+  f.ot_month = M.addMonths(M.monthOf(f.pay_date), -1);
+  for (const l of r.earnings) f["e_" + l.kind] = two(l.amount);
+  for (const l of r.deductions) f["d_" + l.kind] = two(l.amount);
+  if (r.printed_gross) f.gross = two(r.printed_gross);
+  if (r.printed_net) { f.net = two(r.printed_net); f.deposit = f.net; }
+  if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.url);
+  pendingPhoto = { blob, url: URL.createObjectURL(blob) };
+  ui.form = f; ui.sheet = { type: "payslip", scanBlob: blob, queueId }; renderSheet();
+}
+
 // What the sheet holds, as the model wants it. `errors` names every typed amount that is not an amount.
 function payslipFromForm(f) {
   const errors = [], pick = (prefix, kinds) => kinds.flatMap(([kind]) => {
@@ -304,11 +315,16 @@ function savePayslipReady(f) {
   return { p, ready: (f.employer ?? "").trim() && f.pay_date && f.period_from && f.period_to && f.account_id && !p.errors.length && p.earnings.length && p.printed_gross && p.printed_net && p.deposit };
 }
 async function savePayslip() {
-  const f = ui.form, { p } = savePayslipReady(f), id = newId("ps");
+  const f = ui.form, { p } = savePayslipReady(f), id = newId("ps"), sh = ui.sheet;
   const r = M.planPayslip(S(), { id, transaction_id: newId("tx"), employer: f.employer, period_from: f.period_from, period_to: f.period_to, pay_date: f.pay_date, account_id: f.account_id,
     printed_gross: p.printed_gross, printed_net: p.printed_net, deposit: p.deposit, net_words: (f.words ?? "").trim() || undefined, earnings: p.earnings, deductions: p.deductions }, new Date());
   if (!r.ok) { showToast("Could not save: " + r.violations[0].message); return; }
   let next = r.state, note = "";
+  const photoId = sh?.scanBlob ? (sh.queueId ?? newId("photo")) : null;   // a payslip read from a photo keeps the photo with the pay
+  if (photoId) {
+    if (!sh.queueId) { try { await putPhoto(photoId, sh.scanBlob); } catch { showToast("The photo could not be kept on this phone, so nothing was saved."); return; } }
+    const att = M.planAttachment(next, { id: photoId, transaction_id: r.transaction.id }); if (att.ok) next = att.state;
+  }
   const hasOvertime = r.lines.some((l) => l.kind === "overtime");
   if (hasOvertime) {
     const emerg = S().goals.find((x) => /emergency/i.test(x.name));
@@ -316,7 +332,8 @@ async function savePayslip() {
     else { const d = M.overtimeDraft(next, id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date()); if (d?.ok && d.transaction) { next = M.applyDrafts(next, [d]); note = " The Emergency Fund draft is waiting in Verify."; } }
   }
   ui.sheet = null; renderSheet();
-  await commit(next, { ...ledger.settings, last_employer: f.employer.trim(), last_account_id: f.account_id });
+  if (pendingPhoto) { URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null; }
+  await commit(next, { ...ledger.settings, last_employer: f.employer.trim(), last_account_id: f.account_id, ...(sh?.queueId ? { scan_queue: scanQueue().filter((q) => q.id !== sh.queueId) } : {}) });
   showToast("Payslip saved: " + peso(p.deposit) + (r.flags.length ? ". " + r.flags.length + (r.flags.length === 1 ? " thing does" : " things do") + " not match; see Income." : ".") + note);
 }
 
@@ -372,6 +389,7 @@ async function startScan(file) {
 
 // The window for checking a guess: for a photo just taken, or for one kept in the queue because the app could not be sure.
 function openScanSheet(blob, text, failed, queueId, spoken = null) {
+  if (!spoken && !failed && blob && M.readScan(text, today()).kind === "payslip") { openPayslipFromPhoto(blob, text, queueId); return; }
   const r = spoken ?? M.readScan(text, today()), acct = accountForScan(r);
   if (pendingPhoto) { URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null; }
   if (blob) pendingPhoto = { blob, url: URL.createObjectURL(blob) };
@@ -1216,6 +1234,7 @@ function renderSheet() {
     const f = ui.form, field = (prefix, [kind, label]) => `<label for="${prefix}${kind}">${esc(label)}</label><input id="${prefix}${kind}" data-field="${prefix}${kind}" inputmode="decimal" value="${esc(f[prefix + kind] ?? "")}" autocomplete="off" placeholder="0.00">`;
     const months = Array.from({ length: 7 }, (_, i) => M.addMonths(M.monthOf(today()), -i));
     body = `<h3>Add a payslip</h3>
+      ${sh.scanBlob ? `<img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your payslip photo">${(f.notes ?? []).map((n) => `<p class="note">${esc(n)}</p>`).join("")}` : ""}
       <p class="note">Copy the figures off the payslip. Leave a line empty if it is not on the paper. Do not type any employee, tax or account number.</p>
       <label for="p-emp">Employer</label><input id="p-emp" data-field="employer" value="${esc(f.employer ?? "")}" autocomplete="off">
       <label for="p-from">Pay period from</label><input id="p-from" data-field="period_from" type="date" value="${esc(f.period_from)}">
@@ -1232,7 +1251,8 @@ function renderSheet() {
       <label for="p-words">Net pay in words, if written (optional)</label><input id="p-words" data-field="words" value="${esc(f.words ?? "")}" autocomplete="off" autocapitalize="off">
       <div id="p-flags" role="status"></div>
       <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>Save payslip</button></p>
-      <p class="note">If something does not match it is shown, never changed. It is still saved.</p>`;
+      <p class="note">If something does not match it is shown, never changed. It is still saved.</p>
+      ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
   } else if (sh.type === "voice") {
     body = `<h3>Say it</h3>
       <p class="note">One sentence, for example: lunch 95 at Sample Burger using GCash. You can say the day (yesterday, last Friday) too.</p>
@@ -1700,7 +1720,7 @@ async function onClick(el) {
       if (!d?.ok || !d.transaction) { showToast("Could not make the draft."); break; }
       await commit(M.applyDrafts(S(), [d])); showToast("The Emergency Fund draft is waiting in Verify."); break;
     }
-    case "pick-kind": form.kind = id; Object.assign(form, scanDefaults(id, form.guess, form.payee)); renderSheet(); break;
+    case "pick-kind": if (id === "payslip" && pendingPhoto && !ui.sheet.voice) { openPayslipFromPhoto(pendingPhoto.blob, form.text ?? "", ui.sheet.queueId ?? null); break; } form.kind = id; Object.assign(form, scanDefaults(id, form.guess, form.payee)); renderSheet(); break;
     case "save-scan": await saveScan(); break;
     case "open-photo": ui.sheet = { type: "photo", id }; renderSheet(); break;
     case "pick-acct": form.account_id = id; renderSheet(); break;
