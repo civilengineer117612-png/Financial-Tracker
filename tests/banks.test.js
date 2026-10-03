@@ -6,9 +6,10 @@ import { makeState } from "./fixtures.js";
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
 const input = (o) => ({ id: "a1", kind: "asset", opening: 0, date: "2026-10-05", ...o });
 
-test("the picker offers ten banks, unique, with plain names and no logos", () => {
-  assert.equal(BANKS.length, 10);
-  assert.equal(new Set(BANKS.map((b) => b.id)).size, 10);
+test("the picker offers eleven banks and wallets, unique, with plain names and no logos", () => {
+  assert.equal(BANKS.length, 11);
+  assert.equal(new Set(BANKS.map((b) => b.id)).size, 11);
+  assert.ok(BANKS.some((b) => b.name === "Coins.ph"));
   assert.ok(["GCash", "GoTyme", "MariBank"].every((n) => BANKS.some((b) => b.name === n)), "includes the owner's own");
   assert.ok(BANKS.every((b) => !("icon" in b) && !("logo" in b)));
   assert.ok(BANKS.every((b) => [b.domain, ...(b.alt ?? [])].every((d) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d))), "each bank has only website names, no image");

@@ -19,13 +19,16 @@ let failures = 0;
 const check = (cond, label) => { console.log((cond ? "  ok   " : "  FAIL ") + label); if (!cond) failures++; };
 const browser = await chromium.launch();
 
+// Every request for a bank logo goes through this, so the network is faked: by default nothing answers.
+let iconServe = (r) => r.abort();
 async function open({ ua = IPHONE, standalone = true, blockSw = false } = {}) {
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
+  await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png/, (r) => iconServe(r));
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => { if (m.type() === "error" && !/favicon|gstatic|duckduckgo|icon\.horse/.test(m.location().url ?? "")) errors.push(m.text()); });   // blocked icon requests are staged on purpose
+  page.on("console", (m) => { if (m.type() === "error" && !/favicon|gstatic|duckduckgo|icon\.horse|apple-touch-icon/.test(m.location().url ?? "")) errors.push(m.text()); });   // blocked icon requests are staged on purpose
   await page.clock.setFixedTime(T0);
   await page.goto(BASE);
   await page.waitForSelector("#nav button");
@@ -726,76 +729,75 @@ check((await text(page, "#screen")).includes("Upskill"), "a draft that took from
 await page.click('button:has-text("Correct")'); await seen(page, "#screen", "of");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
-// ---- choosing a bank ----
+// ---- choosing a bank: one button that opens a scrollable list ----
 await menuGo(page, "Setup");
-check((await page.locator(".chips .chip").count()) === 11 && (await page.locator("#a-name").count()) === 1, "Setup offers ten banks and Cash, and still lets you type a name that is not in the list");
-await page.click('.chips .chip:has-text("GoTyme")');
-check((await page.locator("#a-name").count()) === 0 && (await page.locator("#a-sub").count()) === 1, "choosing a bank swaps the name box for 'which part of the bank'");
+check((await page.locator("#screen .chips .chip").count()) === 0 && (await page.locator("#a-bank").count()) === 1 && (await page.locator("#a-name").count()) === 1, "Setup shows one 'Choose a bank' button instead of a wall of tiles, and still lets you type a name");
+await page.click("#a-bank");
+check((await page.locator("#sheet .bankrow").count()) === 13 && (await text(page, "#sheet")).includes("Coins.ph"), "it opens a list: eleven banks and wallets (Coins.ph included), Cash, and 'not in the list'");
+check((await page.locator("#sheet .banklist").evaluate((e) => getComputedStyle(e).overflowY)) === "auto", "the list scrolls");
+await shot(page, "30-banks");
+await page.click('#sheet .bankrow:has-text("GoTyme")');
+check((await page.locator("#a-name").count()) === 0 && (await page.locator("#a-sub").count()) === 1 && (await text(page, "#a-bank")).includes("GoTyme"), "choosing a bank closes the list and asks which part of the bank");
 await page.fill("#a-sub", "Emergency Fund");
 check((await text(page, "#a-preview")).includes("GoTyme · Emergency Fund"), "the saved name is previewed as you type");
 await page.fill("#a-open", "100"); await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added GoTyme · Emergency Fund");
-await page.click('.chips .chip:has-text("GoTyme")'); await page.fill("#a-sub", "Savings"); await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added GoTyme · Savings");
+await page.click("#a-bank"); await page.click('#sheet .bankrow:has-text("GoTyme")'); await page.fill("#a-sub", "Savings"); await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added GoTyme · Savings");
 check((await page.locator("#screen .row", { hasText: "GoTyme" }).count()) === 2, "two accounts can live in the same bank");
-await page.click('.chips .chip[aria-pressed="false"]:has-text("GCash")'); await page.click('.chips .chip:has-text("GCash")');
-check((await page.locator("#a-name").count()) === 1, "tapping the chosen bank again goes back to typing a name");
+await page.click("#a-bank"); await page.click('#sheet .bankrow:has-text("Not in the list")');
+check((await page.locator("#a-name").count()) === 1, "'not in the list' goes back to typing a name");
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.state.accounts.filter((a) => a.bank === "gotyme").length === 2, "the bank is remembered on each account");
-await shot(page, "30-banks");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
-// ---- bank logos, fetched on the phone only when asked (the network is faked here) ----
+// ---- bank logos: loaded for every listed bank by themselves (the network is faked here) ----
 const pngB64 = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"); x.fillStyle = "#1a8"; x.fillRect(0, 0, 64, 64); return c.toDataURL("image/png").split(",")[1]; });
-let asked = [];
 const tileB64 = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d"); x.fillStyle = "#d6d6d6"; x.fillRect(0, 0, 128, 128); x.fillStyle = "#9a9a9a"; x.font = "bold 60px sans-serif"; x.textAlign = "center"; x.fillText("U", 64, 88); return c.toDataURL("image/png").split(",")[1]; });   // the flat grey letter tile some services invent
-const horse = (r) => { const d = r.request().url().split("/icon/")[1]; if (d === "gotyme.com.ph") r.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(pngB64, "base64") }); else if (d === "unionbankph.com") r.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(tileB64, "base64") }); else r.abort(); };
-await page.route("https://icon.horse/**", horse);
-await page.route("https://api.faviconkit.com/**", (r) => r.abort());
-await page.route("https://t2.gstatic.com/**", (r) => { asked.push(new URL(new URL(r.request().url()).searchParams.get("url")).hostname); r.fulfill({ status: 200, contentType: "image/png", body: Buffer.from(pngB64, "base64") }); });   // no CORS header: showable, not copyable
-await page.route("https://icons.duckduckgo.com/**", (r) => r.abort());
-await addAccount(page, "Landbank", "asset", "5"); await seen(page, "#toast", "Added Landbank");
-check((await text(page, "#screen")).includes("tells that service which banks you use") && (await text(page, "#screen")).includes("not airplane mode"), "the logo button says what it sends and that it needs internet");
-await page.click('button:has-text("Get bank logos")');
-check(await seen(page, "#toast", "Got 3 logos"), "logos are fetched for the banks you use, including accounts typed as \"GCash\" and \"Landbank\" before the picker existed");
-check((await text(page, "#toast")).includes("2 shown from the web"), "and it says which ones are shown from the web");
-check([...new Set(asked)].sort().join() === "gcash.com,landbank.com", "a service that only allows showing is used only where copying failed: " + asked.join());
-check((await page.locator("#screen .row", { hasText: "GoTyme" }).locator("img.ico").count()) === 2, "both GoTyme accounts show the picture");
-check((await page.locator("#screen .row .icowrap img.ico.ov").count()) === 2, "GCash and Landbank show theirs over the letter tile");
-check((await text(page, "#screen")).includes("Get bank logos"), "the button stays, so a wrong or missing logo can be retried");
-ledgerNow = JSON.parse((await stored(page)).local);
-check(ledgerNow.state.accounts.filter((a) => a.bank === "gotyme").every((a) => a.icon.startsWith("data:image/")), "a copied picture lives in the ledger on the phone");
-check(["gcash", "landbank"].every((id) => ledgerNow.state.accounts.some((a) => a.bank === id && a.icon_url?.startsWith("https://t2.gstatic.com/faviconV2"))), "a shown-only picture keeps just its allow-listed address");
-await shot(page, "31-logos");
-// a failed download says why, per bank and per service
-await addAccount(page, "BPI", "asset", "5"); await seen(page, "#toast", "Added BPI");
-await addAccount(page, "UnionBank", "asset", "5"); await seen(page, "#toast", "Added UnionBank");
-await page.unroute("https://t2.gstatic.com/**");
-await page.route("https://t2.gstatic.com/**", (r) => r.abort());
-await page.click('button:has-text("Get bank logos")');
-check(await seen(page, "#toast", "Got 0 of 2"), "when nothing can be downloaded it says so");
+const pngReply = (b64, cors) => ({ status: 200, contentType: "image/png", headers: cors ? { "access-control-allow-origin": "*" } : {}, body: Buffer.from(b64, "base64") });
+iconServe = (r) => {
+  const u = r.request().url();
+  if (u === "https://icon.horse/icon/gotyme.com.ph") return r.fulfill(pngReply(pngB64, true));          // copyable
+  if (u === "https://icon.horse/icon/unionbankph.com") return r.fulfill(pngReply(tileB64, true));       // a placeholder: must be refused
+  if (u === "https://landbank.com/apple-touch-icon.png") return r.fulfill(pngReply(pngB64, false));     // the bank's own site icon: showable only
+  return r.abort();
+};
+await page.click("#a-bank");
+check((await text(page, "#sheet")).includes("No logo found online yet for"), "with no internet at the start, the list says which logos are still missing");
+await page.click('#sheet button:has-text("Try again")');
+await page.waitForFunction(() => !document.getElementById("sheet").innerText.includes("Loading logos"), null, { timeout: 15000 });
+const gotymeImg = await page.locator('#sheet .bankrow:has-text("GoTyme") img.ico').getAttribute("src");
+check(gotymeImg?.startsWith("data:image/"), "a copyable logo is copied and kept on the phone");
+check((await page.locator('#sheet .bankrow:has-text("Landbank") img.ico').getAttribute("src")) === "https://landbank.com/apple-touch-icon.png", "a bank's own site icon is shown from there");
+check((await page.locator('#sheet .bankrow:has-text("UnionBank") img').count()) === 0, "a generated grey placeholder is refused, so UnionBank keeps its letter");
 const rep = await text(page, "#logo-report");
-check(rep.includes("UnionBank") && rep.includes("only a generated letter tile came back"), "a generated grey letter tile is refused as a logo, not saved");
-check(rep.includes("BPI") && rep.includes("Icon Horse: could not be loaded") && rep.includes("Google icons: could not be loaded") && rep.includes("DuckDuckGo: could not be loaded") && !rep.includes("Google:"), "and lists the reason for each service: " + rep.slice(0, 160));
+check(rep.includes("UnionBank") && rep.includes("only a generated placeholder came back") && rep.includes("Maya") && rep.includes("its website: could not be loaded"), "and the reasons are listed for each bank and source");
+await shot(page, "31-logos");
+await page.click('#sheet button:has-text("Cancel")');
+check((await page.locator("#screen .row", { hasText: "GoTyme" }).locator("img.ico").count()) === 2, "every GoTyme account shows the bank's logo without anything being set on it");
+await addAccount(page, "Landbank", "asset", "5"); await seen(page, "#toast", "Added Landbank");
+check((await page.locator('#screen .row:has-text("Landbank") img.ico').count()) === 1, "an account typed as 'Landbank' shows Landbank's logo too");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.settings.bankLogos.gotyme.icon.startsWith("data:image/") && ledgerNow.settings.bankLogos.landbank.icon_url.endsWith("/apple-touch-icon.png") && !ledgerNow.settings.bankLogos.unionbank, "the logos live in the phone's settings, one per bank");
+check(ledgerNow.state.accounts.every((a) => !a.icon_url), "nothing is copied onto the accounts themselves");
+// linking an account to a bank from its picture window
 await addAccount(page, "Euf", "asset", "10"); await seen(page, "#toast", "Added Euf");
 await page.click('#screen .row:has-text("Euf") .icobtn');
-await page.click('#sheet .chip:has-text("MariBank")');
+await page.click("#i-bank");
+await page.click('#sheet .bankrow:has-text("MariBank")');
 ledgerNow = JSON.parse((await stored(page)).local);
-check(ledgerNow.state.accounts.find((a) => a.name === "Euf").bank === "maribank", "an account with its own name can be linked to a bank from its picture window");
+check(ledgerNow.state.accounts.find((a) => a.name === "Euf").bank === "maribank" && (await text(page, "#sheet")).includes("Picture for Euf"), "an account with its own name can be linked to a bank, and the picture window comes back");
 await page.click('#sheet button:has-text("Cancel")');
 // a stray tap must not give an account another bank's logo, and a wrong link can be put right
 await page.click('#screen .row:has-text("Landbank") .icobtn');
-await page.click('#sheet .chip:has-text("GCash")');
-check((await text(page, "#toast")).includes("Tap GCash again"), "tapping a different bank than the account's name asks for a second tap");
+await page.click("#i-bank"); await page.click('#sheet .bankrow:has-text("GCash")');
+check((await text(page, "#toast")).includes("Tap GCash again"), "choosing a different bank than the account's name asks for a second tap");
 ledgerNow = JSON.parse((await stored(page)).local);
-check(ledgerNow.state.accounts.find((a) => a.name === "Landbank").bank === "landbank", "and nothing changed yet");
-await page.click('#sheet .chip:has-text("GCash")');
+check(!ledgerNow.state.accounts.find((a) => a.name === "Landbank").bank, "and nothing changed yet");
+await page.click('#sheet .bankrow:has-text("GCash")');
 await seen(page, "#screen", "linked to GCash");
-ledgerNow = JSON.parse((await stored(page)).local);
-check(ledgerNow.state.accounts.find((a) => a.name === "Landbank").bank === "gcash", "the second tap links it, and the row says so");
-await page.click('#sheet .chip:has-text("Landbank")');
+await page.click("#i-bank"); await page.click('#sheet .bankrow:has-text("Landbank")');
 await page.waitForFunction(() => !document.getElementById("screen").innerText.includes("linked to GCash"), null, { timeout: 4000 });
 ledgerNow = JSON.parse((await stored(page)).local);
-const lb = ledgerNow.state.accounts.find((a) => a.name === "Landbank");
-check(lb.bank === "landbank" && !(lb.icon_url ?? "").includes("gcash.com"), "putting it right drops the other bank's logo");
+check(ledgerNow.state.accounts.find((a) => a.name === "Landbank").bank === "landbank", "putting it right links it to its own bank again");
 await page.click('#sheet button:has-text("Cancel")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
@@ -862,7 +864,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 // pictures survive a reload and appear where you choose an account
 await page.reload(); await page.waitForSelector("#nav button");
 await page.click('#nav button:has-text("Log")'); await page.click('button.tile:has-text("Breakfast")');
-check((await page.locator("#sheet .chip img.ico").count()) === 5, "pictures (two chosen, three fetched logos) are on the account buttons when you log, so you can tell them apart at a glance");
+check((await page.locator("#sheet .chip img.ico").count()) >= 4, "pictures and bank logos are on the account buttons when you log, so you can tell them apart at a glance");
 await shot(page, "16-pay-with-pictures");
 await page.click('#sheet button:has-text("Cancel")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));

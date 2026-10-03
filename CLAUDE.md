@@ -11,8 +11,9 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
   Pay plan, Checks, Trips, Buffer, Check-in, Setup). The menu is plain icon-and-text rows, no filled highlight.
 - Real plan numbers, paydays and account balances live only in the owner's phone (settings and ledger), never in this
   repo, tests or README: tests and examples use invented numbers. Plans are dated and append-only like budgets.
-- Bank logos: names and website domains only (`src/model/banks.js`). Pictures are chosen on the phone or fetched there
-  on request ("Get bank logos"); they are never committed.
+- Bank logos: names and website domains only (`src/model/banks.js`). The phone fetches the logos of ALL listed banks by
+  itself (so no service learns which banks the owner uses) and keeps them in its settings; a screenshot chosen on the
+  phone wins over them. Logos are never committed.
 - `npm test` (also runs in CI). `node e2e/run.mjs` drives the app in an iPhone-like browser (serve the repo with
   `python3 -m http.server 8124` first). A new file under `src/model/` must also be added to the list in `app/sw.js`;
   a test enforces it.

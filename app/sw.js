@@ -32,7 +32,7 @@ self.addEventListener("fetch", (e) => {
   // Other sites are never handled, except the few icon services a bank logo may be shown from: those pictures are
   // remembered so the logos still appear offline after the first time.
   const ICON_HOSTS = /^(t[0-3]\.gstatic\.com|www\.google\.com|icons\.duckduckgo\.com)$/;
-  const iconRequest = ICON_HOSTS.test(u.hostname) && (u.pathname === "/faviconV2" || u.pathname === "/s2/favicons" || u.pathname.startsWith("/ip3/"));
+  const iconRequest = (ICON_HOSTS.test(u.hostname) && (u.pathname === "/faviconV2" || u.pathname === "/s2/favicons" || u.pathname.startsWith("/ip3/"))) || u.pathname === "/apple-touch-icon.png";   // a bank site's own icon
   if (u.origin !== location.origin && !iconRequest) return;
   e.respondWith(
     fetch(e.request)

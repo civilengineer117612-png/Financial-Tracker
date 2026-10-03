@@ -1,7 +1,7 @@
 // The accounts picker (owner's request): choose a bank instead of typing its name, and optionally which part of the
 // bank an account is (for example an Emergency Fund kept inside GoTyme). Only names live here: no logos are shipped in
 // this public repository. A picture is chosen once on the phone and is shared by every account of the same bank.
-// Ten commonly used banks and e-wallets in the Philippines, including the owner's own; edit this list to change it.
+// Commonly used banks and e-wallets in the Philippines, including the owner's own; edit this list to change it.
 import { validateShape } from "./schema.js";
 
 // `domain` is the bank's public website (`alt` lists other sites to try if the first has no icon). It is used only when the owner taps "Get bank logos" on the phone, which asks
@@ -12,6 +12,7 @@ export const BANKS = [
   { id: "bdo", name: "BDO", domain: "bdo.com.ph" }, { id: "bpi", name: "BPI", domain: "bpi.com.ph" },
   { id: "metrobank", name: "Metrobank", domain: "metrobank.com.ph" }, { id: "unionbank", name: "UnionBank", domain: "unionbankph.com", alt: ["unionbank.com.ph"] },
   { id: "landbank", name: "Landbank", domain: "landbank.com" }, { id: "securitybank", name: "Security Bank", domain: "securitybank.com" },
+  { id: "coinsph", name: "Coins.ph", domain: "coins.ph" },
 ];
 export const CASH = { id: "cash", name: "Cash" };
 export const bankById = (id) => [...BANKS, CASH].find((b) => b.id === id) ?? null;
