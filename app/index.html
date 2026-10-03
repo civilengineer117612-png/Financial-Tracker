@@ -66,8 +66,9 @@
   .daytotal { text-align: center; font-size: 40px; font-weight: 700; margin: 14px 0 0; }
   p.center { text-align: center; margin: 0 0 10px; }
   .daycap { color: var(--mid); margin: 0; }
-  .datelink { position: relative; display: inline-block; text-decoration: underline; cursor: pointer; padding: 6px 2px; }
-  .datelink input { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; padding: 0; margin: 0; border: 0; opacity: 0; }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 8px 0; }
+  .cal .dow { text-align: center; color: var(--mid); font-size: 13px; padding: 4px 0; font-weight: 400; }
+  .cal button { min-height: 44px; padding: 0; font-size: 16px; font-weight: 400; } .cal button.has { font-weight: 800; } .cal button:disabled { opacity: .3; }
   .glyph { vertical-align: -1px; margin-right: 4px; flex: none; }
   .glyph.g-good { fill: var(--good); } .glyph.g-warning { fill: var(--warn); } .glyph.g-serious { fill: var(--serious); } .glyph.g-critical { fill: var(--critical); } .glyph.g-none { color: var(--mid); }
   .bars .brow.g-good .bfill, .meter.g-good .fill { background: var(--good); }

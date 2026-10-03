@@ -26,7 +26,7 @@ test("round trip returns exactly the original data", async () => {
 test("the stored backup does not contain the plaintext", async () => {
   const text = JSON.stringify(await encryptBackup(state(), PASS));
   assert.ok(!text.includes("Secret Payee"));
-  assert.ok(!text.includes("9500"));
+  assert.ok(!text.includes("\"amount\":9500"));   // a bare 4-digit number can appear by chance inside random ciphertext, so the check is on a longer marker
 });
 test("two backups of the same data differ (fresh salt and IV)", async () => {
   const a = await encryptBackup(state(), PASS), b = await encryptBackup(state(), PASS);
