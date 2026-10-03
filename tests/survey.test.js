@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateShape, validateState, weekEndingOn, autoFillSurvey, planSurveyResponse, surveyReview, editDraft, planCheckIn } from "../src/model/index.js";
+import { validateShape, validateState, weekEndingOn, autoFillSurvey, planSurveyResponse, surveyReview, unloggedByWeek, editDraft, planCheckIn } from "../src/model/index.js";
 import { makeState, account, tx, entry, commit } from "./fixtures.js";
 
 function s0() {
@@ -176,4 +176,19 @@ test("review with one week has no trend; with none, nothing", () => {
   const s = s0();
   assert.equal(surveyReview(s, [], "unlogged").trend, null);
   assert.deepEqual(surveyReview(s, [], "unlogged").weeks, []);
+});
+
+test("the weekly Unlogged series shows a gap, not a zero, for a week nobody counted", () => {
+  const s = s0(); s.checkIns = [];
+  const add = (n, date, counted) => { const p = checkIn(s, n, date, counted); s.checkIns.push(p.checkIn); };
+  add(1, "2026-03-15", 90000);    // 10,000 missing
+  add(2, "2026-03-29", 85000);    // 5,000 more missing
+  const w = unloggedByWeek(s, "unlogged", "2026-03-29", 4);
+  assert.deepEqual(w.map((x) => x.week_end), ["2026-03-08", "2026-03-15", "2026-03-22", "2026-03-29"]);
+  assert.deepEqual(w.map((x) => x.amount), [null, 10000, null, 5000]);
+  assert.equal(w[0].week_start, "2026-03-02");
+  const found = checkIn(s, 3, "2026-04-05", 99999);   // wallet holds MORE than the ledger: a gain
+  s.checkIns.push(found.checkIn);
+  assert.equal(unloggedByWeek(s, "unlogged", "2026-04-05", 1)[0].amount, -(99999 - 85000), "a gain is a negative amount");
+  assert.equal(unloggedByWeek({ ...s, checkIns: undefined }, "unlogged", "2026-03-29", 2).every((x) => x.amount === null), true, "no check-ins at all: only gaps");
 });

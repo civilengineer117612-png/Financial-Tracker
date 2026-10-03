@@ -451,7 +451,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3, "it is the three-line icon");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Pay plan,Check-in,Setup", "the menu lists Money, Budget, Goals, Pay plan, Check-in and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Pay plan,Checks,Check-in,Setup", "the menu lists Money, Budget, Goals, Pay plan, Checks, Check-in and Setup");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
 await shot(page, "17-menu");
 await page.keyboard.press("Escape");
@@ -591,6 +591,20 @@ check((await text(page, "#d-out")).includes("₱0.00") && (await text(page, "#d-
 await shot(page, "23-day-totals");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
+// ---- checks: card reserve and the Unlogged habit ----
+await menuGo(page, "Checks");
+const ctext = await text(page, "#screen");
+check(/No card reserve|Covered|Short by/.test(ctext), "the card reserve check says covered, short, or that none is set up");
+check(await page.locator(".bars .brow").count() === 1, "the Unlogged chart has one bar for the one week that was counted");
+await page.click(".bars .brow");
+check((await text(page, ".caption")).includes("could not be accounted for"), "tapping the bar says what it means in words");
+await page.click('button:has-text("Show as list")');
+check((await text(page, ".tbl >> nth=0")).includes("Not counted"), "the list twin marks weeks nobody counted instead of showing zero");
+check((await text(page, "#screen")).includes("4/5"), "the weekly questions review shows the answers");
+await shot(page, "27-checks");
+await page.click('button:has-text("Show as chart")');
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+
 // ---- goals ----
 await menuGo(page, "Goals");
 check((await text(page, "#screen")).includes("No goals yet"), "goals start empty");
@@ -632,6 +646,13 @@ const ptxt = await text(page, "#screen");
 if (!ptxt.includes("last day of the month")) console.log("   plan screen:", JSON.stringify(ptxt.slice(0, 500)));
 check(ptxt.includes("last day of the month") && ptxt.includes("₱5,100.00") && ptxt.includes("₱7,100.00") && ptxt.includes("₱12,200.00") && ptxt.toLowerCase().includes("this cutoff"), "the plan shows both paydays (the second at month end) and the totals per payday and month");
 check(ptxt.includes("Mystery") && ptxt.includes("not tracked") && ptxt.includes("In effect since"), "a line with no matching category is said out loud, and the start date is shown");
+await page.click('button:has-text("Record pay received")');
+check(await page.locator("#f-save").isDisabled(), "pay needs an amount first");
+await page.fill("#f-amount", "5000.50"); await page.click("#f-save"); await seen(page, "#toast", "Pay recorded");
+const inc = await text(page, "#screen");
+check(inc.includes("₱5,000.50") && inc.includes("−₱2,099.50 less"), "pay received is shown against the plan as a signed difference in words");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.settings.plans[0].paydays[1].income === 710000, "the plan itself is not changed by the real pay");
 await page.click('button:has-text("Load a newer plan")');
 await page.fill("#p-text", JSON.stringify({ ...plan, lines: plan.lines.map((l) => (l.name === "Rent" ? { ...l, second: 1900 } : l.name === "Apartment" ? { ...l, second: 1100 } : l)) }));
 await page.click("#f-save");

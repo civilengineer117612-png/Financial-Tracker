@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, cutoffFor, planProgress } from "../src/model/index.js";
+import { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, cutoffFor, planProgress, planIncome, planPayReceived } from "../src/model/index.js";
 import { makeState, account, tx, entry, commit } from "./fixtures.js";
 
 // Invented numbers only, in whole pesos. Each payday's lines add up to its expected income exactly.
@@ -104,4 +104,32 @@ test("progress counts verified spending in the cutoff only, per line, and flags 
   assert.equal(p.rows.find((r) => r.name === "Apartment Fund").spent, null, "goal lines are plans only");
   const odd = planProgress(s, parsePlan(file((o) => { o.lines[1].name = "Mystery"; o.ef_target_basis = ["Food"]; })).plan, "2026-10-20");
   assert.equal(odd.rows[1].matched, false);
+});
+
+test("income variance compares the plan's planning income with the true pay received, never editing the plan", () => {
+  const s = makeState();
+  s.categories.push({ id: "sal", name: "Salary", kind: "income" });
+  s.accounts.push(account({ id: "bank", name: "Test Bank", class: "asset" }));
+  const plan = parsePlan(file()).plan;   // first payday planning income: 100000 centavos
+  const rec = (id, date, amount) => planPayReceived(s, { transaction_id: id, date, amount, account_id: "bank" });
+  let r = rec("p1", "2026-10-15", 99998);       // true pay 2 centavos short of the plan
+  assert.equal(r.ok, true);
+  Object.assign(s, r.state);
+  r = rec("p2", "2026-10-20", 5000);            // an overtime payment in the same cutoff
+  Object.assign(s, r.state);
+  const v = planIncome(s, plan, "2026-10-20");
+  assert.deepEqual([v.label, v.planned, v.actual, v.variance, v.count], ["1st", 100000, 104998, 4998, 2]);
+  const next = planIncome(s, plan, "2026-10-31");
+  assert.deepEqual([next.planned, next.actual, next.variance], [240000, 0, -240000], "a payday not yet received shows the whole plan as short");
+  assert.equal(plan.paydays[0].income, 100000, "the plan is untouched");
+});
+test("pay received is refused when it makes no sense, and is saved verified when it does", () => {
+  const s = makeState();
+  s.categories.push({ id: "sal", name: "Salary", kind: "income" });
+  s.accounts.push(account({ id: "bank", name: "Test Bank", class: "asset" }));
+  const ok = planPayReceived(s, { transaction_id: "p", date: "2026-10-15", amount: 977698, account_id: "bank" });
+  assert.deepEqual([ok.ok, ok.transaction.status, ok.entries.map((e) => e.amount)], [true, "verified", [977698, -977698]]);
+  for (const [o, code] of [[{ amount: 0 }, "BAD_AMOUNT"], [{ amount: 1.5 }, "BAD_AMOUNT"], [{ account_id: "card" }, "UNKNOWN_ACCOUNT"], [{ category_id: "food" }, "UNKNOWN_CATEGORY"], [{ date: "10/15" }, "BAD_DATE"]]) {
+    assert.equal(planPayReceived(s, { transaction_id: "p", date: "2026-10-15", amount: 100, account_id: "bank", ...o }).violations[0].code, code);
+  }
 });
