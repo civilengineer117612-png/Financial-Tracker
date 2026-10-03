@@ -122,6 +122,19 @@ function renderScreen() {
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
 }
 
+// Quick day totals: today's spending is always on the Log screen; any other date is one pick away.
+function dayLine(date, label) {
+  const d = M.dayTotal(S(), date);
+  const note = d.drafts ? ` <small>includes ${d.drafts} not yet verified</small>` : "";
+  return `<span class="dlabel">${esc(label)}</span><span class="dval">${peso(d.total)}${note}</span>`;
+}
+function dayCard() {
+  const picked = ui.dayPick && ui.dayPick !== today() ? ui.dayPick : "";
+  return `<div class="daycard"><div class="dline">${dayLine(today(), "Spent today")}</div>
+    <label for="d-pick">Total for another day</label><input id="d-pick" type="date" data-day="1" max="${esc(today())}" value="${esc(picked)}">
+    <div class="dline" id="d-out" role="status">${picked ? dayLine(picked, longDate(picked)) : ""}</div></div>`;
+}
+
 function viewLog() {
   if (activeAccounts().length === 0) {
     return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p><p class="note">Add the accounts you pay from first.</p>
@@ -134,6 +147,7 @@ function viewLog() {
     ? `<p class="note"><button class="link" data-action="tab" data-tab="setup">${age === null ? "No backup yet" : "Last backup " + age + " days ago"}</button></p>` : "";
   const dueNote = due ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">${due} ${due === 1 ? "entry" : "entries"} from before today ${due === 1 ? "needs" : "need"} verifying</button></p>` : "";
   return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${dueNote}${backupNote}
+    ${dayCard()}
     <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
     <p><button class="primary" data-action="open-other" style="margin-top:12px">Other amount</button></p>
     <h2 class="today">Today</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged today.</p>`}`;
@@ -783,6 +797,7 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ui.menu) { ui.menu = false; renderMenu(); } });
 document.addEventListener("input", (e) => {
+  if (e.target.dataset?.day) { ui.dayPick = e.target.value; $("d-out").innerHTML = e.target.value ? dayLine(e.target.value, longDate(e.target.value)) : ""; return; }
   const field = e.target.dataset?.field;
   if (!field) return;
   if (e.target.type === "file") return;   // handled on change

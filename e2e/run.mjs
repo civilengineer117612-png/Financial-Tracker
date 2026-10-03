@@ -566,6 +566,14 @@ check(ledgerNow.state.surveyResponses.length === 1 && ledgerNow.state.surveyResp
 await shot(page, "22-checkin");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
+// ---- quick day totals ----
+await page.click('#nav button:has-text("Log")');
+check(/Spent today\s*₱\d/.test(await text(page, ".daycard")), "today's total is always on the Log screen");
+await page.fill("#d-pick", "2026-01-05");
+check((await text(page, "#d-out")).includes("₱0.00") && (await text(page, "#d-out")).includes("Jan"), "another date shows its own total");
+await shot(page, "23-day-totals");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+
 // pictures survive a reload and appear where you choose an account
 await page.reload(); await page.waitForSelector("#nav button");
 await page.click('#nav button:has-text("Log")'); await page.click('button.tile:has-text("Breakfast")');
