@@ -546,11 +546,11 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
 
 // ---------- Budget: the monthly amounts ----------
 // ---------- overrun buffer ----------
-// The GCash wallet holds two envelopes the ledger tracks apart: the ride/load allowance and the overrun buffer.
+// The account the owner picks (a wallet, say) holds two envelopes the ledger tracks apart: an everyday allowance and the overrun buffer.
 const gcashOf = () => (ledger.settings.gcash && S().accounts.some((a) => a.id === ledger.settings.gcash.account_id) ? ledger.settings.gcash : null);
 function viewBuffer() {
   const g = gcashOf();
-  if (!g) return `<h1>Buffer</h1><p class="note">The overrun buffer is money set aside inside your GCash wallet, apart from the money for rides and load. It is only used when a category overruns, and every draw is recorded against that category.</p>
+  if (!g) return `<h1>Buffer</h1><p class="note">The overrun buffer is money you set aside inside one of your accounts (you choose which), apart from your everyday allowance in that same account. It is only used when a category overruns, and every draw is recorded against that category.</p>
     <p><button class="primary" data-action="open-bufsetup">Set up the buffer</button></p>`;
   const month = M.monthOf(today());
   const sum = M.bufferSummary(S(), { allowance_envelope_id: g.allowance_id, buffer_envelope_id: g.buffer_id, month });
@@ -562,8 +562,8 @@ function viewBuffer() {
       <tr class="total"><td>Total drawn</td><td class="n">${peso(sum.drawn)}</td></tr></table>` : `<p class="note">Nothing has been drawn from the buffer this month.</p>`;
   const flagged = M.underBudgetedCategories(S(), g.buffer_id, 2).map((c) => categoryName(c.category_id));
   return `<h1>Buffer</h1><p class="sub">Inside ${esc(acct.name)}</p>
-    <div class="card"><dl><dt>Buffer left</dt><dd class="big">${peso(sum.buffer)}</dd>${monthly != null ? `<dt>Plan per month</dt><dd>${peso(monthly)}</dd>` : ""}<dt>Rides and load left</dt><dd>${peso(sum.allowance)}</dd></dl></div>
-    ${empty ? `<p class="note"><b>The rides and load allowance is empty.</b> More ${esc(acct.name)} spending will draw the buffer.</p>` : ""}
+    <div class="card"><dl><dt>Buffer left</dt><dd class="big">${peso(sum.buffer)}</dd>${monthly != null ? `<dt>Plan per month</dt><dd>${peso(monthly)}</dd>` : ""}<dt>Allowance left</dt><dd>${peso(sum.allowance)}</dd></dl></div>
+    ${empty ? `<p class="note"><b>The everyday allowance in ${esc(acct.name)} is empty.</b> More ${esc(acct.name)} spending will draw the buffer.</p>` : ""}
     <h2>Drawn in ${esc(M.monthLabel(month))}</h2>${draws}
     ${flagged.length ? `<p class="note">${esc(flagged.join(", "))} drew the buffer in more than one month. That line may be under-budgeted: set a new budget from next month.</p>` : ""}
     <p><button class="primary" data-action="open-bufund" style="margin-top:8px">Add to the buffer</button></p>
@@ -804,10 +804,10 @@ function renderSheet() {
       <p class="note">Days in bold have entries.</p>`;
   } else if (sh.type === "bufsetup") {
     body = `<h3>Set up the buffer</h3>
-      <label>Which account is the GCash wallet?</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <label>Which account holds the buffer?</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
       <p class="note" id="b-held"></p>
       <label for="b-buf">Overrun buffer (\u20B1)</label><input id="b-buf" data-field="buf" inputmode="decimal" value="${esc(ui.form.buf ?? "")}" autocomplete="off">
-      <label for="b-allow">Rides and load allowance (\u20B1)</label><input id="b-allow" data-field="allow" inputmode="decimal" value="${esc(ui.form.allow ?? "")}" autocomplete="off">
+      <label for="b-allow">Everyday allowance (\u20B1)</label><input id="b-allow" data-field="allow" inputmode="decimal" value="${esc(ui.form.allow ?? "")}" autocomplete="off">
       <p class="note">Together they cannot be more than the wallet holds. The wallet's total does not change; it is only split into two parts.</p>
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="save-bufsetup" style="margin-top:6px" disabled>Split the wallet</button></p>`;
@@ -985,7 +985,7 @@ const bufferNote = (violations) => {
   const w = (c) => violations.find((x) => x.code === c);
   if (w("BUFFER_EXHAUSTED")) return "This was more than the allowance and the buffer together.";
   if (w("BUFFER_DRAWN")) return peso(w("BUFFER_DRAWN").drawn) + " came out of the overrun buffer.";
-  if (w("ALLOWANCE_EMPTY")) return "The rides and load allowance is empty. More spending from here draws the buffer.";
+  if (w("ALLOWANCE_EMPTY")) return "The everyday allowance in this account is empty. More spending from it draws the buffer.";
   return "";
 };
 
@@ -994,7 +994,7 @@ async function logExpense(input, label) {
   const g = gcashOf();
   let drafts, note;
   if (g && input.account_id === g.account_id) {
-    // Spending from the GCash wallet takes from the allowance first, then the buffer (spec 6.4).
+    // Spending from the buffer's account takes from the allowance first, then the buffer (spec 6.4).
     const p = M.planGcashSpend(S(), { transaction_id: input.transaction_id, date: today(), payee: input.payee ?? "", category_id: input.category_id, amount: input.amount,
       gcash_account_id: g.account_id, allowance_envelope_id: g.allowance_id, buffer_envelope_id: g.buffer_id }, new Date());
     if (!p.ok) { showToast("Could not save: " + p.violations[0].message); return; }

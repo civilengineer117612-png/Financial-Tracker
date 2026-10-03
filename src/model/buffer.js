@@ -1,4 +1,4 @@
-// Spec 6.4: the overrun buffer. Money in the GCash wallet is split into envelopes
+// Spec 6.4: the overrun buffer. Money in the account the owner chooses is split into envelopes
 // (the ride/load allowance and the buffer). An envelope's balance is the sum of the
 // entries tagged with it; debit +, so funding it is a debit and spending is a credit.
 //
@@ -44,7 +44,7 @@ export function planGcashSpend(state, input, now = new Date()) {
 
   const result = checkTransactionSave(state, { transaction, entries });
   const notes = [];
-  if (allowance - fromAllowance <= 0) notes.push(warn("ALLOWANCE_EMPTY", "allowance is empty; further GCash spending draws the buffer"));
+  if (allowance - fromAllowance <= 0) notes.push(warn("ALLOWANCE_EMPTY", "allowance is empty; further spending from this account draws the buffer"));
   if (fromBuffer > 0) notes.push(warn("BUFFER_DRAWN", fromBuffer + " centavos drawn from the buffer", { drawn: fromBuffer }));
   if (untracked > 0) notes.push(warn("BUFFER_EXHAUSTED", untracked + " centavos exceeded both allowance and buffer", { untracked }));
   return { ...result, violations: [...result.violations, ...notes], transaction, entries };
@@ -103,7 +103,8 @@ export function underBudgetedCategories(state, bufferEnvelopeId, minMonths) {
 
 const failv = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }] });
 
-// First-time setup of the GCash wallet's two envelopes (spec 6.4): the ride/load allowance and the overrun buffer.
+// First-time setup of an account's two envelopes (spec 6.4): an everyday allowance and the overrun buffer. The owner
+// chooses the account (a wallet such as GCash is just the usual example).
 // Each is funded by a balanced transaction inside the same account (+amount tagged with the envelope, -amount
 // untagged), so the account balance does not change. Saved VERIFIED: it is the owner's own split of money they hold.
 // input: {gcash_account_id, allowance_envelope_id, buffer_envelope_id, allowance_amount, buffer_amount, date, transaction_ids:[a, b]}
@@ -117,12 +118,12 @@ export function planEnvelopeSetup(state, input, now = new Date()) {
   const ids = [input.allowance_envelope_id, input.buffer_envelope_id];
   if (ids.some((id) => (state.envelopes ?? []).some((e) => e.id === id))) return failv("DUPLICATE_ID", "the envelopes already exist");
   const envelopes = [
-    { id: input.allowance_envelope_id, account_id: account.id, name: "Rides and load", purpose: "allowance" },
+    { id: input.allowance_envelope_id, account_id: account.id, name: "Allowance", purpose: "allowance" },
     { id: input.buffer_envelope_id, account_id: account.id, name: "Overrun Buffer", purpose: "buffer" },
   ];
   let next = { ...state, envelopes: [...(state.envelopes ?? []), ...envelopes] };
   const stamp = phTimestamp(now);
-  for (const [i, amount, name] of [[0, input.allowance_amount, "Rides and load"], [1, input.buffer_amount, "Overrun Buffer"]]) {
+  for (const [i, amount, name] of [[0, input.allowance_amount, "Allowance"], [1, input.buffer_amount, "Overrun Buffer"]]) {
     if (amount === 0) continue;
     const transaction = { id: input.transaction_ids[i], date: input.date, payee: "Set aside: " + name, memo: "", status: "verified", source: "manual", created_at: stamp, verified_at: stamp };
     const entries = [
