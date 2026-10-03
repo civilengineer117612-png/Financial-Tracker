@@ -66,9 +66,10 @@
   .daytotal { text-align: center; font-size: 40px; font-weight: 700; margin: 14px 0 0; }
   p.center { text-align: center; margin: 0 0 10px; }
   .daycap { color: var(--mid); margin: 0; }
-  .seg.six { display: grid; grid-template-columns: repeat(3, 1fr); }
-  p.right { text-align: right; margin: 4px 0 0; }
-  .shapebtn { width: 56px; min-height: 48px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+  .ptitle { flex: 1; border: 0; background: none; font-weight: 700; font-size: 18px; min-height: 48px; }
+  .stepper.single .ptitle { text-align: center; }
+  .flip { cursor: pointer; } .flip:active { opacity: .8; }
+  .mgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; } .mgrid button { min-height: 48px; } .mgrid button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); } .mgrid button:disabled { opacity: .3; }
   .rangepick { display: flex; gap: 8px; margin: 8px 0; }
   .rangepick button { flex: 1; text-align: left; display: flex; flex-direction: column; padding: 8px 12px; min-height: 56px; }
   .rangepick small { color: var(--mid); font-weight: 400; font-size: 13px; } .rangepick b { font-size: 16px; }

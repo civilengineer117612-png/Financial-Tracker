@@ -57,4 +57,4 @@ export { LEDGER_VERSION, emptyState, emptyLedger, nextLedger, parseLedger, choos
 export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByRange, spendingByAccount, monthlySpending, dayTotal } from "./reports.js";
 export { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, cutoffFor, planProgress, planIncome, planPayReceived } from "./plan.js";
 export { planTag, tagSummary } from "./trips.js";
-export { BANKS, CASH, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl } from "./banks.js";
+export { BANKS, CASH, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, bankPicture, isPlaceholderAddress, dropPlaceholderAddresses } from "./banks.js";

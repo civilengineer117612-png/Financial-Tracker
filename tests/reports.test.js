@@ -186,3 +186,10 @@ test("a month report is the range report for that month", () => {
   spend(s, "a", "2026-03-31", "rent", 700); spend(s, "b", "2026-04-01", "rent", 900);
   assert.deepEqual(spendingByCategory(s, { month: "2026-03" }), spendingByRange(s, { from: "2026-03-01", to: "2026-03-31" }));
 });
+
+test("spending by account works for any date range too", () => {
+  const s = base();
+  spend(s, "a", "2026-02-27", "rent", 1000, "cash"); spend(s, "b", "2026-03-02", "rent", 2000, "cash"); spend(s, "c", "2026-03-20", "rent", 4000, "cash");
+  assert.equal(spendingByAccount(s, { from: "2026-02-27", to: "2026-03-02" }).total, 3000);
+  assert.equal(spendingByAccount(s, { month: "2026-03" }).total, 6000, "a month still works");
+});

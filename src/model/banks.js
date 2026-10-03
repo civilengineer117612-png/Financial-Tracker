@@ -88,3 +88,19 @@ export function setBankIconUrl(state, bankId, url) {
   if (problems.length) return fail("BAD_ICON_URL", "that icon address cannot be used");
   return { ok: true, violations: [], changed, state: { ...state, accounts } };
 }
+
+// The picture a bank already has on one of the owner's accounts: one linked to the bank, or one whose name plainly is the
+// bank (an account typed before the picker existed). Used for the bank tiles in Setup. {icon, icon_url} or null.
+export function bankPicture(accounts, bankId) {
+  const a = accounts.find((x) => (x.bank === bankId || (!x.bank && bankForName(x.name)?.id === bankId)) && (x.icon || x.icon_url));
+  return a ? { ...(a.icon ? { icon: a.icon } : {}), ...(a.icon_url ? { icon_url: a.icon_url } : {}) } : null;
+}
+
+// Addresses saved by earlier versions from services that answer a missing icon with a grey placeholder picture.
+export const isPlaceholderAddress = (url) => /fallback_opts|www\.google\.com\/s2\/favicons/.test(url ?? "");
+
+// Throws those addresses away, so the account shows its letter tile until a real logo or a screenshot is added.
+export function dropPlaceholderAddresses(state) {
+  if (!state.accounts.some((a) => isPlaceholderAddress(a.icon_url))) return state;
+  return { ...state, accounts: state.accounts.map((a) => { if (!isPlaceholderAddress(a.icon_url)) return a; const { icon_url, ...rest } = a; return rest; }) };
+}
