@@ -26,6 +26,14 @@
   button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); width: 100%; font-size: 18px; min-height: 56px; }
   button.primary:active { background: var(--mid); }
   button:disabled { opacity: .4; }
+  .filebtn { display: flex; align-items: center; justify-content: center; background: var(--ink); color: var(--paper); border-radius: 8px; font-size: 18px; min-height: 56px; margin-top: 12px; cursor: pointer; }
+  .filebtn[aria-disabled="true"] { opacity: .4; }
+  .shot { display: block; width: 100%; max-height: 260px; object-fit: contain; background: var(--wash); border-radius: 8px; }
+  .shot[hidden], .shotfull[hidden] { display: none; }
+  .shotbtn { display: block; width: 100%; padding: 0; min-height: 0; border: 0; background: none; margin-bottom: 10px; }
+  .shotfull { display: block; width: 100%; max-height: 70vh; object-fit: contain; }
+  .rawtext { white-space: pre-wrap; font: 13px/1.4 ui-monospace, monospace; color: var(--mid); max-height: 160px; overflow: auto; background: var(--wash); padding: 8px; border-radius: 8px; }
+  details summary { min-height: 44px; display: flex; align-items: center; }
   button.link { background: none; border: 0; padding: 4px 0; min-height: 0; text-decoration: underline; }
   .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 84px; gap: 2px; }

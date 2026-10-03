@@ -2,12 +2,12 @@
 // so losing or failing one of them is noticed and repaired from the other (model/persist.js).
 // A value of undefined means "that store could not be read at all".
 const LS_KEY = "financialTracker.ledger";
-const DB_NAME = "financialTracker", STORE = "kv", KEY = "ledger";
+const DB_NAME = "financialTracker", STORE = "kv", KEY = "ledger", PHOTOS = "photos";
 
 function openDb() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    const req = indexedDB.open(DB_NAME, 2);   // version 2 adds the store for photos of receipts; the ledger store is untouched
+    req.onupgradeneeded = () => { for (const name of [STORE, PHOTOS]) if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name); };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -54,3 +54,21 @@ export function writeBoth(text, { local = true, idb = true } = {}) {
   queue = job.catch(() => {});
   return job;
 }
+
+// Photos of receipts and payslips: the picture files themselves, kept only on this phone, under the id the ledger's
+// attachment row names. They are not part of the ledger text and not part of the backup file.
+async function photoTx(mode, run) {
+  const db = await openDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(PHOTOS, mode);
+      const r = run(tx.objectStore(PHOTOS));
+      tx.oncomplete = () => resolve(r?.result ?? null);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally { db.close(); }
+}
+export const putPhoto = (id, blob) => photoTx("readwrite", (st) => st.put(blob, id));
+export const getPhoto = (id) => photoTx("readonly", (st) => st.get(id));
+export const deletePhoto = (id) => photoTx("readwrite", (st) => st.delete(id));

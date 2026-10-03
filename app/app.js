@@ -1,7 +1,8 @@
 // The screens. All money rules live in ../src/model; this file only draws and handles taps.
 // Plain and firm, never harsh: facts are stated once, nothing is red, nothing blocks logging.
 import * as M from "../src/model/index.js";
-import { readBoth, writeBoth } from "./store.js";
+import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto } from "./store.js";
+import { preparePhoto, readText } from "./ocr.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -61,6 +62,7 @@ function describe(t) {
   const es = S().entries.filter((e) => e.transaction_id === t.id);
   const cat = es.find((e) => e.category_id != null), acct = es.find((e) => e.account_id != null);
   if (cat && acct && es.filter((e) => e.category_id == null).every((e) => e.account_id === acct.account_id) && es.filter((e) => e.category_id != null).length === 1) {
+    if (S().categories.find((c) => c.id === cat.category_id)?.kind === "income") return { kind: "income", editable: false, title: t.payee || categoryName(cat.category_id), category_id: cat.category_id, account_id: acct.account_id, amount: Math.abs(cat.amount), detail: accountName(acct.account_id) };
     return { kind: "expense", editable: es.length === 2, title: t.payee || categoryName(cat.category_id), category_id: cat.category_id, account_id: acct.account_id, amount: Math.abs(cat.amount), detail: accountName(acct.account_id) };
   }
   if (es.length === 2 && es.every((e) => e.account_id != null)) {
@@ -99,11 +101,12 @@ const ICONS = {
   plan: '<path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/>',
   checks: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   trips: '<path d="M20 10c0 5-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 15 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/>',
   buffer: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
   checkin: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
   setup: '<path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/>',
 };
-const MENU = [["Overview", [["money", "Spending"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
+const MENU = [["Overview", [["money", "Spending"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Capture", [["scan", "Scan"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
@@ -140,10 +143,11 @@ function renderNav() {
 function renderScreen() {
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
-    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "buffer" ? viewBuffer() : viewLog();
+    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "buffer" ? viewBuffer() : ui.tab === "scan" ? viewScan() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
+  hydratePhotos();
 }
 
 // The big number on the Log screen is the total for the day being looked at: today, or the day picked with "Select date".
@@ -198,17 +202,100 @@ function viewVerify() {
   const partner = S().transactions.find((x) => x.id === "rsv:" + t.id);
   const fields = d.kind === "expense"
     ? `<dt>Category</dt><dd>${esc(categoryName(d.category_id))}</dd><dt>Paid from</dt><dd class="who">${withIcon(S().accounts.find((a) => a.id === d.account_id), 22)}</dd>`
+    : d.kind === "income" ? `<dt>Arrived in</dt><dd class="who">${withIcon(S().accounts.find((a) => a.id === d.account_id), 22)}</dd>`
     : d.detail ? `<dt>Between</dt><dd>${esc(d.detail)}</dd>` : "";
   const reserve = partner ? `<dt>Also</dt><dd>reserve transfer ${peso(describe(partner).amount)}</dd>` : "";
   const del = ui.confirmDelete === t.id;
+  const shot = M.attachmentsFor(S(), t.id)[0];
+  const fromPhoto = t.source === "photo" ? `<p class="note">Read from the photo. Compare each line with the paper before you tap Correct.</p>` : "";
   return `${head}<p class="note">1 of ${list.length}</p>
-    <div class="card"><div class="what">${esc(d.title)}</div><div class="big">${peso(d.amount)}</div>
+    <div class="card">${shot ? `<button class="shotbtn" data-action="open-photo" data-id="${esc(shot.id)}" aria-label="Open the photo full size"><img class="shot" data-photo="${esc(shot.id)}" alt="The photo this entry was read from" hidden></button>` : ""}${fromPhoto}<div class="what">${esc(d.title)}</div><div class="big">${peso(d.amount)}</div>
       <dl><dt>Date</dt><dd>${esc(longDate(t.date))}</dd>${fields}${reserve}</dl>
       <div class="actions">
         <button class="primary wide" data-action="verify-ok" data-id="${esc(t.id)}">Correct</button>
         <button data-action="verify-edit" data-id="${esc(t.id)}">Edit</button>
         <button data-action="verify-delete" data-id="${esc(t.id)}">${del ? "Tap again to delete" : "Delete"}</button>
       </div></div>`;
+}
+
+// ---------- scan: a photo of a receipt, payslip or payment screenshot ----------
+// The phone reads the photo itself (app/ocr.js), src/model/scan.js turns the words into a guess, and the owner corrects the
+// guess in a window. The result is a DRAFT with the photo kept beside it, so Verify shows the paper next to the numbers.
+let pendingPhoto = null;   // {blob, url}: the photo being checked, not yet saved
+const photoUrls = new Map();   // saved photos shown on this screen: attachment id -> object address
+
+function viewScan() {
+  const s = ui.scan, busy = s?.busy === true;
+  const status = busy ? `<p class="note" id="scan-msg" role="status">${esc(s.msg)}</p>` : s?.error ? `<p class="note" role="alert">${esc(s.error)}</p>` : s?.done ? `<p class="note" role="status">${esc(s.done)} <button class="link" data-action="tab" data-tab="verify">Go to Verify</button></p>` : "";
+  return `<h1>Scan</h1><p class="sub">A receipt, payslip or payment screenshot</p>
+    <p class="note">This phone reads the photo itself. The photo is never sent anywhere. It guesses what the paper is, the amount and the date. You check each guess, and the entry waits in Verify with the photo beside it.</p>
+    <label class="filebtn" aria-disabled="${busy}">${busy ? "Reading..." : "Take or choose a photo"}<input type="file" accept="image/*" data-scan="1" hidden${busy ? " disabled" : ""}></label>
+    ${status}
+    <p class="note">The first photo downloads the reader (about 7 MB) while you are online. After that it works with no internet. Handwriting is read poorly, so check every number on a handwritten receipt. Photos stay on this phone and are not in the backup file.</p>`;
+}
+
+const incomeCategories = () => S().categories.filter((c) => c.kind === "income");
+function scanDefaults(kind, guess) {
+  if (M.kindById(kind).direction === "in") {
+    const inc = incomeCategories();
+    return { category_id: (kind === "payslip" ? inc.find((c) => c.id === "cat-salary") : null)?.id ?? inc[0]?.id ?? null };
+  }
+  return { category_id: expenseCategories().find((c) => guess && c.name.toLowerCase() === guess.toLowerCase())?.id ?? null };
+}
+
+async function startScan(file) {
+  if (!file) return;
+  const say = (msg) => { if (ui.scan) ui.scan.msg = msg; const el = $("scan-msg"); if (el) el.textContent = msg; };
+  ui.scan = { busy: true, msg: "Preparing the photo..." }; renderScreen();
+  let blob, text = "", failed = null;
+  try { blob = await preparePhoto(file); }
+  catch (e) { ui.scan = { error: "That file could not be opened as a picture (" + e.message + ")." }; renderScreen(); return; }
+  try { text = await readText(blob, (f, what) => say(what + (f ? " " + Math.round(f * 100) + "%" : "..."))); }
+  catch (e) { failed = e.message; }
+  ui.scan = null; renderScreen();
+  const r = M.readScan(text, today());
+  if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.url);
+  pendingPhoto = { blob, url: URL.createObjectURL(blob) };
+  const notes = failed ? ["The reader could not run (" + failed + "). Fill in the fields yourself; the photo is kept."] : r.readAnything ? r.notes : ["I could not read any words on the photo. Fill in the fields yourself; the photo is kept."];
+  ui.form = { kind: r.kind, guess: r.categoryGuess, amount: r.amount ? (r.amount / 100).toFixed(2) : "", date: r.date ?? today(), payee: r.payee ?? "", notes, text,
+    account_id: accountsFor(null)[0]?.id ?? null, ...scanDefaults(r.kind, r.categoryGuess) };
+  ui.sheet = { type: "scan" }; renderSheet();
+}
+
+async function saveScan() {
+  const f = ui.form, amount = M.parsePesos(f.amount).centavos, kind = M.kindById(f.kind), id = newId("tx"), photoId = newId("photo");
+  try { await putPhoto(photoId, pendingPhoto.blob); }
+  catch { showToast("The photo could not be kept on this phone, so nothing was saved."); return; }
+  let ok = false;
+  if (kind.direction === "in") {
+    const p = M.planPayReceived(S(), { transaction_id: id, date: f.date, amount, account_id: f.account_id, category_id: f.category_id, source: "photo", payee: f.payee.trim() || kind.label }, new Date());
+    if (p.ok) {
+      const a = M.planAttachment(M.applyDrafts(S(), [p]), { id: photoId, transaction_id: id });
+      ok = a.ok && await commit(a.state, { ...ledger.settings, last_account_id: f.account_id });
+    } else showToast("Could not save: " + p.violations[0].message);
+  } else {
+    ok = await logExpense({ transaction_id: id, date: f.date, payee: f.payee.trim(), category_id: f.category_id, amount, account_id: f.account_id, source: "photo", photo_id: photoId }, (f.payee.trim() || categoryName(f.category_id)) + " " + peso(amount));
+  }
+  if (!ok) { deletePhoto(photoId).catch(() => {}); return; }   // the window stays open so nothing typed is lost
+  URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null;
+  ui.sheet = null; ui.scan = { done: "Saved " + peso(amount) + " as a draft with its photo." };
+  renderAll();
+}
+
+// Saved photos are loaded from the phone's own store after a screen is drawn, and shown where a picture is waiting.
+function hydratePhotos() {
+  for (const img of document.querySelectorAll("img[data-photo]")) {
+    const id = img.dataset.photo;
+    (async () => {
+      let url = photoUrls.get(id);
+      if (!url) {
+        const blob = await getPhoto(id);
+        if (!blob) { const p = document.createElement("p"); p.className = "note"; p.textContent = "The photo is not on this phone. Photos are not part of the backup file."; (img.closest("button") ?? img).replaceWith(p); return; }
+        url = URL.createObjectURL(blob); photoUrls.set(id, url);
+      }
+      img.src = url; img.hidden = false;
+    })().catch(() => {});
+  }
 }
 
 // ---------- bank logos: loaded for every listed bank, once, when the phone has internet ----------
@@ -764,7 +851,7 @@ function renderSheet() {
   } else if (sh.type === "edit") {
     const t = S().transactions.find((x) => x.id === sh.id), d = describe(t);
     body = `<h3>Edit entry</h3>
-      ${d.editable || d.kind === "transfer" ? `<label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">` : ""}
+      ${d.editable || d.kind === "transfer" || d.kind === "income" ? `<label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">` : ""}
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}">
       <label for="f-payee">Name (optional)</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
@@ -885,6 +972,22 @@ function renderSheet() {
       <div class="seg" role="group" aria-label="When it starts">${[[thisM, "This month"], [nextM, "Next month"]].map(([m, t]) => `<button data-action="budget-start" data-month="${m}" aria-pressed="${ui.form.start === m}">${t}</button>`).join("")}</div>
       <p class="note">${esc(M.monthLabel(ui.form.start))}. Enter 0 to remove the budget.</p>
       <p><button class="primary" id="f-save" data-action="save-budget" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "scan") {
+    const f = ui.form, kind = M.kindById(f.kind), into = kind.direction === "in";
+    body = `<h3>Check what I read</h3>
+      <img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your photo">
+      <label>It looks like</label>${chips(M.KINDS.map((k) => ({ id: k.id, name: k.label })), f.kind, "pick-kind")}
+      ${f.notes.map((n) => `<p class="note">${esc(n)}</p>`).join("")}
+      <label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
+      <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(f.date)}">
+      <label for="f-payee">${into ? "From" : "Paid to"} (optional)</label><input id="f-payee" data-field="payee" value="${esc(f.payee ?? "")}" autocomplete="off">
+      <label>Category</label>${chips(into ? incomeCategories() : expenseCategories(), f.category_id, "pick-cat")}
+      <label>${into ? "Arrived in" : "Paid from"}</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
+      <details><summary>What the reader saw</summary><pre class="rawtext">${esc(f.text || "(nothing)")}</pre></details>
+      <p><button class="primary" id="f-save" data-action="save-scan" style="margin-top:14px" disabled>Save to Verify</button></p>
+      <p class="note">It stays a draft and counts toward nothing until you verify it.</p>`;
+  } else if (sh.type === "photo") {
+    body = `<h3>Photo</h3><img class="shotfull" data-photo="${esc(sh.id)}" alt="The photo this entry was read from" hidden>`;
   } else if (sh.type === "icon") {
     const a = S().accounts.find((x) => x.id === sh.id);
     body = `<h3>Picture for ${esc(a.name)}</h3>
@@ -921,8 +1024,9 @@ function renderSheet() {
       <p class="note">Anything entered on this phone since the backup was made will be gone.</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  $("sheet").innerHTML = `<div id="scrim" data-action="close-sheet"></div><div class="sheet" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">Cancel</button></p></div>`;
+  $("sheet").innerHTML = `<div id="scrim" data-action="close-sheet"></div><div class="sheet" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" ? "Close" : "Cancel"}</button></p></div>`;
   refreshSave();
+  hydratePhotos();
 }
 
 function refreshSave() {
@@ -956,6 +1060,9 @@ function refreshSave() {
   } else if (type === "trip") {
     const a = f.amount ? M.parsePesos(f.amount) : { ok: true };
     btn.disabled = !((f.name ?? "").trim() && a.ok);
+  } else if (type === "scan") {
+    const a = M.parsePesos(f.amount);
+    btn.disabled = !(a.ok && a.centavos > 0 && M.isPhDate(f.date) && f.category_id && f.account_id);
   } else if (type === "income") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && f.account_id && f.date);
@@ -1007,21 +1114,24 @@ async function logExpense(input, label) {
   let drafts, note;
   if (g && input.account_id === g.account_id) {
     // Spending from the buffer's account takes from the allowance first, then the buffer (spec 6.4).
-    const p = M.planGcashSpend(S(), { transaction_id: input.transaction_id, date: today(), payee: input.payee ?? "", category_id: input.category_id, amount: input.amount,
+    const p = M.planGcashSpend(S(), { transaction_id: input.transaction_id, date: input.date ?? today(), payee: input.payee ?? "", category_id: input.category_id, amount: input.amount,
       gcash_account_id: g.account_id, allowance_envelope_id: g.allowance_id, buffer_envelope_id: g.buffer_id }, new Date());
-    if (!p.ok) { showToast("Could not save: " + p.violations[0].message); return; }
-    drafts = [{ transaction: { ...p.transaction, source: input.source ?? "manual", ...(tag_id ? { tag_id } : {}) }, entries: p.entries }];
+    if (!p.ok) { showToast("Could not save: " + p.violations[0].message); return false; }
+    drafts = [{ transaction: { ...p.transaction, source: input.source ?? "manual", ...(input.source === "photo" ? { edited_before_verify: false } : {}), ...(input.payee ? { payee: input.payee } : {}), ...(tag_id ? { tag_id } : {}) }, entries: p.entries }];
     note = bufferNote(p.violations);
   } else {
-    const plan = M.planExpense(S(), { ...input, tag_id, date: today(), reserve_source_id: ledger.settings.reserve_source_id }, new Date());
-    if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); return; }
+    const plan = M.planExpense(S(), { ...input, tag_id, date: input.date ?? today(), reserve_source_id: ledger.settings.reserve_source_id }, new Date());
+    if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); return false; }
     drafts = plan.drafts;
     note = reserveNote(plan.violations);
   }
   const settings = { ...ledger.settings, last_account_id: input.account_id,
     last_account_by_preset: { ...(ledger.settings.last_account_by_preset ?? {}), ...(input.preset_id ? { [input.preset_id]: input.account_id } : {}) } };
-  const ok = await commit(M.applyDrafts(S(), drafts), settings);
+  let next = M.applyDrafts(S(), drafts);
+  if (input.photo_id) { const a = M.planAttachment(next, { id: input.photo_id, transaction_id: drafts[0].transaction.id }); if (a.ok) next = a.state; }
+  const ok = await commit(next, settings);
   showToast((ok ? "Saved " : "Not safely stored: ") + label + " · " + accountName(input.account_id), drafts[0].transaction.id, note);
+  return ok;
 }
 
 async function onClick(el) {
@@ -1262,6 +1372,9 @@ async function onClick(el) {
     }
     case "open-other": ui.sheet = { type: "other" }; ui.form = { amount: "", category_id: null, account_id: accountsFor(null)[0]?.id }; renderSheet(); break;
     case "pick-cat": form.category_id = id; renderSheet(); break;
+    case "pick-kind": form.kind = id; Object.assign(form, scanDefaults(id, form.guess)); renderSheet(); break;
+    case "save-scan": await saveScan(); break;
+    case "open-photo": ui.sheet = { type: "photo", id }; renderSheet(); break;
     case "pick-acct": form.account_id = id; renderSheet(); break;
     case "close-sheet": ui.sheet = null; renderSheet(); break;
     case "save-other": {
@@ -1271,9 +1384,10 @@ async function onClick(el) {
       break;
     }
     case "undo": {
+      const photos = M.attachmentsFor(S(), id);
       const r = M.discardDraft(S(), id);
       $("toast").innerHTML = "";
-      if (r.ok) await commit(r.state);
+      if (r.ok && await commit(r.state)) for (const a of photos) deletePhoto(a.id).catch(() => {});
       break;
     }
     case "verify-ok": {
@@ -1285,7 +1399,7 @@ async function onClick(el) {
     case "verify-edit": {
       const t = S().transactions.find((x) => x.id === id), d = describe(t);
       ui.form = { date: t.date, payee: t.payee, category_id: d.category_id, account_id: d.account_id,
-        ...(d.editable || d.kind === "transfer" ? { amount: (d.amount / 100).toFixed(2) } : {}) };
+        ...(d.editable || d.kind === "transfer" || d.kind === "income" ? { amount: (d.amount / 100).toFixed(2) } : {}) };
       ui.sheet = { type: "edit", id }; renderSheet(); break;
     }
     case "save-edit": {
@@ -1306,8 +1420,9 @@ async function onClick(el) {
     case "verify-delete": {
       if (ui.confirmDelete !== id) { ui.confirmDelete = id; renderScreen(); break; }
       ui.confirmDelete = null;
+      const photos = M.attachmentsFor(S(), id);
       const r = M.discardDraft(S(), id);
-      if (r.ok) await commit(r.state);
+      if (r.ok && await commit(r.state)) for (const a of photos) deletePhoto(a.id).catch(() => {});
       break;
     }
     case "open-backup": ui.sheet = { type: "backup" }; ui.form = {}; renderSheet(); break;
@@ -1480,6 +1595,7 @@ document.addEventListener("input", (e) => {
   else ui.accountForm[field] = e.target.value;
 });
 document.addEventListener("change", (e) => {
+  if (e.target.dataset?.scan) { const file = e.target.files[0]; e.target.value = ""; startScan(file); return; }
   if (e.target.type === "file" && ui.sheet) {
     if (ui.sheet.type === "plan") {
       const file = e.target.files[0];
