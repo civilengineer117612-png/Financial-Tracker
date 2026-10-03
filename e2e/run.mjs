@@ -511,7 +511,8 @@ check((await page.locator(".legend svg").count()) === 5, "each with its own shap
 await page.click('.brow:has-text("Shopping")');
 check((await text(page, ".caption")).includes("Budget ₱250.00: 120% used, over by ₱50.00."), "tapping a bar adds the budget in words");
 const barCount = await page.locator(".bars .brow").count();
-await page.click('button:has-text("Donut")');
+check((await page.locator('button:has-text("Donut")').count()) === 0 && (await page.locator(".shapebtn").count()) === 1, "one icon button flips the chart; there are no Bars and Donut buttons");
+await page.click(".shapebtn");
 check((await page.locator("svg.donut").count()) === 1 && (await page.locator("svg.donut circle.slice").count()) === barCount, "the donut has one slice per category: " + barCount);
 check((await page.locator(".legendlist .lrow").count()) === barCount && /₱[\d,.]+ · [\d.]+%/.test(await text(page, ".legendlist")), "its legend lists each category with the peso amount and the percent");
 await page.click('.legendlist .lrow >> nth=0');
@@ -520,8 +521,39 @@ await shot(page, "32-donut");
 await page.click('button:has-text("Show as list")');
 check((await text(page, ".tbl")).includes("Share"), "the list twin is still there");
 await page.click('button:has-text("Show as chart")');
-await page.click('button:has-text("Bars")');
-check((await page.locator(".bars .brow").count()) === barCount, "and Bars brings the bars back");
+await page.click(".shapebtn");
+check((await page.locator(".bars .brow").count()) === barCount, "and tapping it again brings the bars back");
+// ---- the year ----
+await page.click('button:has-text("Year")');
+check((await text(page, "#screen")).includes("2026") && (await page.locator(".cols .col").count()) === 12, "the Year view shows twelve months");
+check(/₱[\d,.]+/.test(await text(page, ".hero")) && (await page.locator("#screen .shapebtn").count()) === 1, "with the year's total and the categories under it");
+await page.click(".cols .col >> nth=9");
+check((await text(page, ".caption >> nth=0")).includes("October 2026"), "tapping a month column says its amount");
+await page.click('button[aria-label="Earlier year"]');
+check((await text(page, ".stepper")).includes("2025") && (await text(page, "#screen")).includes("Nothing verified in 2025 yet"), "the arrows move between years and an empty year says so");
+await page.click('button[aria-label="Later year"]');
+// ---- any date range ----
+await page.click('button:has-text("Date range")');
+check((await text(page, ".rangepick")).includes("From") && (await text(page, ".rangepick")).includes("Oct 1, 2026") && (await text(page, ".rangepick")).includes("Oct 3, 2026"), "Date range starts at the first of this month to today");
+await page.click('.rangepick button[data-target="from"]');
+check((await text(page, "#sheet")).includes("Start date"), "the start date opens our calendar");
+for (let i = 0; i < 3; i++) await page.click('#sheet button[aria-label="Earlier year"]');
+check((await text(page, "#sheet")).includes("October 2023"), "year arrows jump back by twelve months");
+await page.click('#sheet button[aria-label="Earlier month"]'); await page.click('#sheet button[aria-label="Earlier month"]'); await page.click('#sheet button[aria-label="Earlier month"]'); await page.click('#sheet button[aria-label="Earlier month"]');
+check((await text(page, "#sheet")).includes("June 2023"), "month arrows fine-tune it");
+await page.click('#sheet .cal button[data-id="2023-06-18"]');
+check((await text(page, ".rangepick")).includes("Jun 18, 2023") && (await text(page, ".rangepick")).includes("Oct 3, 2026"), "the chosen start date is shown");
+await page.click('.rangepick button[data-target="to"]');
+for (let i = 0; i < 3; i++) await page.click('#sheet button[aria-label="Earlier year"]');
+await page.click('#sheet .cal button[data-id="2023-10-03"]');
+check((await text(page, ".rangepick")).includes("Oct 3, 2023") && (await text(page, "#screen")).includes("Nothing verified between these dates"), "an end date and a range with no data says so plainly");
+await page.click('.rangepick button[data-target="to"]');
+for (let i = 0; i < 4; i++) await page.click('#sheet button[aria-label="Earlier month"]');
+await page.click('#sheet .cal button[data-id="2023-06-01"]');
+check(((await text(page, ".rangepick")).match(/Jun 1, 2023/g) ?? []).length === 2, "an end date before the start pulls the start back, so the range is never upside down");
+await page.click('button:has-text("This month")');
+check(/₱[\d,.]+/.test(await text(page, ".hero")) && (await text(page, ".sub >> nth=0")).includes("days"), "a preset fills the range and says how many days");
+await page.click('button:has-text("Where it went")');
 
 await page.click('button:has-text("Budgets")');
 await shot(page, "20-money-budgets");
@@ -706,9 +738,8 @@ const tileB64 = await page.evaluate(() => { const c = document.createElement("ca
 const horse = (r) => { const d = r.request().url().split("/icon/")[1]; if (d === "gotyme.com.ph") r.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(pngB64, "base64") }); else if (d === "unionbankph.com") r.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(tileB64, "base64") }); else r.abort(); };
 await page.route("https://icon.horse/**", horse);
 await page.route("https://api.faviconkit.com/**", (r) => r.abort());
-await page.route("https://www.google.com/s2/favicons**", (r) => { asked.push(new URL(r.request().url()).searchParams.get("domain")); r.fulfill({ status: 200, contentType: "image/png", body: Buffer.from(pngB64, "base64") }); });   // no CORS header: showable, not copyable
+await page.route("https://t2.gstatic.com/**", (r) => { asked.push(new URL(new URL(r.request().url()).searchParams.get("url")).hostname); r.fulfill({ status: 200, contentType: "image/png", body: Buffer.from(pngB64, "base64") }); });   // no CORS header: showable, not copyable
 await page.route("https://icons.duckduckgo.com/**", (r) => r.abort());
-await page.route("https://t2.gstatic.com/**", (r) => r.abort());
 await addAccount(page, "Landbank", "asset", "5"); await seen(page, "#toast", "Added Landbank");
 check((await text(page, "#screen")).includes("tells that service which banks you use") && (await text(page, "#screen")).includes("not airplane mode"), "the logo button says what it sends and that it needs internet");
 await page.click('button:has-text("Get bank logos")');
@@ -720,18 +751,18 @@ check((await page.locator("#screen .row .icowrap img.ico.ov").count()) === 2, "G
 check((await text(page, "#screen")).includes("Get bank logos"), "the button stays, so a wrong or missing logo can be retried");
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.state.accounts.filter((a) => a.bank === "gotyme").every((a) => a.icon.startsWith("data:image/")), "a copied picture lives in the ledger on the phone");
-check(["gcash", "landbank"].every((id) => ledgerNow.state.accounts.some((a) => a.bank === id && a.icon_url?.startsWith("https://www.google.com/s2/favicons"))), "a shown-only picture keeps just its allow-listed address");
+check(["gcash", "landbank"].every((id) => ledgerNow.state.accounts.some((a) => a.bank === id && a.icon_url?.startsWith("https://t2.gstatic.com/faviconV2"))), "a shown-only picture keeps just its allow-listed address");
 await shot(page, "31-logos");
 // a failed download says why, per bank and per service
 await addAccount(page, "BPI", "asset", "5"); await seen(page, "#toast", "Added BPI");
 await addAccount(page, "UnionBank", "asset", "5"); await seen(page, "#toast", "Added UnionBank");
-await page.unroute("https://www.google.com/s2/favicons**");
-await page.route("https://www.google.com/s2/favicons**", (r) => r.abort());
+await page.unroute("https://t2.gstatic.com/**");
+await page.route("https://t2.gstatic.com/**", (r) => r.abort());
 await page.click('button:has-text("Get bank logos")');
 check(await seen(page, "#toast", "Got 0 of 2"), "when nothing can be downloaded it says so");
 const rep = await text(page, "#logo-report");
 check(rep.includes("UnionBank") && rep.includes("only a generated letter tile came back"), "a generated grey letter tile is refused as a logo, not saved");
-check(rep.includes("BPI") && rep.includes("Icon Horse: could not be loaded") && rep.includes("Google icons: could not be loaded") && rep.includes("DuckDuckGo: could not be loaded"), "and lists the reason for each service: " + rep.slice(0, 160));
+check(rep.includes("BPI") && rep.includes("Icon Horse: could not be loaded") && rep.includes("Google icons: could not be loaded") && rep.includes("DuckDuckGo: could not be loaded") && !rep.includes("Google:"), "and lists the reason for each service: " + rep.slice(0, 160));
 await addAccount(page, "Euf", "asset", "10"); await seen(page, "#toast", "Added Euf");
 await page.click('#screen .row:has-text("Euf") .icobtn');
 await page.click('#sheet .chip:has-text("MariBank")');

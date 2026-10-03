@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spendingByCategory, spendingByAccount, monthlySpending, dayTotal, addMonths, monthLabel, monthOf, setAccountIcon, validateShape } from "../src/model/index.js";
+import { spendingByCategory, spendingByRange, spendingByAccount, monthlySpending, dayTotal, addMonths, monthLabel, monthOf, setAccountIcon, validateShape } from "../src/model/index.js";
 import { makeState, account, tx, entry, commit } from "./fixtures.js";
 
 const VERIFIED = { status: "verified", verified_at: "2026-04-01T08:00:00.000+08:00" };
@@ -165,4 +165,24 @@ test("a day total ignores check-in gaps and refunds reduce it", () => {
   spend(s, "r", "2026-03-10", "rent", -4000);
   spend(s, "g", "2026-03-10", "unlogged", 70000, "chk", { ...VERIFIED, source: "reconciliation" });
   assert.equal(dayTotal(s, "2026-03-10").total, 26000);
+});
+
+// ---------- any date range ----------
+test("a range counts verified spending between two dates inclusive, across months and years", () => {
+  const s = base();
+  spend(s, "a", "2025-12-31", "rent", 1000);
+  spend(s, "b", "2026-01-01", "rent", 2000);
+  spend(s, "c", "2026-03-15", "rent", 3000);
+  spend(s, "d", "2026-03-16", "rent", 4000);
+  spend(s, "e", "2026-03-15", "rent", 500, "chk", { status: "draft" });
+  const r = spendingByRange(s, { from: "2026-01-01", to: "2026-03-15" });
+  assert.deepEqual([r.total, r.pending, r.rows.length, r.rows[0].percent], [5000, 500, 1, 100]);
+  assert.equal(spendingByRange(s, { from: "2025-12-31", to: "2025-12-31" }).total, 1000, "a single day");
+  assert.equal(spendingByRange(s, { from: "2024-01-01", to: "2024-12-31" }).total, 0, "an empty range is zero, not an error");
+  assert.equal(spendingByRange(s, { from: "2025-12-01", to: "2026-12-31" }).total, 10000, "a whole span");
+});
+test("a month report is the range report for that month", () => {
+  const s = base();
+  spend(s, "a", "2026-03-31", "rent", 700); spend(s, "b", "2026-04-01", "rent", 900);
+  assert.deepEqual(spendingByCategory(s, { month: "2026-03" }), spendingByRange(s, { from: "2026-03-01", to: "2026-03-31" }));
 });

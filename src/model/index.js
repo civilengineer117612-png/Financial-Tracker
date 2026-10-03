@@ -54,7 +54,7 @@ export { parsePesos, formatPesos, formatPesosWhole } from "./money.js";
 export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID } from "./seed.js";
 export { applyDrafts, planExpense, discardDraft, verifyDraft, editDraftFields, setAccountIcon } from "./drafts.js";
 export { LEDGER_VERSION, emptyState, emptyLedger, nextLedger, parseLedger, chooseLedger, restoreLedger, summarizeLedger, backupFileName, daysSinceBackup } from "./persist.js";
-export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByAccount, monthlySpending, dayTotal } from "./reports.js";
+export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByRange, spendingByAccount, monthlySpending, dayTotal } from "./reports.js";
 export { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, cutoffFor, planProgress, planIncome, planPayReceived } from "./plan.js";
 export { planTag, tagSummary } from "./trips.js";
 export { BANKS, CASH, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl } from "./banks.js";
