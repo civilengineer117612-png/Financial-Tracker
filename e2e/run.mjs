@@ -588,7 +588,8 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 
 // ---- quick day totals ----
 await page.click('#nav button:has-text("Log")');
-check(/Spent today\s*₱\d/.test(await text(page, ".daycard")), "today's total is always on the Log screen");
+check(/^₱\d/.test(await text(page, ".daytotal")) && !(await text(page, "#screen")).includes("Spent today") && (await page.locator("#d-pick").count()) === 0, "today's total is centered on the Log screen with no label and no date box");
+await page.click('button:has-text("Another day")');
 await page.fill("#d-pick", "2026-01-05");
 check((await text(page, "#d-out")).includes("₱0.00") && (await text(page, "#d-out")).includes("Jan"), "another date shows its own total");
 await shot(page, "23-day-totals");
@@ -678,15 +679,22 @@ const pngB64 = await page.evaluate(() => { const c = document.createElement("can
 let asked = [];
 await page.route("https://www.google.com/s2/favicons**", (r) => { asked.push(new URL(r.request().url()).searchParams.get("domain")); r.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(pngB64, "base64") }); });
 await page.route("https://icons.duckduckgo.com/**", (r) => r.abort());
-check((await text(page, "#screen")).includes("tells that service which banks you use"), "the logo button says what it sends");
+await addAccount(page, "Landbank", "asset", "5"); await seen(page, "#toast", "Added Landbank");
+check((await text(page, "#screen")).includes("tells that service which banks you use") && (await text(page, "#screen")).includes("not airplane mode"), "the logo button says what it sends and that it needs internet");
 await page.click('button:has-text("Get bank logos")');
-check(await seen(page, "#toast", "Got 1 logo"), "logos are fetched for the banks you use");
-check(asked.join() === "gotyme.com.ph", "and only for those banks: " + asked.join());
+check(await seen(page, "#toast", "Got 3 logos"), "logos are fetched for the banks you use, including accounts typed as \"GCash\" and \"Landbank\" before the picker existed");
+check(asked.sort().join() === "gcash.com,gotyme.com.ph,landbank.com", "and only for those banks: " + asked.join());
 check((await page.locator("#screen .row", { hasText: "GoTyme" }).locator("img.ico").count()) === 2, "both GoTyme accounts show the picture");
 check(!(await text(page, "#screen")).includes("Get bank logos"), "the button goes away once every bank has a picture");
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.state.accounts.filter((a) => a.bank === "gotyme").every((a) => a.icon.startsWith("data:image/")), "the pictures live in the ledger on the phone");
 await shot(page, "31-logos");
+await addAccount(page, "Euf", "asset", "10"); await seen(page, "#toast", "Added Euf");
+await page.click('#screen .row:has-text("Euf") .icobtn');
+await page.click('#sheet .chip:has-text("MariBank")');
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.state.accounts.find((a) => a.name === "Euf").bank === "maribank", "an account with its own name can be linked to a bank from its picture window");
+await page.click('#sheet button:has-text("Cancel")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- goals ----
@@ -752,7 +760,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 // pictures survive a reload and appear where you choose an account
 await page.reload(); await page.waitForSelector("#nav button");
 await page.click('#nav button:has-text("Log")'); await page.click('button.tile:has-text("Breakfast")');
-check((await page.locator("#sheet .chip img.ico").count()) === 4, "pictures (two chosen, two shared GoTyme logos) are on the account buttons when you log, so you can tell them apart at a glance");
+check((await page.locator("#sheet .chip img.ico").count()) === 6, "pictures (two chosen, four fetched logos) are on the account buttons when you log, so you can tell them apart at a glance");
 await shot(page, "16-pay-with-pictures");
 await page.click('#sheet button:has-text("Cancel")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));

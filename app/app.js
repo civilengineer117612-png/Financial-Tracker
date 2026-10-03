@@ -133,7 +133,7 @@ function renderScreen() {
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
 }
 
-// Quick day totals: today's spending is always on the Log screen; any other date is one pick away.
+// Quick day totals: today's spending sits centered on the Log screen with no label; "Another day" opens a date box.
 function dayLine(date, label) {
   const d = M.dayTotal(S(), date);
   const note = d.drafts ? ` <small>includes ${d.drafts} not yet verified</small>` : "";
@@ -141,9 +141,11 @@ function dayLine(date, label) {
 }
 function dayCard() {
   const picked = ui.dayPick && ui.dayPick !== today() ? ui.dayPick : "";
-  return `<div class="daycard"><div class="dline">${dayLine(today(), "Spent today")}</div>
-    <label for="d-pick">Total for another day</label><input id="d-pick" type="date" data-day="1" max="${esc(today())}" value="${esc(picked)}">
-    <div class="dline" id="d-out" role="status">${picked ? dayLine(picked, longDate(picked)) : ""}</div></div>`;
+  const d = M.dayTotal(S(), today());
+  return `<div class="daytotal" role="status" aria-label="Spent today ${esc(peso(d.total))}${d.drafts ? ", including " + d.drafts + " not yet verified" : ""}">${peso(d.total)}</div>
+    <p class="center"><button class="link" data-action="toggle-day" aria-expanded="${ui.dayOpen === true}">${ui.dayOpen ? "Hide" : "Another day"}</button></p>
+    ${ui.dayOpen ? `<div class="daycard"><label for="d-pick">Total for</label><input id="d-pick" type="date" data-day="1" max="${esc(today())}" value="${esc(picked)}">
+      <div class="dline" id="d-out" role="status">${picked ? dayLine(picked, longDate(picked)) : ""}</div></div>` : ""}`;
 }
 
 function viewLog() {
@@ -222,11 +224,22 @@ function loadLogo(url, ms = 8000) {
     img.src = url;
   });
 }
+// Accounts typed before the bank picker existed ("Gotyme") are linked to their bank first, by name.
+function withBankLinks(state) {
+  let next = state;
+  for (const a of state.accounts) {
+    const b = !a.bank && M.bankForName(a.name);
+    if (b) { const r = M.linkAccountBank(next, a.id, b.id); if (r.ok) next = r.state; }
+  }
+  return next;
+}
+const wantsLogo = (a) => !a.icon && (a.bank || M.bankForName(a.name));
 async function getBankLogos() {
-  const wanted = M.BANKS.filter((b) => S().accounts.some((a) => a.bank === b.id && !a.icon));
-  if (!wanted.length) { showToast("Every bank you use already has a picture."); return; }
+  let state = withBankLinks(S());
+  const wanted = M.BANKS.filter((b) => state.accounts.some((a) => a.bank === b.id && !a.icon));
+  if (!wanted.length) { showToast("Every bank you use already has a picture. Accounts with other names: tap the tile and choose the bank."); return; }
   ui.logoBusy = true; renderScreen();
-  let state = S(), got = 0;
+  let got = 0;
   for (const b of wanted) {
     let url = null;
     for (const src of LOGO_SOURCES(b.domain)) { url = await loadLogo(src); if (url) break; }
@@ -235,7 +248,7 @@ async function getBankLogos() {
     if (r.ok) { state = r.state; got += 1; }
   }
   ui.logoBusy = false;
-  if (got) await commit(state); else renderScreen();
+  if (got || state !== S()) await commit(state); else renderScreen();
   showToast(got === wanted.length ? "Got " + got + (got === 1 ? " logo." : " logos.") : "Got " + got + " of " + wanted.length + ". For the rest, tap the tile in the list and add a screenshot.");
 }
 
@@ -265,7 +278,7 @@ function viewSetup() {
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}
-    ${S().accounts.some((a) => a.bank && !a.icon) ? `<p class="note">Bank pictures: the app can ask an icon service for your banks' small icons (it tells that service which banks you use) and keep them on this phone only. <button class="link" data-action="get-logos"${ui.logoBusy ? " disabled" : ""}>${ui.logoBusy ? "Getting logos..." : "Get bank logos"}</button></p>` : ""}
+    ${S().accounts.some(wantsLogo) ? `<p class="note">Bank pictures: the app can ask an icon service for your banks' small icons (it tells that service which banks you use) and keep them on this phone only. It needs internet (not airplane mode). <button class="link" data-action="get-logos"${ui.logoBusy ? " disabled" : ""}>${ui.logoBusy ? "Getting logos..." : "Get bank logos"}</button></p>` : ""}
     <h2>Pay plan</h2>
     <p class="note">${planOf() ? "A plan is in effect." : "No plan in effect."} <button class="link" data-action="${planOf() ? "tab" : "open-plan"}" data-tab="plan">${planOf() ? "Open it" : "Load a plan"}</button></p>
     <h2>Backup</h2>
@@ -714,6 +727,8 @@ function renderSheet() {
   } else if (sh.type === "icon") {
     const a = S().accounts.find((x) => x.id === sh.id);
     body = `<h3>Picture for ${esc(a.name)}</h3>
+      <label id="i-bank-l">Which bank is it? (accounts of one bank share the picture)</label>
+      <div class="chips" role="group" aria-labelledby="i-bank-l">${[...M.BANKS, M.CASH].map((b) => `<button class="chip" data-action="link-bank" data-id="${esc(b.id)}" aria-pressed="${a.bank === b.id}"><span>${esc(b.name)}</span></button>`).join("")}</div>
       <p class="note">Take a screenshot of the app's icon, choose it here, then zoom and drag until only the icon fills the square.</p>
       <input id="i-file" type="file" accept="image/*" data-field="file" aria-label="Choose a picture">
       <div id="i-stage" class="stage"><img id="i-img" alt="" hidden></div>
@@ -1011,6 +1026,13 @@ async function onClick(el) {
       showToast("Target set from your plan");
       break;
     }
+    case "link-bank": {
+      const a = S().accounts.find((x) => x.id === ui.sheet.id);
+      const r = M.linkAccountBank(S(), a.id, a.bank === id ? null : id);
+      if (r.ok) await commit(r.state);
+      break;
+    }
+    case "toggle-day": ui.dayOpen = !ui.dayOpen; renderScreen(); break;
     case "get-logos": await getBankLogos(); break;
     case "pick-bank": ui.accountForm.bank = ui.accountForm.bank === id ? null : id; ui.accountForm.sub = ""; ui.setupError = null; renderScreen(); break;
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
