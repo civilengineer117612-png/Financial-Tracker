@@ -93,15 +93,15 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 // and audio capture beside Log and Verify) can be added without crowding the bottom bar.
 // Plain line icons (drawn in the text colour). Groups are separated by thin lines, like a settings list.
 const ICONS = {
-  money: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
-  buffer: '<path d="M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l2-3h11v3"/><path d="M21 12h-4a2 2 0 0 0 0 4h4"/>',
-  trips: '<path d="M3 11l18-7-7 18-3-8z"/>',
-  checks: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
-  plan: '<path d="M4 6h16M4 12h16M4 18h10"/>',
-  goals: '<path d="M5 21V4M5 4h13l-3 4 3 4H5"/>',
-  budget: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
-  checkin: '<path d="M4 12l5 5L20 6"/>',
-  setup: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
+  money: '<path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3"/>',
+  budget: '<path d="M21 12c.55 0 1-.45.95-1a10 10 0 0 0-8.95-8.95c-.55-.05-1 .4-1 .95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>',
+  goals: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  plan: '<path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/>',
+  checks: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+  trips: '<path d="M20 10c0 5-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 15 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  buffer: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
+  checkin: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  setup: '<path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/>',
 };
 const MENU = [["Overview", [["money", "Spending"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
 
@@ -112,7 +112,7 @@ function renderTop(title) {
 
 function renderMenu() {
   if (!ui.menu || !device.allowEntry) { $("menu").innerHTML = ""; return; }
-  const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}"${ui.tab === id ? ' aria-current="page"' : ""}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span></button>`;
+  const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}"${ui.tab === id ? ' aria-current="page"' : ""}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span></button>`;
   const age = M.daysSinceBackup(ledger.settings, today());
   const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
   $("menu").innerHTML = `<div class="scrim" data-action="close-menu"></div><aside class="drawer" role="dialog" aria-label="Menu">
