@@ -255,23 +255,25 @@ async function getBankLogos() {
   for (const b of wanted) {
     const why = [];
     let done = false;
-    for (const [label, src] of COPY_SOURCES(b.domain)) {
-      const r = await loadLogo(src);
-      if (r.url) {
-        const set = M.setAccountIcon(state, state.accounts.find((a) => a.bank === b.id).id, r.url);
-        if (set.ok) { state = set.state; copied += 1; done = true; break; }
+    for (const domain of [b.domain, ...(b.alt ?? [])]) {
+      for (const [label, src] of COPY_SOURCES(domain)) {
+        const r = await loadLogo(src);
+        if (r.url) {
+          const set = M.setAccountIcon(state, state.accounts.find((a) => a.bank === b.id).id, r.url);
+          if (set.ok) { state = set.state; copied += 1; done = true; break; }
+        }
+        why.push(domain + " " + label + ": " + (r.why ?? "the picture was refused"));
       }
-      why.push(label + ": " + (r.why ?? "the picture was refused"));
-    }
-    if (!done) {
-      for (const [label, src] of LINK_SOURCES(b.domain)) {
+      if (done) break;
+      for (const [label, src] of LINK_SOURCES(domain)) {
         const r = await loadLogo(src, { copy: false });
         if (r.ok) {
           const set = M.setBankIconUrl(state, b.id, src);
           if (set.ok) { state = set.state; linked += 1; done = true; break; }
-          why.push(label + ": that address is not allowed");
-        } else why.push(label + ": " + r.why);
+          why.push(domain + " " + label + ": that address is not allowed");
+        } else why.push(domain + " " + label + ": " + r.why);
       }
+      if (done) break;
     }
     if (!done) report.push(b.name + " (" + why.join("; ") + ")");
   }
