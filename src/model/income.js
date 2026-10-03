@@ -4,7 +4,7 @@
 import { validateShape } from "./schema.js";
 import { isPhDate, phTimestamp } from "./util.js";
 import { checkTransactionSave } from "./index.js";
-import { planOvertimeTransfer } from "./goals.js";
+import { planOvertimeTransfer, splitOvertime } from "./goals.js";
 import { wordsToCentavos } from "./scan.js";
 import { monthOf } from "./reports.js";
 
@@ -97,6 +97,23 @@ export function overtimeDraft(state, payslipId, input, now = new Date()) {
   const overtime = payslipTotals(linesOf(state, payslipId)).overtime;
   if (overtime <= 0) return null;
   return planOvertimeTransfer(state, { transaction_id: input.transaction_id, date: p.pay_date, overtime_amount: overtime, source_account_id: p.account_id, emergency_account_id: input.emergency_account_id, share: OVERTIME_SHARE }, now);
+}
+
+// The other 40% stays in the account where the pay landed unless the owner chooses somewhere else for it. Then it is
+// a DRAFT transfer for Verify. input: {transaction_id, to_account_id}. Returns null when there is no overtime.
+export function overtimeFreeDraft(state, payslipId, input, now = new Date()) {
+  const p = (state.payslips ?? []).find((x) => x.id === payslipId);
+  if (!p) return fail("UNKNOWN_PAYSLIP", "no payslip " + payslipId);
+  const overtime = payslipTotals(linesOf(state, payslipId)).overtime;
+  if (overtime <= 0) return null;
+  if (input.to_account_id === p.account_id) return fail("SAME_ACCOUNT", "that is where the pay landed, so the money already stays there");
+  const to = state.accounts.find((a) => a.id === input.to_account_id);
+  if (!to || to.class !== "asset") return fail("UNKNOWN_ACCOUNT", "choose an account you hold money in");
+  const { free } = splitOvertime(overtime, OVERTIME_SHARE);
+  if (free <= 0) return null;
+  const transaction = { id: input.transaction_id, date: p.pay_date, payee: "Overtime free to spend", memo: "", status: "draft", source: "template", created_at: phTimestamp(now) };
+  const entries = [{ transaction_id: transaction.id, account_id: to.id, amount: free }, { transaction_id: transaction.id, account_id: p.account_id, amount: -free }];
+  return { ...checkTransactionSave(state, { transaction, entries }), transaction, entries };
 }
 
 // ---------- the views ----------
