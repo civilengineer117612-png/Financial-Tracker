@@ -70,19 +70,30 @@ export function buildReminderCalendar(reminders, { now = new Date(), startDate }
   return lines.map(foldLine).join("\r\n") + "\r\n";
 }
 
-// The set decided for this app: verify in the morning (follow-up alarms if missed), the 6pm
-// cutoff, and optionally the weekly check-in on the owner's chosen day.
+// The set decided for this app. Each piece can be switched off with null, because a calendar
+// cannot skip a day when there is nothing to verify, so the owner chooses how many daily
+// reminders are worth the noise:
+//   morning  daily verify, with follow-up alarms if missed
+//   cutoff   daily backstop for a missed morning
+//   checkin  weekly count + survey on {day, time}, plus an optional cutoff time the same day
 export function defaultReminders({ morning = "07:10", cutoff = "18:00", checkin } = {}) {
-  const list = [
-    { id: "verify-morning", title: "Verify yesterday's drafts", time: morning, repeat: "daily", alarms: [0, 5, 10],
-      description: "Open the finance app on the iPhone and check each entry, one by one." },
-    { id: "verify-cutoff", title: "Verify cutoff: finish yesterday's drafts", time: cutoff, repeat: "daily", alarms: [0, 30, 60],
-      description: "Yesterday's drafts must be verified now. Open the finance app on the iPhone." },
-  ];
+  const list = [];
+  if (morning) {
+    list.push({ id: "verify-morning", title: "Verify yesterday's drafts", time: morning, repeat: "daily", alarms: [0, 5, 10],
+      description: "Open the finance app on the iPhone and check each entry, one by one." });
+  }
+  if (cutoff) {
+    list.push({ id: "verify-cutoff", title: "Verify cutoff: finish yesterday's drafts", time: cutoff, repeat: "daily", alarms: [0, 30, 60],
+      description: "Yesterday's drafts must be verified now. Open the finance app on the iPhone." });
+  }
   if (checkin) {
     if (!DAYS.includes(checkin.day)) throw new Error("check-in day must be one of " + DAYS.join(","));
     list.push({ id: "weekly-checkin", title: "Weekly check-in", time: checkin.time, repeat: "weekly:" + checkin.day, alarms: [0, 30],
       description: "Count each account and wallet in the finance app, then answer the weekly questions." });
+    if (checkin.cutoff) {
+      list.push({ id: "weekly-cutoff", title: "Check-in cutoff: finish the weekly check-in", time: checkin.cutoff, repeat: "weekly:" + checkin.day, alarms: [0],
+        description: "The weekly check-in must be finished now. Open the finance app on the iPhone." });
+    }
   }
   return list;
 }

@@ -84,3 +84,21 @@ test("calendar text is generic: no digits in any title or description, so no amo
   const ics = build(defaultReminders({ checkin: { day: "SU", time: "18:30" } }));
   for (const l of lines(ics).filter((x) => /^(SUMMARY|DESCRIPTION):/.test(x))) assert.ok(!/\d/.test(l), l);
 });
+
+test("the weekly check-in carries its own cutoff on the same day", () => {
+  const w = defaultReminders({ checkin: { day: "SU", time: "10:00", cutoff: "20:00" } });
+  assert.deepEqual(w.filter((r) => r.id.startsWith("weekly")).map((r) => [r.id, r.time, r.repeat]),
+    [["weekly-checkin", "10:00", "weekly:SU"], ["weekly-cutoff", "20:00", "weekly:SU"]]);
+  assert.equal(w.length, 4);
+});
+test("each daily reminder can be switched off, so the owner chooses how much noise to accept", () => {
+  assert.deepEqual(defaultReminders({ cutoff: null }).map((r) => r.id), ["verify-morning"]);
+  assert.deepEqual(defaultReminders({ morning: null }).map((r) => r.id), ["verify-cutoff"]);
+  assert.deepEqual(defaultReminders({ morning: null, cutoff: null }), []);
+  assert.deepEqual(defaultReminders({ morning: null, cutoff: null, checkin: { day: "SU", time: "10:00" } }).map((r) => r.id), ["weekly-checkin"]);
+});
+test("an all-off set still builds a valid, empty calendar", () => {
+  const ics = build(defaultReminders({ morning: null, cutoff: null }));
+  assert.equal(lines(ics).filter((x) => x === "BEGIN:VEVENT").length, 0);
+  assert.equal(lines(ics)[0], "BEGIN:VCALENDAR");
+});
