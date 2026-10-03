@@ -9,6 +9,8 @@ const bool = { type: "bool" };
 const centavos = { type: "centavos" };
 const date = { type: "date" };
 const timestamp = { type: "timestamp" };
+const count = { type: "count" };
+const ease = { type: "ease" };
 const oneOf = (...values) => ({ type: "enum", values });
 const optional = (spec) => ({ ...spec, optional: true });
 
@@ -30,6 +32,7 @@ export const SCHEMAS = {
     reference_no: optional(text),
     tag_id: optional(id),        // ADDED: spec 8.1 says trip expenses carry one tag
     created_at: timestamp, verified_at: optional(timestamp),
+    edited_before_verify: optional(bool),   // ADDED (addendum 3): photo/voice drafts only, feeds survey Q4
   },
   Entry: {
     transaction_id: id,
@@ -50,6 +53,12 @@ export const SCHEMAS = {
   CheckIn: { id, date, account_id: id, counted_balance: centavos, ledger_balance: centavos, difference: centavos },
   Attachment: { id, transaction_id: id, type: name, file: name, file_timestamp: timestamp },
   Tag: { id, name, budget: optional(centavos) },
+  // Addendum 3: one row per week, answered at the end of the weekly check-in.
+  SurveyResponse: {
+    id, week_start: date, week_end: date,
+    q1_missed_count: count, q1_missed_amount: centavos,
+    q2_ease: ease, q3_annoyance: text, q4_corrections_count: count,
+  },
   ForeignAmount: { transaction_id: id, currency: name, foreign_amount: centavos, rate: { type: "rate" } },
 };
 
@@ -61,6 +70,8 @@ const TYPE_CHECKS = {
   centavos: isCentavos,
   date: isPhDate,
   timestamp: isPhTimestamp,
+  count: (v) => Number.isSafeInteger(v) && v >= 0,
+  ease: (v) => Number.isInteger(v) && v >= 1 && v <= 5,
   day: (v) => Number.isInteger(v) && v >= 1 && v <= 31,
   rate: (v) => typeof v === "number" && Number.isFinite(v) && v > 0,
   idList: (v) => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string" && x.length > 0),
@@ -71,6 +82,9 @@ const CROSS_FIELD = {
   Transaction: (t) => {
     if (t.status === "verified" && t.verified_at == null) return ["verified transaction needs verified_at"];
     if (t.status === "draft" && t.verified_at != null) return ["draft transaction must not have verified_at"];
+    const capture = t.source === "photo" || t.source === "voice";
+    if (capture && typeof t.edited_before_verify !== "boolean") return ["photo/voice transaction must record edited_before_verify"];
+    if (!capture && t.edited_before_verify === true) return ["edited_before_verify only applies to photo/voice transactions"];
     return [];
   },
   Entry: (e) => {
@@ -80,6 +94,10 @@ const CROSS_FIELD = {
     if (e.card_state != null && e.account_id == null) out.push("card_state requires account_id");
     return out;
   },
+  SurveyResponse: (r) => [
+    ...(r.week_end < r.week_start ? ["week_end is before week_start"] : []),
+    ...(r.q1_missed_amount < 0 ? ["q1_missed_amount cannot be negative"] : []),
+  ],
   CheckIn: (c) => (isCentavos(c.counted_balance) && isCentavos(c.ledger_balance) && c.difference !== c.counted_balance - c.ledger_balance
     ? ["difference must equal counted_balance - ledger_balance"] : []),
 };
