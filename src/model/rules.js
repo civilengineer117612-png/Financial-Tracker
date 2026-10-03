@@ -14,7 +14,7 @@ export function ruleInEffect(rules, kind, subjectId, date) {
   let best = null;
   for (const r of rules) {
     if (r.kind !== kind || r.subject_id !== subjectId || r.effective_from > date) continue;
-    if (!best || newer(r, best)) best = r;
+    if (!best || !newer(best, r)) best = r;   // on a full tie the row added LATER wins (rows are only ever appended)
   }
   return best;
 }
@@ -26,7 +26,7 @@ export function rulesInEffect(rules, kind, date) {
   for (const r of rules) {
     if (r.kind !== kind || r.effective_from > date) continue;
     const cur = out.get(r.subject_id);
-    if (!cur || newer(r, cur)) out.set(r.subject_id, r);
+    if (!cur || !newer(cur, r)) out.set(r.subject_id, r);
   }
   return out;
 }

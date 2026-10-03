@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="Finance">
 <meta name="theme-color" content="#111111">
 <style>
-  :root { --chart: #2a78d6; --ink: #111; --mid: #555; --soft: #999; --line: #ccc; --wash: #f0f0f0; --paper: #fff; }
+  :root { --chart: #2a78d6; --good: #0ca30c; --warn: #fab219; --serious: #ec835a; --critical: #d03b3b; --ink: #111; --mid: #555; --soft: #999; --line: #ccc; --wash: #f0f0f0; --paper: #fff; }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
   body { margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.4; color: var(--ink); background: var(--paper);
@@ -32,6 +32,36 @@
   .tile b { font-size: 17px; }
   .tile span { color: var(--mid); }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  #top { display: flex; align-items: center; gap: 12px; margin: 0 0 6px; }
+  #top h1 { margin: 0; }
+  .menubtn { width: 48px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+  .menubtn svg { display: block; }
+  #menu .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); }
+  #menu .drawer { position: fixed; top: 0; bottom: 0; left: 0; z-index: 21; width: min(80%, 320px); background: var(--paper); border-right: 2px solid var(--ink);
+                  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); overflow: auto;
+                  display: flex; flex-direction: column; }
+  #menu .drawer .groups { flex: 1; }
+  #menu .drawer .foot { border-top: 1px solid var(--line); padding-top: 8px; }
+  h2.today { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
+  #menu .drawer h2 { margin-top: 4px; }
+  #menu .drawer button.item { display: block; width: 100%; text-align: left; margin: 6px 0; font-size: 18px; min-height: 52px; }
+  #menu .drawer button.item[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .glyph { vertical-align: -1px; margin-right: 4px; flex: none; }
+  .glyph.g-good { fill: var(--good); } .glyph.g-warning { fill: var(--warn); } .glyph.g-serious { fill: var(--serious); } .glyph.g-critical { fill: var(--critical); } .glyph.g-none { color: var(--mid); }
+  .bars .brow.g-good .bfill, .meter.g-good .fill { background: var(--good); }
+  .bars .brow.g-warning .bfill, .meter.g-warning .fill { background: var(--warn); }
+  .bars .brow.g-serious .bfill, .meter.g-serious .fill { background: var(--serious); }
+  .bars .brow.g-critical .bfill, .meter.g-critical .fill { background: var(--critical); }
+  .bars .brow.g-none .bfill { background: var(--soft); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--mid); font-size: 13px; margin: 6px 0; }
+  .meter { position: relative; height: 16px; background: var(--wash); border-radius: 0 4px 4px 0; margin: 5px 0 4px; }
+  .meter .fill { display: block; height: 16px; border-radius: 0 4px 4px 0; }
+  .meter .tick { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
+  .status { display: flex; align-items: center; color: var(--mid); font-size: 14px; }
+  .bcard { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .bcard .btop { margin-bottom: 0; }
+  .choice { display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 0; min-height: 56px; }
+  .choice small { color: var(--mid); display: block; }
   .chip { display: inline-flex; align-items: center; gap: 8px; }
   .ico { border-radius: 8px; object-fit: cover; flex: none; vertical-align: middle; }
   .mono { display: inline-flex; align-items: center; justify-content: center; background: var(--wash); border: 1px solid var(--line); color: var(--mid); font-weight: bold; }
@@ -86,7 +116,7 @@
   label { display: block; margin: 12px 0 4px; color: var(--mid); }
   input, select { font: inherit; width: 100%; padding: 12px; border: 1px solid var(--ink); border-radius: 8px; background: var(--paper); color: var(--ink); min-height: 48px; }
   #banner .bar { background: var(--wash); border: 1px solid var(--ink); border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; }
-  #nav { z-index: 1; position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--paper); border-top: 1px solid var(--line);
+  #nav { z-index: 1; position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(2, 1fr); background: var(--paper); border-top: 1px solid var(--line);
          padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); gap: 8px; }
   #nav button { border-radius: 8px; padding: 12px 4px; font-size: 15px; }
   #nav button[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -101,10 +131,12 @@
 </style>
 </head>
 <body>
+<header id="top"></header>
 <div id="banner"></div>
 <main id="screen"></main>
 <div id="sheet"></div>
 <div id="toast"></div>
+<div id="menu"></div>
 <nav id="nav"></nav>
 <script type="module" src="app.js"></script>
 </body>

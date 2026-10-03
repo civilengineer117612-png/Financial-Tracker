@@ -16,7 +16,7 @@ let ledger = M.emptyLedger();   // {rev, state, settings}
 let device = { status: "OK", message: "", allowEntry: true };
 let boot = { status: "NONE", repairTo: null };
 const ui = {
-  tab: "log", sheet: null, form: {}, error: null, confirmDelete: null, confirmRemove: null, setupError: null,
+  tab: "log", menu: false, sheet: null, form: {}, error: null, confirmDelete: null, confirmRemove: null, setupError: null,
   accountForm: { name: "", kind: "asset", opening: "", covers: "" },
   month: null, view: "category", asList: false, sel: null,   // the Money tab
 };
@@ -74,7 +74,27 @@ async function commit(state, settings = ledger.settings) {
 }
 
 // ---------- rendering ----------
-function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(); }
+function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(); renderMenu(); }
+
+// Everything that is not Log or Verify lives in the menu at the upper left, so new screens (and later photo
+// and audio capture beside Log and Verify) can be added without crowding the bottom bar.
+const MENU = [["Money", [["money", "Money"], ["budget", "Budget"]]]];   // grouped like folders; Setup is pinned at the bottom
+
+function renderTop(title) {
+  const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
+  $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + `<h1>${esc(title)}</h1>`;
+}
+
+function renderMenu() {
+  if (!ui.menu || !device.allowEntry) { $("menu").innerHTML = ""; return; }
+  const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}"${ui.tab === id ? ' aria-current="page"' : ""}>${label}</button>`;
+  const age = M.daysSinceBackup(ledger.settings, today());
+  const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
+  $("menu").innerHTML = `<div class="scrim" data-action="close-menu"></div><aside class="drawer" role="dialog" aria-label="Menu">
+    <div class="groups">${MENU.map(([group, items]) => `<h2>${group}</h2>${items.map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
+    <div class="foot"><p class="note">${backup}</p>${item("setup", "Setup")}
+    <button class="item" data-action="close-menu">Close</button></div></aside>`;
+}
 
 function renderBanner() {
   const bars = [];
@@ -90,15 +110,16 @@ function renderBanner() {
 function renderNav() {
   const n = device.allowEntry ? dueDrafts().length : 0;
   const tab = (id, label) => `<button data-action="tab" data-tab="${id}"${ui.tab === id ? ' aria-current="page"' : ""}>${label}</button>`;
-  $("nav").innerHTML = tab("log", "Log") + tab("verify", n ? `Verify (${n})` : "Verify") + tab("money", "Money") + tab("setup", "Setup");
+  $("nav").innerHTML = tab("log", "Log") + tab("verify", n ? `Verify (${n})` : "Verify");   // photo and audio will join these two
 }
 
 function renderScreen() {
-  if (!device.allowEntry) {
-    $("screen").innerHTML = `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`;
-    return;
-  }
-  $("screen").innerHTML = ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : viewLog();
+  // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
+  const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
+    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : viewLog();
+  const m = /^<h1>([^<]*)<\/h1>/.exec(html);
+  renderTop(m ? m[1] : "Finance");
+  $("screen").innerHTML = m ? html.slice(m[0].length) : html;
 }
 
 function viewLog() {
@@ -115,7 +136,7 @@ function viewLog() {
   return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${dueNote}${backupNote}
     <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
     <p><button class="primary" data-action="open-other" style="margin-top:12px">Other amount</button></p>
-    <h2>Today</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged today.</p>`}`;
+    <h2 class="today">Today</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged today.</p>`}`;
 }
 
 function rowFor(t) {
@@ -183,9 +204,15 @@ function viewSetup() {
 // tip of each bar, and a list view that says exactly the same thing in words and numbers.
 const SHOWN_BARS = 7;   // bigger lists fold the small ones into one row
 
+// Budget grading, from green to red. Always shown with a shape and words as well as colour.
+const LEVELS = { good: "On track", warning: "Getting there", serious: "Nearly used up", critical: "Over budget", none: "No budget" };
+const SHAPES = { good: '<circle cx="6" cy="6" r="5"/>', warning: '<path d="M6 1 L11.5 11 H0.5 Z"/>', serious: '<path d="M6 0.5 L11.5 6 L6 11.5 L0.5 6 Z"/>', critical: '<rect x="1" y="1" width="10" height="10"/>', none: '<circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/>' };
+const glyph = (level) => `<svg class="glyph g-${level}" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">${SHAPES[level]}</svg>`;
+const legend = () => `<p class="legend" aria-label="What the colours mean">${["good", "warning", "serious", "critical", "none"].map((l) => `<span>${glyph(l)}${LEVELS[l]}</span>`).join("")}</p>`;
+
 function barChart(rows, selected) {
   const max = Math.max(...rows.map((r) => r.amount), 1);
-  return `<div class="bars">${rows.map((r) => `<button class="brow${selected && selected !== r.id ? " dim" : ""}" data-action="pick-bar" data-id="${esc(r.id)}" aria-pressed="${selected === r.id}"${r.fold ? " disabled" : ""}>
+  return `<div class="bars">${rows.map((r) => `<button class="brow${r.grade ? " g-" + r.grade : ""}${selected && selected !== r.id ? " dim" : ""}" data-action="pick-bar" data-id="${esc(r.id)}" aria-pressed="${selected === r.id}"${r.fold ? " disabled" : ""}>
       <span class="btop"><span class="bname">${r.label}</span><span class="bval">${peso(r.amount)}${r.percent ? " · " + r.percent + "%" : ""}</span></span>
       <span class="btrack"><span class="bfill" style="width:${Math.max(1, Math.round((r.amount * 100) / max))}%"></span></span></button>`).join("")}</div>`;
 }
@@ -216,7 +243,7 @@ function viewMoney() {
   }
   const pending = cat.pending > 0 ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">plus ${peso(cat.pending)} not verified yet</button></p>` : "";
   const stepper = `<div class="stepper"><button data-action="month-step" data-step="-1" aria-label="Previous month">‹</button><b>${esc(label)}</b><button data-action="month-step" data-step="1" aria-label="Next month"${month >= now ? " disabled" : ""}>›</button></div>`;
-  const views = `<div class="seg" role="group" aria-label="What to show">${[["category", "Where it went"], ["account", "Paid from"], ["month", "By month"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
+  const views = `<div class="seg" role="group" aria-label="What to show">${[["category", "Where it went"], ["budget", "Budgets"], ["account", "Paid from"], ["month", "By month"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
   const hero = `<h1>Money</h1>${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">spent in ${esc(label)}</p>${delta}${pending}${views}`;
   const modeLink = `<p><button class="link" data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}">${ui.asList ? "Show as chart" : "Show as list"}</button></p>`;
   const done = (html) => hero + html + modeLink;
@@ -233,6 +260,8 @@ function viewMoney() {
       <p class="caption" aria-live="polite">${hit ? esc(M.monthLabel(hit.month) + ": " + peso(hit.amount) + " spent.") : "Tap a column to see its month."}</p>`);
   }
 
+  if (ui.view === "budget") return viewBudgets(hero, month, maps, asOf, now, label);
+
   if (ui.view === "account") {
     const acc = M.spendingByAccount(S(), { month });
     if (!acc.rows.length) return hero + emptyMoney();
@@ -245,11 +274,54 @@ function viewMoney() {
   }
 
   if (!cat.rows.length) return hero + emptyMoney();
-  const rows = cat.rows.map((r) => ({ id: r.category_id, label: esc(r.name), amount: r.amount, percent: r.percent }));
+  // Where a category has a budget this month its bar takes that budget's colour; without any budgets at all, one calm blue.
+  const budgetOf = (id) => M.budgetFor(S().rules, id, month);
+  const graded = cat.rows.some((r) => budgetOf(r.category_id) !== null);
+  const rows = cat.rows.map((r) => {
+    const budget = budgetOf(r.category_id), g = M.budgetGrade(r.amount, budget);
+    return { id: r.category_id, label: esc(r.name), amount: r.amount, percent: r.percent, budget, grade: graded ? (g ? g.level : "none") : null, used: g ? g.percent : null };
+  });
   if (ui.asList) return done(listTable(["Category", "Spent", "Share"], rows.map((r) => [r.label, peso(r.amount), r.percent + "%"]), "Total", cat.total));
   const hit = rows.find((r) => r.id === ui.sel);
-  return done(barChart(foldRows(rows.filter((r) => r.amount > 0), cat.total), ui.sel)
-    + `<p class="caption" aria-live="polite">${hit ? esc(hit.label + ": " + peso(hit.amount) + ", " + hit.percent + "% of what you spent in " + label + ".") : "Tap a bar to see its share."}</p>`);
+  const hitWords = hit ? esc(hit.label + ": " + peso(hit.amount) + ", " + hit.percent + "% of what you spent in " + label + ".") + (hit.budget ? " " + esc("Budget " + peso(hit.budget) + ": " + hit.used + "% used" + (hit.grade === "critical" ? ", over by " + peso(hit.amount - hit.budget) : "") + ".") : "") : "Tap a bar to see its share.";
+  return done((graded ? legend() : "") + barChart(foldRows(rows.filter((r) => r.amount > 0), cat.total), ui.sel)
+    + `<p class="caption" aria-live="polite">${hitWords}</p>`);
+}
+
+// Each budget as a meter: how much of it is used, with a mark for how far through the month we are.
+function viewBudgets(hero, month, maps, asOf, now, label) {
+  const rows = M.budgetStatus(S(), { rules: S().rules, categoryMaps: maps, month, asOf });
+  const budgeted = rows.filter((r) => r.budget !== null).map((r) => ({ ...r, grade: M.budgetGrade(r.spent, r.budget) }))
+    .sort((a, b) => b.spent * a.budget - a.spent * b.budget || (a.category_id < b.category_id ? -1 : 1));   // most used first
+  const unbudgeted = rows.filter((r) => r.budget === null && r.spent > 0).sort((a, b) => b.spent - a.spent);
+  if (!budgeted.length) {
+    return hero + `<p class="note">No budgets for ${esc(label)} yet.</p><p><button class="link" data-action="tab" data-tab="budget">Set a budget</button></p>`;
+  }
+  const elapsed = month === now ? M.monthElapsedPercent(month, today()) : null;
+  const words = (r) => r.grade.level === "critical" ? "Over by " + peso(r.spent - r.budget) : peso(r.budget - r.spent) + " left";
+  if (ui.asList) {
+    return hero + listTable(["Category", "Spent", "Budget"], budgeted.map((r) => [esc(categoryName(r.category_id)), peso(r.spent), peso(r.budget) + " · " + r.grade.percent + "% · " + LEVELS[r.grade.level]]), "Total spent", budgeted.reduce((n, r) => n + r.spent, 0))
+      + `<p><button class="link" data-action="chart-mode" data-mode="chart">Show as chart</button></p>`;
+  }
+  const cards = budgeted.map((r) => `<div class="bcard" role="group" aria-label="${esc(categoryName(r.category_id) + ": " + peso(r.spent) + " of " + peso(r.budget) + ", " + LEVELS[r.grade.level])}">
+      <div class="btop"><span class="bname">${esc(categoryName(r.category_id))}</span><span class="bval">${peso(r.spent)} of ${peso(r.budget)}</span></div>
+      <div class="meter g-${r.grade.level}"><span class="fill" style="width:${r.spent > 0 ? Math.max(1, Math.min(100, Math.round((r.spent * 100) / r.budget))) : 0}%"></span>${elapsed === null ? "" : `<span class="tick" style="left:${elapsed}%"></span>`}</div>
+      <div class="status">${glyph(r.grade.level)}${esc(LEVELS[r.grade.level])} · ${esc(words(r))}${r.pending > 0 ? " · " + esc("+" + peso(r.pending) + " not verified") : ""}</div></div>`).join("");
+  const rest = unbudgeted.length ? `<h2>No budget set</h2>${unbudgeted.map((r) => `<div class="row"><div>${esc(categoryName(r.category_id))}</div><div class="amt">${peso(r.spent)}</div></div>`).join("")}` : "";
+  return hero + legend() + `<div>${cards}</div>${elapsed === null ? "" : `<p class="note">The black line is today's place in the month.</p>`}${rest}
+    <p><button class="link" data-action="chart-mode" data-mode="list">Show as list</button></p>`;
+}
+
+// ---------- Budget: the monthly amounts ----------
+function viewBudget() {
+  const month = M.monthOf(today()), next = M.addMonths(month, 1);
+  const rows = expenseCategories().map((c) => {
+    const now = M.budgetFor(S().rules, c.id, month), later = M.budgetFor(S().rules, c.id, next);
+    const change = later !== now ? `<small>${later === null ? "ends" : peso(later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "";
+    return `<button class="choice" data-action="open-budget" data-id="${esc(c.id)}"><span>${esc(c.name)}${change}</span><span class="bval">${now === null ? "No budget" : peso(now) + " a month"}</span></button>`;
+  }).join("");
+  return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${rows}
+    <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
 }
 
 const emptyMoney = () => `<p class="note">Nothing verified for this month yet. Verified entries appear here.</p><p><button class="link" data-action="tab" data-tab="verify">Go to Verify</button></p>`;
@@ -287,7 +359,15 @@ function renderSheet() {
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
-  if (sh.type === "icon") {
+  if (sh.type === "budget") {
+    const c = S().categories.find((x) => x.id === sh.id), thisM = M.monthOf(today()), nextM = M.addMonths(thisM, 1);
+    body = `<h3>Budget for ${esc(c.name)}</h3>
+      <label for="f-amount">Per month (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label>Starts</label>
+      <div class="seg" role="group" aria-label="When it starts">${[[thisM, "This month"], [nextM, "Next month"]].map(([m, t]) => `<button data-action="budget-start" data-month="${m}" aria-pressed="${ui.form.start === m}">${t}</button>`).join("")}</div>
+      <p class="note">${esc(M.monthLabel(ui.form.start))}. Enter 0 to remove the budget.</p>
+      <p><button class="primary" id="f-save" data-action="save-budget" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "icon") {
     const a = S().accounts.find((x) => x.id === sh.id);
     body = `<h3>Picture for ${esc(a.name)}</h3>
       <p class="note">Take a screenshot of the app's icon, choose it here, then zoom and drag until only the icon fills the square.</p>
@@ -332,6 +412,9 @@ function refreshSave() {
   if (type === "other") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && f.category_id && f.account_id);
+  } else if (type === "budget") {
+    const a = M.parsePesos(f.amount);
+    btn.disabled = !a.ok;
   } else if (type === "backup") {
     const long = (f.pass ?? "").length >= M.MIN_PASSPHRASE, same = f.pass === f.pass2;
     btn.disabled = !(long && same) || f.busy;
@@ -367,11 +450,31 @@ async function onClick(el) {
   const { action, id, tab } = el.dataset;
   const form = ui.form;
   switch (action) {
-    case "tab": $("toast").innerHTML = ""; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null; renderAll(); break;
+    case "open-menu": ui.menu = true; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "true"); break;
+    case "close-menu": ui.menu = false; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "false"); break;
+    case "tab": $("toast").innerHTML = ""; ui.menu = false; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null; renderAll(); break;
     case "month-step": ui.month = M.addMonths(ui.month ?? M.monthOf(today()), Number(el.dataset.step)); ui.sel = null; renderScreen(); break;
     case "chart-view": ui.view = el.dataset.view; ui.sel = null; renderScreen(); break;
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
     case "pick-bar": ui.sel = ui.sel === id ? null : id; renderScreen(); break;
+    case "open-budget": {
+      const cur = M.budgetFor(S().rules, id, M.monthOf(today()));
+      ui.sheet = { type: "budget", id };
+      ui.form = { amount: cur === null ? "" : (cur / 100).toFixed(2), start: M.suggestedBudgetStart(S().rules, id, today()) };
+      renderSheet(); break;
+    }
+    case "budget-start": ui.form.start = el.dataset.month; renderSheet(); break;
+    case "save-budget": {
+      const amount = M.parsePesos(ui.form.amount);
+      if (!amount.ok) { showToast("Enter an amount like 4000, or 0 to remove the budget"); break; }
+      const plan = M.planBudgetChange(S(), { id: newId("rule"), category_id: ui.sheet.id, amount: amount.centavos, from_month: ui.form.start }, new Date());
+      if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
+      const name = categoryName(ui.sheet.id);
+      ui.sheet = null; renderSheet();
+      await commit(plan.state);
+      showToast(amount.centavos === 0 ? "Budget removed for " + name : "Budget saved for " + name);
+      break;
+    }
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
     case "save-icon": await saveIcon(); break;
     case "clear-icon": {
@@ -601,6 +704,7 @@ document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-action]");
   if (el) onClick(el);
 });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ui.menu) { ui.menu = false; renderMenu(); } });
 document.addEventListener("input", (e) => {
   const field = e.target.dataset?.field;
   if (!field) return;

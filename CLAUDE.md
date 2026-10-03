@@ -20,5 +20,5 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 - A major change: say so, or give a PDF. Calendar and other outward actions need an explicit yes.
 - The owner is a VISUAL person: charts and account pictures matter. Charts: one color for a single series, values at the
   bar tip, a list twin for every chart (see the dataviz skill's rules).
-- Tone is firm, never harsh: nothing blocks logging, nothing is red, facts are stated once. Verification is one entry at
+- Tone is firm, never harsh: nothing blocks logging, red appears only on budget charts when a category is strictly over its budget (owner's choice), always with a shape and words, facts are stated once. Verification is one entry at
   a time with no "all correct" button; entries can be verified the day they are logged.
