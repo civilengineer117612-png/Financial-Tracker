@@ -135,19 +135,15 @@ function renderScreen() {
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
 }
 
-// Quick day totals: today's spending sits centered on the Log screen with no label; "Another day" opens a date box.
-function dayLine(date, label) {
-  const d = M.dayTotal(S(), date);
-  const note = d.drafts ? ` <small>includes ${d.drafts} not yet verified</small>` : "";
-  return `<span class="dlabel">${esc(label)}</span><span class="dval">${peso(d.total)}${note}</span>`;
-}
+// The big number on the Log screen is the total for the day being looked at: today, or the day picked with "Select date".
+// "Back to today" returns to today. The date box is the phone's own picker, hidden under the link so nothing crowds the screen.
 function dayCard() {
-  const picked = ui.dayPick && ui.dayPick !== today() ? ui.dayPick : "";
-  const d = M.dayTotal(S(), today());
-  return `<div class="daytotal" role="status" aria-label="Spent today ${esc(peso(d.total))}${d.drafts ? ", including " + d.drafts + " not yet verified" : ""}">${peso(d.total)}</div>
-    <p class="center"><button class="link" data-action="toggle-day" aria-expanded="${ui.dayOpen === true}">${ui.dayOpen ? "Hide" : "Another day"}</button></p>
-    ${ui.dayOpen ? `<div class="daycard"><label for="d-pick">Total for</label><input id="d-pick" type="date" data-day="1" max="${esc(today())}" value="${esc(picked)}">
-      <div class="dline" id="d-out" role="status">${picked ? dayLine(picked, longDate(picked)) : ""}</div></div>` : ""}`;
+  const picked = ui.dayPick && ui.dayPick !== today() ? ui.dayPick : null;
+  const d = M.dayTotal(S(), picked ?? today());
+  const words = (picked ? longDate(picked) : "Today") + " " + peso(d.total) + (d.drafts ? ", including " + d.drafts + " not yet verified" : "");
+  return `<div class="daytotal" role="status" aria-label="${esc(words)}">${peso(d.total)}</div>
+    ${picked ? `<p class="center daycap">${esc(longDate(picked))}</p>` : ""}
+    <p class="center"><label class="link datelink">${picked ? "Change date" : "Select date"}<input type="date" data-day="1" max="${esc(today())}" value="${esc(picked ?? "")}" aria-label="Select a date"></label>${picked ? ` \u00b7 <button class="link" data-action="reset-day">Back to today</button>` : ""}</p>`;
 }
 
 function viewLog() {
@@ -1101,7 +1097,7 @@ async function onClick(el) {
       if (r.ok) await commit(r.state);
       break;
     }
-    case "toggle-day": ui.dayOpen = !ui.dayOpen; renderScreen(); break;
+    case "reset-day": ui.dayPick = null; renderScreen(); break;
     case "get-logos": await getBankLogos(); break;
     case "pick-bank": ui.accountForm.bank = ui.accountForm.bank === id ? null : id; ui.accountForm.sub = ""; ui.setupError = null; renderScreen(); break;
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
@@ -1330,7 +1326,7 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ui.menu) { ui.menu = false; renderMenu(); } });
 document.addEventListener("input", (e) => {
-  if (e.target.dataset?.day) { ui.dayPick = e.target.value; $("d-out").innerHTML = e.target.value ? dayLine(e.target.value, longDate(e.target.value)) : ""; return; }
+  if (e.target.dataset?.day) { ui.dayPick = e.target.value || null; renderScreen(); return; }
   const field = e.target.dataset?.field;
   if (!field) return;
   if (e.target.type === "file") return;   // handled on change
