@@ -267,8 +267,8 @@ function viewIncome() {
   const pv = plan ? [M.planIncome(S(), plan, today())].map((v) => `<h2>Plan against what arrived</h2><table class="tbl"><tr><th>Payday</th><th class="n">Plan</th><th class="n">Received</th><th class="n">Difference</th></tr><tr><td>${esc(v.label)}<small> ${esc(longDate(v.period.start))}</small></td><td class="n">${peso(v.planned)}</td><td class="n">${peso(v.actual)}</td><td class="n">${esc(ivar(v.variance))}</td></tr></table><p class="note">The plan is never edited; the difference is only shown.</p>`)[0] : "";
   const list = slips.length ? `<h2>Payslips</h2>${slips.slice(0, 12).map((p) => {
     const lines = M.linesOf(S(), p.id), flags = M.payslipChecks(p, lines), t = M.payslipTotals(lines);
-    const draft = S().transactions.some((x) => x.id === "ot-" + p.id);
-    return `<div class="row"><div>${esc(p.employer)}<small>${esc(fullDate(p.pay_date))} · gross ${peso(t.gross)} · deductions ${peso(t.deductions)}</small></div><div class="amt">${peso(p.deposit)}</div></div>${flags.map(flagLine).join("")}${t.overtime > 0 && !draft ? `<p class="note"><button class="link" data-action="ot-draft" data-id="${esc(p.id)}">Make the Emergency Fund draft for the overtime</button></p>` : ""}`;
+    const draft = S().transactions.some((x) => x.id === "ot-" + p.id), freeDone = S().transactions.some((x) => x.id === "otf-" + p.id);
+    return `<div class="row"><div>${esc(p.employer)}<small>${esc(fullDate(p.pay_date))} · gross ${peso(t.gross)} · deductions ${peso(t.deductions)}</small></div><div class="amt">${peso(p.deposit)}</div></div>${flags.map(flagLine).join("")}${t.overtime > 0 && !draft ? `<p class="note"><button class="link" data-action="ot-draft" data-id="${esc(p.id)}">Make the Emergency Fund draft for the overtime</button></p>` : ""}${t.overtime > 0 && !freeDone ? `<p class="note">The free ${peso(t.overtime - Math.round((t.overtime * M.OVERTIME_SHARE.num) / M.OVERTIME_SHARE.den))} of the overtime stays in the account the pay landed in. <button class="link" data-action="open-otfree" data-id="${esc(p.id)}">Move it somewhere else</button></p>` : ""}`;
   }).join("")}` : "";
   return `${head}<h2>Where it came from, ${esc(year)}</h2>${bySrc.length ? hbars(bySrc) : ""}${monthTable}${paydays}${raiseTable}${dedTable}${empTable}${pv}${list}`;
 }
@@ -1063,6 +1063,12 @@ function renderSheet() {
       <div class="seg" role="group" aria-label="When it starts">${[[thisM, "This month"], [nextM, "Next month"]].map(([m, t]) => `<button data-action="budget-start" data-month="${m}" aria-pressed="${ui.form.start === m}">${t}</button>`).join("")}</div>
       <p class="note">${esc(M.monthLabel(ui.form.start))}. Enter 0 to remove the budget.</p>
       <p><button class="primary" id="f-save" data-action="save-budget" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "otfree") {
+    const p = S().payslips.find((x) => x.id === sh.id);
+    body = `<h3>Where should the free part go?</h3>
+      <p class="note">It stays in ${esc(accountName(p.account_id))} unless you choose another account. Choosing one makes a draft in Verify.</p>
+      ${chips(accountsFor(null).filter((a) => a.id !== p.account_id), ui.form.account_id, "pick-acct")}
+      <p><button class="primary" id="f-save" data-action="save-otfree" style="margin-top:14px" disabled>Make the draft</button></p>`;
   } else if (sh.type === "payslip") {
     const f = ui.form, field = (prefix, [kind, label]) => `<label for="${prefix}${kind}">${esc(label)}</label><input id="${prefix}${kind}" data-field="${prefix}${kind}" inputmode="decimal" value="${esc(f[prefix + kind] ?? "")}" autocomplete="off" placeholder="0.00">`;
     const months = Array.from({ length: 7 }, (_, i) => M.addMonths(M.monthOf(today()), -i));
@@ -1172,6 +1178,8 @@ function refreshSave() {
   } else if (type === "trip") {
     const a = f.amount ? M.parsePesos(f.amount) : { ok: true };
     btn.disabled = !((f.name ?? "").trim() && a.ok);
+  } else if (type === "otfree") {
+    btn.disabled = !f.account_id;
   } else if (type === "payslip") {
     const { p, ready } = savePayslipReady(f);
     btn.disabled = !ready;
@@ -1497,6 +1505,13 @@ async function onClick(el) {
     case "open-payslip": ui.sheet = { type: "payslip" }; ui.form = payslipDefaults(); renderSheet(); break;
     case "save-payslip": await savePayslip(); break;
     case "home-month": ui.homeMonth = M.addMonths(ui.homeMonth ?? M.monthOf(today()), Number(el.dataset.step)); renderScreen(); break;
+    case "open-otfree": ui.sheet = { type: "otfree", id }; ui.form = { account_id: null }; renderSheet(); break;
+    case "save-otfree": {
+      const d = M.overtimeFreeDraft(S(), ui.sheet.id, { transaction_id: "otf-" + ui.sheet.id, to_account_id: form.account_id }, new Date());
+      if (!d?.ok || !d.transaction) { showToast("Could not make the draft: " + (d?.violations?.[0]?.message ?? "no overtime")); break; }
+      ui.sheet = null; renderSheet();
+      await commit(M.applyDrafts(S(), [d])); showToast("The draft is waiting in Verify."); break;
+    }
     case "income-year": ui.incomeYear = String(Number(incomeYear()) + Number(el.dataset.step)); renderScreen(); break;
     case "ot-draft": {
       const emerg = S().goals.find((x) => /emergency/i.test(x.name));

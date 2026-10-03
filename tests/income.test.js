@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory,
+import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory,
   ensureIncomeCategories, validateState, applyDrafts } from "../src/model/index.js";
 import { makeState, account } from "./fixtures.js";
 
@@ -109,4 +109,19 @@ test("a ledger from before the income categories existed gets the missing ones",
   const s = ensureIncomeCategories({ ...makeState(), categories: [{ id: "cat-salary", name: "Salary", kind: "income" }] });
   assert.deepEqual(s.categories.map((c) => c.id).sort(), ["cat-interest", "cat-other-income", "cat-overtime", "cat-refund", "cat-salary"]);
   assert.equal(ensureIncomeCategories(s), s);
+});
+
+test("the free 40% stays put unless the owner picks where it goes; then it is a draft of exactly the remainder", () => {
+  const s = planPayslip(ledger(), base({ printed_gross: 1150000, printed_net: 1030000, deposit: 1030000, earnings: [{ kind: "basic", amount: 900000 }, { kind: "rice", amount: 100000 }, { kind: "overtime", amount: 150000, earned_month: "2026-09" }] }), NOW).state;
+  assert.equal(s.transactions.filter((t) => t.status === "draft").length, 0, "saving a payslip makes no second draft by itself");
+  const d = overtimeFreeDraft(s, "ps1", { transaction_id: "tx-free", to_account_id: "ef" }, NOW);
+  assert.ok(d.ok);
+  assert.equal(d.transaction.status, "draft");
+  assert.equal(d.entries.find((e) => e.account_id === "ef").amount, 60000);   // 150,000 less the 90,000 that goes to the Emergency Fund
+  assert.equal(d.entries.find((e) => e.account_id === "chk").amount, -60000);
+  const ef = overtimeDraft(s, "ps1", { transaction_id: "tx-ef", emergency_account_id: "ef" }, NOW);
+  assert.equal(ef.entries[0].amount + d.entries[0].amount, 150000, "the two drafts add up to all of the overtime");
+  assert.equal(overtimeFreeDraft(s, "ps1", { transaction_id: "x", to_account_id: "chk" }, NOW).violations[0].code, "SAME_ACCOUNT");
+  assert.equal(overtimeFreeDraft(s, "ps1", { transaction_id: "x", to_account_id: "card" }, NOW).violations[0].code, "UNKNOWN_ACCOUNT");
+  assert.equal(overtimeFreeDraft(planPayslip(ledger(), base(), NOW).state, "ps1", { transaction_id: "x", to_account_id: "ef" }, NOW), null);
 });
