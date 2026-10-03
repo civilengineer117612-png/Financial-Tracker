@@ -3,6 +3,7 @@
 import { naturalBalance } from "./balances.js";
 import { checkTransactionSave } from "./index.js";
 import { phTimestamp } from "./util.js";
+import { validateShape } from "./schema.js";
 
 // A goal's balance is the balance of the account (pocket) it points at.
 export function goalProgress(state, goal) {
@@ -63,4 +64,40 @@ export function planOvertimeTransfer(state, input, now = new Date()) {
     { transaction_id: transaction.id, account_id: input.source_account_id, amount: -emergency },
   ];
   return { ...checkTransactionSave(state, { transaction, entries }), transaction, entries };
+}
+
+const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }] });
+
+// A new goal points at an account that already exists (the pocket where the money really sits).
+// input: {id, account_id, name, target?, deadline?, hidden_by_default?}. Hidden by default (spec 9).
+export function planGoal(state, input) {
+  const name = (input.name ?? "").trim();
+  const account = state.accounts.find((a) => a.id === input.account_id);
+  if (!name) return fail("BAD_NAME", "give the goal a name");
+  if (input.target != null && (!Number.isSafeInteger(input.target) || input.target < 0)) return fail("BAD_TARGET", "the target cannot be negative");
+  if (!account || account.class !== "asset") return fail("UNKNOWN_ACCOUNT", "a goal needs an account you hold money in");
+  if ((state.goals ?? []).some((g) => g.id === input.id)) return fail("DUPLICATE_ID", "that goal already exists");
+  if ((state.goals ?? []).some((g) => g.name.toLowerCase() === name.toLowerCase())) return fail("DUPLICATE_NAME", "you already have a goal with that name");
+  const goal = { id: input.id, account_id: account.id, name, hidden_by_default: input.hidden_by_default ?? true,
+    ...(input.target != null ? { target: input.target } : {}), ...(input.deadline ? { deadline: input.deadline } : {}) };
+  const problems = validateShape("Goal", goal);
+  if (problems.length) return { ok: false, violations: problems };
+  return { ok: true, violations: [], goal, state: { ...state, goals: [...(state.goals ?? []), goal] } };
+}
+
+// Move money into a goal's account as a DRAFT transfer, verified later like any other entry.
+// input: {transaction_id, date, goal_id, from_account_id, amount}
+export function planGoalDeposit(state, input, now = new Date()) {
+  const goal = state.goals.find((g) => g.id === input.goal_id);
+  if (!goal) return fail("UNKNOWN_GOAL", "no goal " + input.goal_id);
+  if (!Number.isSafeInteger(input.amount) || input.amount <= 0) return fail("BAD_AMOUNT", "amount must be more than zero");
+  if (input.from_account_id === goal.account_id) return fail("SAME_ACCOUNT", "choose a different account to take the money from");
+  if (!state.accounts.some((a) => a.id === input.from_account_id)) return fail("UNKNOWN_ACCOUNT", "no account " + input.from_account_id);
+  const transaction = { id: input.transaction_id, date: input.date, payee: "To " + goal.name, memo: "", status: "draft", source: "manual", created_at: phTimestamp(now) };
+  const entries = [
+    { transaction_id: transaction.id, account_id: goal.account_id, amount: input.amount },
+    { transaction_id: transaction.id, account_id: input.from_account_id, amount: -input.amount },
+  ];
+  const result = checkTransactionSave(state, { transaction, entries });
+  return { ...result, transaction, entries, state: result.ok ? { ...state, transactions: [...state.transactions, transaction], entries: [...state.entries, ...entries] } : state };
 }

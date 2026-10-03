@@ -451,7 +451,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3, "it is the three-line icon");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Check-in,Setup", "the menu lists Money, Budget, Check-in and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Check-in,Setup", "the menu lists Money, Budget, Goals, Check-in and Setup");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
 await shot(page, "17-menu");
 await page.keyboard.press("Escape");
@@ -589,6 +589,25 @@ check(/Spent today\s*₱\d/.test(await text(page, ".daycard")), "today's total i
 await page.fill("#d-pick", "2026-01-05");
 check((await text(page, "#d-out")).includes("₱0.00") && (await text(page, "#d-out")).includes("Jan"), "another date shows its own total");
 await shot(page, "23-day-totals");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+
+// ---- goals ----
+await menuGo(page, "Goals");
+check((await text(page, "#screen")).includes("No goals yet"), "goals start empty");
+await page.click('button:has-text("Add a goal")');
+check(await page.locator("#f-save").isDisabled(), "a goal needs a name and a place first");
+await page.fill("#g-name", "Apartment"); await page.fill("#f-amount", "20000"); await page.click('#sheet .chip:has-text("Wallet")');
+await page.click("#f-save"); await seen(page, "#toast", "Goal added");
+check((await text(page, "#screen")).includes("Hidden") && !(await text(page, "#screen")).includes("20,000"), "a new goal hides its balance");
+await page.click('button:has-text("Show balances")');
+check((await text(page, "#screen")).includes("of ₱20,000.00") && (await text(page, "#screen")).includes("to go"), "showing balances reveals progress in words");
+await shot(page, "25-goals");
+await page.click('button:has-text("Put money in")');
+check(!(await text(page, "#sheet")).includes("Wallet"), "you cannot take the money from the goal's own account");
+await page.fill("#f-amount", "500");
+await page.click("#f-save"); await seen(page, "#toast", "set for Apartment");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.state.goals.length === 1 && ledgerNow.state.transactions.some((t) => t.payee === "To Apartment" && t.status === "draft"), "the deposit is a draft transfer until verified");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // pictures survive a reload and appear where you choose an account

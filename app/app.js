@@ -81,11 +81,12 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 // Plain line icons (drawn in the text colour). Groups are separated by thin lines, like a settings list.
 const ICONS = {
   money: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
+  goals: '<path d="M5 21V4M5 4h13l-3 4 3 4H5"/>',
   budget: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
   checkin: '<path d="M4 12l5 5L20 6"/>',
   setup: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
 };
-const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
+const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"], ["goals", "Goals"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
@@ -122,7 +123,7 @@ function renderNav() {
 function renderScreen() {
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
-    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : viewLog();
+    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
@@ -371,6 +372,27 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
 }
 
 // ---------- Budget: the monthly amounts ----------
+// ---------- goals ----------
+// A goal points at an account where the money really sits. Balances are hidden until you choose to show them (spec 9).
+function viewGoals() {
+  const goals = S().goals;
+  const toggle = goals.some((g) => g.hidden_by_default) ? `<p><button class="link" data-action="toggle-reveal">${ui.reveal ? "Hide balances" : "Show balances"}</button></p>` : "";
+  const cards = goals.map((g) => {
+    const p = M.goalProgress(S(), g);
+    if (!p) return "";
+    const hidden = g.hidden_by_default && !ui.reveal;
+    const need = g.deadline && p.remaining ? M.requiredPerMonth(p, g.deadline, today().slice(0, 7)) : null;
+    const body = hidden ? `<p class="note">Hidden. Tap Show balances above.</p>`
+      : `<div class="btop"><span class="bval">${peso(p.balance)}${p.target != null ? " of " + peso(p.target) : ""}</span></div>
+         ${p.target != null ? `<div class="meter goal" role="img" aria-label="${p.percent}% of the goal"><span class="fill" style="width:${p.percent}%"></span></div>
+         <div class="status">${p.reached ? "Goal reached" : p.percent + "% \u00b7 " + peso(p.remaining) + " to go"}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div>` : `<div class="status">No target, just a place to build up.</div>`}`;
+    return `<div class="bcard"><div class="btop"><span class="bname who">${iconOf(S().accounts.find((a) => a.id === g.account_id) ?? { name: g.name }, 24)}<span>${esc(g.name)}</span></span></div>${body}
+      <p><button data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button></p></div>`;
+  }).join("");
+  return `<h1>Goals</h1><p class="sub">Savings you are building. Hidden by default so they do not tempt you.</p>${toggle}${cards || `<p class="note">No goals yet.</p>`}
+    <p><button class="primary" data-action="open-goal" style="margin-top:8px">Add a goal</button></p>`;
+}
+
 // ---------- weekly check-in ----------
 // The week is the 7 days ending today. Each account is counted against what the bank or wallet really shows.
 const thisWeek = () => M.weekEndingOn(today());
@@ -445,7 +467,21 @@ function renderSheet() {
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
-  if (sh.type === "checkin") {
+  if (sh.type === "goal") {
+    body = `<h3>New goal</h3>
+      <label for="g-name">Name</label><input id="g-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
+      <label for="f-amount">Target (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label for="g-date">Finish by (optional)</label><input id="g-date" type="date" data-field="deadline" value="${esc(ui.form.deadline ?? "")}">
+      <label>Where the money sits</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <p><button class="primary" id="f-save" data-action="save-goal" style="margin-top:14px" disabled>Save goal</button></p>`;
+  } else if (sh.type === "deposit") {
+    const g = S().goals.find((x) => x.id === sh.id);
+    body = `<h3>Put money in ${esc(g.name)}</h3>
+      <label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label>Take it from</label>${chips(accountsFor(null).filter((a) => a.id !== g.account_id), ui.form.account_id, "pick-acct")}
+      <p class="note">This is saved as a draft transfer. Verify it like any other entry.</p>
+      <p><button class="primary" id="f-save" data-action="save-deposit" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "checkin") {
     const a = S().accounts.find((x) => x.id === sh.id);
     body = `<h3>Count ${esc(a.name)}</h3>
       <label for="f-amount">${a.class === "asset" ? "Balance you see now" : "Amount owed you see now"} (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
@@ -523,6 +559,12 @@ function refreshSave() {
     if (out) out.textContent = a.ok && acct ? "The ledger says " + peso(M.ledgerBalanceFor(acct, S().entries)) + ". " + differenceText(a.centavos - M.ledgerBalanceFor(acct, S().entries)) + "." : "";
   } else if (type === "survey") {
     btn.disabled = !f.ease;
+  } else if (type === "goal") {
+    const a = f.amount ? M.parsePesos(f.amount) : { ok: true };
+    btn.disabled = !((f.name ?? "").trim() && f.account_id && a.ok);
+  } else if (type === "deposit") {
+    const a = M.parsePesos(f.amount);
+    btn.disabled = !(a.ok && a.centavos > 0 && f.account_id);
   } else if (type === "backup") {
     const long = (f.pass ?? "").length >= M.MIN_PASSPHRASE, same = f.pass === f.pass2;
     btn.disabled = !(long && same) || f.busy;
@@ -609,6 +651,30 @@ async function onClick(el) {
       ui.sheet = null; renderSheet();
       await commit({ ...S(), surveyResponses: [...S().surveyResponses.filter((r) => r.id !== plan.response.id), plan.response] });
       showToast("Answers saved");
+      break;
+    }
+    case "toggle-reveal": ui.reveal = !ui.reveal; renderScreen(); break;
+    case "open-goal": ui.sheet = { type: "goal" }; ui.form = { name: "", amount: "", deadline: "", account_id: null }; renderSheet(); break;
+    case "save-goal": {
+      const f = ui.form, target = f.amount ? M.parsePesos(f.amount) : null;
+      if (target && !target.ok) { showToast("Enter the target like 20000"); break; }
+      const plan = M.planGoal(S(), { id: newId("goal"), account_id: f.account_id, name: f.name, target: target ? target.centavos : null, deadline: f.deadline || undefined });
+      if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      await commit(plan.state);
+      showToast("Goal added: " + plan.goal.name);
+      break;
+    }
+    case "open-deposit": ui.sheet = { type: "deposit", id }; ui.form = { amount: "", account_id: accountsFor(null).find((a) => a.id !== S().goals.find((g) => g.id === id)?.account_id)?.id ?? null }; renderSheet(); break;
+    case "save-deposit": {
+      const amount = M.parsePesos(ui.form.amount);
+      if (!amount.ok) { showToast("Enter an amount like 500"); break; }
+      const g = S().goals.find((x) => x.id === ui.sheet.id);
+      const plan = M.planGoalDeposit(S(), { transaction_id: newId("tx"), date: today(), goal_id: g.id, from_account_id: ui.form.account_id, amount: amount.centavos }, new Date());
+      if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      await commit(plan.state);
+      showToast(peso(amount.centavos) + " set for " + g.name + ". Verify it to count it.");
       break;
     }
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;

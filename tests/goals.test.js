@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, naturalBalance } from "../src/model/index.js";
+import { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit, naturalBalance } from "../src/model/index.js";
 import { makeState, account, commit } from "./fixtures.js";
 
 function s0() {
@@ -77,4 +77,27 @@ test("overtime transfer reports bad input instead of throwing", () => {
   assert.equal(planOvertimeTransfer(s, { ...base, overtime_amount: 10.5 }).violations[0].code, "BAD_AMOUNT");
   assert.equal(planOvertimeTransfer(s, { ...base, emergency_account_id: "nope" }).violations[0].code, "UNKNOWN_ACCOUNT");
   assert.equal(planOvertimeTransfer(s, { ...base, overtime_amount: 1, share: { num: 1, den: 5 } }).transaction, null);   // 0 rounds away: nothing to move
+});
+
+// ---------- creating a goal and putting money in ----------
+test("a goal points at an account you hold, is hidden by default, and bad ones are refused", () => {
+  const s = s0();
+  const ok = planGoal(s, { id: "g1", account_id: "goalacct", name: " Apartment ", target: 2000000 });
+  assert.equal(ok.ok, true);
+  assert.deepEqual([ok.goal.name, ok.goal.hidden_by_default, ok.state.goals.length], ["Apartment", true, 1]);
+  for (const [o, code] of [[{ name: "  " }, "BAD_NAME"], [{ account_id: "nope" }, "UNKNOWN_ACCOUNT"], [{ id: "g1" }, "DUPLICATE_ID"], [{ id: "g2", name: "apartment" }, "DUPLICATE_NAME"]]) {
+    const r = planGoal(ok.state, { id: "g2", account_id: "goalacct", name: "Other", ...o });
+    assert.equal(r.violations[0].code, code);
+  }
+  assert.equal(planGoal(s, { id: "g3", account_id: "goalacct", name: "Neg", target: -5 }).violations[0].code, "BAD_TARGET");
+});
+test("putting money in makes a draft transfer that moves the pocket balance only once verified-counted", () => {
+  const s = planGoal(s0(), { id: "g1", account_id: "goalacct", name: "Apartment", target: 100000 }).state;
+  const r = planGoalDeposit(s, { transaction_id: "t9", date: "2026-03-01", goal_id: "g1", from_account_id: "ef", amount: 5000 });
+  assert.equal(r.ok, true);
+  assert.deepEqual([r.transaction.status, r.entries.map((e) => e.amount).sort((a, b) => a - b)], ["draft", [-5000, 5000]]);
+  assert.equal(naturalBalance(r.state.accounts.find((a) => a.id === "goalacct"), r.state.entries), 30000);
+  for (const [o, code] of [[{ amount: 0 }, "BAD_AMOUNT"], [{ amount: 1.5 }, "BAD_AMOUNT"], [{ from_account_id: "goalacct" }, "SAME_ACCOUNT"], [{ from_account_id: "x" }, "UNKNOWN_ACCOUNT"], [{ goal_id: "zz" }, "UNKNOWN_GOAL"]]) {
+    assert.equal(planGoalDeposit(s, { transaction_id: "t9", date: "2026-03-01", goal_id: "g1", from_account_id: "ef", amount: 5000, ...o }).violations[0].code, code);
+  }
 });
