@@ -52,7 +52,7 @@ export { detectPlatform, assessDevice, trialAllowed } from "./device.js";
 export { buildReminderCalendar, defaultReminders, validateReminder, foldLine } from "./reminders.js";
 export { parsePesos, formatPesos, formatPesosWhole } from "./money.js";
 export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID, ensureIncomeCategories, INCOME_CATEGORIES } from "./seed.js";
-export { applyDrafts, planExpense, discardDraft, verifyDraft, editDraftFields, setAccountIcon, planAttachment, attachmentsFor } from "./drafts.js";
+export { applyDrafts, planExpense, discardDraft, verifyDraft, editDraftFields, setAccountIcon, planAttachment, attachmentsFor, planSplitExpense, splitCategoryEntry } from "./drafts.js";
 export { LEDGER_VERSION, emptyState, emptyLedger, nextLedger, parseLedger, chooseLedger, restoreLedger, summarizeLedger, backupFileName, daysSinceBackup } from "./persist.js";
 export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByRange, spendingByAccount, monthlySpending, dayTotal } from "./reports.js";
 export { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, emergencyFundStatus, DEFAULT_EF, cutoffFor, planProgress, planIncome, planPayReceived } from "./plan.js";

@@ -983,6 +983,27 @@ check(await page.evaluate(() => { const sh = document.querySelector("#sheet .she
 await shot(page, "42-scan-bank");
 await page.click('#sheet button:has-text("Cancel")');
 
+// ----- one receipt, two categories -----
+await menuGo(page, "Scan");
+await page.setInputFiles("input[data-scan]", { name: "receipt.png", mimeType: "image/png", buffer: Buffer.from(receiptPng, "base64") });
+check(await seen(page, "#sheet", "Check what I read", 180000), "the receipt is read again, to split it");
+await page.click('#sheet .chip:has-text("Wallet")');
+check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Food")').count() === 1, "Food is the first category");
+await page.click('#sheet button:has-text("Split between two categories")');
+check(await page.locator("#f-save").isDisabled(), "a split cannot be saved until the second category and its amount are given");
+await page.click('#sheet button[data-action="pick-split"]:has-text("Essentials")'); await page.fill("#f-split", "50");
+check((await text(page, "#split-note")).includes("Food gets ₱100.00, Essentials gets ₱50.00"), "it says what each category gets");
+await page.fill("#f-split", "150");
+check(await page.locator("#f-save").isDisabled(), "a second part as big as the whole is refused");
+await page.fill("#f-split", "50"); await page.click("#f-save");
+check(await seen(page, "#screen", "as a draft with its photo"), "the split is saved as one draft");
+const sp = JSON.parse((await stored(page)).local), spTx = sp.state.transactions.filter((t) => t.source === "photo" && t.payee.includes("BURGER")).pop();
+const spEntries = sp.state.entries.filter((e) => e.transaction_id === spTx.id);
+check(spEntries.some((e) => e.category_id === "cat-food" && e.amount === 10000) && spEntries.some((e) => e.category_id === "cat-essentials" && e.amount === 5000) && spEntries.some((e) => e.account_id && e.amount === -15000), "Food ₱100.00 and Essentials ₱50.00 are charged once, ₱150.00, to the account");
+await page.click('#nav button:has-text("Verify")');
+check((await text(page, "#screen")).includes("Food ₱100.00") && (await text(page, "#screen")).includes("Essentials ₱50.00"), "Verify shows both parts and the photo");
+await page.click('button:has-text("Delete")'); await page.click('button:has-text("Tap again to delete")'); await page.waitForTimeout(400);
+
 // ----- quick capture from the camera icon on the Log screen -----
 await page.click('#nav button:has-text("Log")');
 check(await page.locator('#top .camicon input[data-scan="quick"]').count() === 1 && await page.locator('#top .camicon input[capture="environment"]').count() === 1, "the Log screen has a camera icon that opens the rear camera");
