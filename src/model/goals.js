@@ -101,3 +101,15 @@ export function planGoalDeposit(state, input, now = new Date()) {
   const result = checkTransactionSave(state, { transaction, entries });
   return { ...result, transaction, entries, state: result.ok ? { ...state, transactions: [...state.transactions, transaction], entries: [...state.entries, ...entries] } : state };
 }
+
+// Change a goal's target (for example to the plan's suggested emergency target). Null removes the target.
+export function setGoalTarget(state, goalId, target) {
+  const goal = (state.goals ?? []).find((g) => g.id === goalId);
+  if (!goal) return fail("UNKNOWN_GOAL", "no goal " + goalId);
+  if (target != null && (!Number.isSafeInteger(target) || target < 0)) return fail("BAD_TARGET", "the target cannot be negative");
+  const { target: _old, ...rest } = goal;
+  const next = { ...rest, ...(target != null ? { target } : {}) };
+  const problems = validateShape("Goal", next);
+  if (problems.length) return { ok: false, violations: problems };
+  return { ok: true, violations: [], state: { ...state, goals: state.goals.map((g) => (g.id === goalId ? next : g)) } };
+}

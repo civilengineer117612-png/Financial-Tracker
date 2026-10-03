@@ -44,7 +44,7 @@ export { envelopeBalance, planGcashSpend, splitSweep, planMonthEndSweep, underBu
 export { parseSchedule, isDue, datesBetween, categoryForPayee, draftId, draftFromTemplate, draftsForRange, planReserveTransfer } from "./templates.js";
 export { budgetStatus, budgetTrend, budgetGrade, GRADE_AT, monthElapsedPercent, suggestedBudgetStart, budgetFor, planBudgetChange } from "./budget.js";
 export { pendingDrafts, verifyTransaction } from "./inbox.js";
-export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit } from "./goals.js";
+export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit, setGoalTarget } from "./goals.js";
 export { validateState, encryptBackup, decryptBackup, encryptLedgerBackup, decryptLedgerBackup, MIN_PASSPHRASE } from "./backup.js";
 export { weekEndingOn, autoFillSurvey, planSurveyResponse, surveyReview } from "./survey.js";
 export { editDraft } from "./inbox.js";
@@ -55,3 +55,4 @@ export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID } from "./seed.
 export { applyDrafts, planExpense, discardDraft, verifyDraft, editDraftFields, setAccountIcon } from "./drafts.js";
 export { LEDGER_VERSION, emptyState, emptyLedger, nextLedger, parseLedger, chooseLedger, restoreLedger, summarizeLedger, backupFileName, daysSinceBackup } from "./persist.js";
 export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByAccount, monthlySpending, dayTotal } from "./reports.js";
+export { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, cutoffFor, planProgress } from "./plan.js";
