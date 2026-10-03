@@ -78,7 +78,7 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 
 // Everything that is not Log or Verify lives in the menu at the upper left, so new screens (and later photo
 // and audio capture beside Log and Verify) can be added without crowding the bottom bar.
-const MENU = [["Money", [["money", "Money"], ["budget", "Budget"]]]];   // grouped like folders; Setup is pinned at the bottom
+const MENU = [["Money", [["money", "Money"], ["budget", "Budget"]]], ["Weekly", [["checkin", "Check-in"]]]];   // grouped like folders; Setup is pinned at the bottom
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
@@ -116,7 +116,7 @@ function renderNav() {
 function renderScreen() {
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
-    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : viewLog();
+    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
@@ -313,6 +313,34 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
 }
 
 // ---------- Budget: the monthly amounts ----------
+// ---------- weekly check-in ----------
+// The week is the 7 days ending today. Each account is counted against what the bank or wallet really shows.
+const thisWeek = () => M.weekEndingOn(today());
+const countedThisWeek = (accountId) => {
+  const w = thisWeek();
+  return S().checkIns.filter((c) => c.account_id === accountId && c.date >= w.week_start && c.date <= w.week_end).sort((a, b) => (a.date < b.date ? 1 : -1))[0] ?? null;
+};
+const surveyThisWeek = () => S().surveyResponses.find((r) => r.id === "survey:" + thisWeek().week_start) ?? null;
+const differenceText = (d) => d === 0 ? "Matches the ledger" : d < 0 ? peso(-d) + " missing" : peso(d) + " more than logged";
+
+function viewCheckin() {
+  const accts = activeAccounts();
+  if (!accts.length) return `<h1>Check-in</h1><p class="note">Add accounts first.</p><button class="primary" data-action="tab" data-tab="setup">Add accounts</button>`;
+  const w = thisWeek();
+  const rows = accts.map((a) => {
+    const c = countedThisWeek(a.id);
+    const state = c ? `<span class="bval">${c.difference === 0 ? "\u2713 " : "\u25B2 "}${esc(differenceText(c.difference))}</span>` : `<span class="bval">Not counted</span>`;
+    return `<button class="choice" data-action="open-checkin" data-id="${esc(a.id)}"><span class="who">${withIcon(a, 28)}</span>${state}</button>`;
+  }).join("");
+  const done = accts.filter((a) => countedThisWeek(a.id)).length;
+  const sv = surveyThisWeek();
+  const questions = done
+    ? `<h2 class="today">Weekly questions</h2><button class="choice" data-action="open-survey"><span>Three quick questions</span><span class="bval">${sv ? "Answered \u2713" : "Not answered"}</span></button>` : "";
+  return `<h1>Check-in</h1><p class="sub">Week of ${esc(longDate(w.week_start))} to ${esc(longDate(w.week_end))}</p>
+    <p class="note">Open each account, look at the real balance, and type it in. ${done} of ${accts.length} counted.</p>${rows}${questions}
+    <p class="note">Money the ledger cannot explain is recorded as Unlogged. It never blocks anything.</p>`;
+}
+
 function viewBudget() {
   const month = M.monthOf(today()), next = M.addMonths(month, 1);
   const rows = expenseCategories().map((c) => {
@@ -359,7 +387,22 @@ function renderSheet() {
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
-  if (sh.type === "budget") {
+  if (sh.type === "checkin") {
+    const a = S().accounts.find((x) => x.id === sh.id);
+    body = `<h3>Count ${esc(a.name)}</h3>
+      <label for="f-amount">${a.class === "asset" ? "Balance you see now" : "Amount owed you see now"} (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      ${a.class === "liability" ? `<p class="note">Use the posted amount your bank shows. Charges still pending are left alone.</p>` : ""}
+      <p id="f-diff" class="note" role="status"></p>
+      <p><button class="primary" id="f-save" data-action="save-checkin" disabled>Save count</button></p>`;
+  } else if (sh.type === "survey") {
+    const w = thisWeek(), auto = M.autoFillSurvey(S(), { unlogged_category_id: M.UNLOGGED_CATEGORY_ID, week_start: w.week_start, week_end: w.week_end });
+    body = `<h3>This week</h3>
+      <p class="note">Missed transactions: ${auto.q1_missed_count ? auto.q1_missed_count + " (" + peso(auto.q1_missed_amount) + ")" : "none found by your counts"}.</p>
+      <label>How easy was logging this week? (1 hard, 5 easy)</label>
+      <div class="seg" role="group" aria-label="Ease">${[1, 2, 3, 4, 5].map((n) => `<button data-action="survey-ease" data-id="${n}" aria-pressed="${ui.form.ease === n}">${n}</button>`).join("")}</div>
+      <label for="f-annoy">What annoyed you most? (optional)</label><input id="f-annoy" data-field="annoy" value="${esc(ui.form.annoy ?? "")}" autocomplete="off">
+      <p><button class="primary" id="f-save" data-action="save-survey" style="margin-top:14px" disabled>Save answers</button></p>`;
+  } else if (sh.type === "budget") {
     const c = S().categories.find((x) => x.id === sh.id), thisM = M.monthOf(today()), nextM = M.addMonths(thisM, 1);
     body = `<h3>Budget for ${esc(c.name)}</h3>
       <label for="f-amount">Per month (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
@@ -415,6 +458,13 @@ function refreshSave() {
   } else if (type === "budget") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !a.ok;
+  } else if (type === "checkin") {
+    const a = M.parsePesos(f.amount), acct = S().accounts.find((x) => x.id === ui.sheet.id);
+    btn.disabled = !a.ok || a.centavos < 0;
+    const out = $("f-diff");
+    if (out) out.textContent = a.ok && acct ? "The ledger says " + peso(M.ledgerBalanceFor(acct, S().entries)) + ". " + differenceText(a.centavos - M.ledgerBalanceFor(acct, S().entries)) + "." : "";
+  } else if (type === "survey") {
+    btn.disabled = !f.ease;
   } else if (type === "backup") {
     const long = (f.pass ?? "").length >= M.MIN_PASSPHRASE, same = f.pass === f.pass2;
     btn.disabled = !(long && same) || f.busy;
@@ -473,6 +523,33 @@ async function onClick(el) {
       ui.sheet = null; renderSheet();
       await commit(plan.state);
       showToast(amount.centavos === 0 ? "Budget removed for " + name : "Budget saved for " + name);
+      break;
+    }
+    case "open-checkin": ui.sheet = { type: "checkin", id }; ui.form = { amount: "" }; renderSheet(); break;
+    case "save-checkin": {
+      const amount = M.parsePesos(ui.form.amount), acct = S().accounts.find((x) => x.id === ui.sheet.id);
+      if (!amount.ok) { showToast("Enter the balance like 1250.50"); break; }
+      const plan = M.planCheckIn(S(), { id: newId("chk"), transaction_id: newId("tx"), date: today(), account_id: acct.id, counted_balance: amount.centavos, unlogged_category_id: M.UNLOGGED_CATEGORY_ID }, new Date());
+      if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
+      const next = { ...S(), checkIns: [...S().checkIns, plan.checkIn] };
+      if (plan.transaction) { next.transactions = [...S().transactions, plan.transaction]; next.entries = [...S().entries, ...plan.entries]; }
+      ui.sheet = null; renderSheet();
+      await commit(next);
+      showToast(acct.name + ": " + differenceText(plan.checkIn.difference));
+      break;
+    }
+    case "open-survey": {
+      const sv = surveyThisWeek();
+      ui.sheet = { type: "survey" }; ui.form = { ease: sv?.q2_ease ?? null, annoy: sv?.q3_annoyance ?? "" }; renderSheet(); break;
+    }
+    case "survey-ease": ui.form.ease = Number(id); renderSheet(); break;
+    case "save-survey": {
+      const w = thisWeek(), auto = M.autoFillSurvey(S(), { unlogged_category_id: M.UNLOGGED_CATEGORY_ID, week_start: w.week_start, week_end: w.week_end });
+      const plan = M.planSurveyResponse(auto, { q2_ease: ui.form.ease, q3_annoyance: ui.form.annoy ?? "" });
+      if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      await commit({ ...S(), surveyResponses: [...S().surveyResponses.filter((r) => r.id !== plan.response.id), plan.response] });
+      showToast("Answers saved");
       break;
     }
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;

@@ -451,7 +451,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3, "it is the three-line icon");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Setup,Close", "the menu lists Money, Budget and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Check-in,Setup,Close", "the menu lists Money, Budget, Check-in and Setup");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
 await shot(page, "17-menu");
 await page.keyboard.press("Escape");
@@ -543,6 +543,27 @@ await page.click('button:has-text("Budgets")');
 const noBud = await page.waitForFunction(() => document.getElementById("screen").innerText.toLowerCase().includes("no budget set"), null, { timeout: 4000 }).then(() => true, () => false);   // the heading is shown in capitals
 if (!noBud) console.log("   screen was:", JSON.stringify((await text(page, "#screen")).slice(0, 600)));
 check(noBud && /Upskill\s+₱80\.00/.test(await text(page, "#screen")), "spending in a category with no budget is shown under its own heading");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+
+// ---- the weekly check-in ----
+await menuGo(page, "Check-in");
+check((await text(page, "#top")).includes("Check-in") && (await text(page, "#screen")).includes("0 of"), "the check-in lists every account, none counted yet");
+check(!(await text(page, "#screen")).includes("Weekly questions"), "the weekly questions wait until something is counted");
+await page.click('.choice:has-text("Wallet")');
+await page.fill("#f-amount", "1");
+check((await text(page, "#f-diff")).includes("missing"), "typing a count shows the difference before saving");
+await shot(page, "21-checkin-count");
+await page.click("#f-save");
+check(await seen(page, "#toast", "Wallet:") && (await text(page, ".choice:has-text('Wallet')")).includes("missing"), "a count that is short is recorded and says how much is missing");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.state.checkIns.length === 1 && ledgerNow.state.transactions.some((t) => t.source === "reconciliation" && t.status === "verified"), "the count is kept, with a verified Unlogged entry for the gap");
+await page.click('.choice:has-text("Weekly questions"), .choice:has-text("Three quick questions")');
+check((await page.locator("#f-save").isDisabled()), "the survey cannot be saved until the ease question is answered");
+await page.click('#sheet button[data-action="survey-ease"][data-id="4"]'); await page.fill("#f-annoy", "too many taps");
+await page.click("#f-save"); await seen(page, "#toast", "Answers saved");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.state.surveyResponses.length === 1 && ledgerNow.state.surveyResponses[0].q2_ease === 4, "the survey answers are saved");
+await shot(page, "22-checkin");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // pictures survive a reload and appear where you choose an account

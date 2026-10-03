@@ -78,6 +78,8 @@ budgets, paid from (by account), and by month (six columns). Every view has a "S
 Only verified spending counts; unverified drafts are mentioned, not counted. Without budgets every bar is one color;
 amounts sit at the bar tip, and tapping a bar states its share in words.
 
+**Check-in (menu, Weekly):** count each account against what the bank or wallet really shows. The app compares it with the ledger and records any gap as a verified Unlogged entry; it never blocks anything. After the first count, three short weekly questions appear (missed transactions are filled in for you, plus ease 1 to 5 and what annoyed you).
+
 **Budgets and thermal colors:** set a monthly budget per category in the Budget screen (a change starts next month).
 Bars are graded by how much of the budget is used: green "On track" below 60%, yellow "Getting there" from 60%,
 orange "Nearly used up" from 85%, red "Over budget" only when spending is strictly over. Every grade also has a shape
