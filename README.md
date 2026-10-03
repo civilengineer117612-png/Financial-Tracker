@@ -111,6 +111,8 @@ Bars are graded by how much of the budget is used: green "On track" below 60%, y
 orange "Nearly used up" from 85%, red "Over budget" only when spending is strictly over. Every grade also has a shape
 and words, never color alone. A black line marks how far through the month we are.
 
+**Choosing a bank:** in Setup, Add an account starts with ten bank tiles (GCash, Maya, GoTyme, MariBank, BDO, BPI, Metrobank, UnionBank, Landbank, Security Bank) and Cash. Choosing one names the account for you and offers an optional "which part of the bank", so an Emergency Fund kept inside GoTyme becomes "GoTyme · Emergency Fund". Not in the list: leave the tiles alone and type a name. The list is in `src/model/banks.js`. No logos are stored in this repository; a picture chosen once for one account is shared by every account of the same bank, and new accounts of that bank start with it.
+
 **Account pictures:** in Setup, tap an account's tile to choose a picture (a screenshot of the app's icon works),
 then zoom and drag to crop it. It is shrunk to 96 pixels and stored inside the account on the phone, so it appears on
 every account button, in the charts, and inside your encrypted backup, and never goes anywhere else. No brand logos are

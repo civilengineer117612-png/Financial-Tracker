@@ -338,9 +338,10 @@ writeFileSync(join(dir, "icon.png"), Buffer.from(png.split(",")[1], "base64"));
 const pixel = (url, x, y) => page.evaluate(async ([u, px, py]) => { const i = new Image(); await new Promise((r) => { i.onload = r; i.src = u; }); const c = document.createElement("canvas"); c.width = c.height = 96; const g = c.getContext("2d"); g.drawImage(i, 0, 0); return Array.from(g.getImageData(px, py, 1, 1).data); }, [url, x, y]);
 const red = ([r, , b]) => r > 180 && b < 60, blue = ([r, , b]) => b > 180 && r < 60;
 
-await addAccount(page, "Wallet", "asset", "1000"); await seen(page, "#screen", "Wallet");
-await addAccount(page, "Bank", "asset", "5000"); await seen(page, "#screen", "Bank");
-check((await page.locator("#screen .row .mono").count()) === 2, "until a picture is chosen, each account shows its first letter");
+await addAccount(page, "Wallet", "asset", "1000"); await seen(page, "#toast", "Added Wallet");
+await addAccount(page, "Bank", "asset", "5000"); await seen(page, "#toast", "Added Bank");
+const monoN = await page.locator("#screen .row .mono").count(); if (monoN !== 2) console.log("   mono count:", monoN, JSON.stringify((await text(page, "#screen")).slice(0, 300)));
+check(monoN === 2, "until a picture is chosen, each account shows its first letter");
 await page.click('.row:has-text("Wallet") .icobtn');
 check((await text(page, "#sheet")).includes("zoom and drag"), "tapping the tile opens the picture chooser, with plain instructions");
 check(await page.locator("#f-save").isDisabled(), "saving is off until a picture is chosen");
@@ -651,6 +652,23 @@ await shot(page, "29-buffer");
 await page.click('#nav button:has-text("Verify")');
 check((await text(page, "#screen")).includes("Upskill"), "a draft that took from two envelopes still shows its category when verifying");
 await page.click('button:has-text("Correct")'); await seen(page, "#screen", "of");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+
+// ---- choosing a bank ----
+await menuGo(page, "Setup");
+check((await page.locator(".chips .chip").count()) === 11 && (await page.locator("#a-name").count()) === 1, "Setup offers ten banks and Cash, and still lets you type a name that is not in the list");
+await page.click('.chips .chip:has-text("GoTyme")');
+check((await page.locator("#a-name").count()) === 0 && (await page.locator("#a-sub").count()) === 1, "choosing a bank swaps the name box for 'which part of the bank'");
+await page.fill("#a-sub", "Emergency Fund");
+check((await text(page, "#a-preview")).includes("GoTyme · Emergency Fund"), "the saved name is previewed as you type");
+await page.fill("#a-open", "100"); await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added GoTyme · Emergency Fund");
+await page.click('.chips .chip:has-text("GoTyme")'); await page.fill("#a-sub", "Savings"); await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added GoTyme · Savings");
+check((await page.locator("#screen .row", { hasText: "GoTyme" }).count()) === 2, "two accounts can live in the same bank");
+await page.click('.chips .chip[aria-pressed="false"]:has-text("GCash")'); await page.click('.chips .chip:has-text("GCash")');
+check((await page.locator("#a-name").count()) === 1, "tapping the chosen bank again goes back to typing a name");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.state.accounts.filter((a) => a.bank === "gotyme").length === 2, "the bank is remembered on each account");
+await shot(page, "30-banks");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- goals ----

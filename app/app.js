@@ -17,7 +17,7 @@ let device = { status: "OK", message: "", allowEntry: true };
 let boot = { status: "NONE", repairTo: null };
 const ui = {
   tab: "log", menu: false, sheet: null, form: {}, error: null, confirmDelete: null, confirmRemove: null, setupError: null,
-  accountForm: { name: "", kind: "asset", opening: "", covers: "" },
+  accountForm: { name: "", bank: null, sub: "", kind: "asset", opening: "", covers: "" },
   month: null, view: "category", asList: false, sel: null,   // the Money tab
 };
 let toastTimer = null;
@@ -199,6 +199,8 @@ function viewVerify() {
       </div></div>`;
 }
 
+const accountPreview = (f) => { const b = M.bankById(f.bank), sub = (f.sub ?? "").trim(); return sub ? b.name + " \u00b7 " + sub : b.name; };
+
 function viewSetup() {
   const f = ui.accountForm;
   const cards = S().accounts.filter((a) => a.class === "liability" && !a.archived);
@@ -211,7 +213,11 @@ function viewSetup() {
   // button never drifts down behind the keyboard. The list of accounts follows it.
   return `<h1>Setup</h1><p class="sub">Accounts. The ledger is on this phone only.</p>
     <h2>Add an account</h2>
-    <label for="a-name">Name</label><input id="a-name" data-field="name" value="${esc(f.name)}" autocomplete="off" enterkeyhint="next">
+    <label id="a-bank-l">Choose a bank</label>
+    <div class="chips" role="group" aria-labelledby="a-bank-l">${[...M.BANKS, M.CASH].map((b) => `<button class="chip" data-action="pick-bank" data-id="${esc(b.id)}" aria-pressed="${f.bank === b.id}">${iconOf({ name: b.name, icon: S().accounts.find((a) => a.bank === b.id && a.icon)?.icon }, 24)}<span>${esc(b.name)}</span></button>`).join("")}</div>
+    ${f.bank ? `<label for="a-sub">Which part of ${esc(M.bankById(f.bank).name)}? (optional)</label><input id="a-sub" data-field="sub" value="${esc(f.sub)}" placeholder="e.g. Emergency Fund, Savings" autocomplete="off" enterkeyhint="next">
+      <p class="note" id="a-preview">Saved as: ${esc(accountPreview(f))}</p>`
+      : `<label for="a-name">Not in the list? Type its name</label><input id="a-name" data-field="name" value="${esc(f.name)}" autocomplete="off" enterkeyhint="next">`}
     <label for="a-kind">Type</label><select id="a-kind" data-field="kind"><option value="asset"${f.kind === "asset" ? " selected" : ""}>Money I have (cash, bank, wallet)</option><option value="liability"${f.kind === "liability" ? " selected" : ""}>Money I owe (credit card)</option></select>
     <label for="a-open">${f.kind === "asset" ? "Balance today" : "Amount owed today"} (₱)</label><input id="a-open" data-field="opening" inputmode="decimal" value="${esc(f.opening)}" placeholder="0.00" autocomplete="off">
     ${f.kind === "asset" && cards.length ? `<label for="a-covers">This account is a reserve for a card (optional)</label><select id="a-covers" data-field="covers"><option value="">No</option>${cards.map((c) => `<option value="${esc(c.id)}"${f.covers === c.id ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select>` : ""}
@@ -962,6 +968,7 @@ async function onClick(el) {
       showToast("Target set from your plan");
       break;
     }
+    case "pick-bank": ui.accountForm.bank = ui.accountForm.bank === id ? null : id; ui.accountForm.sub = ""; ui.setupError = null; renderScreen(); break;
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
     case "save-icon": await saveIcon(); break;
     case "clear-icon": {
@@ -1170,21 +1177,16 @@ async function restoreNow() {
 async function addAccount() {
   const f = ui.accountForm;
   const fail = (m) => { ui.setupError = m; renderScreen(); $("a-error")?.scrollIntoView({ block: "center" }); };
-  const name = f.name.trim();
-  if (!name) return fail("Give the account a name.");
-  if (S().accounts.some((a) => a.name.toLowerCase() === name.toLowerCase())) return fail("You already have an account with that name.");
   const opening = f.opening.trim() === "" ? { ok: true, centavos: 0 } : M.parsePesos(f.opening);
   if (!opening.ok) return fail("Enter the balance like 1250 or 1250.50.");
-  const account = { id: newId("acct"), name, class: f.kind, role: "", hidden_by_default: false, archived: false,
-    opening_balance: opening.centavos, opening_date: today(), ...(f.kind === "asset" && f.covers ? { reserve_for: f.covers } : {}) };
-  const problems = M.validateShape("Account", account);
-  if (problems.length) return fail(problems[0].message);
+  const plan = M.planAccount(S(), { id: newId("acct"), bank: f.bank || undefined, sub: f.sub, name: f.name, kind: f.kind, opening: opening.centavos, date: today(), covers: f.covers });
+  if (!plan.ok) return fail(plan.violations[0].message);
   ui.setupError = null;
-  ui.accountForm = { name: "", kind: f.kind, opening: "", covers: "" };
+  ui.accountForm = { name: "", bank: null, sub: "", kind: f.kind, opening: "", covers: "" };
   document.activeElement?.blur();   // close the keyboard so the result is visible
-  const ok = await commit({ ...S(), accounts: [...S().accounts, account] });
+  const ok = await commit(plan.state);
   window.scrollTo(0, 0);
-  showToast((ok ? "Added " : "Not safely stored: ") + name);
+  showToast((ok ? "Added " : "Not safely stored: ") + plan.account.name);
 }
 
 document.addEventListener("click", (e) => {
@@ -1197,6 +1199,7 @@ document.addEventListener("input", (e) => {
   const field = e.target.dataset?.field;
   if (!field) return;
   if (e.target.type === "file") return;   // handled on change
+  if (field === "sub" && !ui.sheet) { ui.accountForm.sub = e.target.value; const p = $("a-preview"); if (p) p.textContent = "Saved as: " + accountPreview(ui.accountForm); return; }
   if (field === "zoom") { zoomTo(Number(e.target.value)); return; }
   if (ui.sheet) { ui.form[field] = e.target.value; refreshSave(); }
   else ui.accountForm[field] = e.target.value;
