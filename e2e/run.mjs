@@ -451,7 +451,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3, "it is the three-line icon");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Pay plan,Checks,Check-in,Setup", "the menu lists Money, Budget, Goals, Pay plan, Checks, Check-in and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Pay plan,Checks,Trips,Check-in,Setup", "the menu lists Money, Budget, Goals, Pay plan, Checks, Trips, Check-in and Setup");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
 await shot(page, "17-menu");
 await page.keyboard.press("Escape");
@@ -603,6 +603,29 @@ check((await text(page, ".tbl >> nth=0")).includes("Not counted"), "the list twi
 check((await text(page, "#screen")).includes("4/5"), "the weekly questions review shows the answers");
 await shot(page, "27-checks");
 await page.click('button:has-text("Show as chart")');
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+
+// ---- trips ----
+await menuGo(page, "Trips");
+check((await text(page, "#screen")).includes("No trips yet"), "trips start empty");
+await page.click('button:has-text("Add a trip")');
+check(await page.locator("#f-save").isDisabled(), "a trip needs a name first");
+await page.fill("#t-name", "Test Trip"); await page.fill("#f-amount", "1000");
+await page.click("#f-save"); await seen(page, "#toast", "Trip added");
+check((await text(page, "#screen")).includes("₱0.00 of ₱1,000.00") && (await text(page, "#screen")).includes("On track"), "a new trip shows its budget in words and as a graded meter");
+await page.click('button:has-text("Tag new entries with this trip")');
+await seen(page, "#screen", "Tagging new entries");
+await page.click('#nav button:has-text("Log")');
+check((await text(page, "#screen")).includes("Tagging new entries: Test Trip"), "the Log screen says new entries are being tagged");
+await page.click('button:has-text("Other amount")'); await page.fill("#f-amount", "120"); await page.click('#sheet .chip:has-text("Upskill")'); await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.state.transactions.some((t) => t.tag_id === ledgerNow.state.tags[0].id && t.status === "draft"), "the new entry carries the trip tag with no extra taps");
+await menuGo(page, "Trips");
+check((await text(page, "#screen")).includes("plus ₱120.00 not verified yet"), "unverified trip spending is mentioned, not counted");
+await shot(page, "28-trips");
+await page.click('button:has-text("Tagging new entries")');
+await page.click('#nav button:has-text("Log")');
+check(!(await text(page, "#screen")).includes("Tagging new entries"), "tagging can be switched off");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- goals ----

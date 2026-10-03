@@ -81,6 +81,7 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 // Plain line icons (drawn in the text colour). Groups are separated by thin lines, like a settings list.
 const ICONS = {
   money: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
+  trips: '<path d="M3 11l18-7-7 18-3-8z"/>',
   checks: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
   plan: '<path d="M4 6h16M4 12h16M4 18h10"/>',
   goals: '<path d="M5 21V4M5 4h13l-3 4 3 4H5"/>',
@@ -88,7 +89,7 @@ const ICONS = {
   checkin: '<path d="M4 12l5 5L20 6"/>',
   setup: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
 };
-const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
+const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
@@ -125,7 +126,7 @@ function renderNav() {
 function renderScreen() {
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
-    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : viewLog();
+    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
@@ -155,7 +156,9 @@ function viewLog() {
   const backupNote = age === null || age >= BACKUP_NOTE_DAYS
     ? `<p class="note"><button class="link" data-action="tab" data-tab="setup">${age === null ? "No backup yet" : "Last backup " + age + " days ago"}</button></p>` : "";
   const dueNote = due ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">${due} ${due === 1 ? "entry" : "entries"} from before today ${due === 1 ? "needs" : "need"} verifying</button></p>` : "";
-  return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${dueNote}${backupNote}
+  const trip = S().tags.find((t) => t.id === ledger.settings.active_tag_id);
+  const tripNote = trip ? `<p class="note">Tagging new entries: ${esc(trip.name)}. <button class="link" data-action="stop-trip">Stop</button></p>` : "";
+  return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${dueNote}${backupNote}${tripNote}
     ${dayCard()}
     <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
     <p><button class="primary" data-action="open-other" style="margin-top:12px">Other amount</button></p>
@@ -377,6 +380,24 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
 }
 
 // ---------- Budget: the monthly amounts ----------
+// ---------- trips ----------
+// A trip is a tag with an optional budget. Switch one on and new entries are tagged with it, with no extra taps.
+function viewTrips() {
+  const tags = S().tags, active = ledger.settings.active_tag_id;
+  const cards = tags.map((t) => {
+    const sum = M.tagSummary(S(), t.id, { categoryMaps: S().categoryMaps, asOf: today() });
+    const g = sum.grade, on = active === t.id;
+    const meter = g ? `<div class="meter g-${g.level}"><span class="fill" style="width:${sum.spent > 0 ? Math.max(1, Math.min(100, g.percent)) : 0}%"></span></div>
+      <div class="status">${glyph(g.level)}${esc(LEVELS[g.level])} \u00b7 ${esc(g.over ? "Over by " + peso(sum.spent - sum.budget) : peso(sum.budget - sum.spent) + " left")}</div>` : "";
+    const rows = sum.rows.length ? `<table class="tbl"><tr><th>Category</th><th class="n">Spent</th></tr>${sum.rows.map((r) => `<tr><td>${esc(r.name)}</td><td class="n">${peso(r.amount)}</td></tr>`).join("")}</table>` : `<p class="note">Nothing verified on this trip yet.</p>`;
+    return `<div class="bcard"><div class="btop"><span class="bname">${esc(t.name)}</span><span class="bval">${peso(sum.spent)}${sum.budget != null ? " of " + peso(sum.budget) : ""}</span></div>${meter}
+      ${sum.pending > 0 ? `<p class="note">plus ${peso(sum.pending)} not verified yet</p>` : ""}${rows}
+      <p><button data-action="use-trip" data-id="${esc(t.id)}" aria-pressed="${on}">${on ? "Tagging new entries \u2713 (tap to stop)" : "Tag new entries with this trip"}</button></p></div>`;
+  }).join("");
+  return `<h1>Trips</h1><p class="sub">Spending for a trip, kept apart from everyday spending.</p>${cards || `<p class="note">No trips yet.</p>`}
+    <p><button class="primary" data-action="open-trip" style="margin-top:8px">Add a trip</button></p>`;
+}
+
 // ---------- checks: card reserve and the weekly Unlogged habit ----------
 function viewChecks() {
   const rs = M.reserveShortfalls(S().accounts, S().entries);
@@ -543,7 +564,12 @@ function renderSheet() {
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
-  if (sh.type === "income") {
+  if (sh.type === "trip") {
+    body = `<h3>New trip</h3>
+      <label for="t-name">Name</label><input id="t-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
+      <label for="f-amount">Trip budget (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <p><button class="primary" id="f-save" data-action="save-trip" style="margin-top:14px" disabled>Save trip</button></p>`;
+  } else if (sh.type === "income") {
     body = `<h3>Pay received</h3>
       <label for="f-amount">Net pay from the payslip (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off" placeholder="e.g. 9776.98">
       <label for="f-date">Date it arrived</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}" max="${esc(today())}">
@@ -649,6 +675,9 @@ function refreshSave() {
     if (out) out.textContent = a.ok && acct ? "The ledger says " + peso(M.ledgerBalanceFor(acct, S().entries)) + ". " + differenceText(a.centavos - M.ledgerBalanceFor(acct, S().entries)) + "." : "";
   } else if (type === "survey") {
     btn.disabled = !f.ease;
+  } else if (type === "trip") {
+    const a = f.amount ? M.parsePesos(f.amount) : { ok: true };
+    btn.disabled = !((f.name ?? "").trim() && a.ok);
   } else if (type === "income") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && f.account_id && f.date);
@@ -687,7 +716,8 @@ const reserveNote = (violations) => {
 
 // ---------- actions ----------
 async function logExpense(input, label) {
-  const plan = M.planExpense(S(), { ...input, date: today(), reserve_source_id: ledger.settings.reserve_source_id }, new Date());
+  const tag_id = S().tags.some((t) => t.id === ledger.settings.active_tag_id) ? ledger.settings.active_tag_id : undefined;
+  const plan = M.planExpense(S(), { ...input, tag_id, date: today(), reserve_source_id: ledger.settings.reserve_source_id }, new Date());
   if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); return; }
   const settings = { ...ledger.settings, last_account_id: input.account_id,
     last_account_by_preset: { ...(ledger.settings.last_account_by_preset ?? {}), ...(input.preset_id ? { [input.preset_id]: input.account_id } : {}) } };
@@ -776,6 +806,23 @@ async function onClick(el) {
       showToast(peso(amount.centavos) + " set for " + g.name + ". Verify it to count it.");
       break;
     }
+    case "open-trip": ui.sheet = { type: "trip" }; ui.form = { name: "", amount: "" }; renderSheet(); break;
+    case "save-trip": {
+      const budget = ui.form.amount ? M.parsePesos(ui.form.amount) : null;
+      if (budget && !budget.ok) { showToast("Enter the budget like 13000"); break; }
+      const plan = M.planTag(S(), { id: newId("tag"), name: ui.form.name, budget: budget ? budget.centavos : undefined });
+      if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      await commit(plan.state);
+      showToast("Trip added: " + plan.tag.name);
+      break;
+    }
+    case "use-trip": {
+      const { active_tag_id, ...rest } = ledger.settings;
+      await commit(S(), active_tag_id === id ? rest : { ...rest, active_tag_id: id });
+      break;
+    }
+    case "stop-trip": { const { active_tag_id, ...rest } = ledger.settings; await commit(S(), rest); break; }
     case "open-income": ui.sheet = { type: "income" }; ui.form = { amount: "", date: today(), account_id: accountsFor(null)[0]?.id ?? null }; renderSheet(); break;
     case "save-income": {
       const amount = M.parsePesos(ui.form.amount);
