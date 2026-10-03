@@ -603,6 +603,8 @@ await page.click('#nav button:has-text("Log")');
 const todayTotal = await text(page, ".daytotal");
 check(/^₱\d/.test(todayTotal) && !(await text(page, "#screen")).includes("Spent today") && (await page.locator(".daycap").count()) === 0, "today's total is centered on the Log screen with no label");
 check((await text(page, ".datelink")).includes("Select date") && (await page.locator(".datelink").boundingBox()).height < 50, "a small 'Select date' link replaces the open date box");
+await page.$eval('input[data-day]', (el) => { el.value = "2026-01-04"; el.dispatchEvent(new Event("input", { bubbles: true })); });   // the wheel turning
+check((await page.locator('input[data-day]').count()) === 1 && (await text(page, ".datelink")).includes("Select date"), "turning the wheel does not rebuild the page or close the picker");
 await page.fill('input[data-day]', "2026-01-05");
 check((await text(page, ".daytotal")).includes("₱0.00") && (await text(page, ".daycap")).includes("Jan"), "picking a date turns the big number into that day's total, with the date under it");
 check((await text(page, ".datelink")).includes("Change date") && (await text(page, "#screen")).includes("Back to today"), "and the links become Change date and Back to today");
@@ -693,7 +695,8 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 // ---- bank logos, fetched on the phone only when asked (the network is faked here) ----
 const pngB64 = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"); x.fillStyle = "#1a8"; x.fillRect(0, 0, 64, 64); return c.toDataURL("image/png").split(",")[1]; });
 let asked = [];
-const horse = (r) => { const d = r.request().url().split("/icon/")[1]; if (d === "gotyme.com.ph") r.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(pngB64, "base64") }); else r.abort(); };
+const tileB64 = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d"); x.fillStyle = "#d6d6d6"; x.fillRect(0, 0, 128, 128); x.fillStyle = "#9a9a9a"; x.font = "bold 60px sans-serif"; x.textAlign = "center"; x.fillText("U", 64, 88); return c.toDataURL("image/png").split(",")[1]; });   // the flat grey letter tile some services invent
+const horse = (r) => { const d = r.request().url().split("/icon/")[1]; if (d === "gotyme.com.ph") r.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(pngB64, "base64") }); else if (d === "unionbankph.com") r.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(tileB64, "base64") }); else r.abort(); };
 await page.route("https://icon.horse/**", horse);
 await page.route("https://api.faviconkit.com/**", (r) => r.abort());
 await page.route("https://www.google.com/s2/favicons**", (r) => { asked.push(new URL(r.request().url()).searchParams.get("domain")); r.fulfill({ status: 200, contentType: "image/png", body: Buffer.from(pngB64, "base64") }); });   // no CORS header: showable, not copyable
@@ -707,18 +710,20 @@ check((await text(page, "#toast")).includes("2 shown from the web"), "and it say
 check([...new Set(asked)].sort().join() === "gcash.com,landbank.com", "a service that only allows showing is used only where copying failed: " + asked.join());
 check((await page.locator("#screen .row", { hasText: "GoTyme" }).locator("img.ico").count()) === 2, "both GoTyme accounts show the picture");
 check((await page.locator("#screen .row .icowrap img.ico.ov").count()) === 2, "GCash and Landbank show theirs over the letter tile");
-check(!(await text(page, "#screen")).includes("Get bank logos"), "the button goes away once every bank has a picture");
+check((await text(page, "#screen")).includes("Get bank logos"), "the button stays, so a wrong or missing logo can be retried");
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.state.accounts.filter((a) => a.bank === "gotyme").every((a) => a.icon.startsWith("data:image/")), "a copied picture lives in the ledger on the phone");
 check(["gcash", "landbank"].every((id) => ledgerNow.state.accounts.some((a) => a.bank === id && a.icon_url?.startsWith("https://www.google.com/s2/favicons"))), "a shown-only picture keeps just its allow-listed address");
 await shot(page, "31-logos");
 // a failed download says why, per bank and per service
 await addAccount(page, "BPI", "asset", "5"); await seen(page, "#toast", "Added BPI");
+await addAccount(page, "UnionBank", "asset", "5"); await seen(page, "#toast", "Added UnionBank");
 await page.unroute("https://www.google.com/s2/favicons**");
 await page.route("https://www.google.com/s2/favicons**", (r) => r.abort());
 await page.click('button:has-text("Get bank logos")');
-check(await seen(page, "#toast", "Got 0 of 1"), "when nothing can be downloaded it says so");
+check(await seen(page, "#toast", "Got 0 of 2"), "when nothing can be downloaded it says so");
 const rep = await text(page, "#logo-report");
+check(rep.includes("UnionBank") && rep.includes("only a generated letter tile came back"), "a generated grey letter tile is refused as a logo, not saved");
 check(rep.includes("BPI") && rep.includes("Icon Horse: could not be loaded") && rep.includes("Google icons: could not be loaded") && rep.includes("DuckDuckGo: could not be loaded"), "and lists the reason for each service: " + rep.slice(0, 160));
 await addAccount(page, "Euf", "asset", "10"); await seen(page, "#toast", "Added Euf");
 await page.click('#screen .row:has-text("Euf") .icobtn');

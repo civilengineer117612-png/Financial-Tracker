@@ -123,6 +123,8 @@ and words, never color alone. A black line marks how far through the month we ar
 
 **Two ways to get a logo:** first the app tries services that allow the picture to be copied (it is then shrunk and kept in the ledger on the phone). Many icon services only allow showing a picture, not copying it; for those the app keeps just the service's address (only a short allow-list of services is accepted) and shows the picture from there, over the letter tile. The app remembers those pictures so they still show offline after the first time, and a real picture you add yourself always replaces the address.
 
+**Generated letter tiles are not logos:** some icon services invent a flat grey tile with a letter when a site has no icon. "Get bank logos" now refuses those, throws away any saved by an earlier version, and retries. For a bank whose site has no usable icon (the failure line says so), add its picture once from a screenshot.
+
 **Wrong logo on an account?** Each account row says "linked to <bank>" when its name does not already say the bank. In the picture window, choosing a bank other than the one the account's name plainly means asks for a second tap, and changing the link drops the old bank's logo, so a mistake can be put right.
 
 **If a logo cannot be downloaded,** the reason is listed under the button for each bank and each icon service (could not be loaded, only a tiny placeholder, not allowed to be copied), so it can be fixed; the screenshot route always works.
