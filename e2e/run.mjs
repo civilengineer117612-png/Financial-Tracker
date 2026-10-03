@@ -346,7 +346,7 @@ await addAccount(page, "Wallet", "asset", "1000"); await seen(page, "#toast", "A
 await addAccount(page, "Bank", "asset", "5000"); await seen(page, "#toast", "Added Bank");
 const monoN = await page.locator("#screen .row .mono").count(); if (monoN !== 2) console.log("   mono count:", monoN, JSON.stringify((await text(page, "#screen")).slice(0, 300)));
 check(monoN === 2, "until a picture is chosen, each account shows its first letter");
-await page.click('.row:has-text("Wallet") .icobtn');
+await page.click('.icobtn[aria-label="Choose a picture for Wallet"]');
 check((await text(page, "#sheet")).includes("zoom and drag"), "tapping the tile opens the picture chooser, with plain instructions");
 check(await page.locator("#f-save").isDisabled(), "saving is off until a picture is chosen");
 await page.setInputFiles("#i-file", join(dir, "icon.png"));
@@ -360,7 +360,7 @@ const walletIcon = ledgerNow.state.accounts.find((a) => a.name === "Wallet").ico
 check(/^data:image\/(png|jpeg);base64,/.test(walletIcon) && walletIcon.length < 40000, "it is stored inside the account as a small embedded image");
 check(red(await pixel(walletIcon, 24, 48)) && blue(await pixel(walletIcon, 72, 48)), "an uncropped picture is centred: the red half left, the blue half right");
 
-await page.click('.row:has-text("Bank") .icobtn');
+await page.click('.icobtn[aria-label="Choose a picture for Bank"]');
 await page.setInputFiles("#i-file", join(dir, "icon.png"));
 await page.waitForFunction(() => !document.getElementById("i-img").hidden);
 const stageBox = await page.locator("#i-stage").boundingBox();
@@ -370,7 +370,7 @@ await page.click("#f-save"); await seen(page, "#toast", "Picture saved");
 const bankIcon = JSON.parse((await stored(page)).local).state.accounts.find((a) => a.name === "Bank").icon;
 check(red(await pixel(bankIcon, 72, 48)), "dragging the picture moves what is cropped: the blue half is out of the square");
 check((await page.locator("#screen .row img.ico").count()) === 2, "both accounts now show their picture in Setup");
-await page.click('.row:has-text("Bank") .icobtn');
+await page.click('.icobtn[aria-label="Choose a picture for Bank"]');
 check((await text(page, "#sheet")).includes("Remove the picture"), "a picture can be removed");
 await page.click('#sheet button:has-text("Cancel")');
 
