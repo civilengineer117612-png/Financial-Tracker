@@ -668,6 +668,13 @@ check(/Not accounted for went from .* in the first week to .* in the latest/.tes
 await shot(page, "40-survey-review");
 await page.clock.setFixedTime(T0); await page.reload(); await page.waitForSelector("#nav button");
 await shot(page, "22-checkin");
+await page.click('#nav button:has-text("Log")');
+const tinted = await page.locator('.row[class*="tint-"]').count();
+check(tinted > 0 && await page.locator(".tints").count() === 1, "rows in the Log list carry a light tint, with a key that names each tint in words");
+check((await text(page, ".row[class*='tint-'] >> nth=0")).match(/Fixed costs|Everyday spending|Into goals/) !== null, "and each tinted row says its group in words too");
+check(await page.evaluate(() => { const r = document.querySelector('.row[class*="tint-"]'); return getComputedStyle(r).color === getComputedStyle(document.body).color; }), "the text of a tinted row stays the same black");
+await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await page.waitForTimeout(200);
+await shot(page, "44-tints");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- quick day totals ----
