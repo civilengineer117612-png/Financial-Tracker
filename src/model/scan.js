@@ -2,6 +2,7 @@
 // who it was with. Pure and tested; the photo never reaches this file. Everything it returns is only a guess: the owner
 // sees it, corrects it, and verifies it like any other entry.
 import { isPhDate } from "./util.js";
+import { BANKS } from "./banks.js";
 
 export const KINDS = [   // order = who wins a tie
   { id: "payslip", label: "Payslip", direction: "in" },
@@ -110,6 +111,38 @@ function datesIn(text) {
   return found.sort((x, y) => x.index - y.index);
 }
 
+// ---------- which bank or wallet paid ----------
+// Spellings a bank is written in beyond its listed name. Matching ignores case, spaces and punctuation and forgives ONE wrong
+// letter (a photo of a screen often misreads one), but only for names of six letters or more, so BDO and BPI must be exact.
+const ALIASES = { gotyme: ["go tyme"], maribank: ["mari bank"], securitybank: ["security bank"], unionbank: ["union bank"], landbank: ["land bank"], coinsph: ["coins.ph", "coins ph"] };
+const squash = (t) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+function within1(a, b) {   // is the edit distance between a and b at most one?
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+function mentions(text, bank) {
+  const hay = squash(text);
+  return [bank.name, ...(ALIASES[bank.id] ?? [])].map(squash).some((n) => {
+    if (hay.includes(n)) return true;
+    if (n.length < 6) return false;
+    for (let i = 0; i + n.length - 1 <= hay.length; i++) for (const len of [n.length - 1, n.length, n.length + 1]) if (within1(hay.slice(i, i + len), n)) return true;
+    return false;
+  });
+}
+// The bank named on the "From" line (or the line after it); otherwise the only bank named anywhere. Never a guess between two.
+function bankFor(lines) {
+  const at = lines.findIndex((l) => /^\s*(from|paid (with|from|using)|source( account)?|debited from)\b/i.test(l));
+  if (at >= 0) for (const l of [lines[at], lines[at + 1] ?? ""]) { const hit = BANKS.find((b) => mentions(l, b)); if (hit) return hit.id; }
+  const all = BANKS.filter((b) => mentions(lines.join("\n"), b));
+  return all.length === 1 ? all[0].id : null;
+}
+
 // ---------- payee ----------
 const NOT_A_NAME = /receipt|invoice|\btin\b|vat|date|tel\b|phone|address|official|cashier|\bor\b|reg\b|permit|thank|www\.|\.com|^\W*\d/i;
 function payeeFor(kind, lines) {
@@ -123,7 +156,7 @@ function payeeFor(kind, lines) {
     }
     return null;
   };
-  if (kind === "gcash" || kind === "bank") return after(/(?:sent to|paid to|recipient|beneficiary|to:)(.*)/i);
+  if (kind === "gcash" || kind === "bank") return after(/(?:sent to|paid to|recipient|beneficiary|to:|^\s*to\b)(.*)/i);
   if (kind === "received") return after(/(?:received from|from:|sender)(.*)/i);
   if (kind === "rent") return after(/(?:received from|paid to|paid by|landlord|landlady)(.*)/i);
   if (kind === "payslip") return after(/(?:employer|company)(.*)/i);
@@ -188,5 +221,5 @@ export function readScan(text, today) {
   } else notes.push("I could not find a date, so today is used.");
 
   const category = kind === "rent" ? "Rent" : (CATEGORY_CLUES.find(([, re]) => re.test(lower))?.[0] ?? null);
-  return { kind, kindLabel: kindById(kind).label, direction: kindById(kind).direction, amount, date, dateSeen: seen, payee: payeeFor(kind, lines), categoryGuess: category, notes, readAnything: lines.length > 0 };
+  return { kind, bankId: bankFor(lines), creditCard: /credit\s*card/.test(lower), kindLabel: kindById(kind).label, direction: kindById(kind).direction, amount, date, dateSeen: seen, payee: payeeFor(kind, lines), categoryGuess: category, notes, readAnything: lines.length > 0 };
 }
