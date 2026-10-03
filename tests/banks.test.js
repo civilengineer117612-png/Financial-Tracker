@@ -11,6 +11,7 @@ test("the picker offers ten banks, unique, with plain names and no logos", () =>
   assert.equal(new Set(BANKS.map((b) => b.id)).size, 10);
   assert.ok(["GCash", "GoTyme", "MariBank"].every((n) => BANKS.some((b) => b.name === n)), "includes the owner's own");
   assert.ok(BANKS.every((b) => !("icon" in b) && !("logo" in b)));
+  assert.ok(BANKS.every((b) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(b.domain)), "each bank has only a website name, no image");
   assert.equal(bankById("cash").name, "Cash");
   assert.equal(bankById("nope"), null);
 });
