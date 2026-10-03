@@ -43,6 +43,11 @@
   .rawtext { white-space: pre-wrap; font: 13px/1.4 ui-monospace, monospace; color: var(--mid); max-height: 160px; overflow: auto; background: var(--wash); padding: 8px; border-radius: 8px; }
   details summary { min-height: 44px; display: flex; align-items: center; }
   button.link { background: none; border: 0; padding: 4px 0; min-height: 0; text-decoration: underline; }
+  .sumgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 8px 0; }
+  .sumtile { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+  .sumtile span { color: var(--mid); }
+  .sumtile b { font-size: 22px; }
+  .sumtile small { color: var(--ink); }
   .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 84px; gap: 2px; }
   .tile b { font-size: 17px; }

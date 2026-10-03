@@ -60,3 +60,4 @@ export { planTag, tagSummary } from "./trips.js";
 export { BANKS, CASH, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, bankPicture, isPlaceholderAddress, dropPlaceholderAddresses } from "./banks.js";
 export { KINDS, kindById, wordsToCentavos, readScan } from "./scan.js";
 export { EARNINGS, DEDUCTIONS, GOVERNMENT, LOST, SOURCES, OVERTIME_SHARE, linesOf, payslipTotals, payslipChecks, planPayslip, overtimeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory } from "./income.js";
+export { homeSummary } from "./summary.js";
