@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { budgetGrade, monthElapsedPercent, suggestedBudgetStart, budgetFor, planBudgetChange, budgetStatus, defaultCategories, checkRulesSave } from "../src/model/index.js";
-import { makeState, rule } from "./fixtures.js";
+import { budgetGrade, monthElapsedPercent, suggestedBudgetStart, budgetFor, planBudgetChange, budgetStatus, budgetTrend, defaultCategories, checkRulesSave } from "../src/model/index.js";
+import { makeState, rule, account, tx, entry, commit } from "./fixtures.js";
 
 const S = () => { const s = makeState(); s.categories = defaultCategories(); s.rules = []; return s; };
 const NOW = new Date("2026-10-03T03:00:00Z");
@@ -89,4 +89,22 @@ test("reusing a rule id is refused so history cannot be overwritten", () => {
   const r = planBudgetChange(s, { id: "same", category_id: "cat-food", amount: 2000, from_month: "2026-11" }, NOW);
   assert.equal(r.ok, false);
   assert.equal(r.state, s);
+});
+
+// ---------- the monthly trend ----------
+function spendOn(s, id, date, amount) {
+  commit(s, { transaction: tx({ id, date, status: "verified", verified_at: date + "T08:00:00.000+08:00" }), entries: [
+    entry({ transaction_id: id, category_id: "cat-food", amount }), entry({ transaction_id: id, account_id: "chk", amount: -amount })] });
+}
+test("the trend uses each month's own budget and shows a gap, never an error, where there is nothing", () => {
+  let s = S();
+  s.accounts.push(account({ id: "chk", name: "Test", class: "asset", opening_balance: 10000000 }));
+  s = planBudgetChange(s, { id: "b1", category_id: "cat-food", amount: 100000, from_month: "2026-08" }, NOW).state;
+  s = planBudgetChange(s, { id: "b2", category_id: "cat-food", amount: 150000, from_month: "2026-10" }, NOW).state;
+  spendOn(s, "a", "2026-08-05", 30000);
+  spendOn(s, "b", "2026-10-02", 20000);
+  const t = budgetTrend(s, { endMonth: "2026-10", months: 5 });
+  assert.deepEqual(t.map((x) => x.month), ["2026-06", "2026-07", "2026-08", "2026-09", "2026-10"]);
+  assert.deepEqual(t.map((x) => x.budget), [null, null, 100000, 100000, 150000], "August's budget stays August's");
+  assert.deepEqual(t.map((x) => x.actual), [null, null, 30000, null, 20000], "no transactions that month is a gap, not zero");
 });

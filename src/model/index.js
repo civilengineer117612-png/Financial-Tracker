@@ -42,7 +42,7 @@ export { validateRatchetParams, wasMet, nextRatchet, ratchetSchedule, splitRatch
 export { planCheckIn, ledgerBalanceFor, unloggedTotal } from "./checkin.js";
 export { envelopeBalance, planGcashSpend, splitSweep, planMonthEndSweep, underBudgetedCategories } from "./buffer.js";
 export { parseSchedule, isDue, datesBetween, categoryForPayee, draftId, draftFromTemplate, draftsForRange, planReserveTransfer } from "./templates.js";
-export { budgetStatus, budgetGrade, GRADE_AT, monthElapsedPercent, suggestedBudgetStart, budgetFor, planBudgetChange } from "./budget.js";
+export { budgetStatus, budgetTrend, budgetGrade, GRADE_AT, monthElapsedPercent, suggestedBudgetStart, budgetFor, planBudgetChange } from "./budget.js";
 export { pendingDrafts, verifyTransaction } from "./inbox.js";
 export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer } from "./goals.js";
 export { validateState, encryptBackup, decryptBackup, encryptLedgerBackup, decryptLedgerBackup, MIN_PASSPHRASE } from "./backup.js";

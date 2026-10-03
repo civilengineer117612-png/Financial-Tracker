@@ -78,7 +78,14 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 
 // Everything that is not Log or Verify lives in the menu at the upper left, so new screens (and later photo
 // and audio capture beside Log and Verify) can be added without crowding the bottom bar.
-const MENU = [["Money", [["money", "Money"], ["budget", "Budget"]]], ["Weekly", [["checkin", "Check-in"]]]];   // grouped like folders; Setup is pinned at the bottom
+// Plain line icons (drawn in the text colour). Groups are separated by thin lines, like a settings list.
+const ICONS = {
+  money: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
+  budget: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
+  checkin: '<path d="M4 12l5 5L20 6"/>',
+  setup: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
+};
+const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
@@ -87,13 +94,12 @@ function renderTop(title) {
 
 function renderMenu() {
   if (!ui.menu || !device.allowEntry) { $("menu").innerHTML = ""; return; }
-  const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}"${ui.tab === id ? ' aria-current="page"' : ""}>${label}</button>`;
+  const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}"${ui.tab === id ? ' aria-current="page"' : ""}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span></button>`;
   const age = M.daysSinceBackup(ledger.settings, today());
   const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
   $("menu").innerHTML = `<div class="scrim" data-action="close-menu"></div><aside class="drawer" role="dialog" aria-label="Menu">
-    <div class="groups">${MENU.map(([group, items]) => `<h2>${group}</h2>${items.map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
-    <div class="foot"><p class="note">${backup}</p>${item("setup", "Setup")}
-    <button class="item" data-action="close-menu">Close</button></div></aside>`;
+    <div class="groups">${MENU.map(([group, items]) => `<p class="glabel">${group}</p>${items.map(([id, label]) => item(id, label)).join("")}`).join('<hr>')}</div>
+    <div class="foot"><p class="note">${backup}</p>${item("setup", "Setup")}</div></aside>`;
 }
 
 function renderBanner() {
@@ -303,6 +309,18 @@ function viewMoney() {
 }
 
 // Each budget as a meter: how much of it is used, with a mark for how far through the month we are.
+// Budget | Actual | Variance for one month. Variance is budget minus actual: plus means under budget (blue),
+// minus means over (red). The sign and the words "under" / "over" carry the meaning; colour only backs them up.
+function varianceTable(budgeted) {
+  const vtext = (v) => v === 0 ? "On budget" : (v > 0 ? "+" : "\u2212") + peso(Math.abs(v)) + (v > 0 ? " under" : " over");
+  const vcls = (v) => v > 0 ? "vu" : v < 0 ? "vo" : "";
+  const cell = (v) => `<td class="n ${vcls(v)}">${esc(vtext(v))}</td>`;
+  const sum = (k) => budgeted.reduce((n, r) => n + r[k], 0);
+  return `<table class="tbl"><tr><th>Category</th><th class="n">Budget</th><th class="n">Actual</th><th class="n">Variance</th></tr>
+    ${budgeted.map((r) => `<tr><td>${esc(categoryName(r.category_id))}</td><td class="n">${peso(r.budget)}</td><td class="n">${peso(r.spent)}</td>${cell(r.budget - r.spent)}</tr>`).join("")}
+    <tr class="total"><td>Total</td><td class="n">${peso(sum("budget"))}</td><td class="n">${peso(sum("spent"))}</td>${cell(sum("budget") - sum("spent"))}</tr></table>`;
+}
+
 function viewBudgets(hero, month, maps, asOf, now, label) {
   const rows = M.budgetStatus(S(), { rules: S().rules, categoryMaps: maps, month, asOf });
   const budgeted = rows.filter((r) => r.budget !== null).map((r) => ({ ...r, grade: M.budgetGrade(r.spent, r.budget) }))
@@ -314,7 +332,7 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
   const elapsed = month === now ? M.monthElapsedPercent(month, today()) : null;
   const words = (r) => r.grade.level === "critical" ? "Over by " + peso(r.spent - r.budget) : peso(r.budget - r.spent) + " left";
   if (ui.asList) {
-    return hero + listTable(["Category", "Spent", "Budget"], budgeted.map((r) => [esc(categoryName(r.category_id)), peso(r.spent), peso(r.budget) + " · " + r.grade.percent + "% · " + LEVELS[r.grade.level]]), "Total spent", budgeted.reduce((n, r) => n + r.spent, 0))
+    return hero + varianceTable(budgeted)
       + `<p><button class="link" data-action="chart-mode" data-mode="chart">Show as chart</button></p>`;
   }
   const cards = budgeted.map((r) => `<div class="bcard" role="group" aria-label="${esc(categoryName(r.category_id) + ": " + peso(r.spent) + " of " + peso(r.budget) + ", " + LEVELS[r.grade.level])}">
@@ -322,7 +340,8 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
       <div class="meter g-${r.grade.level}"><span class="fill" style="width:${r.spent > 0 ? Math.max(1, Math.min(100, Math.round((r.spent * 100) / r.budget))) : 0}%"></span>${elapsed === null ? "" : `<span class="tick" style="left:${elapsed}%"></span>`}</div>
       <div class="status">${glyph(r.grade.level)}${esc(LEVELS[r.grade.level])} · ${esc(words(r))}${r.pending > 0 ? " · " + esc("+" + peso(r.pending) + " not verified") : ""}</div></div>`).join("");
   const rest = unbudgeted.length ? `<h2>No budget set</h2>${unbudgeted.map((r) => `<div class="row"><div>${esc(categoryName(r.category_id))}</div><div class="amt">${peso(r.spent)}</div></div>`).join("")}` : "";
-  return hero + legend() + `<div>${cards}</div>${elapsed === null ? "" : `<p class="note">The black line is today's place in the month.</p>`}${rest}
+  return hero + legend() + `<div>${cards}</div>${elapsed === null ? "" : `<p class="note">The black line is today's place in the month.</p>`}
+    <h2>Budget vs actual</h2>${varianceTable(budgeted)}${rest}
     <p><button class="link" data-action="chart-mode" data-mode="list">Show as list</button></p>`;
 }
 

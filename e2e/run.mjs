@@ -451,7 +451,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3, "it is the three-line icon");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Check-in,Setup,Close", "the menu lists Money, Budget, Check-in and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Check-in,Setup", "the menu lists Money, Budget, Check-in and Setup");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
 await shot(page, "17-menu");
 await page.keyboard.press("Escape");
@@ -524,8 +524,11 @@ check(meters[2].cls === "g-good" && meters[2].w === 0 && meters[2].color === "rg
 const ticks = await page.locator(".meter .tick").evaluateAll((els) => els.map((e) => e.style.left));
 check(ticks.length === 3 && ticks.every((t) => t === "10%"), "each meter has a mark for today's place in the month (3 of 31 days): " + ticks.join());
 check((await text(page, "#screen")).includes("The black line is today's place in the month."), "and the page explains it");
+check((await page.locator(".tbl").count()) === 1 && (await text(page, "#screen")).toLowerCase().includes("budget vs actual"), "the budget-vs-actual table sits under the chart");
+const vcolors = await page.locator(".tbl td.vo, .tbl td.vu").evaluateAll((els) => els.map((e) => e.className.includes("vo") ? "over" : "under"));
+check(vcolors.includes("over") && vcolors.includes("under"), "variance cells are marked over and under");
 await page.click('button:has-text("Show as list")');
-check(/Shopping[\s\S]*Over budget/.test(await text(page, ".tbl")) && (await text(page, ".tbl")).includes("Total spent"), "the list twin has the same facts");
+check(/Shopping[\s\S]*−₱50\.00 over/.test(await text(page, ".tbl")) && /Food[\s\S]*\+₱5\.00 under/.test(await text(page, ".tbl")) && (await text(page, ".tbl")).includes("Total"), "the list twin has budget, actual and a signed variance in words");
 await page.click('button:has-text("Show as chart")');
 await page.click('button[aria-label="Previous month"]');
 check((await text(page, "#screen")).includes("No budgets for September 2026 yet"), "a budget set this month does not rewrite September");
