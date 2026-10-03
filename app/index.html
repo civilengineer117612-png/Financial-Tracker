@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Finance</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Finance">
+<meta name="theme-color" content="#111111">
+<style>
+  :root { --ink: #111; --mid: #555; --soft: #999; --line: #ccc; --wash: #f0f0f0; --paper: #fff; }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.4; color: var(--ink); background: var(--paper);
+         padding: max(12px, env(safe-area-inset-top)) 16px calc(88px + env(safe-area-inset-bottom)); }
+  h1 { font-size: 22px; margin: 4px 0 2px; }
+  h2 { font-size: 15px; margin: 22px 0 8px; color: var(--mid); text-transform: uppercase; letter-spacing: .04em; }
+  p { margin: 6px 0; }
+  .sub { color: var(--mid); margin: 0 0 12px; }
+  .note { color: var(--mid); }
+  button { font: inherit; color: var(--ink); background: var(--wash); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-height: 48px; }
+  button:active { background: var(--line); }
+  button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); width: 100%; font-size: 18px; min-height: 56px; }
+  button.primary:active { background: var(--mid); }
+  button:disabled { opacity: .4; }
+  button.link { background: none; border: 0; padding: 4px 0; min-height: 0; text-decoration: underline; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 84px; gap: 2px; }
+  .tile b { font-size: 17px; }
+  .tile span { color: var(--mid); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .row small { color: var(--mid); display: block; }
+  .row .amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .card { border: 1px solid var(--ink); border-radius: 10px; padding: 16px; margin: 10px 0; }
+  .card .big { font-size: 34px; font-weight: bold; margin: 6px 0 10px; font-variant-numeric: tabular-nums; }
+  .card .what { font-size: 20px; }
+  .card dl { margin: 0; display: grid; grid-template-columns: 95px 1fr; gap: 4px 8px; color: var(--mid); }
+  .card dd { margin: 0; color: var(--ink); }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .actions .wide { grid-column: 1 / -1; }
+  label { display: block; margin: 12px 0 4px; color: var(--mid); }
+  input, select { font: inherit; width: 100%; padding: 12px; border: 1px solid var(--ink); border-radius: 8px; background: var(--paper); color: var(--ink); min-height: 48px; }
+  #banner .bar { background: var(--wash); border: 1px solid var(--ink); border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; }
+  #nav { z-index: 1; position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(3, 1fr); background: var(--paper); border-top: 1px solid var(--line);
+         padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); gap: 8px; }
+  #nav button { border-radius: 8px; }
+  #nav button[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  #scrim { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.45); }
+  .sheet { z-index: 11; position: fixed; left: 0; right: 0; bottom: 0; max-height: 86vh; overflow: auto; background: var(--paper); border-top: 2px solid var(--ink);
+           border-radius: 14px 14px 0 0; padding: 16px 16px calc(20px + env(safe-area-inset-bottom)); }
+  .sheet h3 { margin: 0 0 4px; font-size: 20px; }
+  #toast { position: fixed; left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 5; }
+  #toast .bar { background: var(--ink); color: var(--paper); border-radius: 10px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  #toast .bar button { background: none; border: 1px solid var(--paper); color: var(--paper); min-height: 40px; }
+  #toast .extra { background: var(--wash); border: 1px solid var(--ink); border-radius: 10px; padding: 8px 12px; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div id="banner"></div>
+<main id="screen"></main>
+<div id="sheet"></div>
+<div id="toast"></div>
+<nav id="nav"></nav>
+<script type="module" src="app.js"></script>
+</body>
+</html>

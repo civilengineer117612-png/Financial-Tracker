@@ -106,3 +106,12 @@ test("verifying twice or an unknown id is reported, not thrown", () => {
   assert.equal(verifyTransaction(s, "a").violations[0].code, "ALREADY_VERIFIED");
   assert.equal(verifyTransaction(s, "nope").violations[0].code, "UNKNOWN_TRANSACTION");
 });
+
+test("inbox lists a day's drafts in the order they were captured, not by id", () => {
+  const s = makeState();
+  const at = (h) => "2026-03-04T" + h + ":00:00.000+08:00";
+  spend(s, "zzz", "2026-03-04", "food", 1, { created_at: at("09") });   // captured first, sorts last by id
+  spend(s, "aaa", "2026-03-04", "food", 1, { created_at: at("13") });
+  spend(s, "mmm", "2026-03-04", "food", 1, { created_at: at("11") });
+  assert.deepEqual(pendingDrafts(s, "2026-03-05").map((t) => t.id), ["zzz", "mmm", "aaa"]);
+});

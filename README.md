@@ -40,3 +40,29 @@ Safari tab storage and Home Screen app storage are separate on iOS, so only the 
 | EMPTY | EMPTY | Everything evicted, or the app was removed and re-added |
 
 Changing the service worker cache name or the app's path does not erase data, but changing the **origin** (host or repo name) starts a fresh, empty store.
+
+
+---
+
+# Finance app (`app/`)
+
+The ledger app, separate from the storage probe above. It installs as its own Home Screen app from
+`/app/` on the same site; the probe at the site root is untouched.
+
+**How it is organised**
+- `src/model/` holds every rule (accounts, drafts, verification, budgets, reserve, backup...). It has no
+  screens and no storage, and is covered by `npm test`.
+- `app/app.js` draws the screens and handles taps. It only calls the model.
+- `app/store.js` is the only file that touches storage. It writes the same text to localStorage and
+  IndexedDB, and the model (`persist.js`) notices and repairs a lost or failed store.
+- `app/sw.js` makes the app open offline (network first, saved copy as the fallback). The deploy stamps
+  it with the commit id so each deploy installs a fresh copy.
+
+**Checks**
+- `npm test` runs the logic and static checks (CI runs it on every push).
+- `node e2e/run.mjs` drives the app in an iPhone-like browser (setup, logging, undo, verify, edit,
+  a lost store, wrong device, offline). Serve the repo first: `python3 -m http.server 8124`.
+  It is not part of CI because it needs a browser.
+
+**Rules the screens follow:** nothing blocks logging, nothing is red, over-budget and shortages are
+stated once in plain words, and verification is one entry at a time with no "all correct" button.
