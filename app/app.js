@@ -854,20 +854,29 @@ function viewGoals() {
   const goals = S().goals;
   const toggle = goals.some((g) => g.hidden_by_default) ? `<p><button class="link" data-action="toggle-reveal">${ui.reveal ? "Hide balances" : "Show balances"}</button></p>` : "";
   const cards = goals.map((g) => {
-    const p = M.goalProgress(S(), g);
+    let p = M.goalProgress(S(), g);
     if (!p) return "";
+    // The Emergency Fund's target is worked out from the plan in force, never kept as a typed number.
+    const isEf = /emergency/i.test(g.name), ef = isEf && planOf() ? M.emergencyFundStatus(S(), planOf(), g) : null;
+    if (isEf) p = { ...p, target: null, remaining: null, percent: null, reached: false };
     const hidden = g.hidden_by_default && !ui.reveal;
     const line = planOf()?.lines.find((l) => l.kind === "goal" && l.name.toLowerCase() === g.name.toLowerCase());
     const monthly = line ? line.first + line.second : 0;
     const eta = monthly > 0 && p.remaining ? Math.ceil(p.remaining / monthly) : null;
-    const suggest = planOf()?.emergency && /emergency/i.test(g.name) ? M.planEmergencyTarget(planOf()) : null;
     const need = g.deadline && p.remaining ? M.requiredPerMonth(p, g.deadline, today().slice(0, 7)) : null;
+    const efBody = !ef ? "" : `<table class="tbl"><tr><td>Target</td><td class="n">${peso(ef.target)}</td></tr><tr><td>Balance now</td><td class="n">${peso(ef.balance)}</td></tr>
+        <tr><td>Monthly contribution</td><td class="n">${ef.monthly ? peso(ef.monthly) : "none in your plan"}</td></tr>
+        <tr><td>Months to target</td><td class="n">${ef.reached ? "Reached" : ef.monthsToTarget === null ? "Not known yet" : "About " + ef.monthsToTarget}</td></tr></table>
+        <div class="meter goal" role="img" aria-label="${ef.percent}% of the target"><span class="fill" style="width:${ef.percent}%"></span></div>
+        <div class="status">${ef.reached ? "Target reached" : ef.percent + "% \u00b7 " + peso(ef.remaining) + " to go"}</div>
+        <p class="note">Target = ${ef.months} months of ${esc(ef.basis.join(", "))} from your plan (${peso(ef.monthlyBasis)} a month). It changes when your plan does.${ef.missing.length ? " Your plan has no line named " + esc(ef.missing.join(", ")) + "." : ""}</p>`;
     const body = hidden ? `<p class="note">Hidden. Tap Show balances above.</p>`
+      : ef ? efBody
+      : isEf ? `<div class="btop"><span class="bval">${peso(p.balance)}</span></div><p class="note">Load a pay plan (Menu, Pay plan) and the target is worked out from it: 3 months of Rent, Food and Essentials.</p>`
       : `<div class="btop"><span class="bval">${peso(p.balance)}${p.target != null ? " of " + peso(p.target) : ""}</span></div>
          ${p.target != null ? `<div class="meter goal" role="img" aria-label="${p.percent}% of the goal"><span class="fill" style="width:${p.percent}%"></span></div>
          <div class="status">${p.reached ? "Goal reached" : p.percent + "% \u00b7 " + peso(p.remaining) + " to go"}${eta ? " \u00b7 about " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : ""}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div>` : `<div class="status">No target, just a place to build up.</div>`}`;
     return `<div class="bcard"><div class="btop"><span class="bname who">${iconOf(S().accounts.find((a) => a.id === g.account_id) ?? { name: g.name }, 24)}<span>${esc(g.name)}</span></span></div>${body}
-      ${suggest && suggest !== g.target && !hidden ? `<p class="note">Your plan suggests ${peso(suggest)} (${planOf().emergency.months} months of ${esc(planOf().emergency.basis.join(", "))}). <button class="link" data-action="use-plan-target" data-id="${esc(g.id)}">Use it</button></p>` : ""}
       <p><button data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button></p></div>`;
   }).join("");
   return `<h1>Goals</h1><p class="sub">Savings you are building. Hidden by default so they do not tempt you.</p>${toggle}${cards || `<p class="note">No goals yet.</p>`}
@@ -1453,13 +1462,6 @@ async function onClick(el) {
       ui.sheet = null; renderSheet();
       if (!added.unchanged) await commit(S(), { ...ledger.settings, plans: added.plans });
       showToast(added.unchanged ? "That plan is already saved" : "Plan loaded");
-      break;
-    }
-    case "use-plan-target": {
-      const r = M.setGoalTarget(S(), id, M.planEmergencyTarget(planOf()));
-      if (!r.ok) { showToast("Could not save: " + r.violations[0].message); break; }
-      await commit(r.state);
-      showToast("Target set from your plan");
       break;
     }
     case "open-cal": { const target = el.dataset.target ?? "day"; ui.calMonth = M.monthOf(calSelected(target) ?? today()); ui.sheet = { type: "cal", target }; renderSheet(); break; }
