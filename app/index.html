@@ -56,6 +56,13 @@
   svg .tl.ta, svg line.ta { stroke: var(--chart); } svg circle.ta { fill: var(--chart); stroke: var(--paper); stroke-width: 2; }
   .tlabs { display: flex; gap: 6px; margin-top: 2px; }
   .tmonth { flex: 1; min-height: 44px; padding: 0; border: 0; background: none; color: var(--mid); font-size: 13px; }
+  svg.donut { display: block; width: min(100%, 260px); margin: 12px auto 4px; }
+  svg.donut .slice { transition: opacity .15s; } svg.donut .slice.dim { opacity: .3; }
+  svg.donut .dtotal { font-size: 20px; font-weight: 700; fill: var(--ink); } svg.donut .dsub { font-size: 12px; fill: var(--mid); }
+  .legendlist { margin-top: 6px; }
+  .lrow { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 0; background: none; padding: 0 2px; min-height: 44px; border-bottom: 1px solid var(--line); border-radius: 0; font-size: 16px; }
+  .lrow.dim { opacity: .45; } .lrow[aria-pressed="true"] .lname { font-weight: 700; }
+  .lrow .swatch { width: 14px; height: 14px; border-radius: 3px; flex: none; } .lrow .lname { flex: 1; } .lrow .lval { color: var(--ink); font-variant-numeric: tabular-nums; }
   .daytotal { text-align: center; font-size: 40px; font-weight: 700; margin: 14px 0 0; }
   p.center { text-align: center; margin: 0 0 10px; }
   .daycard { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }

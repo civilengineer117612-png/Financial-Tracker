@@ -18,7 +18,7 @@ let boot = { status: "NONE", repairTo: null };
 const ui = {
   tab: "log", menu: false, sheet: null, form: {}, error: null, confirmDelete: null, confirmRemove: null, setupError: null,
   accountForm: { name: "", bank: null, sub: "", kind: "asset", opening: "", covers: "" },
-  month: null, view: "category", asList: false, sel: null,   // the Money tab
+  month: null, view: "category", shape: "bars", asList: false, sel: null,   // the Money tab
 };
 let toastTimer = null;
 
@@ -310,6 +310,27 @@ const SHAPES = { good: '<circle cx="6" cy="6" r="5"/>', warning: '<path d="M6 1 
 const glyph = (level) => `<svg class="glyph g-${level}" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">${SHAPES[level]}</svg>`;
 const legend = () => `<p class="legend" aria-label="What the colours mean">${["good", "warning", "serious", "critical", "none"].map((l) => `<span>${glyph(l)}${LEVELS[l]}</span>`).join("")}</p>`;
 
+// A donut of each category's share of the month. One blue hue, darkest for the biggest share, with a 2px gap between
+// slices; the legend carries the peso amount and percent for every slice (small slices are unreadable on a phone).
+const DONUT_BLUES = ["#1b4f8f", "#2a78d6", "#4f93e0", "#74abe8", "#97c1ee", "#b6d3f4", "#cfe1f7"];
+function donutChart(rows, selected, total) {
+  const shown = foldRows(rows, total).map((r, i) => ({ ...r, color: r.fold ? "#999" : DONUT_BLUES[Math.min(i, DONUT_BLUES.length - 1)] }));
+  const R = 70, C = 2 * Math.PI * R, GAP = 2;
+  let offset = 0;
+  const sum = shown.reduce((n, r) => n + r.amount, 0) || 1;
+  const arcs = shown.map((r) => {
+    const len = (r.amount / sum) * C, dash = Math.max(0.5, len - GAP);
+    const circle = `<circle class="slice${selected && selected !== r.id ? " dim" : ""}" cx="100" cy="100" r="${R}" fill="none" stroke="${r.color}" stroke-width="30" stroke-dasharray="${dash.toFixed(2)} ${(C - dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 100 100)"/>`;
+    offset += len;
+    return circle;
+  }).join("");
+  const legend = shown.map((r) => `<button class="lrow${selected && selected !== r.id ? " dim" : ""}" data-action="pick-bar" data-id="${esc(r.id)}" aria-pressed="${selected === r.id}"${r.fold ? " disabled" : ""}>
+      <span class="swatch" style="background:${r.color}"></span><span class="lname">${r.label}</span><span class="lval">${peso(r.amount)} \u00b7 ${r.percent}%</span></button>`).join("");
+  return `<svg class="donut" viewBox="0 0 200 200" role="img" aria-label="Share of spending by category. The list below has the same numbers.">${arcs}
+      <text x="100" y="96" text-anchor="middle" class="dtotal">${esc(M.formatPesosWhole(total))}</text><text x="100" y="116" text-anchor="middle" class="dsub">spent</text></svg>
+    <div class="legendlist">${legend}</div>`;
+}
+
 function barChart(rows, selected) {
   const max = Math.max(...rows.map((r) => r.amount), 1);
   return `<div class="bars">${rows.map((r) => `<button class="brow${r.grade ? " g-" + r.grade : ""}${selected && selected !== r.id ? " dim" : ""}" data-action="pick-bar" data-id="${esc(r.id)}" aria-pressed="${selected === r.id}"${r.fold ? " disabled" : ""}>
@@ -386,7 +407,10 @@ function viewMoney() {
   if (ui.asList) return done(listTable(["Category", "Spent", "Share"], rows.map((r) => [r.label, peso(r.amount), r.percent + "%"]), "Total", cat.total));
   const hit = rows.find((r) => r.id === ui.sel);
   const hitWords = hit ? esc(hit.label + ": " + peso(hit.amount) + ", " + hit.percent + "% of what you spent in " + label + ".") + (hit.budget ? " " + esc("Budget " + peso(hit.budget) + ": " + hit.used + "% used" + (hit.grade === "critical" ? ", over by " + peso(hit.amount - hit.budget) : "") + ".") : "") : "Tap a bar to see its share.";
-  return done((graded ? legend() : "") + barChart(foldRows(rows.filter((r) => r.amount > 0), cat.total), ui.sel)
+  const shapes = `<div class="seg" role="group" aria-label="Chart shape">${[["bars", "Bars"], ["donut", "Donut"]].map(([v, t]) => `<button data-action="chart-shape" data-shape="${v}" aria-pressed="${ui.shape === v}">${t}</button>`).join("")}</div>`;
+  const positive = rows.filter((r) => r.amount > 0);
+  if (ui.shape === "donut") return done(shapes + donutChart(positive, ui.sel, cat.total) + `<p class="caption" aria-live="polite">${hitWords.replace("Tap a bar", "Tap a row")}</p>`);
+  return done(shapes + (graded ? legend() : "") + barChart(foldRows(positive, cat.total), ui.sel)
     + `<p class="caption" aria-live="polite">${hitWords}</p>`);
 }
 
@@ -882,6 +906,7 @@ async function onClick(el) {
     case "close-menu": ui.menu = false; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "false"); break;
     case "tab": $("toast").innerHTML = ""; ui.menu = false; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null; renderAll(); break;
     case "month-step": ui.month = M.addMonths(ui.month ?? M.monthOf(today()), Number(el.dataset.step)); ui.sel = null; renderScreen(); break;
+    case "chart-shape": ui.shape = el.dataset.shape; ui.sel = null; renderScreen(); break;
     case "chart-view": ui.view = el.dataset.view; ui.sel = null; renderScreen(); break;
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
     case "open-month": ui.month = id; ui.view = "budget"; ui.sel = null; ui.asList = false; renderScreen(); break;

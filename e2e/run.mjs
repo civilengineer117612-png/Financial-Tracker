@@ -510,6 +510,18 @@ check((await text(page, ".legend")).replace(/\s+/g, " ").includes("On track Gett
 check((await page.locator(".legend svg").count()) === 5, "each with its own shape, so colour is never the only signal");
 await page.click('.brow:has-text("Shopping")');
 check((await text(page, ".caption")).includes("Budget ₱250.00: 120% used, over by ₱50.00."), "tapping a bar adds the budget in words");
+const barCount = await page.locator(".bars .brow").count();
+await page.click('button:has-text("Donut")');
+check((await page.locator("svg.donut").count()) === 1 && (await page.locator("svg.donut circle.slice").count()) === barCount, "the donut has one slice per category: " + barCount);
+check((await page.locator(".legendlist .lrow").count()) === barCount && /₱[\d,.]+ · [\d.]+%/.test(await text(page, ".legendlist")), "its legend lists each category with the peso amount and the percent");
+await page.click('.legendlist .lrow >> nth=0');
+check((await text(page, ".caption")).includes("of what you spent"), "tapping a legend row says the share in words");
+await shot(page, "32-donut");
+await page.click('button:has-text("Show as list")');
+check((await text(page, ".tbl")).includes("Share"), "the list twin is still there");
+await page.click('button:has-text("Show as chart")');
+await page.click('button:has-text("Bars")');
+check((await page.locator(".bars .brow").count()) === barCount, "and Bars brings the bars back");
 
 await page.click('button:has-text("Budgets")');
 await shot(page, "20-money-budgets");

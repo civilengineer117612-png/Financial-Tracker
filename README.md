@@ -96,6 +96,8 @@ amounts sit at the bar tip, and tapping a bar states its share in words.
 
 **Buffer (menu, Overview):** splits the GCash wallet into two envelopes the ledger tracks apart (rides and load allowance, and the overrun buffer) without changing what the wallet holds. Spending from that wallet takes from the allowance first, then the buffer; the app says how much came out of the buffer and warns when the allowance is empty. The Buffer screen shows what is left, this month's draws by category, a note when one category draws the buffer in more than one month, an "Add to the buffer" top-up, and a month-end sweep (to the Mole Removal goal up to its target, then the Emergency Fund) saved as a draft.
 
+**Donut:** under Money, "Where it went" can be shown as Bars or a Donut. The donut is one blue hue (darkest for the biggest share) with a gap between slices, and its legend lists every category with the peso amount and the percent; tap a row for the share in words. "Show as list" is still there.
+
 **Trips (menu, Overview):** a trip is a tag with an optional budget (for example a trip abroad). Switch "Tag new entries with this trip" on and every new entry is tagged, with no extra taps; the Log screen says so and has a Stop link. A trip's page shows verified spending against its budget (graded, with words), spending by category, and unverified spending as a note. Trip spending still counts in the monthly charts like any other spending.
 
 **Checks (menu, Overview):** the card reserve check (reserve balance against what the card owes, pending plus posted, in words: covered or short by how much), the weekly Unlogged chart (what your counts could not explain; a week nobody counted is left out, never shown as zero) and the weekly-questions review by week.
