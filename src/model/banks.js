@@ -16,6 +16,10 @@ export const BANKS = [
 export const CASH = { id: "cash", name: "Cash" };
 export const bankById = (id) => [...BANKS, CASH].find((b) => b.id === id) ?? null;
 
+// The bank a typed account name obviously means ("gotyme", "GoTyme Savings"), or null. Used to offer logos for accounts
+// made before the bank picker existed.
+export const bankForName = (name) => BANKS.find((b) => { const n = name.trim().toLowerCase(), k = b.name.toLowerCase(); return n === k || n.startsWith(k + " "); }) ?? null;
+
 const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }] });
 
 // input: {id, bank?, sub?, name?, kind: "asset"|"liability", opening (centavos), date, covers?}
@@ -43,4 +47,18 @@ export function planAccount(state, input) {
   const problems = validateShape("Account", account);
   if (problems.length) return { ok: false, violations: problems };
   return { ok: true, violations: [], account, state: { ...state, accounts: [...state.accounts, account] } };
+}
+
+// Link an account made earlier (with a typed name) to a bank, or unlink it (bankId null). A newly linked account that
+// has no picture starts with the picture its bank already has on another account.
+export function linkAccountBank(state, accountId, bankId) {
+  const a = state.accounts.find((x) => x.id === accountId);
+  if (!a) return fail("UNKNOWN_ACCOUNT", "no account " + accountId);
+  if (bankId != null && !bankById(bankId)) return fail("UNKNOWN_BANK", "that bank is not in the list");
+  const { bank, ...rest } = a;
+  const sibling = bankId ? state.accounts.find((x) => x.id !== accountId && x.bank === bankId && x.icon) : null;
+  const next = { ...rest, ...(bankId ? { bank: bankId } : {}), ...(!a.icon && sibling ? { icon: sibling.icon } : {}) };
+  const problems = validateShape("Account", next);
+  if (problems.length) return { ok: false, violations: problems };
+  return { ok: true, violations: [], state: { ...state, accounts: state.accounts.map((x) => (x.id === accountId ? next : x)) } };
 }

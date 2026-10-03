@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BANKS, bankById, planAccount, setAccountIcon, validateShape } from "../src/model/index.js";
+import { BANKS, bankById, bankForName, planAccount, linkAccountBank, setAccountIcon, validateShape } from "../src/model/index.js";
 import { makeState } from "./fixtures.js";
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
@@ -49,4 +49,25 @@ test("a picture chosen for one account is shared by every account of the same ba
   assert.ok(cleared.state.accounts.filter((a) => a.bank === "gotyme").every((a) => a.icon === undefined), "removing it clears the whole bank");
   assert.equal(setAccountIcon(s, "a1", "javascript:alert(1)").ok, false);
   assert.equal(validateShape("Account", planAccount(makeState(), input({ bank: "bpi" })).account).length, 0);
+});
+
+test("an account made earlier can be linked to a bank, takes that bank's picture, and can be unlinked", () => {
+  let s = planAccount(makeState(), input({ bank: "gotyme" })).state;
+  s = setAccountIcon(s, "a1", PNG).state;
+  s = planAccount(s, input({ id: "old", name: "Euf" })).state;
+  const r = linkAccountBank(s, "old", "gotyme");
+  assert.equal(r.ok, true);
+  const old = r.state.accounts.find((a) => a.id === "old");
+  assert.deepEqual([old.bank, old.icon, old.name], ["gotyme", PNG, "Euf"], "keeps its own name, gains the bank and its picture");
+  const off = linkAccountBank(r.state, "old", null).state.accounts.find((a) => a.id === "old");
+  assert.equal("bank" in off, false);
+  assert.equal(linkAccountBank(s, "old", "nope").violations[0].code, "UNKNOWN_BANK");
+  assert.equal(linkAccountBank(s, "zz", "gotyme").violations[0].code, "UNKNOWN_ACCOUNT");
+});
+
+test("a typed name that obviously means a listed bank is recognised, others are not", () => {
+  assert.equal(bankForName("Gotyme").id, "gotyme");
+  assert.equal(bankForName(" GCASH ").id, "gcash");
+  assert.equal(bankForName("BDO Savings").id, "bdo");
+  for (const n of ["Euf", "Wallet", "Cash on hand", "BDOX", ""]) assert.equal(bankForName(n), null, n);
 });
