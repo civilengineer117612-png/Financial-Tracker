@@ -70,7 +70,7 @@ test("invalid reminders are refused with the reason", () => {
 
 test("default set: morning, 6pm cutoff, and a weekly check-in only when a day is chosen", () => {
   const d = defaultReminders();
-  assert.deepEqual(d.map((r) => [r.id, r.time]), [["verify-morning", "07:15"], ["verify-cutoff", "18:00"]]);
+  assert.deepEqual(d.map((r) => [r.id, r.time]), [["verify-morning", "07:10"], ["verify-cutoff", "18:00"]]);
   const w = defaultReminders({ checkin: { day: "SU", time: "18:30" } });
   assert.deepEqual(w.at(-1).repeat, "weekly:SU");
   assert.throws(() => defaultReminders({ checkin: { day: "Sunday", time: "18:30" } }), /check-in day/);

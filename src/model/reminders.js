@@ -72,7 +72,7 @@ export function buildReminderCalendar(reminders, { now = new Date(), startDate }
 
 // The set decided for this app: verify in the morning (follow-up alarms if missed), the 6pm
 // cutoff, and optionally the weekly check-in on the owner's chosen day.
-export function defaultReminders({ morning = "07:15", cutoff = "18:00", checkin } = {}) {
+export function defaultReminders({ morning = "07:10", cutoff = "18:00", checkin } = {}) {
   const list = [
     { id: "verify-morning", title: "Verify yesterday's drafts", time: morning, repeat: "daily", alarms: [0, 5, 10],
       description: "Open the finance app on the iPhone and check each entry, one by one." },
