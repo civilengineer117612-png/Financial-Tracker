@@ -801,8 +801,12 @@ function viewChecks() {
     habit = barChart(rows, ui.sel) + `<p class="caption" aria-live="polite">${hit ? esc(wlabel(hit) + ": " + (hit.amount < 0 ? peso(-hit.amount) + " more than your records said." : hit.amount === 0 ? "everything was accounted for." : peso(hit.amount) + " could not be accounted for.")) : "Tap a bar. Weeks you did not count are left out, not shown as zero."}</p>`;
   }
   const sv = M.surveyReview(S(), S().surveyResponses, M.UNLOGGED_CATEGORY_ID);
-  const survey = sv.weeks.length ? `<table class="tbl"><tr><th>Week to</th><th class="n">Ease</th><th class="n">Missed</th><th class="n">Fixes</th></tr>${sv.weeks.map((w) => `<tr><td>${esc(longDate(w.week_end))}</td><td class="n">${w.q2_ease}/5</td><td class="n">${w.q1_missed_count}</td><td class="n">${w.q4_corrections_count}</td></tr>`).join("")}</table>
-    <p class="note">${sv.ready ? "Enough weeks to look at the trend." : "A trend appears after about 4 weeks of answers."}</p>` : `<p class="note">The weekly questions appear after your first count.</p>`;
+  const ago = (w) => w.unlogged_net < 0 ? peso(-w.unlogged_net) + " found" : peso(w.unlogged_net);
+  const survey = !sv.weeks.length ? `<p class="note">The weekly questions appear after your first count.</p>`
+    : !sv.ready ? `<p class="note">${sv.weeks.length} of 4 weeks answered. The review appears after about 4 weeks.</p>`
+    : `<table class="tbl"><tr><th>Week to</th><th class="n">Not accounted for</th><th class="n">Missed</th><th class="n">Easier (1-5)</th><th class="n">Fixes</th></tr>${sv.weeks.map((w) => `<tr><td>${esc(longDate(w.week_end))}</td><td class="n">${esc(ago(w))}</td><td class="n">${w.q1_missed_count}${w.q1_missed_amount ? " · " + peso(w.q1_missed_amount) : ""}</td><td class="n">${w.q2_ease}</td><td class="n">${w.q4_corrections_count}</td></tr>`).join("")}</table>
+      ${sv.trend ? `<p class="note">${sv.trend.change < 0 ? "\u25BC" : sv.trend.change > 0 ? "\u25B2" : "\u25AC"} Not accounted for went from ${esc(ago({ unlogged_net: sv.trend.first }))} in the first week to ${esc(ago({ unlogged_net: sv.trend.last }))} in the latest. ${sv.trend.change < 0 ? "Smaller is better logging." : sv.trend.change > 0 ? "It is growing." : "No change."}</p>` : ""}
+      ${sv.weeks.some((w) => w.q3_annoyance) ? `<h2>What annoyed you</h2>${sv.weeks.filter((w) => w.q3_annoyance).map((w) => `<p class="note"><b>${esc(longDate(w.week_end))}:</b> ${esc(w.q3_annoyance)}</p>`).join("")}` : ""}`;
   return `<h1>Checks</h1><p class="sub">Two things that keep the numbers honest.</p>
     <h2>Card reserve</h2>${reserve}
     <h2>Unlogged by week</h2><p class="note">Money your counts could not explain. A smaller number means better logging.</p>${habit}
@@ -892,7 +896,7 @@ function viewCheckin() {
   const done = accts.filter((a) => countedThisWeek(a.id)).length;
   const sv = surveyThisWeek();
   const questions = done
-    ? `<h2 class="today">Weekly questions</h2><button class="choice" data-action="open-survey"><span>Three quick questions</span><span class="bval">${sv ? "Answered \u2713" : "Not answered"}</span></button>` : "";
+    ? `<h2 class="today">Weekly questions</h2><button class="choice" data-action="open-survey"><span>Four quick questions</span><span class="bval">${sv ? "Answered \u2713" : "Not answered"}</span></button>` : "";
   const age = M.daysSinceBackup(ledger.settings, today());
   const backupLine = age === null || age >= 6 ? `<p class="note"><b>One reminder:</b> back up after this check-in. ${esc(backupAgeText())} <button class="link" data-action="tab" data-tab="setup">Back up now</button></p>` : "";
   return `<h1>Check-in</h1><p class="sub">Week of ${esc(longDate(w.week_start))} to ${esc(longDate(w.week_end))}</p>
@@ -1050,10 +1054,13 @@ function renderSheet() {
   } else if (sh.type === "survey") {
     const w = thisWeek(), auto = M.autoFillSurvey(S(), { unlogged_category_id: M.UNLOGGED_CATEGORY_ID, week_start: w.week_start, week_end: w.week_end });
     body = `<h3>This week</h3>
-      <p class="note">Missed transactions: ${auto.q1_missed_count ? auto.q1_missed_count + " (" + peso(auto.q1_missed_amount) + ")" : "none found by your counts"}.</p>
-      <label>How easy was logging this week? (1 hard, 5 easy)</label>
-      <div class="seg" role="group" aria-label="Ease">${[1, 2, 3, 4, 5].map((n) => `<button data-action="survey-ease" data-id="${n}" aria-pressed="${ui.form.ease === n}">${n}</button>`).join("")}</div>
-      <label for="f-annoy">What annoyed you most? (optional)</label><input id="f-annoy" data-field="annoy" value="${esc(ui.form.annoy ?? "")}" autocomplete="off">
+      <p class="note">1. Transactions you missed. Filled in from this week's counts; change it if it is wrong.</p>
+      <label for="q-count">How many</label><input id="q-count" data-field="q1c" inputmode="numeric" value="${esc(ui.form.q1c ?? "")}" autocomplete="off">
+      <label for="q-amount">Worth about (\u20B1)</label><input id="q-amount" data-field="q1a" inputmode="decimal" value="${esc(ui.form.q1a ?? "")}" autocomplete="off">
+      <label>2. Compared with the spreadsheet, was logging easier or harder this week? (1 much harder, 5 much easier)</label>
+      <div class="seg" role="group" aria-label="Easier or harder than the spreadsheet">${[1, 2, 3, 4, 5].map((n) => `<button data-action="survey-ease" data-id="${n}" aria-pressed="${ui.form.ease === n}">${n}</button>`).join("")}</div>
+      <label for="f-annoy">3. One thing that annoyed you this week (optional)</label><input id="f-annoy" data-field="annoy" value="${esc(ui.form.annoy ?? "")}" autocomplete="off">
+      <p class="note">4. Photo or voice entries that needed fixing: ${auto.q4_corrections_count}. Filled in by the app: a scanned entry whose fields you changed before verifying it.</p>
       <p><button class="primary" id="f-save" data-action="save-survey" style="margin-top:14px" disabled>Save answers</button></p>`;
   } else if (sh.type === "budget") {
     const c = S().categories.find((x) => x.id === sh.id), thisM = M.monthOf(today()), nextM = M.addMonths(thisM, 1);
@@ -1163,7 +1170,8 @@ function refreshSave() {
     const out = $("f-diff");
     if (out) out.textContent = a.ok && acct ? "The ledger says " + peso(M.ledgerBalanceFor(acct, S().entries)) + ". " + differenceText(a.centavos - M.ledgerBalanceFor(acct, S().entries)) + "." : "";
   } else if (type === "survey") {
-    btn.disabled = !f.ease;
+    const c = (f.q1c ?? "").trim(), a = M.parsePesos(f.q1a ?? "");
+    btn.disabled = !(f.ease && /^\d{1,4}$/.test(c) && a.ok);
   } else if (type === "bufsetup") {
     const buf = f.buf ? M.parsePesos(f.buf) : { ok: true, centavos: 0 }, allow = f.allow ? M.parsePesos(f.allow) : { ok: true, centavos: 0 };
     const acct = S().accounts.find((a) => a.id === f.account_id), held = acct ? M.naturalBalance(acct, S().entries) : 0;
@@ -1333,12 +1341,15 @@ async function onClick(el) {
     }
     case "open-survey": {
       const sv = surveyThisWeek();
-      ui.sheet = { type: "survey" }; ui.form = { ease: sv?.q2_ease ?? null, annoy: sv?.q3_annoyance ?? "" }; renderSheet(); break;
+      const w = thisWeek(), auto = M.autoFillSurvey(S(), { unlogged_category_id: M.UNLOGGED_CATEGORY_ID, week_start: w.week_start, week_end: w.week_end });
+      ui.sheet = { type: "survey" };
+      ui.form = { ease: sv?.q2_ease ?? null, annoy: sv?.q3_annoyance ?? "", q1c: String(sv?.q1_missed_count ?? auto.q1_missed_count), q1a: ((sv?.q1_missed_amount ?? auto.q1_missed_amount) / 100).toFixed(2) };
+      renderSheet(); break;
     }
     case "survey-ease": ui.form.ease = Number(id); renderSheet(); break;
     case "save-survey": {
       const w = thisWeek(), auto = M.autoFillSurvey(S(), { unlogged_category_id: M.UNLOGGED_CATEGORY_ID, week_start: w.week_start, week_end: w.week_end });
-      const plan = M.planSurveyResponse(auto, { q2_ease: ui.form.ease, q3_annoyance: ui.form.annoy ?? "" });
+      const plan = M.planSurveyResponse(auto, { q2_ease: ui.form.ease, q3_annoyance: ui.form.annoy ?? "", q1_missed_count: Number(ui.form.q1c), q1_missed_amount: M.parsePesos(ui.form.q1a).centavos });
       if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
       ui.sheet = null; renderSheet();
       await commit({ ...S(), surveyResponses: [...S().surveyResponses.filter((r) => r.id !== plan.response.id), plan.response] });
