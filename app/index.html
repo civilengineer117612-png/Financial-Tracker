@@ -50,6 +50,12 @@
   #menu .drawer hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
   #menu .drawer .glabel { margin: 12px 4px 2px; font-size: 14px; color: var(--mid); }
   .tbl td.vu { color: var(--chart); } .tbl td.vo { color: var(--critical); }
+  svg.trend { display: block; width: 100%; height: auto; margin-top: 8px; border-bottom: 1px solid var(--line); }
+  svg .tl { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  svg .tl.tb, svg line.tb { stroke: var(--mid); } svg .tl.tb { stroke-dasharray: 4 3; } svg circle.tb { fill: var(--mid); stroke: var(--paper); stroke-width: 2; }
+  svg .tl.ta, svg line.ta { stroke: var(--chart); } svg circle.ta { fill: var(--chart); stroke: var(--paper); stroke-width: 2; }
+  .tlabs { display: flex; gap: 6px; margin-top: 2px; }
+  .tmonth { flex: 1; min-height: 44px; padding: 0; border: 0; background: none; color: var(--mid); font-size: 13px; }
   .daycard { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
   .dline { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
   .dline .dval { font-weight: 700; font-size: 20px; } .dline small { font-weight: 400; font-size: 13px; color: var(--mid); display: block; text-align: right; }
