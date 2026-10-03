@@ -3,7 +3,7 @@
 // It is not part of `npm test` (CI would need a browser); the unit tests cover the logic.
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
-import { readFileSync, mkdtempSync } from "node:fs";
+import { readFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 const require = createRequire(import.meta.url);
@@ -91,7 +91,7 @@ check((await page.locator("#sheet .chip").first().innerText()) === "Test Debit" 
 await page.click('#sheet .chip:has-text("Test Cash")');
 await seen(page, "#screen", "₱95.00");
 await page.click('button.tile:has-text("Dinner")');
-check((await page.locator("#sheet .chip").first().innerText()) === "Test Cash", "the account used last is offered first");
+check((await page.locator("#sheet .chip").first().innerText()).includes("Test Cash"), "the account used last is offered first");
 await page.click('#sheet .chip:has-text("Test Cash")');
 await page.click('button:has-text("Other amount")');
 check(await page.locator("#f-save").isDisabled(), "save stays off until amount, category and account are chosen");
@@ -326,6 +326,128 @@ for (const cancel of [false, true]) {
   }
   await ctx.close();
 }
+
+// ===== 5e. pictures for accounts, and the Money charts =====
+console.log("Pictures and charts");
+({ ctx, page, errors } = await open());
+const dir = mkdtempSync(join(tmpdir(), "pic-"));
+const png = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = 200; c.height = 100; const g = c.getContext("2d"); g.fillStyle = "#d00"; g.fillRect(0, 0, 100, 100); g.fillStyle = "#00d"; g.fillRect(100, 0, 100, 100); return c.toDataURL("image/png"); });
+writeFileSync(join(dir, "icon.png"), Buffer.from(png.split(",")[1], "base64"));
+const pixel = (url, x, y) => page.evaluate(async ([u, px, py]) => { const i = new Image(); await new Promise((r) => { i.onload = r; i.src = u; }); const c = document.createElement("canvas"); c.width = c.height = 96; const g = c.getContext("2d"); g.drawImage(i, 0, 0); return Array.from(g.getImageData(px, py, 1, 1).data); }, [url, x, y]);
+const red = ([r, , b]) => r > 180 && b < 60, blue = ([r, , b]) => b > 180 && r < 60;
+
+await addAccount(page, "Wallet", "asset", "1000"); await seen(page, "#screen", "Wallet");
+await addAccount(page, "Bank", "asset", "5000"); await seen(page, "#screen", "Bank");
+check((await page.locator("#screen .row .mono").count()) === 2, "until a picture is chosen, each account shows its first letter");
+await page.click('.row:has-text("Wallet") .icobtn');
+check((await text(page, "#sheet")).includes("zoom and drag"), "tapping the tile opens the picture chooser, with plain instructions");
+check(await page.locator("#f-save").isDisabled(), "saving is off until a picture is chosen");
+await page.setInputFiles("#i-file", join(dir, "icon.png"));
+await page.waitForFunction(() => !document.getElementById("i-img").hidden);
+await shot(page, "12-icon-sheet");
+check(await page.locator("#f-save").isEnabled() && await page.locator("#i-zoom").isEnabled(), "choosing a picture turns on zoom and save");
+await page.click("#f-save");
+check(await seen(page, "#toast", "Picture saved"), "the picture is saved");
+let ledgerNow = JSON.parse((await stored(page)).local);
+const walletIcon = ledgerNow.state.accounts.find((a) => a.name === "Wallet").icon;
+check(/^data:image\/(png|jpeg);base64,/.test(walletIcon) && walletIcon.length < 40000, "it is stored inside the account as a small embedded image");
+check(red(await pixel(walletIcon, 24, 48)) && blue(await pixel(walletIcon, 72, 48)), "an uncropped picture is centred: the red half left, the blue half right");
+
+await page.click('.row:has-text("Bank") .icobtn');
+await page.setInputFiles("#i-file", join(dir, "icon.png"));
+await page.waitForFunction(() => !document.getElementById("i-img").hidden);
+const stageBox = await page.locator("#i-stage").boundingBox();
+await page.mouse.move(stageBox.x + stageBox.width / 2, stageBox.y + stageBox.height / 2); await page.mouse.down();
+await page.mouse.move(stageBox.x + stageBox.width / 2 + 300, stageBox.y + stageBox.height / 2, { steps: 6 }); await page.mouse.up();
+await page.click("#f-save"); await seen(page, "#toast", "Picture saved");
+const bankIcon = JSON.parse((await stored(page)).local).state.accounts.find((a) => a.name === "Bank").icon;
+check(red(await pixel(bankIcon, 72, 48)), "dragging the picture moves what is cropped: the blue half is out of the square");
+check((await page.locator("#screen .row img.ico").count()) === 2, "both accounts now show their picture in Setup");
+await page.click('.row:has-text("Bank") .icobtn');
+check((await text(page, "#sheet")).includes("Remove the picture"), "a picture can be removed");
+await page.click('#sheet button:has-text("Cancel")');
+
+// log and verify across three months, through the real screens
+const logPreset = async (name, acct) => { await page.click('#nav button:has-text("Log")'); await page.click(`button.tile:has-text("${name}")`); await page.click(`#sheet .chip:has-text("${acct}")`); await seen(page, "#toast", "Saved " + name); };
+const logOther = async (amount, cat, acct) => { await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Other amount")'); await page.fill("#f-amount", amount); await page.click(`#sheet .chip:has-text("${cat}")`); await page.click(`#sheet .chip:has-text("${acct}")`); await page.click("#f-save"); await seen(page, "#toast", "Saved"); };
+const verifyAll = async () => {
+  await page.click('#nav button:has-text("Verify")');
+  for (let guard = 0; guard < 20; guard++) {
+    const t = await text(page, "#screen");
+    if (t.includes("Nothing to verify")) return;
+    const n = Number(/1 of (\d+)/.exec(t)[1]);
+    await page.click('button:has-text("Correct")');
+    await page.waitForFunction((k) => { const x = document.getElementById("screen").innerText; return x.includes("Nothing to verify") || x.includes("1 of " + (k - 1)); }, n);
+  }
+};
+await page.clock.setFixedTime(new Date("2026-08-14T04:00:00Z"));
+await logPreset("Lunch", "Wallet"); await logPreset("Dinner", "Wallet"); await logOther("500", "Shopping", "Bank"); await verifyAll();
+await page.clock.setFixedTime(new Date("2026-09-12T04:00:00Z"));
+await logPreset("Lunch", "Wallet"); await logOther("1,200", "Rent", "Bank"); await verifyAll();
+await page.clock.setFixedTime(T0);
+await logPreset("Lunch", "Wallet"); await logOther("300", "Shopping", "Bank"); await verifyAll();
+await logPreset("Dinner", "Wallet");   // left as a draft on purpose
+
+await page.click('#nav button:has-text("Money")');
+await shot(page, "13-money-category");
+let screen = await text(page, "#screen");
+check(screen.includes("October 2026") && screen.includes("₱395.00"), "the hero number is this month's verified spending");
+check(screen.includes("spent in October 2026"), "and says what it is");
+check(screen.includes("₱900.00 less than September"), "plain comparison with last month, no alarm");
+check(screen.includes("plus ₱95.00 not verified yet"), "unverified drafts are mentioned but not counted");
+const rowsNow = await page.locator(".brow").allInnerTexts();
+check(rowsNow.length === 2 && rowsNow[0].includes("Shopping") && rowsNow[0].includes("₱300.00") && rowsNow[0].includes("75.9%") && rowsNow[1].includes("Food") && rowsNow[1].includes("24.1%"), "bars are sorted biggest first, each with its amount and share: " + rowsNow.map((r) => r.replace(/\s+/g, " ")).join(" | "));
+const widths = await page.locator(".bfill").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
+check(widths[0] > widths[1] * 3 && widths[0] > 100, "bar lengths are in proportion (" + widths.join(", ") + ")");
+const thick = await page.locator(".bfill").first().evaluate((e) => e.getBoundingClientRect().height);
+check(thick <= 24, "bars are thin (" + thick + "px)");
+check((await page.locator(".bfill").evaluateAll((els) => new Set(els.map((e) => getComputedStyle(e).backgroundColor)).size)) === 1, "every bar is the same single color");
+await page.click('.brow:has-text("Food")');
+check((await text(page, ".caption")).includes("Food: ₱95.00, 24.1% of what you spent in October 2026."), "tapping a bar says its share in words");
+check((await page.locator(".brow.dim").count()) === 1, "and the other bar steps back");
+await page.click('.brow:has-text("Food")');
+check((await page.locator(".brow.dim").count()) === 0, "tapping again clears it");
+
+await page.click('button:has-text("Paid from")');
+await shot(page, "14-money-account");
+const accRows = await page.locator(".brow").allInnerTexts();
+check(accRows.length === 2 && accRows[0].includes("Bank") && accRows[0].includes("₱300.00") && accRows[1].includes("Wallet") && accRows[1].includes("₱95.00"), "by account: where each peso came out of");
+check((await page.locator(".brow img.ico").count()) === 2, "each account shows its own picture beside its name");
+
+await page.click('button:has-text("By month")');
+await shot(page, "15-money-month");
+const colH = await page.locator(".cbar").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+check(colH.length === 6 && colH.slice(0, 3).every((h) => h === 0) && colH[4] === Math.max(...colH) && colH[3] < colH[4] && colH[5] < colH[3] && Math.abs(colH[3] / colH[4] - 690 / 1295) < 0.03 && Math.abs(colH[5] / colH[4] - 395 / 1295) < 0.03, "six months as columns, in proportion, September the tallest: " + colH.join(","));
+check((await text(page, ".clabs")).replace(/\s+/g, " ").trim() === "May Jun Jul Aug Sep Oct", "month names run oldest to newest");
+check((await page.locator(".cval").allInnerTexts()).filter(Boolean).join() === "₱395", "only the current month is labelled until you tap");
+await page.click(".col >> nth=4");
+check((await text(page, ".caption")).includes("September 2026: ₱1,295.00 spent."), "tapping a column says its month and amount");
+
+await page.click('button:has-text("Show as list")');
+screen = await text(page, "#screen");
+check(screen.includes("September 2026") && screen.includes("₱1,295.00") && screen.includes("August 2026") && screen.includes("₱690.00"), "the list says the same as the columns");
+await page.click('button:has-text("Where it went")');
+screen = await text(page, "#screen");
+check(/Shopping\s+₱300\.00\s+75\.9%/.test(screen) && /Food\s+₱95\.00\s+24\.1%/.test(screen) && /Total\s+₱395\.00/.test(screen), "the list view has every number the chart has, plus the total");
+await page.click('button:has-text("Show as chart")');
+
+await page.click('button[aria-label="Previous month"]');
+screen = await text(page, "#screen");
+check(screen.includes("September 2026") && screen.includes("₱1,295.00") && /Rent/.test(screen), "stepping back shows September: rent and a lunch");
+check(await page.locator('button[aria-label="Next month"]').isEnabled(), "and you can step forward again");
+await page.click('button[aria-label="Next month"]');
+check(await page.locator('button[aria-label="Next month"]').isDisabled(), "but not past this month");
+for (let i = 0; i < 4; i++) await page.click('button[aria-label="Previous month"]');
+check((await text(page, "#screen")).includes("Nothing verified for this month yet"), "an empty month says so plainly");
+
+// pictures survive a reload and appear where you choose an account
+await page.reload(); await page.waitForSelector("#nav button");
+await page.click('#nav button:has-text("Log")'); await page.click('button.tile:has-text("Breakfast")');
+check((await page.locator("#sheet .chip img.ico").count()) === 2, "pictures are on the account buttons when you log, so you can tell them apart at a glance");
+await shot(page, "16-pay-with-pictures");
+await page.click('#sheet button:has-text("Cancel")');
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+await ctx.close();
 
 // ===== 6. wrong phone, wrong place =====
 console.log("Wrong device");

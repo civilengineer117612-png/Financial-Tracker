@@ -44,12 +44,18 @@ test("everything the app takes from the model is really exported", () => {
   assert.ok(used.size > 10);
   for (const name of used) assert.ok(name in M, "app.js uses M." + name + " but the model does not export it");
 });
-test("the app code stays free of colour and network calls", () => {
+test("the app is black and gray except ONE chart color, and makes no network calls", () => {
   const css = read("app/index.html");
-  for (const hex of css.match(/#[0-9a-fA-F]{3,6}\b/g) ?? []) {
+  const CHART = "#2a78d6";   // the single validated hue used for chart bars; everything else is gray
+  const used = new Set(css.match(/#[0-9a-fA-F]{3,6}\b/g) ?? []);
+  assert.ok(used.has(CHART), "the chart color is declared");
+  assert.match(css, /--chart: #2a78d6;/);
+  for (const hex of used) {
+    if (hex.toLowerCase() === CHART) continue;
     const h = hex.slice(1), full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
     const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
     assert.ok(r === g && g === b, hex + " is not a gray");
   }
+  assert.equal((css.match(/#2a78d6/gi) ?? []).length, 1, "the chart color is written once, as a token, and used by name");
   assert.ok(!/fetch\(|XMLHttpRequest|WebSocket|navigator\.sendBeacon/.test(read("app/app.js")), "the app must not talk to a server");
 });

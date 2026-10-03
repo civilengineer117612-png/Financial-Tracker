@@ -70,5 +70,15 @@ least 12 characters, never stored) holding every record and the app's settings; 
 asks for a second tap. Wrong passphrase, damaged or edited files are refused, and the file's own key-stretching
 setting is range-checked.
 
+**Money tab (charts):** one big number (verified spending this month), then three views: where it went (by category),
+paid from (by account), and by month (six columns). Every view has a "Show as list" twin with the same numbers.
+Only verified spending counts; unverified drafts are mentioned, not counted. Each chart uses one color for every bar
+(bar length already says "more"), amounts sit at the bar tip, and tapping a bar states its share in words.
+
+**Account pictures:** in Setup, tap an account's tile to choose a picture (a screenshot of the app's icon works),
+then zoom and drag to crop it. It is shrunk to 96 pixels and stored inside the account on the phone, so it appears on
+every account button, in the charts, and inside your encrypted backup, and never goes anywhere else. No brand logos are
+shipped in this repository.
+
 **Rules the screens follow:** nothing blocks logging, nothing is red, over-budget and shortages are
 stated once in plain words, and verification is one entry at a time with no "all correct" button.

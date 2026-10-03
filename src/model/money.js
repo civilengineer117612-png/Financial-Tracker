@@ -15,3 +15,9 @@ export function formatPesos(centavos) {
   const whole = String(Math.floor(abs / 100)).replace(/\B(?=(\d{3})+$)/g, ",");
   return (centavos < 0 ? "-" : "") + "₱" + whole + "." + String(abs % 100).padStart(2, "0");
 }
+
+// 1234567 -> "₱12,346": whole pesos, for tight spaces such as the label above a chart column.
+export function formatPesosWhole(centavos) {
+  const abs = Math.round(Math.abs(centavos) / 100);
+  return (centavos < 0 && abs > 0 ? "-" : "") + "₱" + String(abs).replace(/\B(?=(\d{3})+$)/g, ",");
+}
