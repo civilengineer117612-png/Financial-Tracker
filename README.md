@@ -78,19 +78,21 @@ budgets, paid from (by account), and by month (six columns). Every view has a "S
 Only verified spending counts; unverified drafts are mentioned, not counted. Without budgets every bar is one color;
 amounts sit at the bar tip, and tapping a bar states its share in words.
 
-**Pay plan (menu, Overview):** load a small plan file (Setup or the Pay plan screen) with your two paydays and, per line, what to set aside from each. It shows the plan table and, for the current cutoff (from one payday to the day before the next), what is planned, spent and left per line, using verified spending only. Lines are matched to categories by name; an unmatched line is said out loud, not guessed. The plan lives in the phone's settings and in encrypted backups, never in this repository. File shape (invented numbers, pesos):
+**Pay plan (menu, Overview):** load a plan file (Setup or the Pay plan screen) with your two paydays, each payday's income and, per line, what is set aside from each. The app refuses a file unless every payday's lines add up to its income to the centavo, and unless it declares `"units": "centavos"`. The 2nd payday can be `"last"` (the last day of the month), so February and 31-day months are right. Plans are dated and append-only, like budgets: a change is a new plan with a later `effective_from`, a saved plan is never edited, and the plan in force on a date is the latest one that has started. The screen shows the plan table and, for the current cutoff (one payday up to the day before the next), what is planned, spent and left per line, using verified spending only. Names are matched to categories; anything unmatched is said out loud, not guessed. The plan lives in the phone's settings and in encrypted backups, never in this repository. File shape (invented numbers, centavos):
 
 ```json
-{ "v": 1,
-  "paydays": [{"day": 15, "label": "1st payday"}, {"day": 30, "label": "2nd payday"}],
-  "lines": [{"name": "Rent", "first": 0, "second": 5000},
-            {"name": "Food", "first": 1500, "second": 2500},
-            {"name": "Emergency Fund", "kind": "goal", "first": 500, "second": 500}],
-  "essentials": ["Rent", "Food"],
-  "emergency_months": 3 }
+{ "schema": 2, "units": "centavos", "effective_from": "2026-10-01",
+  "paydays": [{"label": "1st payday", "day": 15, "income": 1000000},
+              {"label": "2nd payday", "day": "last", "income": 2400000}],
+  "lines": [
+    {"name": "Daily spending", "kind": "expense", "first": 600000, "second": 600000,
+     "categories": [{"name": "Food", "monthly": 800000}, {"name": "Shopping", "monthly": 400000}]},
+    {"name": "Rent", "kind": "expense", "first": 0, "second": 500000},
+    {"name": "Apartment Fund", "kind": "goal", "first": 400000, "second": 1300000}],
+  "emergency": {"months": 3, "basis": ["Rent", "Food"]} }
 ```
 
-`kind` is `expense` (default) or `goal`. `essentials` names the lines that make up the emergency target (months x their monthly totals).
+`kind` is `expense` (tracked against categories), `goal` (savings, matched to a goal by name) or `buffer`. A line's `categories` must add up to the line's monthly total. `emergency.basis` names the lines or categories that make up the target (months x their monthly amounts); leave `emergency` out for no target.
 
 **Goals (menu, Overview):** a goal points at an account where the money really sits, with an optional target and finish date. Balances are hidden until you tap Show balances. "Put money in" saves a draft transfer from another account, counted once you verify it.
 

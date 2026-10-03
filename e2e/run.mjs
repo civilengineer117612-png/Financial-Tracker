@@ -616,19 +616,32 @@ check((await text(page, "#screen")).includes("No plan loaded"), "the pay plan st
 await page.click('button:has-text("Load a plan")');
 await page.fill("#p-text", "{ not a plan");
 check((await text(page, "#p-prev")).includes("could not be read") && await page.locator("#f-save").isDisabled(), "a broken plan is refused in plain words");
-const plan = { v: 1, paydays: [{ day: 15 }, { day: 30 }], lines: [{ name: "Food", first: 1500, second: 2500 }, { name: "Shopping", first: 400, second: 600 }, { name: "Apartment", kind: "goal", first: 500, second: 500 }, { name: "Mystery", first: 10, second: 10 }], essentials: ["Food"] };
+const plan = { schema: 2, units: "centavos", effective_from: "2026-10-01",
+  paydays: [{ day: 15, income: 410000 }, { day: "last", income: 610000 }],
+  lines: [{ name: "Daily spending", first: 300000, second: 300000, categories: [{ name: "Food", monthly: 400000 }, { name: "Shopping", monthly: 200000 }] },
+    { name: "Rent", first: 0, second: 200000 }, { name: "Apartment", kind: "goal", first: 100000, second: 100000 }, { name: "Mystery", first: 10000, second: 10000 }],
+  emergency: { months: 3, basis: ["Rent", "Food"] } };
+await page.fill("#p-text", JSON.stringify({ ...plan, units: undefined }));
+check((await text(page, "#p-prev")).includes("centavos") && await page.locator("#f-save").isDisabled(), "a plan that does not declare its units is refused");
+await page.fill("#p-text", JSON.stringify({ ...plan, paydays: [{ day: 15, income: 410001 }, plan.paydays[1]] }));
+check((await text(page, "#p-prev")).includes("short by 1") || (await text(page, "#p-prev")).includes("over by"), "a payday whose lines do not add up to its income is refused, with the difference");
 await page.fill("#p-text", JSON.stringify(plan));
 check((await text(page, "#p-prev")).includes("Looks good") && !(await page.locator("#f-save").isDisabled()), "a good plan shows a one-line summary before it is used");
 await page.click("#f-save"); await seen(page, "#toast", "Plan loaded");
 const ptxt = await text(page, "#screen");
-if (!ptxt.includes("15th and the 30th")) console.log("   plan screen:", JSON.stringify(ptxt.slice(0, 400)));
-check(ptxt.includes("15th and the 30th") && ptxt.includes("₱1,500.00") && ptxt.includes("₱4,000.00") && ptxt.includes("₱6,020.00") && ptxt.toLowerCase().includes("this cutoff"), "the plan shows both paydays and the monthly total per line");
-check(ptxt.includes("Mystery") && ptxt.includes("not tracked"), "a line with no matching category is said out loud, not guessed");
+if (!ptxt.includes("last day of the month")) console.log("   plan screen:", JSON.stringify(ptxt.slice(0, 500)));
+check(ptxt.includes("last day of the month") && ptxt.includes("₱4,100.00") && ptxt.includes("₱6,100.00") && ptxt.includes("₱10,200.00") && ptxt.toLowerCase().includes("this cutoff"), "the plan shows both paydays (the second at month end) and the totals per payday and month");
+check(ptxt.includes("Mystery") && ptxt.includes("not tracked") && ptxt.includes("In effect since"), "a line with no matching category is said out loud, and the start date is shown");
+await page.click('button:has-text("Load a newer plan")');
+await page.fill("#p-text", JSON.stringify({ ...plan, lines: plan.lines.map((l) => (l.name === "Rent" ? { ...l, second: 190000 } : l.name === "Apartment" ? { ...l, second: 110000 } : l)) }));
+await page.click("#f-save");
+check(await seen(page, "#toast", "never edited"), "loading a different plan with the same start date is refused: plans are never edited");
+await page.click('#sheet button:has-text("Cancel")');
 await shot(page, "26-plan");
 ledgerNow = JSON.parse((await stored(page)).local);
-check(ledgerNow.settings.plan.lines[0].first === 150000, "the plan is kept in the phone's settings in centavos");
+check(ledgerNow.settings.plans.length === 1 && ledgerNow.settings.plans[0].lines[0].first === 300000, "the plan is kept in the phone's settings as a dated list, in centavos");
 await menuGo(page, "Goals");
-check((await text(page, "#screen")).includes("at your plan's ₱1,000.00 a month"), "a goal shows how long the plan takes");
+check((await text(page, "#screen")).includes("at your plan's ₱2,000.00 a month"), "a goal shows how long the plan takes");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // pictures survive a reload and appear where you choose an account

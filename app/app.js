@@ -215,7 +215,7 @@ function viewSetup() {
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}
     <h2>Pay plan</h2>
-    <p class="note">${planOf() ? "A plan is loaded." : "No plan loaded."} <button class="link" data-action="${planOf() ? "tab" : "open-plan"}" data-tab="plan">${planOf() ? "Open it" : "Load a plan"}</button></p>
+    <p class="note">${planOf() ? "A plan is in effect." : "No plan in effect."} <button class="link" data-action="${planOf() ? "tab" : "open-plan"}" data-tab="plan">${planOf() ? "Open it" : "Load a plan"}</button></p>
     <h2>Backup</h2>
     <p class="note">${backupAgeText()}</p>
     <p><button class="primary" data-action="open-backup">Back up now</button></p>
@@ -377,10 +377,12 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
 
 // ---------- Budget: the monthly amounts ----------
 // ---------- pay plan ----------
-const planOf = () => ledger.settings.plan ?? null;
+const plansOf = () => ledger.settings.plans ?? [];
+const planOf = () => M.planInEffect(plansOf(), today());
+const paydayText = (d) => (d === "last" ? "the last day of the month" : "the " + d + ord(d));
 function viewPlan() {
-  const plan = planOf();
-  if (!plan) return `<h1>Pay plan</h1><p class="note">No plan loaded yet. A plan says what to set aside from each of your two paydays.</p>
+  const plan = planOf(), all = plansOf();
+  if (!plan) return `<h1>Pay plan</h1><p class="note">${all.length ? "Your plan starts " + esc(longDate([...all].sort((x, y) => (x.effective_from < y.effective_from ? -1 : 1))[0].effective_from)) + "." : "No plan loaded yet. A plan says what to set aside from each of your two paydays."}</p>
     <p><button class="primary" data-action="open-plan">Load a plan</button></p>`;
   const t = M.planTotals(plan), [p1, p2] = plan.paydays;
   const lines = plan.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="n">${peso(l.first)}</td><td class="n">${peso(l.second)}</td><td class="n">${peso(l.first + l.second)}</td></tr>`).join("");
@@ -389,14 +391,15 @@ function viewPlan() {
   const unmatched = prog.rows.filter((r) => r.kind === "expense" && !r.matched);
   const which = plan.paydays[prog.period.index - 1];
   const rem = mine.map((r) => `<tr><td>${esc(r.name)}</td><td class="n">${peso(r.planned)}</td><td class="n">${peso(r.spent)}</td>${vcell(r.remaining)}</tr>`).join("");
-  return `<h1>Pay plan</h1><p class="sub">Paydays on the ${p1.day}${ord(p1.day)} and the ${p2.day}${ord(p2.day)}</p>
+  const history = all.length > 1 ? `<p class="note">Earlier plans stay saved: ${esc([...all].sort((x, y) => (x.effective_from < y.effective_from ? -1 : 1)).map((x) => longDate(x.effective_from)).join(", "))}.</p>` : "";
+  return `<h1>Pay plan</h1><p class="sub">Paydays on ${esc(paydayText(p1.day))} and ${esc(paydayText(p2.day))}. In effect since ${esc(longDate(plan.effective_from))}.</p>
     <table class="tbl"><tr><th>Line</th><th class="n">${esc(p1.label)}</th><th class="n">${esc(p2.label)}</th><th class="n">Monthly</th></tr>${lines}
-      <tr class="total"><td>Total</td><td class="n">${peso(t.first)}</td><td class="n">${peso(t.second)}</td><td class="n">${peso(t.month)}</td></tr></table>
+      <tr class="total"><td>Total (= income)</td><td class="n">${peso(t.first)}</td><td class="n">${peso(t.second)}</td><td class="n">${peso(t.month)}</td></tr></table>
     <h2>This cutoff</h2><p class="note">${esc(which.label)} to the day before the next: ${esc(longDate(prog.period.start))} to ${esc(longDate(prog.period.end))}. Only verified spending counts.</p>
     ${mine.length ? `<table class="tbl"><tr><th>Line</th><th class="n">Plan</th><th class="n">Spent</th><th class="n">Left</th></tr>${rem}</table>` : `<p class="note">No plan line matches one of your categories yet.</p>`}
-    ${unmatched.length ? `<p class="note">Not matched to a category, so not tracked: ${esc(unmatched.map((r) => r.name).join(", "))}.</p>` : ""}
-    <p><button data-action="open-plan" style="width:100%">Replace the plan</button></p>
-    <p><button class="link" data-action="remove-plan">${ui.confirmRemovePlan ? "Tap again to remove the plan" : "Remove the plan"}</button></p>`;
+    ${unmatched.length ? `<p class="note">Not matched to a category, so not tracked: ${esc(unmatched.map((r) => r.name + (r.missing.length && r.missing[0] !== r.name ? " (no category " + r.missing.join(", ") + ")" : "")).join("; "))}.</p>` : ""}
+    ${history}<p class="note">A change is a new plan with a later start date. Saved plans are never edited.</p>
+    <p><button data-action="open-plan" style="width:100%">Load a newer plan</button></p>`;
 }
 const ord = (n) => (n % 100 >= 11 && n % 100 <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[n % 10] ?? "th");
 
@@ -412,14 +415,14 @@ function viewGoals() {
     const line = planOf()?.lines.find((l) => l.kind === "goal" && l.name.toLowerCase() === g.name.toLowerCase());
     const monthly = line ? line.first + line.second : 0;
     const eta = monthly > 0 && p.remaining ? Math.ceil(p.remaining / monthly) : null;
-    const suggest = planOf()?.essentials.length && /emergency/i.test(g.name) ? M.planEmergencyTarget(planOf()) : null;
+    const suggest = planOf()?.emergency && /emergency/i.test(g.name) ? M.planEmergencyTarget(planOf()) : null;
     const need = g.deadline && p.remaining ? M.requiredPerMonth(p, g.deadline, today().slice(0, 7)) : null;
     const body = hidden ? `<p class="note">Hidden. Tap Show balances above.</p>`
       : `<div class="btop"><span class="bval">${peso(p.balance)}${p.target != null ? " of " + peso(p.target) : ""}</span></div>
          ${p.target != null ? `<div class="meter goal" role="img" aria-label="${p.percent}% of the goal"><span class="fill" style="width:${p.percent}%"></span></div>
          <div class="status">${p.reached ? "Goal reached" : p.percent + "% \u00b7 " + peso(p.remaining) + " to go"}${eta ? " \u00b7 about " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : ""}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div>` : `<div class="status">No target, just a place to build up.</div>`}`;
     return `<div class="bcard"><div class="btop"><span class="bname who">${iconOf(S().accounts.find((a) => a.id === g.account_id) ?? { name: g.name }, 24)}<span>${esc(g.name)}</span></span></div>${body}
-      ${suggest && suggest !== g.target && !hidden ? `<p class="note">Your plan suggests ${peso(suggest)} (${planOf().emergency_months} months of essentials). <button class="link" data-action="use-plan-target" data-id="${esc(g.id)}">Use it</button></p>` : ""}
+      ${suggest && suggest !== g.target && !hidden ? `<p class="note">Your plan suggests ${peso(suggest)} (${planOf().emergency.months} months of ${esc(planOf().emergency.basis.join(", "))}). <button class="link" data-action="use-plan-target" data-id="${esc(g.id)}">Use it</button></p>` : ""}
       <p><button data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button></p></div>`;
   }).join("");
   return `<h1>Goals</h1><p class="sub">Savings you are building. Hidden by default so they do not tempt you.</p>${toggle}${cards || `<p class="note">No goals yet.</p>`}
@@ -603,7 +606,7 @@ function refreshSave() {
     const r = (f.text ?? "").trim() ? M.parsePlan(f.text) : null, out = $("p-prev");
     btn.disabled = !r?.ok;
     if (out) out.innerHTML = !r ? "" : r.ok
-      ? `<p class="note"><b>Looks good:</b> paydays on the ${r.plan.paydays[0].day}${ord(r.plan.paydays[0].day)} and ${r.plan.paydays[1].day}${ord(r.plan.paydays[1].day)}, ${r.plan.lines.length} lines, ${peso(M.planTotals(r.plan).month)} a month.</p>`
+      ? `<p class="note"><b>Looks good:</b> starts ${esc(longDate(r.plan.effective_from))}, paydays on ${esc(paydayText(r.plan.paydays[0].day))} and ${esc(paydayText(r.plan.paydays[1].day))}, ${r.plan.lines.length} lines, ${peso(M.planTotals(r.plan).month)} a month.</p>`
       : `<p role="alert" class="note"><b>${esc(r.error)}</b></p>`;
   } else if (type === "goal") {
     const a = f.amount ? M.parsePesos(f.amount) : { ok: true };
@@ -648,7 +651,7 @@ async function onClick(el) {
   switch (action) {
     case "open-menu": ui.menu = true; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "true"); break;
     case "close-menu": ui.menu = false; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "false"); break;
-    case "tab": $("toast").innerHTML = ""; ui.menu = false; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.confirmRemovePlan = false; ui.sel = null; renderAll(); break;
+    case "tab": $("toast").innerHTML = ""; ui.menu = false; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null; renderAll(); break;
     case "month-step": ui.month = M.addMonths(ui.month ?? M.monthOf(today()), Number(el.dataset.step)); ui.sel = null; renderScreen(); break;
     case "chart-view": ui.view = el.dataset.view; ui.sel = null; renderScreen(); break;
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
@@ -727,16 +730,11 @@ async function onClick(el) {
     case "save-plan": {
       const r = M.parsePlan(ui.form.text ?? "");
       if (!r.ok) { showToast(r.error); break; }
+      const added = M.addPlan(plansOf(), r.plan);
+      if (!added.ok) { showToast(added.error); break; }
       ui.sheet = null; renderSheet();
-      await commit(S(), { ...ledger.settings, plan: r.plan });
-      showToast("Plan loaded");
-      break;
-    }
-    case "remove-plan": {
-      if (!ui.confirmRemovePlan) { ui.confirmRemovePlan = true; renderScreen(); break; }
-      ui.confirmRemovePlan = false;
-      const { plan, ...rest } = ledger.settings;
-      await commit(S(), rest);
+      if (!added.unchanged) await commit(S(), { ...ledger.settings, plans: added.plans });
+      showToast(added.unchanged ? "That plan is already saved" : "Plan loaded");
       break;
     }
     case "use-plan-target": {

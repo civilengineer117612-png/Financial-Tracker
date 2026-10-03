@@ -55,4 +55,4 @@ export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID } from "./seed.
 export { applyDrafts, planExpense, discardDraft, verifyDraft, editDraftFields, setAccountIcon } from "./drafts.js";
 export { LEDGER_VERSION, emptyState, emptyLedger, nextLedger, parseLedger, chooseLedger, restoreLedger, summarizeLedger, backupFileName, daysSinceBackup } from "./persist.js";
 export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByAccount, monthlySpending, dayTotal } from "./reports.js";
-export { parsePlan, planTotals, planEmergencyTarget, cutoffFor, planProgress } from "./plan.js";
+export { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, cutoffFor, planProgress } from "./plan.js";
