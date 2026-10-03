@@ -92,3 +92,26 @@ test("a bank picture that cannot be copied can be shown from an allow-listed ico
   assert.equal(keep.changed, false, "accounts that have their own picture are left alone");
   assert.ok(setBankIconUrl(r.state, "gotyme", null).state.accounts.every((a) => a.icon_url === undefined));
 });
+
+test("relinking an account to a different bank drops the wrong bank's picture, and keeps a picture of its own", () => {
+  const URL_G = "https://www.google.com/s2/favicons?sz=128&domain=gcash.com", URL_L = "https://www.google.com/s2/favicons?sz=128&domain=landbank.com";
+  let s = planAccount(makeState(), input({ id: "g1", bank: "gcash" })).state;
+  s = setBankIconUrl(s, "gcash", URL_G).state;
+  s = planAccount(s, input({ id: "l1", name: "Landbank" })).state;
+  s = linkAccountBank(s, "l1", "gcash").state;                       // a mistaken link: Landbank gets GCash's logo
+  assert.equal(s.accounts.find((a) => a.id === "l1").icon_url, URL_G);
+  s = linkAccountBank(s, "l1", "landbank").state;                    // put right
+  const l1 = s.accounts.find((a) => a.id === "l1");
+  assert.deepEqual([l1.bank, l1.icon_url], ["landbank", undefined], "GCash's address is gone");
+  assert.equal(setBankIconUrl(s, "landbank", URL_L).state.accounts.find((a) => a.id === "l1").icon_url, URL_L);
+  assert.equal(s.accounts.find((a) => a.id === "g1").icon_url, URL_G, "GCash keeps its own");
+  // a copied picture shared with the old bank is dropped; the account's own different picture stays
+  let t = planAccount(makeState(), input({ id: "g1", bank: "gcash" })).state;
+  t = planAccount(t, input({ id: "g2", bank: "gcash", sub: "Savings" })).state;
+  t = setAccountIcon(t, "g1", PNG).state;
+  assert.equal(linkAccountBank(t, "g2", "bdo").state.accounts.find((a) => a.id === "g2").icon, undefined, "shared copy dropped");
+  const own = "data:image/png;base64,AAAA";
+  const t2 = { ...t, accounts: t.accounts.map((a) => (a.id === "g2" ? { ...a, icon: own } : a)) };
+  assert.equal(linkAccountBank(t2, "g2", "bdo").state.accounts.find((a) => a.id === "g2").icon, own, "its own picture is kept");
+  assert.equal("icon_url" in linkAccountBank(s, "l1", null).state.accounts.find((a) => a.id === "l1"), false, "unlinking drops it too");
+});

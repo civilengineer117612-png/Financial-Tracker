@@ -56,8 +56,17 @@ export function linkAccountBank(state, accountId, bankId) {
   if (!a) return fail("UNKNOWN_ACCOUNT", "no account " + accountId);
   if (bankId != null && !bankById(bankId)) return fail("UNKNOWN_BANK", "that bank is not in the list");
   const { bank, ...rest } = a;
+  let kept = rest;
+  if ((a.bank ?? null) !== (bankId ?? null)) {
+    // Changing bank drops the picture the account was sharing with its old bank (an address always; a copied picture when
+    // another account of that bank has the same one), so a wrong link can be undone without carrying the wrong logo along.
+    const { icon_url, ...noUrl } = rest;
+    const shared = a.icon && a.bank && state.accounts.some((x) => x.id !== accountId && x.bank === a.bank && x.icon === a.icon);
+    kept = noUrl;
+    if (shared) { const { icon, ...noIcon } = noUrl; kept = noIcon; }
+  }
   const sibling = bankId ? state.accounts.find((x) => x.id !== accountId && x.bank === bankId && (x.icon || x.icon_url)) : null;
-  const next = { ...rest, ...(bankId ? { bank: bankId } : {}), ...(!a.icon && !a.icon_url && sibling ? (sibling.icon ? { icon: sibling.icon } : { icon_url: sibling.icon_url }) : {}) };
+  const next = { ...kept, ...(bankId ? { bank: bankId } : {}), ...(!kept.icon && !kept.icon_url && sibling ? (sibling.icon ? { icon: sibling.icon } : { icon_url: sibling.icon_url }) : {}) };
   const problems = validateShape("Account", next);
   if (problems.length) return { ok: false, violations: problems };
   return { ok: true, violations: [], state: { ...state, accounts: state.accounts.map((x) => (x.id === accountId ? next : x)) } };
