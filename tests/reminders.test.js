@@ -68,17 +68,20 @@ test("invalid reminders are refused with the reason", () => {
   assert.deepEqual(validateReminder(one), []);
 });
 
-test("default set: morning, 6pm cutoff, and a weekly check-in only when a day is chosen", () => {
-  const d = defaultReminders();
-  assert.deepEqual(d.map((r) => [r.id, r.time]), [["verify-morning", "07:10"], ["verify-cutoff", "18:00"]]);
+test("default set: only the night backstop; morning is opt-in; weekly only when a day is chosen", () => {
+  assert.deepEqual(defaultReminders().map((r) => [r.id, r.time]), [["verify-cutoff", "18:00"]]);
+  assert.deepEqual(defaultReminders({ morning: "07:10" }).map((r) => [r.id, r.time]), [["verify-morning", "07:10"], ["verify-cutoff", "18:00"]]);
   const w = defaultReminders({ checkin: { day: "SU", time: "18:30" } });
   assert.deepEqual(w.at(-1).repeat, "weekly:SU");
   assert.throws(() => defaultReminders({ checkin: { day: "Sunday", time: "18:30" } }), /check-in day/);
 });
-test("default set builds into a valid calendar and its alarms follow up if missed", () => {
-  const ics = build(defaultReminders({ checkin: { day: "SU", time: "18:30" } }));
+test("default reminders fire once each, to keep notifications down", () => {
+  for (const r of defaultReminders({ checkin: { day: "SU", time: "10:00", cutoff: "20:00" } })) assert.deepEqual(r.alarms, [0], r.id);
+});
+test("a full set builds into a valid calendar", () => {
+  const ics = build(defaultReminders({ morning: "07:10", checkin: { day: "SU", time: "18:30" } }));
   assert.equal(lines(ics).filter((x) => x === "BEGIN:VEVENT").length, 3);
-  assert.equal(lines(ics).filter((x) => x === "BEGIN:VALARM").length, 3 + 3 + 2);
+  assert.equal(lines(ics).filter((x) => x === "BEGIN:VALARM").length, 3 + 1 + 1);   // morning has follow-ups; the others fire once
 });
 test("calendar text is generic: no digits in any title or description, so no amounts can leak", () => {
   const ics = build(defaultReminders({ checkin: { day: "SU", time: "18:30" } }));
@@ -89,10 +92,10 @@ test("the weekly check-in carries its own cutoff on the same day", () => {
   const w = defaultReminders({ checkin: { day: "SU", time: "10:00", cutoff: "20:00" } });
   assert.deepEqual(w.filter((r) => r.id.startsWith("weekly")).map((r) => [r.id, r.time, r.repeat]),
     [["weekly-checkin", "10:00", "weekly:SU"], ["weekly-cutoff", "20:00", "weekly:SU"]]);
-  assert.equal(w.length, 4);
+  assert.deepEqual(w.map((r) => r.id), ["verify-cutoff", "weekly-checkin", "weekly-cutoff"]);   // morning is off by default
 });
 test("each daily reminder can be switched off, so the owner chooses how much noise to accept", () => {
-  assert.deepEqual(defaultReminders({ cutoff: null }).map((r) => r.id), ["verify-morning"]);
+  assert.deepEqual(defaultReminders({ morning: "07:10", cutoff: null }).map((r) => r.id), ["verify-morning"]);
   assert.deepEqual(defaultReminders({ morning: null }).map((r) => r.id), ["verify-cutoff"]);
   assert.deepEqual(defaultReminders({ morning: null, cutoff: null }), []);
   assert.deepEqual(defaultReminders({ morning: null, cutoff: null, checkin: { day: "SU", time: "10:00" } }).map((r) => r.id), ["weekly-checkin"]);
