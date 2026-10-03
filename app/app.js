@@ -285,9 +285,10 @@ const payslipDefaults = () => ({
 });
 // A payslip photo, read line by line: opens the payslip window already filled in. The owner checks every figure (the same four checks as
 // for a typed payslip point out what does not add up), chooses where it landed, and saves. The photo stays with the pay.
+const knownEmployers = () => [...new Set([...(S().payslips ?? []).map((p) => p.employer), ledger.settings.last_employer].filter(Boolean))];
 function openPayslipFromPhoto(blob, text, queueId) {
   const r = M.readPayslip(text, today()), d = payslipDefaults(), two = (c) => (c / 100).toFixed(2);
-  const f = { ...d, account_id: null, employer: r.employer ?? d.employer, text, notes: [...r.notes, ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."]), "What really arrived is filled in with the printed net pay. Change it if the account got a different amount."] };
+  const f = { ...d, account_id: null, employer: r.employer ? M.snapEmployer(r.employer, knownEmployers()) : d.employer, text, notes: [...r.notes, ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."]), "What really arrived is filled in with the printed net pay. Change it if the account got a different amount."] };
   if (r.period_from) { f.period_from = r.period_from; f.period_to = r.period_to; }
   if (r.pay_date) f.pay_date = r.pay_date;
   f.ot_month = M.addMonths(M.monthOf(f.pay_date), -1);
@@ -1257,6 +1258,7 @@ function renderSheet() {
       ${sh.scanBlob ? `<img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your payslip photo">${(f.notes ?? []).map((n) => `<p class="note">${esc(n)}</p>`).join("")}` : ""}
       <p class="note">Copy the figures off the payslip. Leave a line empty if it is not on the paper. Do not type any employee, tax or account number.</p>
       <label for="p-emp">Employer</label><input id="p-emp" data-field="employer" value="${esc(f.employer ?? "")}" autocomplete="off">
+      ${knownEmployers().length ? `<div class="chips">${knownEmployers().map((n) => `<button class="chip" data-action="pick-employer" data-name="${esc(n)}" aria-pressed="${n === f.employer}">${esc(n)}</button>`).join("")}</div>` : ""}
       <label for="p-from">Pay period from</label><input id="p-from" data-field="period_from" type="date" value="${esc(f.period_from)}">
       <label for="p-to">Pay period to</label><input id="p-to" data-field="period_to" type="date" value="${esc(f.period_to)}">
       <label for="p-date">Pay date</label><input id="p-date" data-field="pay_date" type="date" value="${esc(f.pay_date)}">
@@ -1729,6 +1731,7 @@ async function onClick(el) {
       if (await commit(S(), withQueue(scanQueue().filter((q) => q.id !== id)))) deletePhoto(id).catch(() => {});
       showToast("Photo thrown away."); break;
     }
+    case "pick-employer": form.employer = el.dataset.name; renderSheet(); break;
     case "open-scan-pick": ui.sheet = { type: "scanpick" }; renderSheet(); break;
     case "open-payslip-choice": ui.sheet = { type: "payslipchoice" }; renderSheet(); break;
     case "open-payslip": ui.sheet = { type: "payslip" }; ui.form = payslipDefaults(); renderSheet(); break;
