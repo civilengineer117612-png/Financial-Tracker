@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BANKS, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, setAccountIcon, validateShape } from "../src/model/index.js";
+import { BANKS, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, bankPicture, dropPlaceholderAddresses, setAccountIcon, validateShape } from "../src/model/index.js";
 import { makeState } from "./fixtures.js";
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
@@ -114,4 +114,22 @@ test("relinking an account to a different bank drops the wrong bank's picture, a
   const t2 = { ...t, accounts: t.accounts.map((a) => (a.id === "g2" ? { ...a, icon: own } : a)) };
   assert.equal(linkAccountBank(t2, "g2", "bdo").state.accounts.find((a) => a.id === "g2").icon, own, "its own picture is kept");
   assert.equal("icon_url" in linkAccountBank(s, "l1", null).state.accounts.find((a) => a.id === "l1"), false, "unlinking drops it too");
+});
+
+test("a bank tile finds the picture on a linked account, or on an account typed with the bank's name", () => {
+  let s = planAccount(makeState(), input({ id: "typed", name: "GoTyme" })).state;           // typed before the picker existed
+  s = { ...s, accounts: s.accounts.map((a) => (a.id === "typed" ? { ...a, icon: PNG } : a)) };
+  assert.deepEqual(bankPicture(s.accounts, "gotyme"), { icon: PNG }, "found by name");
+  assert.equal(bankPicture(s.accounts, "maya"), null);
+  const linked = setBankIconUrl(planAccount(s, input({ id: "m", bank: "maya" })).state, "maya", "https://t2.gstatic.com/faviconV2?url=https://maya.ph").state;
+  assert.equal(bankPicture(linked.accounts, "maya").icon_url.startsWith("https://t2.gstatic.com/"), true, "found by link");
+});
+test("grey-placeholder addresses saved by earlier versions are thrown away; real ones and copied pictures stay", () => {
+  const bad = "https://www.google.com/s2/favicons?sz=128&domain=maya.ph", good = "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&nfrp=2&url=https://bdo.com.ph&size=128";
+  let s = planAccount(makeState(), input({ id: "m", bank: "maya" })).state;
+  s = planAccount(s, input({ id: "b", bank: "bdo" })).state;
+  s = setBankIconUrl(setBankIconUrl(s, "maya", bad).state, "bdo", good).state;
+  const out = dropPlaceholderAddresses(s);
+  assert.deepEqual([out.accounts.find((a) => a.id === "m").icon_url, out.accounts.find((a) => a.id === "b").icon_url], [undefined, good]);
+  assert.equal(dropPlaceholderAddresses(out), out, "nothing to drop: the same state comes back");
 });

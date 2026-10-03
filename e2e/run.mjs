@@ -405,11 +405,12 @@ check(widths[0] > widths[1] * 3 && widths[0] > 100, "bar lengths are in proporti
 const thick = await page.locator(".bfill").first().evaluate((e) => e.getBoundingClientRect().height);
 check(thick <= 24, "bars are thin (" + thick + "px)");
 check((await page.locator(".bfill").evaluateAll((els) => new Set(els.map((e) => getComputedStyle(e).backgroundColor)).size)) === 1, "every bar is the same single color");
+check((await page.locator("#screen .caption").count()) === 0 && (await page.locator(".shapebtn, button:has-text('Donut')").count()) === 0, "no caption under the bars and no separate shape button");
 await page.click('.brow:has-text("Food")');
-check((await text(page, ".caption")).includes("Food: ₱95.00, 24.1% of what you spent in October 2026."), "tapping a bar says its share in words");
-check((await page.locator(".brow.dim").count()) === 1, "and the other bar steps back");
-await page.click('.brow:has-text("Food")');
-check((await page.locator(".brow.dim").count()) === 0, "tapping again clears it");
+check((await page.locator("svg.donut").count()) === 1 && (await page.locator(".bars").count()) === 0, "tapping the bars turns them into a donut");
+check((await page.locator("#screen .caption").count()) === 0, "and no description appears");
+await page.click("svg.donut");
+check((await page.locator(".bars .brow").count()) === 2 && (await page.locator("svg.donut").count()) === 0, "tapping the donut turns it back into bars");
 
 await page.click('button:has-text("Paid from")');
 await shot(page, "14-money-account");
@@ -434,13 +435,13 @@ screen = await text(page, "#screen");
 check(/Shopping\s+₱300\.00\s+75\.9%/.test(screen) && /Food\s+₱95\.00\s+24\.1%/.test(screen) && /Total\s+₱395\.00/.test(screen), "the list view has every number the chart has, plus the total");
 await page.click('button:has-text("Show as chart")');
 
-await page.click('button[aria-label="Previous month"]');
+await page.click('button[aria-label="Earlier"]');
 screen = await text(page, "#screen");
 check(screen.includes("September 2026") && screen.includes("₱1,295.00") && /Rent/.test(screen), "stepping back shows September: rent and a lunch");
-check(await page.locator('button[aria-label="Next month"]').isEnabled(), "and you can step forward again");
-await page.click('button[aria-label="Next month"]');
-check(await page.locator('button[aria-label="Next month"]').isDisabled(), "but not past this month");
-for (let i = 0; i < 4; i++) await page.click('button[aria-label="Previous month"]');
+check(await page.locator('button[aria-label="Later"]').isEnabled(), "and you can step forward again");
+await page.click('button[aria-label="Later"]');
+check(await page.locator('button[aria-label="Later"]').isDisabled(), "but not past this month");
+for (let i = 0; i < 4; i++) await page.click('button[aria-label="Earlier"]');
 check((await text(page, "#screen")).includes("Nothing verified for this month yet"), "an empty month says so plainly");
 
 // ---- the menu: only Log and Verify stay on the bottom bar ----
@@ -499,7 +500,7 @@ check(ledgerNow.state.rules.filter((r) => r.subject_id === "cat-shopping").map((
 
 // ---- the colours: green to red ----
 await menuGo(page, "Money");
-for (let i = 0; i < 9; i++) if (await page.locator('button[aria-label="Next month"]').isEnabled()) await page.click('button[aria-label="Next month"]');
+for (let i = 0; i < 9; i++) if (await page.locator('button[aria-label="Later"]').isEnabled()) await page.click('button[aria-label="Later"]');
 await page.click('button:has-text("Where it went")');
 await shot(page, "19-money-graded");
 const fills = await page.locator(".brow").evaluateAll((els) => els.map((e) => ({ name: e.innerText.split("\n")[0], cls: [...e.classList].find((c) => c.startsWith("g-")), color: getComputedStyle(e.querySelector(".bfill")).backgroundColor })));
@@ -508,51 +509,62 @@ check(shop.cls === "g-critical" && shop.color === "rgb(208, 59, 59)", "over budg
 check(food.cls === "g-serious" && food.color === "rgb(236, 131, 90)", "95% of a budget is orange: Food " + food.cls + " " + food.color);
 check((await text(page, ".legend")).replace(/\s+/g, " ").includes("On track Getting there Nearly used up Over budget No budget"), "a legend says what the colours mean, in words");
 check((await page.locator(".legend svg").count()) === 5, "each with its own shape, so colour is never the only signal");
-await page.click('.brow:has-text("Shopping")');
-check((await text(page, ".caption")).includes("Budget ₱250.00: 120% used, over by ₱50.00."), "tapping a bar adds the budget in words");
+check((await page.locator("#screen .caption").count()) === 0, "graded bars have no caption either");
 const barCount = await page.locator(".bars .brow").count();
-check((await page.locator('button:has-text("Donut")').count()) === 0 && (await page.locator(".shapebtn").count()) === 1, "one icon button flips the chart; there are no Bars and Donut buttons");
-await page.click(".shapebtn");
-check((await page.locator("svg.donut").count()) === 1 && (await page.locator("svg.donut circle.slice").count()) === barCount, "the donut has one slice per category: " + barCount);
+await page.click(".bars");
+check((await page.locator("svg.donut").count()) === 1 && (await page.locator("svg.donut circle.slice").count()) === barCount, "tapping the bars makes a donut with one slice per category: " + barCount);
 check((await page.locator(".legendlist .lrow").count()) === barCount && /₱[\d,.]+ · [\d.]+%/.test(await text(page, ".legendlist")), "its legend lists each category with the peso amount and the percent");
-await page.click('.legendlist .lrow >> nth=0');
-check((await text(page, ".caption")).includes("of what you spent"), "tapping a legend row says the share in words");
 await shot(page, "32-donut");
 await page.click('button:has-text("Show as list")');
 check((await text(page, ".tbl")).includes("Share"), "the list twin is still there");
 await page.click('button:has-text("Show as chart")');
-await page.click(".shapebtn");
-check((await page.locator(".bars .brow").count()) === barCount, "and tapping it again brings the bars back");
-// ---- the year ----
-await page.click('button:has-text("Year")');
-check((await text(page, "#screen")).includes("2026") && (await page.locator(".cols .col").count()) === 12, "the Year view shows twelve months");
-check(/₱[\d,.]+/.test(await text(page, ".hero")) && (await page.locator("#screen .shapebtn").count()) === 1, "with the year's total and the categories under it");
-await page.click(".cols .col >> nth=9");
-check((await text(page, ".caption >> nth=0")).includes("October 2026"), "tapping a month column says its amount");
-await page.click('button[aria-label="Earlier year"]');
-check((await text(page, ".stepper")).includes("2025") && (await text(page, "#screen")).includes("Nothing verified in 2025 yet"), "the arrows move between years and an empty year says so");
-await page.click('button[aria-label="Later year"]');
-// ---- any date range ----
-await page.click('button:has-text("Date range")');
-check((await text(page, ".rangepick")).includes("From") && (await text(page, ".rangepick")).includes("Oct 1, 2026") && (await text(page, ".rangepick")).includes("Oct 3, 2026"), "Date range starts at the first of this month to today");
-await page.click('.rangepick button[data-target="from"]');
+await page.click(".legendlist");
+check((await page.locator(".bars .brow").count()) === barCount, "tapping the donut or its legend brings the bars back");
+
+// ---- the period picker at the top ----
+check((await page.locator('.seg button:has-text("Year"), .seg button:has-text("Date range")').count()) === 0, "there are no Year or Date range buttons among the views");
+await page.click(".ptitle");
+check((await text(page, "#sheet")).includes("Show money for") && (await page.locator('#sheet button[data-action="period-kind"]').count()) === 3, "tapping the month at the top opens a picker: Month, Year, Date range");
+await page.click('#sheet button[data-kind="month"]'); await shot(page, "34-period-month");
+await page.click('#sheet button[data-kind="year"]');
+await page.click('#sheet button[data-action="period-year"][data-id="2026"]');
+check((await text(page, ".ptitle")).includes("2026") && !(await text(page, ".ptitle")).includes("October") && (await text(page, "#screen")).includes("spent in 2026"), "choosing a year shows the whole year");
+await page.click('button:has-text("By month")');
+check((await page.locator(".cols .col").count()) === 12, "and By month then shows its twelve months");
+await page.click('button:has-text("Where it went")');
+await page.click('button[aria-label="Earlier"]');
+check((await text(page, ".ptitle")).includes("2025") && (await text(page, "#screen")).includes("Nothing verified in this period"), "the arrows step a whole year, and an empty one says so");
+await page.click('button[aria-label="Later"]');
+await page.click(".ptitle"); await page.click('#sheet button[data-kind="month"]');
+check((await text(page, "#sheet .stepper")).includes("2026") && await page.locator('#sheet button[data-id="2026-11"]').isDisabled(), "the Month tab shows the months of a year, future ones off");
+await page.click('#sheet button[data-id="2026-09"]');
+check((await text(page, ".ptitle")).includes("September 2026"), "choosing a month shows that month");
+await page.click(".ptitle"); await page.click('#sheet button[data-kind="range"]');
+check((await text(page, "#sheet .rangepick")).includes("Sep 1, 2026") && (await text(page, "#sheet .rangepick")).includes("Sep 30, 2026"), "Date range starts from the period you were on");
+await page.click('#sheet .rangepick button[data-target="from"]');
 check((await text(page, "#sheet")).includes("Start date"), "the start date opens our calendar");
 for (let i = 0; i < 3; i++) await page.click('#sheet button[aria-label="Earlier year"]');
-check((await text(page, "#sheet")).includes("October 2023"), "year arrows jump back by twelve months");
-await page.click('#sheet button[aria-label="Earlier month"]'); await page.click('#sheet button[aria-label="Earlier month"]'); await page.click('#sheet button[aria-label="Earlier month"]'); await page.click('#sheet button[aria-label="Earlier month"]');
-check((await text(page, "#sheet")).includes("June 2023"), "month arrows fine-tune it");
+for (let i = 0; i < 3; i++) await page.click('#sheet button[aria-label="Earlier month"]');
+check((await text(page, "#sheet")).includes("June 2023"), "year arrows jump twelve months, month arrows fine-tune");
 await page.click('#sheet .cal button[data-id="2023-06-18"]');
-check((await text(page, ".rangepick")).includes("Jun 18, 2023") && (await text(page, ".rangepick")).includes("Oct 3, 2026"), "the chosen start date is shown");
-await page.click('.rangepick button[data-target="to"]');
+check((await text(page, "#sheet")).includes("Show money for") && (await text(page, "#sheet .rangepick")).includes("Jun 18, 2023"), "after choosing, it comes back to the picker with the start date set");
+await page.click('#sheet .rangepick button[data-target="to"]');
 for (let i = 0; i < 3; i++) await page.click('#sheet button[aria-label="Earlier year"]');
+await page.click('#sheet button[aria-label="Later month"]');
 await page.click('#sheet .cal button[data-id="2023-10-03"]');
-check((await text(page, ".rangepick")).includes("Oct 3, 2023") && (await text(page, "#screen")).includes("Nothing verified between these dates"), "an end date and a range with no data says so plainly");
-await page.click('.rangepick button[data-target="to"]');
+await page.click('#sheet button:has-text("Show this range")');
+check((await text(page, ".ptitle")).includes("Jun 18, 2023") && (await text(page, ".ptitle")).includes("Oct 3, 2023") && (await text(page, "#screen")).includes("108 days") && (await text(page, "#screen")).includes("Nothing verified in this period"), "a range shows its dates at the top, its length, and says plainly when it is empty");
+check((await page.locator('button[aria-label="Earlier"]').count()) === 0, "a range has no arrows");
+await page.click(".ptitle");
+await page.click('#sheet .rangepick button[data-target="to"]');
 for (let i = 0; i < 4; i++) await page.click('#sheet button[aria-label="Earlier month"]');
 await page.click('#sheet .cal button[data-id="2023-06-01"]');
-check(((await text(page, ".rangepick")).match(/Jun 1, 2023/g) ?? []).length === 2, "an end date before the start pulls the start back, so the range is never upside down");
-await page.click('button:has-text("This month")');
-check(/₱[\d,.]+/.test(await text(page, ".hero")) && (await text(page, ".sub >> nth=0")).includes("days"), "a preset fills the range and says how many days");
+check(((await text(page, "#sheet .rangepick")).match(/Jun 1, 2023/g) ?? []).length === 2, "an end date before the start pulls the start back, so the range is never upside down");
+await page.click('#sheet button:has-text("This month")');
+check((await text(page, ".ptitle")).includes("Oct 1, 2026") && (await text(page, ".sub >> nth=0")).includes("3 days"), "a preset applies at once");
+await page.click('button:has-text("Budgets")');
+check((await text(page, "#screen")).includes("Budgets are set per month"), "Budgets with a range asks for a month");
+await page.click('button:has-text("Show this month")');
 await page.click('button:has-text("Where it went")');
 
 await page.click('button:has-text("Budgets")');
@@ -575,18 +587,18 @@ check(vcolors.includes("over") && vcolors.includes("under"), "variance cells are
 await page.click('button:has-text("Show as list")');
 check(/Shopping[\s\S]*−₱50\.00 over/.test(await text(page, ".tbl")) && /Food[\s\S]*\+₱5\.00 under/.test(await text(page, ".tbl")) && (await text(page, ".tbl")).includes("Total"), "the list twin has budget, actual and a signed variance in words");
 await page.click('button:has-text("Show as chart")');
-await page.click('button[aria-label="Previous month"]');
+await page.click('button[aria-label="Earlier"]');
 check((await text(page, "#screen")).includes("No budgets for September 2026 yet"), "a budget set this month does not rewrite September");
 
 // spending with no budget is listed, not hidden
-await page.click('button[aria-label="Next month"]');
+await page.click('button[aria-label="Later"]');
 await page.click('#nav button:has-text("Log")');
 await page.click('button:has-text("Other amount")'); await page.fill("#f-amount", "80"); await page.click('#sheet .chip:has-text("Upskill")'); await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
 await page.click('#nav button:has-text("Verify")');
 await page.click('button:has-text("Correct")'); await seen(page, "#screen", "of");
 await verifyAll();
 await menuGo(page, "Money");
-for (let i = 0; i < 9; i++) if (await page.locator('button[aria-label="Next month"]').isEnabled()) await page.click('button[aria-label="Next month"]');
+for (let i = 0; i < 9; i++) if (await page.locator('button[aria-label="Later"]').isEnabled()) await page.click('button[aria-label="Later"]');
 await page.click('button:has-text("Budgets")');
 const noBud = await page.waitForFunction(() => document.getElementById("screen").innerText.toLowerCase().includes("no budget set"), null, { timeout: 4000 }).then(() => true, () => false);   // the heading is shown in capitals
 if (!noBud) console.log("   screen was:", JSON.stringify((await text(page, "#screen")).slice(0, 600)));

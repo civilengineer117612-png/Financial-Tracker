@@ -48,7 +48,8 @@ export function spendingByCategory(state, { month, categoryMaps = [], asOf = las
 
 // Which account the spending came out of. A card counts as the account the charge was made on.
 // {total, rows:[{account_id, name, amount}]}, biggest first.
-export function spendingByAccount(state, { month }) {
+export function spendingByAccount(state, { month, from, to }) {
+  const lo = from ?? month + "-01", hi = to ?? lastDayOf(month);
   const accounts = new Map(state.accounts.map((a) => [a.id, a]));
   const expense = new Set(state.categories.filter((c) => c.kind === "expense").map((c) => c.id));
   const spendingTx = new Set();
@@ -58,7 +59,7 @@ export function spendingByAccount(state, { month }) {
   for (const e of state.entries) {
     if (e.account_id == null || !spendingTx.has(e.transaction_id)) continue;
     const t = txById.get(e.transaction_id);
-    if (!t || t.status !== "verified" || monthOf(t.date) !== month) continue;
+    if (!t || t.status !== "verified" || t.date < lo || t.date > hi) continue;
     totals.set(e.account_id, (totals.get(e.account_id) ?? 0) - e.amount);   // money out = a credit, stored negative
   }
   const rows = [...totals].filter(([, amount]) => amount !== 0)

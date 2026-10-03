@@ -18,7 +18,7 @@ let boot = { status: "NONE", repairTo: null };
 const ui = {
   tab: "log", menu: false, sheet: null, form: {}, error: null, confirmDelete: null, confirmRemove: null, setupError: null,
   accountForm: { name: "", bank: null, sub: "", kind: "asset", opening: "", covers: "" },
-  month: null, year: null, range: null, selMonth: null, view: "category", shape: "bars", asList: false, sel: null,   // the Money tab
+  period: null, periodDraft: null, view: "category", shape: "bars", asList: false, sel: null,   // the Money tab
 };
 let toastTimer = null;
 
@@ -268,7 +268,7 @@ function withBankLinks(state) {
   return next;
 }
 // An address saved by an earlier version asked for a placeholder when a bank had no icon; those are thrown away and retried.
-const stalePlaceholder = (a) => (a.icon_url ?? "").includes("fallback_opts");
+const stalePlaceholder = (a) => M.isPlaceholderAddress(a.icon_url);
 const wantsLogo = (a) => a.bank || M.bankForName(a.name);
 async function getBankLogos() {
   let state = withBankLinks(S());
@@ -314,6 +314,7 @@ async function getBankLogos() {
   showToast((got === wanted.length ? "Got " + got + (got === 1 ? " logo." : " logos.") : "Got " + got + " of " + wanted.length + ". The reason is under the button. For the rest, tap the tile in the list and add a screenshot.") + (linked ? " " + linked + " shown from the web, so they need internet the first time." : ""));
 }
 
+const bankPictureOf = (bankId) => M.bankPicture(S().accounts, bankId);
 const accountPreview = (f) => { const b = M.bankById(f.bank), sub = (f.sub ?? "").trim(); return sub ? b.name + " \u00b7 " + sub : b.name; };
 
 function viewSetup() {
@@ -329,7 +330,7 @@ function viewSetup() {
   return `<h1>Setup</h1><p class="sub">Accounts. The ledger is on this phone only.</p>
     <h2>Add an account</h2>
     <label id="a-bank-l">Choose a bank</label>
-    <div class="chips" role="group" aria-labelledby="a-bank-l">${[...M.BANKS, M.CASH].map((b) => `<button class="chip" data-action="pick-bank" data-id="${esc(b.id)}" aria-pressed="${f.bank === b.id}">${iconOf({ name: b.name, ...(S().accounts.find((a) => a.bank === b.id && (a.icon || a.icon_url)) ?? {}) }, 24)}<span>${esc(b.name)}</span></button>`).join("")}</div>
+    <div class="chips" role="group" aria-labelledby="a-bank-l">${[...M.BANKS, M.CASH].map((b) => `<button class="chip" data-action="pick-bank" data-id="${esc(b.id)}" aria-pressed="${f.bank === b.id}">${iconOf({ name: b.name, ...(bankPictureOf(b.id) ?? {}) }, 24)}<span>${esc(b.name)}</span></button>`).join("")}</div>
     ${f.bank ? `<label for="a-sub">Which part of ${esc(M.bankById(f.bank).name)}? (optional)</label><input id="a-sub" data-field="sub" value="${esc(f.sub)}" placeholder="e.g. Emergency Fund, Savings" autocomplete="off" enterkeyhint="next">
       <p class="note" id="a-preview">Saved as: ${esc(accountPreview(f))}</p>`
       : `<label for="a-name">Not in the list? Type its name</label><input id="a-name" data-field="name" value="${esc(f.name)}" autocomplete="off" enterkeyhint="next">`}
@@ -362,27 +363,8 @@ const SHAPES = { good: '<circle cx="6" cy="6" r="5"/>', warning: '<path d="M6 1 
 const glyph = (level) => `<svg class="glyph g-${level}" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">${SHAPES[level]}</svg>`;
 const legend = () => `<p class="legend" aria-label="What the colours mean">${["good", "warning", "serious", "critical", "none"].map((l) => `<span>${glyph(l)}${LEVELS[l]}</span>`).join("")}</p>`;
 
-// A donut of each category's share of the month. One blue hue, darkest for the biggest share, with a 2px gap between
-// slices; the legend carries the peso amount and percent for every slice (small slices are unreadable on a phone).
+// Donut colours: one blue hue, darkest for the biggest share; the legend carries the peso amount and percent of every slice.
 const DONUT_BLUES = ["#1b4f8f", "#2a78d6", "#4f93e0", "#74abe8", "#97c1ee", "#b6d3f4", "#cfe1f7"];
-function donutChart(rows, selected, total) {
-  const shown = foldRows(rows, total).map((r, i) => ({ ...r, color: r.fold ? "#999" : DONUT_BLUES[Math.min(i, DONUT_BLUES.length - 1)] }));
-  const R = 70, C = 2 * Math.PI * R, GAP = 2;
-  let offset = 0;
-  const sum = shown.reduce((n, r) => n + r.amount, 0) || 1;
-  const arcs = shown.map((r) => {
-    const len = (r.amount / sum) * C, dash = Math.max(0.5, len - GAP);
-    const circle = `<circle class="slice${selected && selected !== r.id ? " dim" : ""}" cx="100" cy="100" r="${R}" fill="none" stroke="${r.color}" stroke-width="30" stroke-dasharray="${dash.toFixed(2)} ${(C - dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 100 100)"/>`;
-    offset += len;
-    return circle;
-  }).join("");
-  const legend = shown.map((r) => `<button class="lrow${selected && selected !== r.id ? " dim" : ""}" data-action="pick-bar" data-id="${esc(r.id)}" aria-pressed="${selected === r.id}"${r.fold ? " disabled" : ""}>
-      <span class="swatch" style="background:${r.color}"></span><span class="lname">${r.label}</span><span class="lval">${peso(r.amount)} \u00b7 ${r.percent}%</span></button>`).join("");
-  return `<svg class="donut" viewBox="0 0 200 200" role="img" aria-label="Share of spending by category. The list below has the same numbers.">${arcs}
-      <text x="100" y="96" text-anchor="middle" class="dtotal">${esc(M.formatPesosWhole(total))}</text><text x="100" y="116" text-anchor="middle" class="dsub">spent</text></svg>
-    <div class="legendlist">${legend}</div>`;
-}
-
 function barChart(rows, selected) {
   const max = Math.max(...rows.map((r) => r.amount), 1);
   return `<div class="bars">${rows.map((r) => `<button class="brow${r.grade ? " g-" + r.grade : ""}${selected && selected !== r.id ? " dim" : ""}" data-action="pick-bar" data-id="${esc(r.id)}" aria-pressed="${selected === r.id}"${r.fold ? " disabled" : ""}>
@@ -401,124 +383,110 @@ function listTable(heads, rows, totalLabel, total) {
     <tr class="total"><td>${totalLabel}</td><td class="n">${peso(total)}</td>${heads.length > 2 ? "<td></td>" : ""}</tr></table>`;
 }
 
-// The Money views. Year and Date range sit beside the monthly ones.
-const moneyViews = () => `<div class="seg six" role="group" aria-label="What to show">${[["category", "Where it went"], ["budget", "Budgets"], ["account", "Paid from"], ["month", "By month"], ["year", "Year"], ["range", "Date range"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
-// One button that flips the category chart between bars and a donut each time it is tapped; it shows the chart you are on.
-const SHAPE_ICONS = { bars: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>', donut: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/>' };
-function shapeToggle() {
-  const donut = ui.shape === "donut";
-  return `<p class="right"><button class="shapebtn" data-action="chart-shape" data-shape="${donut ? "bars" : "donut"}" aria-label="${donut ? "Showing a donut. Tap for bars" : "Showing bars. Tap for a donut"}"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">${SHAPE_ICONS[donut ? "donut" : "bars"]}</svg></button></p>`;
-}
+// ---------- Money: the period at the top ----------
+// The title at the top ("October 2026") is a button: it opens a small picker for a month, a whole year or any date range.
+// Every view below follows that period. The arrows step one month or one year.
+const period = () => ui.period ?? { kind: "month", month: M.monthOf(today()) };
 const fullDate = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-PH", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-// Categories of any period as bars or a donut, with the share said in words when one is tapped.
-function categoryChart(cat, periodWords) {
-  const rows = cat.rows.filter((r) => r.amount > 0).map((r) => ({ id: r.category_id, name: r.name, label: esc(r.name), amount: r.amount, percent: r.percent }));
-  if (!rows.length) return `<p class="note">Nothing verified in this period.</p>`;
-  const hit = rows.find((r) => r.id === ui.sel);
-  const caption = hit ? esc(hit.name + ": " + peso(hit.amount) + ", " + hit.percent + "% of what you spent " + periodWords + ".") : "Tap " + (ui.shape === "donut" ? "a row" : "a bar") + " to see its share.";
-  return shapeToggle() + (ui.shape === "donut" ? donutChart(rows, ui.sel, cat.total) : barChart(foldRows(rows, cat.total), ui.sel)) + `<p class="caption" aria-live="polite">${caption}</p>`;
+function periodBounds(p) {
+  if (p.kind === "year") return [p.year + "-01-01", p.year + "-12-31"];
+  if (p.kind === "range") return [p.from, p.to];
+  const [y, m] = p.month.split("-").map(Number);
+  return [p.month + "-01", p.month + "-" + String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")];   // the real last day
 }
-const categoryTable = (cat) => listTable(["Category", "Spent", "Share"], cat.rows.map((r) => [esc(r.name), peso(r.amount), r.percent + "%"]), "Total", cat.total);
-const pendingNote = (n) => (n > 0 ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">plus ${peso(n)} not verified yet</button></p>` : "");
+const periodLabel = (p) => (p.kind === "year" ? String(p.year) : p.kind === "range" ? fullDate(p.from) + " \u2013 " + fullDate(p.to) : M.monthLabel(p.month));
+const periodWords = (p) => (p.kind === "range" ? "from " + fullDate(p.from) + " to " + fullDate(p.to) : "in " + periodLabel(p));
 const MONTH3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const pendingNote = (n) => (n > 0 ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">plus ${peso(n)} not verified yet</button></p>` : "");
+const moneyViews = () => `<div class="seg" role="group" aria-label="What to show">${[["category", "Where it went"], ["budget", "Budgets"], ["account", "Paid from"], ["month", "By month"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
 
-function viewYear() {
-  const nowY = Number(today().slice(0, 4)), year = ui.year ?? nowY, maps = S().categoryMaps, asOf = today();
-  const cat = M.spendingByRange(S(), { from: year + "-01-01", to: year + "-12-31", categoryMaps: maps, asOf });
-  const series = M.monthlySpending(S(), { endMonth: year + "-12", months: 12, categoryMaps: maps, asOf });
-  const stepper = `<div class="stepper"><button data-action="year-step" data-step="-1" aria-label="Earlier year">\u2039</button><b>${year}</b><button data-action="year-step" data-step="1" aria-label="Later year"${year >= nowY ? " disabled" : ""}>\u203A</button></div>`;
-  const hero = `<h1>Money</h1>${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">spent in ${year}</p>${pendingNote(cat.pending)}${moneyViews()}`;
-  const modeLink = `<p><button class="link" data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}">${ui.asList ? "Show as chart" : "Show as list"}</button></p>`;
-  if (!cat.rows.length && !series.some((x) => x.amount !== 0)) return hero + `<p class="note">Nothing verified in ${year} yet.</p>`;
-  if (ui.asList) return hero + listTable(["Month", "Spent"], series.map((x) => [esc(M.monthLabel(x.month)), peso(x.amount)]), "Year", series.reduce((n, x) => n + x.amount, 0)) + "<h2>By category</h2>" + categoryTable(cat) + modeLink;
-  const max = Math.max(...series.map((x) => x.amount), 1), sel = ui.selMonth;
-  const cols = series.map((x) => `<button class="col${sel && sel !== x.month ? " dim" : ""}" data-action="pick-month" data-id="${x.month}" aria-pressed="${sel === x.month}" aria-label="${esc(M.monthLabel(x.month) + ": " + peso(x.amount))}">
-      <span class="cval">${x.month === sel ? M.formatPesosWhole(x.amount) : ""}</span><span class="cbar" style="height:${x.amount > 0 ? Math.max(4, Math.round((x.amount * 130) / max)) : 0}px"></span></button>`).join("");
-  const hit = series.find((x) => x.month === sel);
-  return hero + `<h2>By month</h2><div class="cols tight">${cols}</div><div class="clabs tight">${series.map((x) => `<span>${MONTH3[Number(x.month.slice(5)) - 1][0]}</span>`).join("")}</div>
-    <p class="caption" aria-live="polite">${hit ? esc(M.monthLabel(hit.month) + ": " + peso(hit.amount) + " spent.") : "Tap a column to see its month."}</p>
-    <h2>By category</h2>${categoryChart(cat, "in " + year)}${modeLink}`;
-}
-
-function viewRange() {
-  const t = today();
-  const r = ui.range ?? (ui.range = { from: t.slice(0, 8) + "01", to: t });
-  const cat = M.spendingByRange(S(), { from: r.from, to: r.to, categoryMaps: S().categoryMaps, asOf: t });
-  const days = Math.round((Date.parse(r.to) - Date.parse(r.from)) / 86400000) + 1;
-  const perDay = cat.total > 0 ? ` \u00b7 about ${peso(Math.round(cat.total / days))} a day` : "";
-  const presets = [["month", "This month"], ["30", "Last 30 days"], ["year", "This year"]].map(([id, label]) => `<button class="chip" data-action="range-preset" data-id="${id}">${label}</button>`).join("");
-  const hero = `<h1>Money</h1><div class="rangepick"><button data-action="open-cal" data-target="from"><small>From</small><b>${esc(fullDate(r.from))}</b></button><button data-action="open-cal" data-target="to"><small>To</small><b>${esc(fullDate(r.to))}</b></button></div>
-    <div class="chips">${presets}</div><div class="hero">${peso(cat.total)}</div><p class="sub">spent in ${days} ${days === 1 ? "day" : "days"}${perDay}</p>${pendingNote(cat.pending)}${moneyViews()}`;
-  const modeLink = `<p><button class="link" data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}">${ui.asList ? "Show as chart" : "Show as list"}</button></p>`;
-  if (!cat.rows.length) return hero + `<p class="note">Nothing verified between these dates.</p>`;
-  return hero + (ui.asList ? categoryTable(cat) : categoryChart(cat, "from " + fullDate(r.from) + " to " + fullDate(r.to))) + modeLink;
+// A chart you tap to flip: bars become a donut and the donut becomes bars. Nothing else happens on a tap.
+function flipChart(rows, total, { graded = false } = {}) {
+  const shown = foldRows(rows.filter((r) => r.amount > 0), total);
+  if (!shown.length) return `<p class="note">Nothing verified in this period.</p>`;
+  if (ui.shape === "donut") {
+    const R = 70, C = 2 * Math.PI * R, GAP = 2, sum = shown.reduce((n, r) => n + r.amount, 0) || 1;
+    let offset = 0;
+    const colored = shown.map((r, i) => ({ ...r, color: r.fold ? "#999" : DONUT_BLUES[Math.min(i, DONUT_BLUES.length - 1)] }));
+    const arcs = colored.map((r) => { const len = (r.amount / sum) * C, dash = Math.max(0.5, len - GAP); const c = `<circle class="slice" cx="100" cy="100" r="${R}" fill="none" stroke="${r.color}" stroke-width="30" stroke-dasharray="${dash.toFixed(2)} ${(C - dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 100 100)"/>`; offset += len; return c; }).join("");
+    const legend = colored.map((r) => `<div class="lrow"><span class="swatch" style="background:${r.color}"></span><span class="lname">${r.label}</span><span class="lval">${peso(r.amount)} \u00b7 ${r.percent}%</span></div>`).join("");
+    return `<div class="flip" data-action="flip-chart" role="button" tabindex="0" aria-label="Donut of where the money went. Tap to show bars."><svg class="donut" viewBox="0 0 200 200" aria-hidden="true">${arcs}
+      <text x="100" y="96" text-anchor="middle" class="dtotal">${esc(M.formatPesosWhole(total))}</text><text x="100" y="116" text-anchor="middle" class="dsub">spent</text></svg><div class="legendlist">${legend}</div></div>`;
+  }
+  const max = Math.max(...shown.map((r) => r.amount), 1);
+  return `${graded ? legend() : ""}<div class="bars flip" data-action="flip-chart" role="button" tabindex="0" aria-label="Bars of where the money went. Tap to show a donut.">${shown.map((r) => `<div class="brow${r.grade ? " g-" + r.grade : ""}">
+      <span class="btop"><span class="bname">${r.label}</span><span class="bval">${peso(r.amount)}${r.percent ? " \u00b7 " + r.percent + "%" : ""}</span></span>
+      <span class="btrack"><span class="bfill" style="width:${Math.max(1, Math.round((r.amount * 100) / max))}%"></span></span></div>`).join("")}</div>`;
 }
 
 function viewMoney() {
-  if (ui.view === "year") return viewYear();
-  if (ui.view === "range") return viewRange();
-  const now = M.monthOf(today()), month = ui.month ?? now;
-  const maps = S().categoryMaps, asOf = today();
-  const cat = M.spendingByCategory(S(), { month, categoryMaps: maps, asOf });
-  const prev = M.spendingByCategory(S(), { month: M.addMonths(month, -1), categoryMaps: maps, asOf });
-  const label = M.monthLabel(month);
+  const p = period(), [from, to] = periodBounds(p), maps = S().categoryMaps, asOf = today(), nowM = M.monthOf(today()), nowY = Number(today().slice(0, 4));
+  const cat = M.spendingByRange(S(), { from, to, categoryMaps: maps, asOf });
+  const label = periodLabel(p);
 
   // The headline first; then what to look at; then the chart; then the same thing as a list.
-  let delta = "";
-  if (prev.total > 0 && cat.total > 0) {
-    const d = cat.total - prev.total, pm = M.monthLabel(M.addMonths(month, -1)).split(" ")[0];
-    delta = `<p class="sub">${d === 0 ? "The same as " + pm + "." : peso(Math.abs(d)) + (d > 0 ? " more" : " less") + " than " + pm + "."}</p>`;
+  let sub = "spent " + periodWords(p), delta = "";
+  if (p.kind === "range") {
+    const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
+    sub = "spent in " + days + (days === 1 ? " day" : " days") + (cat.total > 0 ? " \u00b7 about " + peso(Math.round(cat.total / days)) + " a day" : "");
   }
-  const pending = cat.pending > 0 ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">plus ${peso(cat.pending)} not verified yet</button></p>` : "";
-  const stepper = `<div class="stepper"><button data-action="month-step" data-step="-1" aria-label="Previous month">‹</button><b>${esc(label)}</b><button data-action="month-step" data-step="1" aria-label="Next month"${month >= now ? " disabled" : ""}>›</button></div>`;
-  const views = moneyViews();
-  const hero = `<h1>Money</h1>${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">spent in ${esc(label)}</p>${delta}${pending}${views}`;
+  if (p.kind === "month") {
+    const prev = M.spendingByCategory(S(), { month: M.addMonths(p.month, -1), categoryMaps: maps, asOf });
+    if (prev.total > 0 && cat.total > 0) {
+      const d = cat.total - prev.total, pm = M.monthLabel(M.addMonths(p.month, -1)).split(" ")[0];
+      delta = `<p class="sub">${d === 0 ? "The same as " + pm + "." : peso(Math.abs(d)) + (d > 0 ? " more" : " less") + " than " + pm + "."}</p>`;
+    }
+  }
+  const atEnd = p.kind === "month" ? p.month >= nowM : p.kind === "year" ? p.year >= nowY : true;
+  const title = `<button class="ptitle" data-action="open-period" aria-label="Choose the period: ${esc(label)}">${esc(label)} <span aria-hidden="true">\u25BE</span></button>`;
+  const stepper = p.kind === "range" ? `<div class="stepper single">${title}</div>`
+    : `<div class="stepper"><button data-action="period-step" data-step="-1" aria-label="Earlier">\u2039</button>${title}<button data-action="period-step" data-step="1" aria-label="Later"${atEnd ? " disabled" : ""}>\u203A</button></div>`;
+  const hero = `<h1>Money</h1>${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">${esc(sub)}</p>${delta}${pendingNote(cat.pending)}${moneyViews()}`;
   const modeLink = `<p><button class="link" data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}">${ui.asList ? "Show as chart" : "Show as list"}</button></p>`;
   const done = (html) => hero + html + modeLink;
+  const empty = () => hero + (p.kind === "month" ? emptyMoney() : `<p class="note">Nothing verified in this period.</p>`);
 
   if (ui.view === "month") {
-    const series = M.monthlySpending(S(), { endMonth: month, months: 6, categoryMaps: maps, asOf });
-    const trend = M.budgetTrend(S(), { endMonth: month, months: 6, categoryMaps: maps, asOf });
-    if (!series.some((x) => x.amount !== 0) && !trend.some((x) => x.budget !== null)) return hero + emptyMoney();
-    if (ui.asList) return done(listTable(["Month", "Spent"], [...series].reverse().map((x) => [esc(M.monthLabel(x.month)), peso(x.amount)]), "Six months", series.reduce((n, x) => n + x.amount, 0)) + "<h2>Budget vs actual</h2>" + trendTable(trend));
-    const max = Math.max(...series.map((x) => x.amount), 1), sel = ui.sel;
+    const endMonth = p.kind === "month" ? p.month : p.kind === "year" ? p.year + "-12" : M.monthOf(to);
+    const span = (Number(endMonth.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(endMonth.slice(5)) - Number(from.slice(5, 7)) + 1;
+    const n = p.kind === "month" ? 6 : p.kind === "year" ? 12 : Math.max(1, Math.min(24, span));
+    const series = M.monthlySpending(S(), { endMonth, months: n, categoryMaps: maps, asOf });
+    const trend = M.budgetTrend(S(), { endMonth, months: n, categoryMaps: maps, asOf });
+    if (!series.some((x) => x.amount !== 0) && !trend.some((x) => x.budget !== null)) return empty();
+    if (ui.asList) return done(listTable(["Month", "Spent"], [...series].reverse().map((x) => [esc(M.monthLabel(x.month)), peso(x.amount)]), "Total", series.reduce((nn, x) => nn + x.amount, 0)) + "<h2>Budget vs actual</h2>" + trendTable(trend));
+    const max = Math.max(...series.map((x) => x.amount), 1), sel = ui.sel, many = n > 8;
     const cols = series.map((x) => `<button class="col${sel && sel !== x.month ? " dim" : ""}" data-action="pick-bar" data-id="${x.month}" aria-pressed="${sel === x.month}" aria-label="${esc(M.monthLabel(x.month) + ": " + peso(x.amount))}">
-        <span class="cval">${x.month === month || x.month === sel ? M.formatPesosWhole(x.amount) : ""}</span><span class="cbar" style="height:${x.amount > 0 ? Math.max(4, Math.round((x.amount * 130) / max)) : 0}px"></span></button>`).join("");
+        <span class="cval">${(!many && x.month === endMonth) || x.month === sel ? M.formatPesosWhole(x.amount) : ""}</span><span class="cbar" style="height:${x.amount > 0 ? Math.max(4, Math.round((x.amount * 130) / max)) : 0}px"></span></button>`).join("");
     const hit = series.find((x) => x.month === sel);
-    return done(`<div class="cols">${cols}</div><div class="clabs">${series.map((x) => `<span>${esc(M.monthLabel(x.month).slice(0, 3))}</span>`).join("")}</div>
+    return done(`<div class="cols${many ? " tight" : ""}">${cols}</div><div class="clabs${many ? " tight" : ""}">${series.map((x) => `<span>${many ? MONTH3[Number(x.month.slice(5)) - 1][0] : MONTH3[Number(x.month.slice(5)) - 1]}</span>`).join("")}</div>
       <p class="caption" aria-live="polite">${hit ? esc(M.monthLabel(hit.month) + ": " + peso(hit.amount) + " spent.") : "Tap a column to see its month."}</p>
       <h2>Budget vs actual</h2>${trendChart(trend)}`);
   }
 
-  if (ui.view === "budget") return viewBudgets(hero, month, maps, asOf, now, label);
+  if (ui.view === "budget") {
+    if (p.kind !== "month") return hero + `<p class="note">Budgets are set per month. Choose a month at the top.</p><p><button class="link" data-action="period-this-month">Show this month</button></p>`;
+    return viewBudgets(hero, p.month, maps, asOf, nowM, label);
+  }
 
   if (ui.view === "account") {
-    const acc = M.spendingByAccount(S(), { month });
-    if (!acc.rows.length) return hero + emptyMoney();
+    const acc = M.spendingByAccount(S(), { from, to });
+    if (!acc.rows.length) return empty();
     const pct = (a) => (acc.total > 0 && a > 0 ? Math.round((a * 1000) / acc.total) / 10 : 0);
     const rows = acc.rows.map((r) => ({ id: r.account_id, label: withIcon(S().accounts.find((a) => a.id === r.account_id) ?? { name: r.name }, 24), amount: r.amount, percent: pct(r.amount) }));
     if (ui.asList) return done(listTable(["Account", "Spent", "Share"], rows.map((r) => [esc(accountName(r.id)), peso(r.amount), r.percent + "%"]), "Total", acc.total));
-    const hit = rows.find((r) => r.id === ui.sel);
-    return done(barChart(foldRows(rows.filter((r) => r.amount > 0), acc.total), ui.sel)
-      + `<p class="caption" aria-live="polite">${hit ? esc(accountName(hit.id) + ": " + peso(hit.amount) + ", " + hit.percent + "% of what you spent in " + label + ".") : "Tap a bar to see its share."}</p>`);
+    return done(flipChart(rows, acc.total));
   }
 
-  if (!cat.rows.length) return hero + emptyMoney();
-  // Where a category has a budget this month its bar takes that budget's colour; without any budgets at all, one calm blue.
-  const budgetOf = (id) => M.budgetFor(S().rules, id, month);
+  if (!cat.rows.length) return empty();
+  // In a month, a category with a budget takes that budget's colour; without any budgets (or for a year or range) one calm blue.
+  const budgetOf = (id) => (p.kind === "month" ? M.budgetFor(S().rules, id, p.month) : null);
   const graded = cat.rows.some((r) => budgetOf(r.category_id) !== null);
   const rows = cat.rows.map((r) => {
     const budget = budgetOf(r.category_id), g = M.budgetGrade(r.amount, budget);
-    return { id: r.category_id, label: esc(r.name), amount: r.amount, percent: r.percent, budget, grade: graded ? (g ? g.level : "none") : null, used: g ? g.percent : null };
+    return { id: r.category_id, label: esc(r.name), amount: r.amount, percent: r.percent, grade: graded && ui.shape !== "donut" ? (g ? g.level : "none") : null };
   });
   if (ui.asList) return done(listTable(["Category", "Spent", "Share"], rows.map((r) => [r.label, peso(r.amount), r.percent + "%"]), "Total", cat.total));
-  const hit = rows.find((r) => r.id === ui.sel);
-  const hitWords = hit ? esc(hit.label + ": " + peso(hit.amount) + ", " + hit.percent + "% of what you spent in " + label + ".") + (hit.budget ? " " + esc("Budget " + peso(hit.budget) + ": " + hit.used + "% used" + (hit.grade === "critical" ? ", over by " + peso(hit.amount - hit.budget) : "") + ".") : "") : "Tap a bar to see its share.";
-  const shapes = shapeToggle();
-  const positive = rows.filter((r) => r.amount > 0);
-  if (ui.shape === "donut") return done(shapes + donutChart(positive, ui.sel, cat.total) + `<p class="caption" aria-live="polite">${hitWords.replace("Tap a bar", "Tap a row")}</p>`);
-  return done(shapes + (graded ? legend() : "") + barChart(foldRows(positive, cat.total), ui.sel)
-    + `<p class="caption" aria-live="polite">${hitWords}</p>`);
+  return done(flipChart(rows, cat.total, { graded: graded && ui.shape !== "donut" }));
 }
 
 // Each budget as a meter: how much of it is used, with a mark for how far through the month we are.
@@ -773,7 +741,7 @@ function chips(items, selectedId, action) {
   return `<div class="chips">${items.map((i) => `<button class="chip" data-action="${action}" data-id="${esc(i.id)}" aria-pressed="${i.id === selectedId}">${i.class ? withIcon(i, 24) : esc(i.name)}</button>`).join("")}</div>`;
 }
 
-const calSelected = (target) => (target === "from" ? ui.range?.from : target === "to" ? ui.range?.to : ui.dayPick && ui.dayPick !== today() ? ui.dayPick : today());
+const calSelected = (target) => (target === "from" ? ui.periodDraft?.from : target === "to" ? ui.periodDraft?.to : ui.dayPick && ui.dayPick !== today() ? ui.dayPick : today());
 function renderSheet() {
   const sh = ui.sheet;
   if (!sh) { $("sheet").innerHTML = ""; return; }
@@ -796,7 +764,24 @@ function renderSheet() {
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
-  if (sh.type === "cal") {
+  if (sh.type === "period") {
+    const d = ui.periodDraft, nowY = Number(today().slice(0, 4)), nowM = M.monthOf(today());
+    const firstYear = Math.min(nowY - 4, ...S().transactions.map((t) => Number(t.date.slice(0, 4))));
+    const tabs = `<div class="seg" role="group" aria-label="Kind of period">${[["month", "Month"], ["year", "Year"], ["range", "Date range"]].map(([k, t]) => `<button data-action="period-kind" data-kind="${k}" aria-pressed="${d.kind === k}">${t}</button>`).join("")}</div>`;
+    let inner;
+    if (d.kind === "month") {
+      inner = `<div class="stepper"><button data-action="period-draft-year" data-step="-1" aria-label="Earlier year">\u2039</button><b>${d.year}</b><button data-action="period-draft-year" data-step="1" aria-label="Later year"${d.year >= nowY ? " disabled" : ""}>\u203A</button></div>
+        <div class="mgrid">${MONTH3.map((m, i) => { const id = d.year + "-" + String(i + 1).padStart(2, "0"); return `<button data-action="period-month" data-id="${id}"${id > nowM ? " disabled" : ""}${ui.period?.month === id || (!ui.period && id === nowM) ? ' aria-pressed="true"' : ""}>${m}</button>`; }).join("")}</div>`;
+    } else if (d.kind === "year") {
+      const years = []; for (let y = nowY; y >= firstYear; y--) years.push(y);
+      inner = `<div class="mgrid">${years.map((y) => `<button data-action="period-year" data-id="${y}"${ui.period?.kind === "year" && ui.period.year === y ? ' aria-pressed="true"' : ""}>${y}</button>`).join("")}</div>`;
+    } else {
+      inner = `<div class="rangepick"><button data-action="open-cal" data-target="from"><small>From</small><b>${esc(fullDate(d.from))}</b></button><button data-action="open-cal" data-target="to"><small>To</small><b>${esc(fullDate(d.to))}</b></button></div>
+        <div class="chips">${[["month", "This month"], ["30", "Last 30 days"], ["year", "This year"]].map(([id, t]) => `<button class="chip" data-action="range-preset" data-id="${id}">${t}</button>`).join("")}</div>
+        <p><button class="primary" data-action="period-range" style="margin-top:12px">Show this range</button></p>`;
+    }
+    body = `<h3>Show money for</h3>${tabs}${inner}`;
+  } else if (sh.type === "cal") {
     // One small calendar for three jobs: the Log day, and the start or end of a date range.
     const [y, m] = ui.calMonth.split("-").map(Number), first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(), count = new Date(Date.UTC(y, m, 0)).getUTCDate();
     const withEntries = new Set(S().transactions.filter((t) => t.date.startsWith(ui.calMonth) && !isGenerated(t)).map((t) => t.date));
@@ -1027,18 +1012,34 @@ async function onClick(el) {
     case "open-menu": ui.menu = true; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "true"); break;
     case "close-menu": ui.menu = false; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "false"); break;
     case "tab": $("toast").innerHTML = ""; ui.menu = false; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null; renderAll(); break;
-    case "month-step": ui.month = M.addMonths(ui.month ?? M.monthOf(today()), Number(el.dataset.step)); ui.sel = null; renderScreen(); break;
-    case "year-step": ui.year = (ui.year ?? Number(today().slice(0, 4))) + Number(el.dataset.step); ui.selMonth = null; renderScreen(); break;
-    case "pick-month": ui.selMonth = ui.selMonth === id ? null : id; renderScreen(); break;
-    case "range-preset": {
-      const t = today(), d = (n) => new Date(Date.parse(t) - n * 86400000).toISOString().slice(0, 10);
-      ui.range = id === "month" ? { from: t.slice(0, 8) + "01", to: t } : id === "30" ? { from: d(29), to: t } : { from: t.slice(0, 4) + "-01-01", to: t };
+    case "period-step": {
+      const p = period(), step = Number(el.dataset.step);
+      ui.period = p.kind === "year" ? { kind: "year", year: p.year + step } : { kind: "month", month: M.addMonths(p.month, step) };
       ui.sel = null; renderScreen(); break;
     }
-    case "chart-shape": ui.shape = el.dataset.shape; ui.sel = null; renderScreen(); break;
+    case "period-this-month": ui.period = null; renderScreen(); break;
+    case "flip-chart": ui.shape = ui.shape === "donut" ? "bars" : "donut"; renderScreen(); break;
+    case "open-period": {
+      const p = period(), t = today(), [f, to] = periodBounds(p);
+      ui.periodDraft = { kind: p.kind, year: p.kind === "year" ? p.year : Number((p.month ?? to).slice(0, 4)), from: p.kind === "range" ? p.from : f, to: p.kind === "range" ? p.to : (to > t ? t : to) };
+      ui.sheet = { type: "period" }; renderSheet(); break;
+    }
+    case "period-kind": ui.periodDraft.kind = el.dataset.kind; renderSheet(); break;
+    case "period-draft-year": ui.periodDraft.year = Math.min(Number(today().slice(0, 4)), ui.periodDraft.year + Number(el.dataset.step)); renderSheet(); break;
+    case "period-month": ui.period = { kind: "month", month: id }; ui.sheet = null; ui.sel = null; renderAll(); break;
+    case "period-year": ui.period = { kind: "year", year: Number(id) }; ui.sheet = null; ui.sel = null; renderAll(); break;
+    case "period-range": {
+      const d = ui.periodDraft;
+      ui.period = { kind: "range", from: d.from, to: d.to }; ui.sheet = null; ui.sel = null; renderAll(); break;
+    }
+    case "range-preset": {
+      const t = today(), d = (n) => new Date(Date.parse(t) - n * 86400000).toISOString().slice(0, 10);
+      const r = id === "month" ? { from: t.slice(0, 8) + "01", to: t } : id === "30" ? { from: d(29), to: t } : { from: t.slice(0, 4) + "-01-01", to: t };
+      ui.period = { kind: "range", ...r }; ui.sheet = null; ui.sel = null; renderAll(); break;
+    }
     case "chart-view": ui.view = el.dataset.view; ui.sel = null; renderScreen(); break;
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
-    case "open-month": ui.month = id; ui.view = "budget"; ui.sel = null; ui.asList = false; renderScreen(); break;
+    case "open-month": ui.period = { kind: "month", month: id }; ui.view = "budget"; ui.sel = null; ui.asList = false; renderScreen(); break;
     case "pick-bar": ui.sel = ui.sel === id ? null : id; renderScreen(); break;
     case "open-budget": {
       const cur = M.budgetFor(S().rules, id, M.monthOf(today()));
@@ -1208,9 +1209,10 @@ async function onClick(el) {
     case "cal-step": { let next = M.addMonths(ui.calMonth, Number(el.dataset.step)); if (next > M.monthOf(today())) next = M.monthOf(today()); ui.calMonth = next; renderSheet(); break; }
     case "cal-day": {
       const target = ui.sheet.target ?? "day";
-      if (target === "from") { ui.range = { from: id, to: ui.range.to < id ? id : ui.range.to }; ui.sel = null; }
-      else if (target === "to") { ui.range = { from: ui.range.from > id ? id : ui.range.from, to: id }; ui.sel = null; }
-      else ui.dayPick = id === today() ? null : id;
+      const d = ui.periodDraft;
+      if (target === "from") { d.from = id; if (d.to < id) d.to = id; ui.sheet = { type: "period" }; renderSheet(); break; }
+      if (target === "to") { d.to = id; if (d.from > id) d.from = id; ui.sheet = { type: "period" }; renderSheet(); break; }
+      ui.dayPick = id === today() ? null : id;
       ui.sheet = null; renderAll(); break;
     }
     case "reset-day": ui.dayPick = null; renderScreen(); break;
@@ -1494,6 +1496,11 @@ async function start() {
   }
   if (!device.allowEntry) ui.tab = "log";
   renderAll();
+  // Grey placeholder logos saved by an earlier version are dropped at once, so a letter tile shows instead of a wrong picture.
+  if (device.allowEntry && boot.status !== "NONE" && boot.status !== "CORRUPT") {
+    const cleaned = M.dropPlaceholderAddresses(S());
+    if (cleaned !== S()) await commit(cleaned);
+  }
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 start();
