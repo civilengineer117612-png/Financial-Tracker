@@ -62,3 +62,4 @@ export { KINDS, kindById, wordsToCentavos, readScan, categoryFromHistory } from 
 export { EARNINGS, DEDUCTIONS, GOVERNMENT, LOST, SOURCES, OVERTIME_SHARE, linesOf, payslipTotals, payslipChecks, planPayslip, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory } from "./income.js";
 export { homeSummary } from "./summary.js";
 export { GROUPS, rowGroup } from "./groups.js";
+export { parseSpoken } from "./speech.js";

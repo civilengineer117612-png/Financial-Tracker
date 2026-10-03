@@ -3,6 +3,7 @@
 import * as M from "../src/model/index.js";
 import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto, useTrialStorage, clearTrialStorage } from "./store.js";
 import { preparePhoto, readText } from "./ocr.js";
+import { speechSupported, listen } from "./voice.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -107,6 +108,7 @@ const ICONS = {
   checks: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   trips: '<path d="M20 10c0 5-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 15 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
   income: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
+  mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/>',
   scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/>',
   buffer: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
   checkin: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
@@ -116,8 +118,10 @@ const MENU = [["Overview", [["money", "Spending"], ["income", "Income"], ["budge
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
-  const camera = device.allowEntry && ui.tab === "log" ? `<label class="camicon" aria-label="Take a photo of a receipt or payment screen"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="12.5" r="3.5"/></svg><input type="file" accept="image/*" capture="environment" data-scan="quick" hidden></label>` : "";
-  $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + `<h1>${esc(title)}</h1>` + camera;
+  // One scanner button. With no `capture` setting the phone itself asks: take a photo, choose from the photo library, or choose a file.
+  const camera = device.allowEntry && ui.tab === "log" ? `<label class="camicon" aria-label="Scan a receipt or payment screen: take a photo or choose a file"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.scan}</svg><input type="file" accept="image/*" data-scan="quick" hidden></label>` : "";
+  const mic = device.allowEntry && ui.tab === "log" ? `<button class="camicon micbtn" data-action="open-voice" aria-label="Say an entry out loud"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.mic}</svg></button>` : "";
+  $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + `<h1>${esc(title)}</h1>` + mic + camera;
 }
 
 function renderMenu() {
@@ -227,7 +231,8 @@ function viewVerify() {
   const reserve = partner ? `<dt>Also</dt><dd>reserve transfer ${peso(describe(partner).amount)}</dd>` : "";
   const del = ui.confirmDelete === t.id;
   const shot = M.attachmentsFor(S(), t.id)[0];
-  const fromPhoto = t.source === "photo" ? `<p class="note">Read from the photo. Compare each line with the paper before you tap Correct.</p>` : "";
+  const fromPhoto = t.source === "photo" ? `<p class="note">Read from the photo. Compare each line with the paper before you tap Correct.</p>`
+    : t.source === "voice" ? `<p class="note">Made from what you said${t.memo ? ": \u201C" + esc(t.memo) + "\u201D" : ""}. Check each line before you tap Correct.</p>` : "";
   return `${head}<p class="note">1 of ${list.length}</p>
     <div class="card">${shot ? `<button class="shotbtn" data-action="open-photo" data-id="${esc(shot.id)}" aria-label="Open the photo full size"><img class="shot" data-photo="${esc(shot.id)}" alt="The photo this entry was read from" hidden></button>` : ""}${fromPhoto}<div class="what">${esc(d.title)}</div><div class="big">${peso(d.amount)}</div>
       <dl><dt>Date</dt><dd>${esc(longDate(t.date))}</dd>${fields}${reserve}</dl>
@@ -344,6 +349,7 @@ function scanDefaults(kind, guess, payee) {
 // The account the paper names: the bank on its From line, matched to the owner's own accounts. A credit card screen prefers a card
 // account. When the paper does not say, nothing is chosen for you: a wrong silent default (the first account) was worse than a tap.
 function accountForScan(r) {
+  if (!r.bankId && r.cash) { const c = accountsFor(null).find((a) => /^cash\b/i.test(a.name)); if (c) return { id: c.id, note: "" }; }
   if (!r.bankId) return { id: null, note: "I could not tell which account paid. Choose one." };
   const bank = M.bankById(r.bankId).name, hits = accountsFor(null).filter((a) => a.bank === r.bankId || (!a.bank && M.bankForName(a.name)?.id === r.bankId));
   if (!hits.length) return { id: null, note: "The paper names " + bank + " but you have no account for it. Choose one." };
@@ -365,17 +371,49 @@ async function startScan(file) {
 }
 
 // The window for checking a guess: for a photo just taken, or for one kept in the queue because the app could not be sure.
-function openScanSheet(blob, text, failed, queueId) {
-  const r = M.readScan(text, today()), acct = accountForScan(r);
-  if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.url);
-  pendingPhoto = { blob, url: URL.createObjectURL(blob) };
+function openScanSheet(blob, text, failed, queueId, spoken = null) {
+  const r = spoken ?? M.readScan(text, today()), acct = accountForScan(r);
+  if (pendingPhoto) { URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null; }
+  if (blob) pendingPhoto = { blob, url: URL.createObjectURL(blob) };
   const notes = failed ? ["The reader could not run (" + failed + "). Fill in the fields yourself; the photo is kept."] : r.readAnything ? [...r.notes, ...(acct.note ? [acct.note] : [])] : ["I could not read any words on the photo. Fill in the fields yourself; the photo is kept."];
   ui.form = { kind: r.kind, guess: r.categoryGuess, amount: r.amount ? (r.amount / 100).toFixed(2) : "", date: r.date ?? today(), payee: r.payee ?? "", notes, text,
     account_id: acct.id, ...scanDefaults(r.kind, r.categoryGuess, r.payee) };
-  ui.sheet = { type: "scan", queueId }; renderSheet();
+  ui.sheet = { type: "scan", queueId, voice: spoken !== null }; renderSheet();
 }
 
-// ---------- quick capture: the camera icon on the Log screen ----------
+// ---------- voice: the microphone button on the Log screen ----------
+// Say or type one sentence ("lunch 95 at Sample Burger using GCash"). If the amount, the account and the category are all clear it is saved
+// as a draft at once; otherwise the check window opens with what was understood. Nothing is saved on a guess.
+let voiceListener = null;
+const VOICE_ERRORS = { "not-allowed": "The phone did not allow the microphone here.", "service-not-allowed": "The phone did not allow the microphone here.", "no-speech": "I did not hear anything. Try again.", "audio-capture": "No microphone was found.", network: "The speech service could not be reached (it needs internet)." };
+function voiceMessage(m) { const el = $("v-msg"); if (el) el.textContent = m; }
+function voiceToggle() {
+  if (voiceListener) { voiceListener.stop(); return; }
+  const btn = $("v-mic"); if (btn) btn.textContent = "Listening... tap to stop";
+  voiceMessage("");
+  try {
+    voiceListener = listen({
+      lang: ui.form.lang ?? "en-PH",
+      onText: (text) => { ui.form.spoken = text; const box = $("v-text"); if (box) box.value = text; refreshSave(); },
+      onDone: () => { voiceListener = null; const b = $("v-mic"); if (b) b.textContent = "Tap and speak"; },
+      onError: (code) => voiceMessage((VOICE_ERRORS[code] ?? "Speech could not start (" + code + ").") + " You can type, or use the keyboard's microphone key, in the box below."),
+    });
+  } catch (e) { voiceListener = null; voiceMessage("Speech could not start. You can type, or use the keyboard's microphone key, in the box below."); }
+}
+async function useSpoken() {
+  voiceListener?.stop();
+  const heard = (ui.form.spoken ?? "").trim();
+  const r = M.parseSpoken(heard, { today: today(), categories: S().categories });
+  const acct = accountForScan(r), cat = scanDefaults("receipt", r.categoryName, r.payee).category_id;
+  if (r.direction === "out" && r.amount && acct.id && cat) {
+    ui.sheet = null; renderSheet();
+    await logExpense({ transaction_id: newId("tx"), date: r.date, payee: r.payee ?? "", memo: heard, category_id: cat, amount: r.amount, account_id: acct.id, source: "voice" }, (r.payee || categoryName(cat)) + " " + peso(r.amount));
+    return;
+  }
+  openScanSheet(null, heard, null, null, { ...r, kind: r.direction === "in" ? "received" : "receipt", categoryGuess: r.categoryName, creditCard: false, readAnything: true, notes: r.notes });
+}
+
+// ---------- quick capture: the scanner button on the Log screen ----------
 // One tap, one photo, and the entry is a draft waiting in Verify. The photo is kept the moment it is taken and put in a queue,
 // so closing the app straight away loses nothing: the next time the app opens it reads what is waiting. If the app cannot be
 // sure of the amount, the account and the category, it keeps the photo and asks (a note on Log), instead of saving a guess.
@@ -432,21 +470,22 @@ async function openQueuedScan(id) {
 
 async function saveScan() {
   const f = ui.form, amount = M.parsePesos(f.amount).centavos, kind = M.kindById(f.kind), id = newId("tx"), queueId = ui.sheet.queueId ?? null, photoId = queueId ?? newId("photo");
-  if (!queueId) { try { await putPhoto(photoId, pendingPhoto.blob); } catch { showToast("The photo could not be kept on this phone, so nothing was saved."); return; } }
+  const voice = ui.sheet.voice === true, source = voice ? "voice" : "photo";   // a spoken entry has no photo
+  if (!queueId && !voice) { try { await putPhoto(photoId, pendingPhoto.blob); } catch { showToast("The photo could not be kept on this phone, so nothing was saved."); return; } }
   let ok = false;
   if (kind.direction === "in") {
-    const p = M.planPayReceived(S(), { transaction_id: id, date: f.date, amount, account_id: f.account_id, category_id: f.category_id, source: "photo", payee: f.payee.trim() || kind.label }, new Date());
+    const p = M.planPayReceived(S(), { transaction_id: id, date: f.date, amount, account_id: f.account_id, category_id: f.category_id, source, payee: f.payee.trim() || kind.label, memo: voice ? f.text : "" }, new Date());
     if (p.ok) {
-      const a = M.planAttachment(M.applyDrafts(S(), [p]), { id: photoId, transaction_id: id });
+      const a = voice ? { ok: true, state: M.applyDrafts(S(), [p]) } : M.planAttachment(M.applyDrafts(S(), [p]), { id: photoId, transaction_id: id });
       ok = a.ok && await commit(a.state, { ...ledger.settings, last_account_id: f.account_id, ...(queueId ? { scan_queue: scanQueue().filter((q) => q.id !== queueId) } : {}) });
     } else showToast("Could not save: " + p.violations[0].message);
   } else {
     const second = f.split ? M.parsePesos(f.split_amt).centavos : 0, lines = f.split ? [{ category_id: f.category_id, amount: amount - second }, { category_id: f.split_cat, amount: second }] : undefined;
-    ok = await logExpense({ transaction_id: id, date: f.date, payee: f.payee.trim(), category_id: f.category_id, amount, account_id: f.account_id, source: "photo", photo_id: photoId, drop_scan: queueId, ...(lines ? { lines } : {}) }, (f.payee.trim() || categoryName(f.category_id)) + " " + peso(amount));
+    ok = await logExpense({ transaction_id: id, date: f.date, payee: f.payee.trim(), category_id: f.category_id, amount, account_id: f.account_id, source, ...(voice ? { memo: f.text } : { photo_id: photoId, drop_scan: queueId }), ...(lines ? { lines } : {}) }, (f.payee.trim() || categoryName(f.category_id)) + " " + peso(amount));
   }
-  if (!ok) { if (!queueId) deletePhoto(photoId).catch(() => {}); return; }   // the window stays open so nothing typed is lost
-  URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null;
-  ui.sheet = null; ui.scan = { done: "Saved " + peso(amount) + " as a draft with its photo." };
+  if (!ok) { if (!queueId && !voice) deletePhoto(photoId).catch(() => {}); return; }   // the window stays open so nothing typed is lost
+  if (pendingPhoto) { URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null; }
+  ui.sheet = null; ui.scan = { done: "Saved " + peso(amount) + (voice ? " as a draft." : " as a draft with its photo.") };
   renderAll();
 }
 
@@ -1184,10 +1223,20 @@ function renderSheet() {
       <div id="p-flags" role="status"></div>
       <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>Save payslip</button></p>
       <p class="note">If something does not match it is shown, never changed. It is still saved.</p>`;
+  } else if (sh.type === "voice") {
+    body = `<h3>Say it</h3>
+      <p class="note">One sentence, for example: lunch 95 at Sample Burger using GCash. You can say the day (yesterday, last Friday) too.</p>
+      <div class="seg" role="group" aria-label="Language">${[["en-PH", "English"], ["fil-PH", "Filipino"]].map(([v, t]) => `<button data-action="voice-lang" data-id="${v}" aria-pressed="${(ui.form.lang ?? "en-PH") === v}">${t}</button>`).join("")}</div>
+      ${speechSupported() ? `<p><button class="primary" id="v-mic" data-action="voice-toggle" style="margin-top:12px">Tap and speak</button></p>` : `<p class="note">Speech is not available in this browser. Type below, or tap the box and use your keyboard's microphone key.</p>`}
+      <label for="v-text">What I heard (fix it, type it, or use the keyboard's microphone key)</label>
+      <textarea id="v-text" data-field="spoken" rows="3" autocomplete="off" autocapitalize="sentences">${esc(ui.form.spoken ?? "")}</textarea>
+      <p id="v-msg" class="note" role="status"></p>
+      <p class="note">Speech is turned into words by Apple's or Google's service, so the audio leaves your phone while you speak. Your ledger and photos never do.</p>
+      <p><button class="primary" id="f-save" data-action="use-spoken" style="margin-top:6px" disabled>Use this</button></p>`;
   } else if (sh.type === "scan") {
     const f = ui.form, kind = M.kindById(f.kind), into = kind.direction === "in";
-    body = `<h3>Check what I read</h3>
-      <img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your photo">
+    body = `<h3>${sh.voice ? "Check what I heard" : "Check what I read"}</h3>
+      ${sh.voice ? `<p class="note">You said: \u201C${esc(f.text)}\u201D</p>` : `<img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your photo">`}
       <label>It looks like</label>${chips(M.KINDS.map((k) => ({ id: k.id, name: k.label })), f.kind, "pick-kind")}
       ${f.notes.map((n) => `<p class="note">${esc(n)}</p>`).join("")}
       <label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
@@ -1199,7 +1248,7 @@ function renderSheet() {
         <label for="f-split">Amount that belongs to the second category (\u20B1)</label><input id="f-split" data-field="split_amt" inputmode="decimal" value="${esc(f.split_amt ?? "")}" autocomplete="off">
         <p class="note" id="split-note" role="status"></p>` : ""}`}
       <label>${into ? "Arrived in" : "Paid from"}</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
-      <details><summary>What the reader saw</summary><pre class="rawtext">${esc(f.text || "(nothing)")}</pre></details>
+      <details${sh.voice ? " hidden" : ""}><summary>What the reader saw</summary><pre class="rawtext">${esc(f.text || "(nothing)")}</pre></details>
       <p><button class="primary" id="f-save" data-action="save-scan" style="margin-top:14px" disabled>Save to Verify</button></p>
       <p class="note">It stays a draft and counts toward nothing until you verify it.</p>
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
@@ -1290,6 +1339,8 @@ function refreshSave() {
       const flags = p.printed_gross && p.printed_net && p.deposit ? M.payslipChecks({ printed_gross: p.printed_gross, printed_net: p.printed_net, deposit: p.deposit, net_words: (f.words ?? "").trim() || undefined }, lines) : [];
       out.innerHTML = (lines.length ? `<p class="note">The lines add to gross ${peso(t.gross)}; minus deductions, net ${peso(t.net)}.</p>` : "") + (p.errors.length ? `<p class="note flag">\u25B2 Check the amount typed for: ${esc(p.errors.join(", "))}.</p>` : "") + flags.map(flagLine).join("");
     }
+  } else if (type === "voice") {
+    btn.disabled = !(f.spoken ?? "").trim();
   } else if (type === "scan") {
     const a = M.parsePesos(f.amount), second = M.parsePesos(f.split_amt ?? "");
     const splitOk = !f.split || (f.split_cat && f.split_cat !== f.category_id && second.ok && second.centavos > 0 && a.ok && second.centavos < a.centavos);
@@ -1609,6 +1660,10 @@ async function onClick(el) {
     case "pick-cat": form.category_id = id; if (form.split_cat === id) form.split_cat = null; renderSheet(); break;
     case "toggle-split": form.split = !form.split; renderSheet(); break;
     case "pick-split": form.split_cat = id; renderSheet(); break;
+    case "open-voice": ui.sheet = { type: "voice" }; ui.form = { spoken: "", lang: "en-PH" }; renderSheet(); break;
+    case "voice-lang": ui.form.lang = id; document.querySelectorAll('[data-action="voice-lang"]').forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.id === id))); break;
+    case "voice-toggle": voiceToggle(); break;
+    case "use-spoken": await useSpoken(); break;
     case "open-queue": { const next = scanQueue().find((q) => q.needs); if (next) await openQueuedScan(next.id); break; }
     case "read-queue": await processScanQueue({ interactive: true }); break;
     case "discard-scan": {
@@ -1637,7 +1692,7 @@ async function onClick(el) {
     case "save-scan": await saveScan(); break;
     case "open-photo": ui.sheet = { type: "photo", id }; renderSheet(); break;
     case "pick-acct": form.account_id = id; renderSheet(); break;
-    case "close-sheet": ui.sheet = null; renderSheet(); break;
+    case "close-sheet": voiceListener?.stop(); ui.sheet = null; renderSheet(); break;
     case "save-other": {
       const amount = M.parsePesos(form.amount).centavos;
       ui.sheet = null; renderSheet();
