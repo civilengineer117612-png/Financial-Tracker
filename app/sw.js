@@ -11,7 +11,7 @@ const FILES = [
   "../src/model/buffer.js", "../src/model/templates.js", "../src/model/budget.js", "../src/model/inbox.js",
   "../src/model/goals.js", "../src/model/backup.js", "../src/model/survey.js", "../src/model/device.js",
   "../src/model/reminders.js", "../src/model/money.js", "../src/model/seed.js", "../src/model/drafts.js",
-  "../src/model/persist.js",
+  "../src/model/persist.js", "../src/model/validate.js", "../src/model/reports.js",
 ];
 
 self.addEventListener("install", (e) => {

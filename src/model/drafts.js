@@ -4,6 +4,7 @@ import { checkTransactionSave } from "./index.js";
 import { planReserveTransfer } from "./templates.js";
 import { verifyTransaction } from "./inbox.js";
 import { phTimestamp } from "./util.js";
+import { validateShape } from "./schema.js";
 
 const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }], drafts: [] });
 const EXPENSE_SOURCES = ["manual", "preset", "template"];
@@ -112,4 +113,16 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
   const result = checkTransactionSave(probe, { transaction: updated, entries: next });
   if (!result.ok) return { ok: false, violations: result.violations, state };
   return { ok: true, violations: result.violations, state: applyDrafts(state, [{ transaction: updated, entries: next }]) };
+}
+
+// The picture shown for an account. It is checked like any other field, so a bad or oversized
+// picture is refused instead of bloating the saved data and the backup.
+export function setAccountIcon(state, accountId, dataUrl) {
+  const a = state.accounts.find((x) => x.id === accountId);
+  if (!a) return { ok: false, violations: fail("UNKNOWN_ACCOUNT", "no account " + accountId).violations, state };
+  const { icon, ...rest } = a;
+  const next = dataUrl == null ? rest : { ...rest, icon: dataUrl };
+  const problems = validateShape("Account", next);
+  if (problems.length) return { ok: false, violations: [{ code: "BAD_ICON", severity: "error", message: "that picture cannot be used" }], state };
+  return { ok: true, violations: [], state: { ...state, accounts: state.accounts.map((x) => (x.id === accountId ? next : x)) } };
 }

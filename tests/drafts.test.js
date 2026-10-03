@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  parsePesos, formatPesos, defaultCategories, defaultPresets, validateState, emptyLedger, emptyState, nextLedger, parseLedger, chooseLedger,
+  parsePesos, formatPesos, formatPesosWhole, defaultCategories, defaultPresets, validateState, emptyLedger, emptyState, nextLedger, parseLedger, chooseLedger,
   planExpense, applyDrafts, discardDraft, verifyDraft, editDraftFields, naturalBalance, pendingDrafts, budgetStatus,
 } from "../src/model/index.js";
 import { makeState, account } from "./fixtures.js";
@@ -21,6 +21,14 @@ test("centavos format as pesos with grouping and a leading sign", () => {
   assert.equal(formatPesos(5), "₱0.05");
   assert.equal(formatPesos(0), "₱0.00");
   assert.equal(formatPesos(-1500), "-₱15.00");
+});
+test("whole pesos for tight spaces round to the nearest peso", () => {
+  assert.equal(formatPesosWhole(1234567), "₱12,346");
+  assert.equal(formatPesosWhole(1234549), "₱12,345");
+  assert.equal(formatPesosWhole(49), "₱0");
+  assert.equal(formatPesosWhole(-49), "₱0");
+  assert.equal(formatPesosWhole(-150000), "-₱1,500");
+  assert.equal(formatPesosWhole(0), "₱0");
 });
 test("parse then format round-trips", () => {
   for (const c of [0, 1, 99, 100, 101, 123456789]) assert.equal(parsePesos(formatPesos(c)).centavos, c);

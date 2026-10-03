@@ -45,12 +45,13 @@ export { parseSchedule, isDue, datesBetween, categoryForPayee, draftId, draftFro
 export { budgetStatus } from "./budget.js";
 export { pendingDrafts, verifyTransaction } from "./inbox.js";
 export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer } from "./goals.js";
-export { validateState, encryptBackup, decryptBackup, MIN_PASSPHRASE } from "./backup.js";
+export { validateState, encryptBackup, decryptBackup, encryptLedgerBackup, decryptLedgerBackup, MIN_PASSPHRASE } from "./backup.js";
 export { weekEndingOn, autoFillSurvey, planSurveyResponse, surveyReview } from "./survey.js";
 export { editDraft } from "./inbox.js";
 export { detectPlatform, assessDevice } from "./device.js";
 export { buildReminderCalendar, defaultReminders, validateReminder, foldLine } from "./reminders.js";
-export { parsePesos, formatPesos } from "./money.js";
+export { parsePesos, formatPesos, formatPesosWhole } from "./money.js";
 export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID } from "./seed.js";
-export { applyDrafts, planExpense, discardDraft, verifyDraft, editDraftFields } from "./drafts.js";
-export { LEDGER_VERSION, emptyState, emptyLedger, nextLedger, parseLedger, chooseLedger } from "./persist.js";
+export { applyDrafts, planExpense, discardDraft, verifyDraft, editDraftFields, setAccountIcon } from "./drafts.js";
+export { LEDGER_VERSION, emptyState, emptyLedger, nextLedger, parseLedger, chooseLedger, restoreLedger, summarizeLedger, backupFileName, daysSinceBackup } from "./persist.js";
+export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByAccount, monthlySpending } from "./reports.js";

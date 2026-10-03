@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="Finance">
 <meta name="theme-color" content="#111111">
 <style>
-  :root { --ink: #111; --mid: #555; --soft: #999; --line: #ccc; --wash: #f0f0f0; --paper: #fff; }
+  :root { --chart: #2a78d6; --ink: #111; --mid: #555; --soft: #999; --line: #ccc; --wash: #f0f0f0; --paper: #fff; }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
   body { margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.4; color: var(--ink); background: var(--paper);
@@ -32,6 +32,44 @@
   .tile b { font-size: 17px; }
   .tile span { color: var(--mid); }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; }
+  .ico { border-radius: 8px; object-fit: cover; flex: none; vertical-align: middle; }
+  .mono { display: inline-flex; align-items: center; justify-content: center; background: var(--wash); border: 1px solid var(--line); color: var(--mid); font-weight: bold; }
+  .who { display: flex; align-items: center; gap: 12px; }
+  .icobtn { padding: 0; min-height: 0; border: 0; background: none; }
+  .stage { width: 240px; height: 240px; margin: 12px auto; border: 2px solid var(--ink); border-radius: 20px; overflow: hidden; position: relative; touch-action: none; background: var(--wash); }
+  .stage img { position: absolute; max-width: none; user-select: none; -webkit-user-drag: none; }
+  .stepper { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 10px; }
+  .stepper b { font-size: 18px; }
+  .stepper button { width: 48px; font-size: 22px; padding: 0; }
+  .hero { font-size: 48px; font-weight: bold; line-height: 1.1; margin: 6px 0 2px; }
+  .seg { display: flex; gap: 6px; margin: 8px 0; }
+  .seg button { flex: 1; padding: 10px 4px; min-height: 44px; font-size: 14px; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .bars { margin: 12px 0 4px; }
+  .brow { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 0; padding: 8px 0; min-height: 52px; }
+  .brow:active { background: var(--wash); }
+  .brow.dim { opacity: .45; }
+  .brow[disabled] { opacity: 1; }
+  .btop { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 5px; }
+  .bname { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .bval { color: var(--mid); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .btrack { display: block; height: 14px; background: var(--wash); border-radius: 0 4px 4px 0; }
+  .bfill { display: block; height: 14px; background: var(--chart); border-radius: 0 4px 4px 0; }
+  .caption { min-height: 44px; color: var(--mid); margin: 6px 0; }
+  .cols { display: flex; align-items: flex-end; gap: 6px; height: 190px; border-bottom: 1px solid var(--line); margin-top: 12px; }
+  .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; background: none; border: 0; border-radius: 0; padding: 0; height: 100%; min-height: 44px; }
+  .col:active { background: var(--wash); }
+  .col.dim { opacity: .45; }
+  .cbar { display: block; width: 24px; background: var(--chart); border-radius: 4px 4px 0 0; }
+  .cval { font-size: 12px; color: var(--mid); min-height: 16px; margin-bottom: 3px; white-space: nowrap; }
+  .clabs { display: flex; gap: 6px; margin-top: 4px; }
+  .clabs span { flex: 1; text-align: center; color: var(--mid); font-size: 13px; }
+  .tbl { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  .tbl th, .tbl td { text-align: left; padding: 9px 4px; border-bottom: 1px solid var(--line); }
+  .tbl th { color: var(--mid); font-weight: normal; }
+  .tbl .n { text-align: right; font-variant-numeric: tabular-nums; }
+  .tbl tr.total td { font-weight: bold; }
   .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   .row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
   .row small { color: var(--mid); display: block; }
@@ -43,12 +81,14 @@
   .card dd { margin: 0; color: var(--ink); }
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
   .actions .wide { grid-column: 1 / -1; }
+  input[type=range] { accent-color: var(--ink); padding: 0; }
+  input:focus, select:focus, button:focus-visible { outline: 3px solid var(--ink); outline-offset: 1px; }
   label { display: block; margin: 12px 0 4px; color: var(--mid); }
   input, select { font: inherit; width: 100%; padding: 12px; border: 1px solid var(--ink); border-radius: 8px; background: var(--paper); color: var(--ink); min-height: 48px; }
   #banner .bar { background: var(--wash); border: 1px solid var(--ink); border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; }
-  #nav { z-index: 1; position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(3, 1fr); background: var(--paper); border-top: 1px solid var(--line);
+  #nav { z-index: 1; position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--paper); border-top: 1px solid var(--line);
          padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); gap: 8px; }
-  #nav button { border-radius: 8px; }
+  #nav button { border-radius: 8px; padding: 12px 4px; font-size: 15px; }
   #nav button[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   #scrim { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.45); }
   .sheet { z-index: 11; position: fixed; left: 0; right: 0; bottom: 0; max-height: 86vh; overflow: auto; background: var(--paper); border-top: 2px solid var(--ink);
