@@ -19,13 +19,13 @@ let failures = 0;
 const check = (cond, label) => { console.log((cond ? "  ok   " : "  FAIL ") + label); if (!cond) failures++; };
 const browser = await chromium.launch();
 
-async function open({ ua = IPHONE, standalone = true } = {}) {
-  const ctx = await browser.newContext({ userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+async function open({ ua = IPHONE, standalone = true, blockSw = false } = {}) {
+  const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => { if (m.type() === "error" && !/favicon|gstatic|duckduckgo/.test(m.location().url ?? "")) errors.push(m.text()); });   // blocked icon requests are staged on purpose
+  page.on("console", (m) => { if (m.type() === "error" && !/favicon|gstatic|duckduckgo|icon\.horse/.test(m.location().url ?? "")) errors.push(m.text()); });   // blocked icon requests are staged on purpose
   await page.clock.setFixedTime(T0);
   await page.goto(BASE);
   await page.waitForSelector("#nav button");
@@ -331,7 +331,7 @@ for (const cancel of [false, true]) {
 
 // ===== 5e. pictures for accounts, and the Money charts =====
 console.log("Pictures and charts");
-({ ctx, page, errors } = await open());
+({ ctx, page, errors } = await open({ blockSw: true }));   // page-level network staging does not reach a service worker
 const dir = mkdtempSync(join(tmpdir(), "pic-"));
 const png = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = 200; c.height = 100; const g = c.getContext("2d"); g.fillStyle = "#d00"; g.fillRect(0, 0, 100, 100); g.fillStyle = "#00d"; g.fillRect(100, 0, 100, 100); return c.toDataURL("image/png"); });
 writeFileSync(join(dir, "icon.png"), Buffer.from(png.split(",")[1], "base64"));
@@ -689,26 +689,33 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 // ---- bank logos, fetched on the phone only when asked (the network is faked here) ----
 const pngB64 = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"); x.fillStyle = "#1a8"; x.fillRect(0, 0, 64, 64); return c.toDataURL("image/png").split(",")[1]; });
 let asked = [];
-await page.route("https://www.google.com/s2/favicons**", (r) => { asked.push(new URL(r.request().url()).searchParams.get("domain")); r.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(pngB64, "base64") }); });
+const horse = (r) => { const d = r.request().url().split("/icon/")[1]; if (d === "gotyme.com.ph") r.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(pngB64, "base64") }); else r.abort(); };
+await page.route("https://icon.horse/**", horse);
+await page.route("https://api.faviconkit.com/**", (r) => r.abort());
+await page.route("https://www.google.com/s2/favicons**", (r) => { asked.push(new URL(r.request().url()).searchParams.get("domain")); r.fulfill({ status: 200, contentType: "image/png", body: Buffer.from(pngB64, "base64") }); });   // no CORS header: showable, not copyable
 await page.route("https://icons.duckduckgo.com/**", (r) => r.abort());
 await page.route("https://t2.gstatic.com/**", (r) => r.abort());
 await addAccount(page, "Landbank", "asset", "5"); await seen(page, "#toast", "Added Landbank");
 check((await text(page, "#screen")).includes("tells that service which banks you use") && (await text(page, "#screen")).includes("not airplane mode"), "the logo button says what it sends and that it needs internet");
 await page.click('button:has-text("Get bank logos")');
 check(await seen(page, "#toast", "Got 3 logos"), "logos are fetched for the banks you use, including accounts typed as \"GCash\" and \"Landbank\" before the picker existed");
-check(asked.sort().join() === "gcash.com,gotyme.com.ph,landbank.com", "and only for those banks: " + asked.join());
+check((await text(page, "#toast")).includes("2 shown from the web"), "and it says which ones are shown from the web");
+check([...new Set(asked)].sort().join() === "gcash.com,landbank.com", "a service that only allows showing is used only where copying failed: " + asked.join());
 check((await page.locator("#screen .row", { hasText: "GoTyme" }).locator("img.ico").count()) === 2, "both GoTyme accounts show the picture");
+check((await page.locator("#screen .row .icowrap img.ico.ov").count()) === 2, "GCash and Landbank show theirs over the letter tile");
 check(!(await text(page, "#screen")).includes("Get bank logos"), "the button goes away once every bank has a picture");
 ledgerNow = JSON.parse((await stored(page)).local);
-check(ledgerNow.state.accounts.filter((a) => a.bank === "gotyme").every((a) => a.icon.startsWith("data:image/")), "the pictures live in the ledger on the phone");
+check(ledgerNow.state.accounts.filter((a) => a.bank === "gotyme").every((a) => a.icon.startsWith("data:image/")), "a copied picture lives in the ledger on the phone");
+check(["gcash", "landbank"].every((id) => ledgerNow.state.accounts.some((a) => a.bank === id && a.icon_url?.startsWith("https://www.google.com/s2/favicons"))), "a shown-only picture keeps just its allow-listed address");
 await shot(page, "31-logos");
 // a failed download says why, per bank and per service
 await addAccount(page, "BPI", "asset", "5"); await seen(page, "#toast", "Added BPI");
+await page.unroute("https://www.google.com/s2/favicons**");
 await page.route("https://www.google.com/s2/favicons**", (r) => r.abort());
 await page.click('button:has-text("Get bank logos")');
 check(await seen(page, "#toast", "Got 0 of 1"), "when nothing can be downloaded it says so");
 const rep = await text(page, "#logo-report");
-check(rep.includes("BPI") && rep.includes("Google icons: could not be loaded") && rep.includes("DuckDuckGo: could not be loaded"), "and lists the reason for each service: " + rep.slice(0, 160));
+check(rep.includes("BPI") && rep.includes("Icon Horse: could not be loaded") && rep.includes("Google icons: could not be loaded") && rep.includes("DuckDuckGo: could not be loaded"), "and lists the reason for each service: " + rep.slice(0, 160));
 await addAccount(page, "Euf", "asset", "10"); await seen(page, "#toast", "Added Euf");
 await page.click('#screen .row:has-text("Euf") .icobtn');
 await page.click('#sheet .chip:has-text("MariBank")');

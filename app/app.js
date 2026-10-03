@@ -33,7 +33,9 @@ const expenseCategories = () => S().categories.filter((c) => c.kind === "expense
 function iconOf(a, size = 28) {
   if (a.icon) return `<img class="ico" src="${esc(a.icon)}" alt="" width="${size}" height="${size}">`;
   const letter = [...a.name][0]?.toUpperCase() ?? "?";
-  return `<span class="ico mono" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.5)}px" aria-hidden="true">${esc(letter)}</span>`;
+  const mono = `<span class="ico mono" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.5)}px" aria-hidden="true">${esc(letter)}</span>`;
+  // A logo shown from an icon service sits over the letter tile; if it cannot load (offline) the letter stays.
+  return a.icon_url ? `<span class="icowrap" style="width:${size}px;height:${size}px">${mono}<img class="ico ov" src="${esc(a.icon_url)}" alt="" width="${size}" height="${size}" onerror="this.remove()"></span>` : mono;
 }
 const withIcon = (a, size) => iconOf(a, size) + `<span>${esc(a.name)}</span>`;
 
@@ -203,20 +205,25 @@ function viewVerify() {
 
 // ---------- bank logos (on the phone, only when asked) ----------
 // Asks an icon service for each bank's small icon and keeps it in the ledger on this phone. Nothing is in the repository.
-const LOGO_SOURCES = (domain) => [
+// Two ways to get a logo. COPY: services that allow the page to read the picture, so it is shrunk and kept on the phone.
+// LINK: services that only allow showing the picture (they refuse copying); the address is kept and the picture is shown
+// from there (and remembered offline by the app's cache). Copying is tried first.
+const COPY_SOURCES = (domain) => [["Icon Horse", `https://icon.horse/icon/${domain}`], ["Favicon Kit", `https://api.faviconkit.com/${domain}/144`]];
+const LINK_SOURCES = (domain) => [
   ["Google icons", `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128`],
   ["Google", `https://www.google.com/s2/favicons?sz=128&domain=${domain}`],
   ["DuckDuckGo", `https://icons.duckduckgo.com/ip3/${domain}.ico`],
 ];
-// Resolves to {url} on success, or {why} saying exactly what went wrong, so a failure can be reported and fixed.
-function loadLogo(url, ms = 8000) {
+// Resolves to {url} (a copied picture) or {ok:true} (loads fine, for LINK) or {why}, saying exactly what went wrong.
+function loadLogo(url, { copy = true, ms = 8000 } = {}) {
   return new Promise((resolve) => {
     const img = new Image(), timer = setTimeout(() => resolve({ why: "no answer in " + ms / 1000 + " seconds" }), ms);
-    img.crossOrigin = "anonymous";
+    if (copy) img.crossOrigin = "anonymous";
     img.onerror = () => { clearTimeout(timer); resolve({ why: "could not be loaded" }); };
     img.onload = () => {
       clearTimeout(timer);
       if (img.naturalWidth < 32) { resolve({ why: "only a tiny placeholder came back (" + img.naturalWidth + " pixels)" }); return; }
+      if (!copy) { resolve({ ok: true }); return; }
       try {
         const c = document.createElement("canvas"); c.width = c.height = ICON_PX;
         const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, ICON_PX, ICON_PX);
@@ -238,28 +245,41 @@ function withBankLinks(state) {
   }
   return next;
 }
-const wantsLogo = (a) => !a.icon && (a.bank || M.bankForName(a.name));
+const wantsLogo = (a) => !a.icon && !a.icon_url && (a.bank || M.bankForName(a.name));
 async function getBankLogos() {
   let state = withBankLinks(S());
-  const wanted = M.BANKS.filter((b) => state.accounts.some((a) => a.bank === b.id && !a.icon));
+  const wanted = M.BANKS.filter((b) => state.accounts.some((a) => a.bank === b.id && !a.icon && !a.icon_url));
   if (!wanted.length) { showToast("Every bank you use already has a picture. Accounts with other names: tap the tile and choose the bank."); return; }
   ui.logoBusy = true; ui.logoReport = null; renderScreen();
-  let got = 0; const report = [];
+  let copied = 0, linked = 0; const report = [];
   for (const b of wanted) {
-    let url = null; const why = [];
-    for (const [label, src] of LOGO_SOURCES(b.domain)) {
+    const why = [];
+    let done = false;
+    for (const [label, src] of COPY_SOURCES(b.domain)) {
       const r = await loadLogo(src);
-      if (r.url) { url = r.url; break; }
-      why.push(label + ": " + r.why);
+      if (r.url) {
+        const set = M.setAccountIcon(state, state.accounts.find((a) => a.bank === b.id).id, r.url);
+        if (set.ok) { state = set.state; copied += 1; done = true; break; }
+      }
+      why.push(label + ": " + (r.why ?? "the picture was refused"));
     }
-    if (!url) { report.push(b.name + " (" + why.join("; ") + ")"); continue; }
-    const r = M.setAccountIcon(state, state.accounts.find((a) => a.bank === b.id).id, url);
-    if (r.ok) { state = r.state; got += 1; } else report.push(b.name + " (the picture was refused)");
+    if (!done) {
+      for (const [label, src] of LINK_SOURCES(b.domain)) {
+        const r = await loadLogo(src, { copy: false });
+        if (r.ok) {
+          const set = M.setBankIconUrl(state, b.id, src);
+          if (set.ok) { state = set.state; linked += 1; done = true; break; }
+          why.push(label + ": that address is not allowed");
+        } else why.push(label + ": " + r.why);
+      }
+    }
+    if (!done) report.push(b.name + " (" + why.join("; ") + ")");
   }
   ui.logoBusy = false;
   ui.logoReport = report.length ? "Could not get: " + report.join(" | ") : null;
-  if (got || state !== S()) await commit(state); else renderScreen();
-  showToast(got === wanted.length ? "Got " + got + (got === 1 ? " logo." : " logos.") : "Got " + got + " of " + wanted.length + ". The reason is under the button. For the rest, tap the tile in the list and add a screenshot.");
+  if (copied + linked || state !== S()) await commit(state); else renderScreen();
+  const got = copied + linked;
+  showToast((got === wanted.length ? "Got " + got + (got === 1 ? " logo." : " logos.") : "Got " + got + " of " + wanted.length + ". The reason is under the button. For the rest, tap the tile in the list and add a screenshot.") + (linked ? " " + linked + " shown from the web, so they need internet the first time." : ""));
 }
 
 const accountPreview = (f) => { const b = M.bankById(f.bank), sub = (f.sub ?? "").trim(); return sub ? b.name + " \u00b7 " + sub : b.name; };

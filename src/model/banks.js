@@ -37,11 +37,11 @@ export function planAccount(state, input) {
     if (!name) return fail("BAD_NAME", "Give the account a name.");
   }
   if (state.accounts.some((a) => a.name.toLowerCase() === name.toLowerCase())) return fail("DUPLICATE_NAME", "You already have an account with that name.");
-  const sibling = bank ? state.accounts.find((a) => a.bank === bank.id && a.icon) : null;
+  const sibling = bank ? state.accounts.find((a) => a.bank === bank.id && (a.icon || a.icon_url)) : null;
   const account = {
     id: input.id, name, class: input.kind, role: "", hidden_by_default: false, archived: false,
     opening_balance: input.opening ?? 0, opening_date: input.date,
-    ...(bank ? { bank: bank.id } : {}), ...(sibling ? { icon: sibling.icon } : {}),
+    ...(bank ? { bank: bank.id } : {}), ...(sibling?.icon ? { icon: sibling.icon } : sibling?.icon_url ? { icon_url: sibling.icon_url } : {}),
     ...(input.kind === "asset" && input.covers ? { reserve_for: input.covers } : {}),
   };
   const problems = validateShape("Account", account);
@@ -56,9 +56,26 @@ export function linkAccountBank(state, accountId, bankId) {
   if (!a) return fail("UNKNOWN_ACCOUNT", "no account " + accountId);
   if (bankId != null && !bankById(bankId)) return fail("UNKNOWN_BANK", "that bank is not in the list");
   const { bank, ...rest } = a;
-  const sibling = bankId ? state.accounts.find((x) => x.id !== accountId && x.bank === bankId && x.icon) : null;
-  const next = { ...rest, ...(bankId ? { bank: bankId } : {}), ...(!a.icon && sibling ? { icon: sibling.icon } : {}) };
+  const sibling = bankId ? state.accounts.find((x) => x.id !== accountId && x.bank === bankId && (x.icon || x.icon_url)) : null;
+  const next = { ...rest, ...(bankId ? { bank: bankId } : {}), ...(!a.icon && !a.icon_url && sibling ? (sibling.icon ? { icon: sibling.icon } : { icon_url: sibling.icon_url }) : {}) };
   const problems = validateShape("Account", next);
   if (problems.length) return { ok: false, violations: problems };
   return { ok: true, violations: [], state: { ...state, accounts: state.accounts.map((x) => (x.id === accountId ? next : x)) } };
+}
+
+// When a bank's picture cannot be copied onto the phone (the icon service does not allow it) the app can instead show
+// it from the service's address. Only allow-listed icon services are accepted (see the Account schema), and only
+// accounts of that bank with no picture of their own are changed.
+export function setBankIconUrl(state, bankId, url) {
+  if (!bankById(bankId)) return fail("UNKNOWN_BANK", "that bank is not in the list");
+  let changed = false;
+  const accounts = state.accounts.map((a) => {
+    if (a.bank !== bankId || a.icon) return a;
+    const { icon_url, ...rest } = a;
+    changed = true;
+    return url == null ? rest : { ...rest, icon_url: url };
+  });
+  const problems = accounts.flatMap((a) => validateShape("Account", a));
+  if (problems.length) return fail("BAD_ICON_URL", "that icon address cannot be used");
+  return { ok: true, violations: [], changed, state: { ...state, accounts } };
 }

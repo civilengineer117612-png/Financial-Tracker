@@ -124,7 +124,7 @@ export function setAccountIcon(state, accountId, dataUrl) {
   if (!a) return { ok: false, violations: fail("UNKNOWN_ACCOUNT", "no account " + accountId).violations, state };
   // Every account of the same bank shares the picture, so a sub-account such as a pocket inside the bank looks the same.
   const same = (x) => x.id === accountId || (a.bank != null && x.bank === a.bank);
-  const accounts = state.accounts.map((x) => { if (!same(x)) return x; const { icon, ...rest } = x; return dataUrl == null ? rest : { ...rest, icon: dataUrl }; });
+  const accounts = state.accounts.map((x) => { if (!same(x)) return x; const { icon, icon_url, ...rest } = x; return dataUrl == null ? rest : { ...rest, icon: dataUrl }; });
   const problems = accounts.filter(same).flatMap((x) => validateShape("Account", x));
   if (problems.length) return { ok: false, violations: [{ code: "BAD_ICON", severity: "error", message: "that picture cannot be used" }], state };
   return { ok: true, violations: [], state: { ...state, accounts } };

@@ -27,13 +27,19 @@ self.addEventListener("activate", (e) => {
 });
 
 self.addEventListener("fetch", (e) => {
-  if (e.request.method !== "GET" || new URL(e.request.url).origin !== location.origin) return;   // never handle other sites
+  if (e.request.method !== "GET") return;
+  const u = new URL(e.request.url);
+  // Other sites are never handled, except the few icon services a bank logo may be shown from: those pictures are
+  // remembered so the logos still appear offline after the first time.
+  const ICON_HOSTS = /^(t[0-3]\.gstatic\.com|www\.google\.com|icons\.duckduckgo\.com)$/;
+  const iconRequest = ICON_HOSTS.test(u.hostname) && (u.pathname === "/faviconV2" || u.pathname === "/s2/favicons" || u.pathname.startsWith("/ip3/"));
+  if (u.origin !== location.origin && !iconRequest) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
+        if (res.ok || (iconRequest && res.type === "opaque")) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
         return res;
       })
-      .catch(() => caches.match(e.request, { ignoreSearch: true }))
+      .catch(() => caches.match(e.request, { ignoreSearch: u.origin === location.origin }))   // an icon address differs by its query, so it must match exactly
   );
 });

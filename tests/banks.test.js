@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BANKS, bankById, bankForName, planAccount, linkAccountBank, setAccountIcon, validateShape } from "../src/model/index.js";
+import { BANKS, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, setAccountIcon, validateShape } from "../src/model/index.js";
 import { makeState } from "./fixtures.js";
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
@@ -70,4 +70,25 @@ test("a typed name that obviously means a listed bank is recognised, others are 
   assert.equal(bankForName(" GCASH ").id, "gcash");
   assert.equal(bankForName("BDO Savings").id, "bdo");
   for (const n of ["Euf", "Wallet", "Cash on hand", "BDOX", ""]) assert.equal(bankForName(n), null, n);
+});
+
+test("a bank picture that cannot be copied can be shown from an allow-listed icon service instead", () => {
+  let s = planAccount(makeState(), input({ bank: "gotyme" })).state;
+  s = planAccount(s, input({ id: "a2", bank: "gotyme", sub: "Savings" })).state;
+  s = planAccount(s, input({ id: "a3", bank: "bdo" })).state;
+  const URL_OK = "https://www.google.com/s2/favicons?sz=128&domain=gotyme.com.ph";
+  const r = setBankIconUrl(s, "gotyme", URL_OK);
+  assert.equal(r.ok && r.changed, true);
+  assert.deepEqual(r.state.accounts.filter((a) => a.bank).map((a) => a.icon_url ?? null), [URL_OK, URL_OK, null]);
+  const third = planAccount(r.state, input({ id: "a4", bank: "gotyme", sub: "Pocket" }));
+  assert.equal(third.account.icon_url, URL_OK, "new accounts of the bank start with it");
+  for (const bad of ["http://www.google.com/s2/favicons?domain=x", "https://evil.example/x.png", "javascript:alert(1)", "https://www.google.com.evil.example/x"]) {
+    assert.equal(setBankIconUrl(s, "gotyme", bad).ok, false, bad);
+  }
+  assert.equal(setBankIconUrl(s, "nope", URL_OK).violations[0].code, "UNKNOWN_BANK");
+  const withPic = setAccountIcon(r.state, "a1", PNG).state;
+  assert.ok(withPic.accounts.filter((a) => a.bank === "gotyme").every((a) => a.icon === PNG && a.icon_url === undefined), "a real picture replaces the address");
+  const keep = setBankIconUrl(withPic, "gotyme", URL_OK.replace("128", "64"));
+  assert.equal(keep.changed, false, "accounts that have their own picture are left alone");
+  assert.ok(setBankIconUrl(r.state, "gotyme", null).state.accounts.every((a) => a.icon_url === undefined));
 });
