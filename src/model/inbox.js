@@ -5,10 +5,12 @@ import { phTimestamp, deepEqual } from "./util.js";
 import { checkTransactionSave } from "./index.js";
 
 // Drafts dated on or before `throughDate`, oldest first (older drafts never fall off the list).
+// Within a day they come in the order they were captured, so verifying follows the day as it happened.
+const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 export function pendingDrafts(state, throughDate) {
   return state.transactions
     .filter((t) => t.status === "draft" && t.date <= throughDate)
-    .sort((a, b) => (a.date === b.date ? (a.id < b.id ? -1 : 1) : a.date < b.date ? -1 : 1));
+    .sort((a, b) => cmp(a.date, b.date) || cmp(a.created_at, b.created_at) || cmp(a.id, b.id));
 }
 
 // Returns {ok, violations, transaction}. The caller saves `transaction` only if ok.

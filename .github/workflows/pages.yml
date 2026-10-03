@@ -24,8 +24,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Stage only the site files
         run: |
-          mkdir _site
+          mkdir -p _site/app _site/src
+          # The storage probe stays at the site root, untouched.
           cp index.html manifest.json sw.js icon-180.png icon-512.png _site/
+          # The finance app and the model code it imports live under /app and /src.
+          cp app/* _site/app/
+          cp -r src/model _site/src/model
+          # A new version stamp per deploy makes every phone install the fresh offline worker.
+          sed -i "s/__VERSION__/${GITHUB_SHA::12}/" _site/app/sw.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
