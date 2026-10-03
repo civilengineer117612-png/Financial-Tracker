@@ -96,6 +96,8 @@ amounts sit at the bar tip, and tapping a bar states its share in words.
 
 **Buffer (menu, Overview):** splits the GCash wallet into two envelopes the ledger tracks apart (rides and load allowance, and the overrun buffer) without changing what the wallet holds. Spending from that wallet takes from the allowance first, then the buffer; the app says how much came out of the buffer and warns when the allowance is empty. The Buffer screen shows what is left, this month's draws by category, a note when one category draws the buffer in more than one month, an "Add to the buffer" top-up, and a month-end sweep (to the Mole Removal goal up to its target, then the Emergency Fund) saved as a draft.
 
+**Donut:** under Money, "Where it went" can be shown as Bars or a Donut. The donut is one blue hue (darkest for the biggest share) with a gap between slices, and its legend lists every category with the peso amount and the percent; tap a row for the share in words. "Show as list" is still there.
+
 **Trips (menu, Overview):** a trip is a tag with an optional budget (for example a trip abroad). Switch "Tag new entries with this trip" on and every new entry is tagged, with no extra taps; the Log screen says so and has a Stop link. A trip's page shows verified spending against its budget (graded, with words), spending by category, and unverified spending as a note. Trip spending still counts in the monthly charts like any other spending.
 
 **Checks (menu, Overview):** the card reserve check (reserve balance against what the card owes, pending plus posted, in words: covered or short by how much), the weekly Unlogged chart (what your counts could not explain; a week nobody counted is left out, never shown as zero) and the weekly-questions review by week.
@@ -118,6 +120,8 @@ and words, never color alone. A black line marks how far through the month we ar
 **Bank logos:** nothing is stored in this repository. If you have accounts at listed banks without a picture, Setup offers "Get bank logos": on the phone, it asks an icon service (Google, then DuckDuckGo) for each bank's website icon, shrinks it to 96 pixels and keeps it in the ledger on the phone. Accounts you typed before the picker existed ("Gotyme") are linked by name, and any account can be linked to a bank from its picture window. It needs internet, tells the service which banks you use, so it only runs when you tap it. If a bank's icon cannot be fetched, add it from a screenshot instead.
 
 **Check-in and backup:** the weekly check-in screen carries the backup reminder (when a backup is more than about a week old), and the weekly calendar reminder text mentions it too, so there is one reminder for both.
+
+**Two ways to get a logo:** first the app tries services that allow the picture to be copied (it is then shrunk and kept in the ledger on the phone). Many icon services only allow showing a picture, not copying it; for those the app keeps just the service's address (only a short allow-list of services is accepted) and shows the picture from there, over the letter tile. The app remembers those pictures so they still show offline after the first time, and a real picture you add yourself always replaces the address.
 
 **If a logo cannot be downloaded,** the reason is listed under the button for each bank and each icon service (could not be loaded, only a tiny placeholder, not allowed to be copied), so it can be fixed; the screenshot route always works.
 

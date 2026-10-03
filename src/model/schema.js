@@ -23,6 +23,7 @@ export const SCHEMAS = {
     opening_date: date,
     reserve_for: optional(id),   // ADDED: on a reserve account, the card account it must cover
     bank: optional(text),   // ADDED: which bank the account belongs to (src/model/banks.js); accounts of one bank share a picture
+    icon_url: optional({ type: "iconurl" }),   // ADDED: where a bank logo is shown from when it could not be copied onto the phone (allow-listed icon services only)
     icon: optional({ type: "icon" }),   // ADDED: a small picture the owner chose for this account, kept on the phone
   },
   Goal: { id, account_id: id, name, target: optional(centavos), deadline: optional(date), hidden_by_default: bool },
@@ -75,6 +76,7 @@ const TYPE_CHECKS = {
   count: (v) => Number.isSafeInteger(v) && v >= 0,
   ease: (v) => Number.isInteger(v) && v >= 1 && v <= 5,
   // A small picture stored right in the record, so it travels with backups and never leaves the phone.
+  iconurl: (v) => typeof v === "string" && v.length <= 300 && /^https:\/\/(t[0-3]\.gstatic\.com|www\.google\.com|icons\.duckduckgo\.com|icon\.horse)\/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*$/.test(v),
   icon: (v) => typeof v === "string" && v.length <= 40000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(v),
   day: (v) => Number.isInteger(v) && v >= 1 && v <= 31,
   rate: (v) => typeof v === "number" && Number.isFinite(v) && v > 0,
