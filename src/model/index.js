@@ -44,3 +44,5 @@ export { envelopeBalance, planGcashSpend, splitSweep, planMonthEndSweep, underBu
 export { parseSchedule, isDue, datesBetween, categoryForPayee, draftId, draftFromTemplate, draftsForRange, planReserveTransfer } from "./templates.js";
 export { budgetStatus } from "./budget.js";
 export { pendingDrafts, verifyTransaction } from "./inbox.js";
+export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer } from "./goals.js";
+export { validateState, encryptBackup, decryptBackup, MIN_PASSPHRASE } from "./backup.js";
