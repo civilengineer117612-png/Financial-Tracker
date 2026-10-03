@@ -24,6 +24,10 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 - Deploys happen on merge to `main` (GitHub Pages). Merge only when the owner asks.
 
 ## How the owner wants to work
+- FIXED DECISION (owner, no budget): the app stays free. Never add a paid or AI service, an API key, or a button that sends a
+  photo, text or audio to a paid service (no "Read with AI"). Reading photos stays the free on-phone reader; handwriting reading
+  poorly is accepted. The only outside talk allowed is the free lookups already there (bank logos, the phone's own speech-to-text).
+  Do not offer or re-ask this; if a task seems to need it, say so and stop.
 - Keep building without asking. Ask only when an answer changes how the app behaves or needs the owner's own
   experience. Put questions in ONE copy-paste box, at most 4, each with an `ANSWER:` line, and no recommendation under
   a question. Keep replies short and in plain words; no jargon without a one-line explanation.
