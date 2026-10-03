@@ -25,11 +25,11 @@ const iconAsked = [];   // every address the app asked an icon service or bank s
 async function open({ ua = IPHONE, standalone = true, blockSw = false } = {}) {
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
-  await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png/, (r) => { iconAsked.push(r.request().url()); iconServe(r); });
+  await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png|wikipedia\.org|wikimedia\.org/, (r) => { iconAsked.push(r.request().url()); iconServe(r); });
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => { if (m.type() === "error" && !/favicon|gstatic|duckduckgo|icon\.horse|apple-touch-icon/.test(m.location().url ?? "")) errors.push(m.text()); });   // blocked icon requests are staged on purpose
+  page.on("console", (m) => { if (m.type() === "error" && !/favicon|gstatic|duckduckgo|icon\.horse|apple-touch-icon|wikipedia|wikimedia/.test(m.location().url ?? "")) errors.push(m.text()); });   // blocked icon requests are staged on purpose
   await page.clock.setFixedTime(T0);
   await page.goto(BASE);
   await page.waitForSelector("#nav button");
@@ -346,7 +346,7 @@ await addAccount(page, "Wallet", "asset", "1000"); await seen(page, "#toast", "A
 await addAccount(page, "Bank", "asset", "5000"); await seen(page, "#toast", "Added Bank");
 const monoN = await page.locator("#screen .row .mono").count(); if (monoN !== 2) console.log("   mono count:", monoN, JSON.stringify((await text(page, "#screen")).slice(0, 300)));
 check(monoN === 2, "until a picture is chosen, each account shows its first letter");
-await page.click('.row:has-text("Wallet") .icobtn');
+await page.click('.icobtn[aria-label="Choose a picture for Wallet"]');
 check((await text(page, "#sheet")).includes("zoom and drag"), "tapping the tile opens the picture chooser, with plain instructions");
 check(await page.locator("#f-save").isDisabled(), "saving is off until a picture is chosen");
 await page.setInputFiles("#i-file", join(dir, "icon.png"));
@@ -360,7 +360,7 @@ const walletIcon = ledgerNow.state.accounts.find((a) => a.name === "Wallet").ico
 check(/^data:image\/(png|jpeg);base64,/.test(walletIcon) && walletIcon.length < 40000, "it is stored inside the account as a small embedded image");
 check(red(await pixel(walletIcon, 24, 48)) && blue(await pixel(walletIcon, 72, 48)), "an uncropped picture is centred: the red half left, the blue half right");
 
-await page.click('.row:has-text("Bank") .icobtn');
+await page.click('.icobtn[aria-label="Choose a picture for Bank"]');
 await page.setInputFiles("#i-file", join(dir, "icon.png"));
 await page.waitForFunction(() => !document.getElementById("i-img").hidden);
 const stageBox = await page.locator("#i-stage").boundingBox();
@@ -370,7 +370,7 @@ await page.click("#f-save"); await seen(page, "#toast", "Picture saved");
 const bankIcon = JSON.parse((await stored(page)).local).state.accounts.find((a) => a.name === "Bank").icon;
 check(red(await pixel(bankIcon, 72, 48)), "dragging the picture moves what is cropped: the blue half is out of the square");
 check((await page.locator("#screen .row img.ico").count()) === 2, "both accounts now show their picture in Setup");
-await page.click('.row:has-text("Bank") .icobtn');
+await page.click('.icobtn[aria-label="Choose a picture for Bank"]');
 check((await text(page, "#sheet")).includes("Remove the picture"), "a picture can be removed");
 await page.click('#sheet button:has-text("Cancel")');
 
@@ -759,6 +759,8 @@ iconServe = (r) => {
   if (u === "https://icon.horse/icon/gotyme.com.ph") return r.fulfill(pngReply(pngB64, true));          // copyable
   if (u === "https://icon.horse/icon/unionbankph.com") return r.fulfill(pngReply(tileB64, true));       // a placeholder: must be refused
   if (u === "https://landbank.com/apple-touch-icon.png") return r.fulfill(pngReply(pngB64, false));     // the bank's own site icon: showable only
+  if (u.startsWith("https://en.wikipedia.org/w/api.php")) return r.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify({ query: { pages: [{ title: "Maya", thumbnail: { source: "https://upload.wikimedia.org/wikipedia/commons/thumb/maya-logo.png" } }] } }) });   // Maya's Wikipedia picture
+  if (u === "https://upload.wikimedia.org/wikipedia/commons/thumb/maya-logo.png") return r.fulfill(pngReply(pngB64, true));
   return r.abort();
 };
 await page.click("#a-bank");
@@ -769,7 +771,8 @@ const gotymeImg = await page.locator('#sheet .bankrow:has-text("GoTyme") img.ico
 check(gotymeImg?.startsWith("data:image/"), "a copyable logo is copied and kept on the phone");
 check((await page.locator('#sheet .bankrow:has-text("Landbank") img.ico').getAttribute("src")) === "https://landbank.com/apple-touch-icon.png", "a bank's own site icon is shown from there");
 check((await page.locator('#sheet .bankrow:has-text("UnionBank") img').count()) === 0, "a generated grey placeholder is refused, so UnionBank keeps its letter");
-check(!iconAsked.some((u) => /maya|paymaya/.test(u)) && (await text(page, "#sheet")).includes("Maya: its logo cannot be fetched online"), "Maya is never looked up (the services only return a grey arrow for it); the list says to add it from a screenshot");
+check(!iconAsked.some((u) => /maya|paymaya/.test(u) && !/wiki/.test(u)), "Maya is never asked of the icon services (they only return a grey arrow for it)");
+check((await page.locator('#sheet .bankrow:has-text("Maya") img.ico').getAttribute("src"))?.startsWith("data:image/") && iconAsked.some((u) => u.includes("wikipedia.org")), "Maya's logo is found through Wikipedia and copied onto the phone, with nothing to tap");
 const rep = await text(page, "#logo-report");
 check(rep.includes("UnionBank") && rep.includes("only a generated placeholder came back") && rep.includes("GCash") && rep.includes("its website: could not be loaded") && !rep.includes("Maya"), "and the reasons are listed for each bank and source");
 await shot(page, "31-logos");

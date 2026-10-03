@@ -271,12 +271,24 @@ function loadLogo(url, { copy = true, ms = 8000 } = {}) {
     img.src = url;
   });
 }
+// A bank's logo from its Wikipedia article (for a bank the icon services have nothing for). Wikipedia allows the page to read its pictures.
+async function wikiLogo(term) {
+  try {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 8000);
+    const res = await fetch("https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=1&prop=pageimages&piprop=thumbnail&pithumbsize=256&format=json&formatversion=2&origin=*&gsrsearch=" + encodeURIComponent(term), { signal: ctl.signal });
+    clearTimeout(timer);
+    const src = (await res.json())?.query?.pages?.[0]?.thumbnail?.source;
+    if (!src || !src.startsWith("https://upload.wikimedia.org/")) return { why: "no picture found" };
+    return await loadLogo(src);
+  } catch { return { why: "could not be reached" }; }
+}
 async function fetchBankLogo(b) {
   const why = [];
-  for (const domain of [b.domain, ...(b.alt ?? [])]) {
+  for (const domain of b.noLookup ? [] : [b.domain, ...(b.alt ?? [])]) {
     for (const [label, src] of COPY_SOURCES(domain)) { const r = await loadLogo(src); if (r.url) return { icon: r.url }; why.push(domain + " " + label + ": " + r.why); }
     for (const [label, src] of LINK_SOURCES(domain)) { const r = await loadLogo(src, { copy: false }); if (r.ok) return { icon_url: src }; why.push(domain + " " + label + ": " + r.why); }
   }
+  if (b.wiki) { const r = await wikiLogo(b.wiki); if (r.url) return { icon: r.url }; why.push("Wikipedia: " + r.why); }
   return { why: why.join("; ") };
 }
 let logoRun = null;
@@ -286,7 +298,7 @@ async function loadBankLogos({ force = false } = {}) {
   const have = ledger.settings.bankLogos ?? {}, tried = ledger.settings.bankLogosTried ?? {}, t = today();
   const due = (d) => !d || (Date.parse(t) - Date.parse(d)) / 86400000 >= 7;
   const blocked = ledger.settings.bankLogosBlocked ?? {};
-  const todo = M.BANKS.filter((b) => !b.noLookup && !blocked[b.id] && !bankLogo(b.id) && (force || due(tried[b.id])));
+  const todo = M.BANKS.filter((b) => !blocked[b.id] && !bankLogo(b.id) && (force || due(tried[b.id])));
   if (!todo.length) return;
   ui.logoBusy = true; if (ui.sheet?.type === "banks") renderSheet();   // only the bank list shows progress
   logoRun = (async () => {
@@ -301,7 +313,7 @@ async function loadBankLogos({ force = false } = {}) {
 // Pictures saved on accounts by earlier versions that are only placeholders (an address or a flat grey copy) are dropped.
 async function dropOldPlaceholders() {
   // A logo saved for a bank that cannot be looked up (an earlier version kept a grey placeholder for it) is thrown away.
-  const logos = ledger.settings.bankLogos ?? {}, bad = M.BANKS.filter((b) => b.noLookup && logos[b.id]);
+  const logos = ledger.settings.bankLogos ?? {}, bad = M.BANKS.filter((b) => b.noLookup && logos[b.id]?.icon_url);   // only an address; a copied picture (from Wikipedia) stays
   if (bad.length) { const rest = { ...logos }; for (const b of bad) delete rest[b.id]; await commit(S(), { ...ledger.settings, bankLogos: rest }, { quiet: true }); }
   let state = M.dropPlaceholderAddresses(S());
   for (const a of state.accounts) {
@@ -319,7 +331,7 @@ function viewSetup() {
   const used = new Set(S().entries.map((e) => e.account_id));
   const reserveExists = S().accounts.some((a) => a.reserve_for);
   const hosts = activeAccounts().filter((a) => a.class === "asset" && !a.reserve_for);
-  const rows = S().accounts.map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? "money you have" : "money you owe (card)"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"}</small></div></div>
+  const rows = S().accounts.map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? "Bank, wallet or cash" : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"}</small></div></div>
       <div class="amt">${peso(M.naturalBalance(a, S().entries))}${used.has(a.id) ? "" : `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`}</div></div>`).join("");
   // The form comes FIRST so it stays in the same place however many accounts there are: the
   // button never drifts down behind the keyboard. The list of accounts follows it.
@@ -330,8 +342,8 @@ function viewSetup() {
     ${f.bank ? `<label for="a-sub">Which part of ${esc(M.bankById(f.bank).name)}? (optional)</label><input id="a-sub" data-field="sub" value="${esc(f.sub)}" placeholder="e.g. Emergency Fund, Savings" autocomplete="off" enterkeyhint="next">
       <p class="note" id="a-preview">Saved as: ${esc(accountPreview(f))}</p>`
       : `<label for="a-name">Or type a name</label><input id="a-name" data-field="name" value="${esc(f.name)}" autocomplete="off" enterkeyhint="next">`}
-    <label for="a-kind">Type</label><select id="a-kind" data-field="kind"><option value="asset"${f.kind === "asset" ? " selected" : ""}>Money I have (cash, bank, wallet)</option><option value="liability"${f.kind === "liability" ? " selected" : ""}>Money I owe (credit card)</option></select>
-    <label for="a-open">${f.kind === "asset" ? "Balance today" : "Amount owed today"} (₱)</label><input id="a-open" data-field="opening" inputmode="decimal" value="${esc(f.opening)}" placeholder="0.00" autocomplete="off">
+    <label for="a-kind">Kind of account</label><select id="a-kind" data-field="kind"><option value="asset"${f.kind === "asset" ? " selected" : ""}>Bank, wallet or cash (money I have)</option><option value="liability"${f.kind === "liability" ? " selected" : ""}>Credit card (money I owe)</option></select>
+    <label for="a-open">${f.kind === "asset" ? "How much is in it today" : "How much you owe on it today"} (₱)</label><input id="a-open" data-field="opening" inputmode="decimal" value="${esc(f.opening)}" placeholder="0.00" autocomplete="off">
     ${f.kind === "asset" && cards.length ? `<label for="a-covers">This account is a reserve for a card (optional)</label><select id="a-covers" data-field="covers"><option value="">No</option>${cards.map((c) => `<option value="${esc(c.id)}"${f.covers === c.id ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select>` : ""}
     ${ui.setupError ? `<p id="a-error" role="alert"><b>${esc(ui.setupError)}</b></p>` : ""}
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>
@@ -766,7 +778,7 @@ function renderSheet() {
     const shotOnly = M.BANKS.filter((b) => b.noLookup && missing.includes(b.name)).map((b) => b.name);
     body = `<h3>${forAdd ? "Choose a bank" : "Which bank is it?"}</h3><div class="banklist" role="list">${rows}
       <button class="bankrow" data-action="pick-bankrow" data-id=""><span class="ico mono" style="width:32px;height:32px;font-size:16px" aria-hidden="true">+</span><span>${forAdd ? "Not in the list (type a name)" : "No bank"}</span></button></div>
-      ${shotOnly.length ? `<p class="note">${esc(shotOnly.join(", "))}: its logo cannot be fetched online. Add it once from a screenshot (tap the account's picture in Setup).</p>` : ""}
+      ${shotOnly.length ? `<p class="note">${esc(shotOnly.join(", "))}: its logo could not be found online. Add it once from a screenshot (tap the account's picture in Setup).</p>` : ""}
       ${missing.filter((n) => !shotOnly.includes(n)).length ? `<p class="note">${ui.logoBusy ? "Loading logos\u2026" : "No logo found online yet for " + esc(missing.filter((n) => !shotOnly.includes(n)).join(", ")) + ". You can add one from a screenshot: tap that account's picture in Setup."} ${ui.logoBusy ? "" : `<button class="link" data-action="retry-logos">Try again</button>`}</p>` : ""}
       ${ui.logoReport && !ui.logoBusy ? `<p class="note small" id="logo-report">${esc(ui.logoReport)}</p>` : ""}`;
   } else if (sh.type === "period") {

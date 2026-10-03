@@ -59,7 +59,12 @@ test("the app is black and gray except the chart blue and four budget-grade colo
     const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
     assert.ok(r === g && g === b, hex + " is not a gray");
   }
-  assert.ok(!/fetch\(|XMLHttpRequest|WebSocket|navigator\.sendBeacon/.test(read("app/app.js")), "the app must not talk to a server");
+  const js = read("app/app.js");
+  assert.ok(!/XMLHttpRequest|WebSocket|navigator\.sendBeacon/.test(js), "the app must not talk to a server");
+  // The one exception: looking up a bank's logo on Wikipedia, which sends only a search phrase from the bank list, nothing of the owner's.
+  const fetches = js.split("\n").filter((l) => /\bfetch\(/.test(l));
+  assert.equal(fetches.length, 1, "exactly one fetch() in the app: " + fetches.length);
+  assert.ok(fetches[0].includes("https://en.wikipedia.org/w/api.php") && fetches[0].includes("gsrsearch="), "and it is the Wikipedia logo lookup");
 });
 test("the bottom bar holds only Log and Verify; everything else is in the menu", () => {
   const js = read("app/app.js");
