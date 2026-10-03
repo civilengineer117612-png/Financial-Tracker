@@ -101,12 +101,13 @@ const ICONS = {
   plan: '<path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/>',
   checks: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   trips: '<path d="M20 10c0 5-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 15 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  income: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
   scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/>',
   buffer: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
   checkin: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
   setup: '<path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/>',
 };
-const MENU = [["Overview", [["money", "Spending"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Capture", [["scan", "Scan"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
+const MENU = [["Overview", [["money", "Spending"], ["income", "Income"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Capture", [["scan", "Scan"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
@@ -143,7 +144,7 @@ function renderNav() {
 function renderScreen() {
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
-    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "buffer" ? viewBuffer() : ui.tab === "scan" ? viewScan() : viewLog();
+    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "buffer" ? viewBuffer() : ui.tab === "scan" ? viewScan() : ui.tab === "income" ? viewIncome() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
@@ -216,6 +217,83 @@ function viewVerify() {
         <button data-action="verify-edit" data-id="${esc(t.id)}">Edit</button>
         <button data-action="verify-delete" data-id="${esc(t.id)}">${del ? "Tap again to delete" : "Delete"}</button>
       </div></div>`;
+}
+
+// ---------- Income: where every peso of pay comes from ----------
+const incomeYear = () => ui.incomeYear ?? today().slice(0, 4);
+const flagLine = (f) => `<p class="note flag">▲ ${esc(f.message)}</p>`;   // a triangle plus words, never colour alone
+function hbars(rows) {   // plain horizontal bars with the value at the tip; the table below each chart is its list twin
+  const max = Math.max(...rows.map((r) => r.amount), 1);
+  return `<div class="bars">${rows.map((r) => `<div class="brow"><span class="btop"><span class="bname">${esc(r.label)}</span><span class="bval">${peso(r.amount)}</span></span><span class="btrack"><span class="bfill" style="width:${Math.max(r.amount > 0 ? 1 : 0, Math.round((r.amount * 100) / max))}%"></span></span></div>`).join("")}</div>`;
+}
+function stackedPaydays(rows) {   // base and overtime stacked, one ramp of one blue, with a legend and the values written
+  const max = Math.max(...rows.map((r) => r.net), 1);
+  return `<p class="legend"><span class="key"></span> Base pay <span class="key ot"></span> Overtime</p><div class="bars">${rows.map((r) => `<div class="brow"><span class="btop"><span class="bname">${esc(longDate(r.date))}</span><span class="bval">${peso(r.net)}</span></span>
+    <span class="btrack stack"><span class="bfill" style="width:${Math.max(1, Math.round((r.base * 100) / max))}%"></span>${r.overtime ? `<span class="bfill ot" style="width:${Math.max(1, Math.round((r.overtime * 100) / max))}%"></span>` : ""}</span></div>`).join("")}</div>`;
+}
+function viewIncome() {
+  const year = incomeYear(), y = M.incomeByMonth(S(), year), rows = y.months.filter((m) => m.total !== 0);
+  const slips = (S().payslips ?? []).slice().sort((a, b) => (a.pay_date < b.pay_date ? 1 : -1));
+  const step = `<div class="stepper"><button data-action="income-year" data-step="-1" aria-label="Earlier year">‹</button><span>${esc(year)}</span><button data-action="income-year" data-step="1" aria-label="Later year"${year >= today().slice(0, 4) ? " disabled" : ""}>›</button></div>`;
+  const head = `<h1>Income</h1>${step}<p><button class="primary" data-action="open-payslip">Add a payslip</button></p><p><button data-action="open-income" style="width:100%">Add other income (interest, refund)</button></p>`;
+  if (!rows.length && !slips.length) return head + `<p class="note">Nothing recorded for ${esc(year)} yet. Add a payslip to see where your income comes from, your raises, and what went to government.</p>`;
+  const bySrc = M.SOURCES.map(([id, label]) => ({ label, amount: y.ytd[id] })).filter((r) => r.amount !== 0);
+  const monthTable = `<table class="tbl"><tr><th>Month</th><th class="n">Base</th><th class="n">Overtime</th><th class="n">Other</th><th class="n">Total</th></tr>${rows.map((m) => `<tr><td>${esc(MONTH3[Number(m.month.slice(5)) - 1])}</td><td class="n">${peso(m.base)}</td><td class="n">${peso(m.overtime)}</td><td class="n">${peso(m.interest + m.refunds + m.other)}</td><td class="n">${peso(m.total)}</td></tr>`).join("")}
+    <tr class="total"><td>Year to date</td><td class="n">${peso(y.ytd.base)}</td><td class="n">${peso(y.ytd.overtime)}</td><td class="n">${peso(y.ytd.interest + y.ytd.refunds + y.ytd.other)}</td><td class="n">${peso(y.ytd.total)}</td></tr></table>`;
+  const pd = M.netPerPayday(S(), year);
+  const paydays = pd.length ? `<h2>Net pay per payday</h2>${stackedPaydays(pd)}<table class="tbl"><tr><th>Payday</th><th class="n">Base</th><th class="n">Overtime</th><th class="n">Net</th></tr>${pd.map((r) => `<tr><td>${esc(longDate(r.date))}<small> ${esc(r.employer)}</small></td><td class="n">${peso(r.base)}</td><td class="n">${peso(r.overtime)}</td><td class="n">${peso(r.net)}</td></tr>`).join("")}</table>` : "";
+  const raises = M.raiseHistory(S());
+  const raiseTable = raises.length ? `<h2>Basic pay over time</h2><table class="tbl"><tr><th>Payday</th><th class="n">Basic</th><th class="n">Change</th></tr>${raises.map((r) => `<tr><td>${esc(fullDate(r.date))}</td><td class="n">${peso(r.basic)}</td><td class="n">${r.change === null ? "" : r.change === 0 ? "No change" : (r.raised ? "▲ raised " : "▼ down ") + peso(Math.abs(r.change))}</td></tr>`).join("")}</table>` : "";
+  const dd = M.deductionsByMonth(S(), year);
+  const dedTable = dd.months.length ? `<h2>Deductions</h2><table class="tbl"><tr><th>Month</th><th class="n">Tax</th><th class="n">SSS</th><th class="n">PhilHealth</th><th class="n">Pag-IBIG</th></tr>${dd.months.map((m) => `<tr><td>${esc(MONTH3[Number(m.month.slice(5)) - 1])}</td><td class="n">${peso(m.tax)}</td><td class="n">${peso(m.sss)}</td><td class="n">${peso(m.philhealth)}</td><td class="n">${peso(m.pagibig)}</td></tr>`).join("")}
+    <tr class="total"><td>Year to date</td><td class="n">${peso(dd.ytd.tax)}</td><td class="n">${peso(dd.ytd.sss)}</td><td class="n">${peso(dd.ytd.philhealth)}</td><td class="n">${peso(dd.ytd.pagibig)}</td></tr></table>
+    <p class="note">Went to government this year: ${peso(dd.ytd.government)}. Lost to absences and lates: ${peso(dd.ytd.lost)}.${dd.ytd.loan ? " Loans: " + peso(dd.ytd.loan) + "." : ""}</p>` : "";
+  const emps = M.employerHistory(S());
+  const empTable = emps.length ? `<h2>Employers</h2><table class="tbl"><tr><th>Employer</th><th class="n">From</th><th class="n">Latest</th></tr>${emps.map((e) => `<tr><td>${esc(e.employer)}<small> ${e.payslips} ${e.payslips === 1 ? "payslip" : "payslips"}</small></td><td class="n">${esc(fullDate(e.first))}</td><td class="n">${esc(fullDate(e.last))}</td></tr>`).join("")}</table>` : "";
+  const plan = planOf();
+  const ivar = (v) => v === 0 ? "As planned" : (v > 0 ? "+" : "−") + peso(Math.abs(v)) + (v > 0 ? " more" : " less");
+  const pv = plan ? [M.planIncome(S(), plan, today())].map((v) => `<h2>Plan against what arrived</h2><table class="tbl"><tr><th>Payday</th><th class="n">Plan</th><th class="n">Received</th><th class="n">Difference</th></tr><tr><td>${esc(v.label)}<small> ${esc(longDate(v.period.start))}</small></td><td class="n">${peso(v.planned)}</td><td class="n">${peso(v.actual)}</td><td class="n">${esc(ivar(v.variance))}</td></tr></table><p class="note">The plan is never edited; the difference is only shown.</p>`)[0] : "";
+  const list = slips.length ? `<h2>Payslips</h2>${slips.slice(0, 12).map((p) => {
+    const lines = M.linesOf(S(), p.id), flags = M.payslipChecks(p, lines), t = M.payslipTotals(lines);
+    const draft = S().transactions.some((x) => x.id === "ot-" + p.id);
+    return `<div class="row"><div>${esc(p.employer)}<small>${esc(fullDate(p.pay_date))} · gross ${peso(t.gross)} · deductions ${peso(t.deductions)}</small></div><div class="amt">${peso(p.deposit)}</div></div>${flags.map(flagLine).join("")}${t.overtime > 0 && !draft ? `<p class="note"><button class="link" data-action="ot-draft" data-id="${esc(p.id)}">Make the Emergency Fund draft for the overtime</button></p>` : ""}`;
+  }).join("")}` : "";
+  return `${head}<h2>Where it came from, ${esc(year)}</h2>${bySrc.length ? hbars(bySrc) : ""}${monthTable}${paydays}${raiseTable}${dedTable}${empTable}${pv}${list}`;
+}
+
+const payslipDefaults = () => ({
+  employer: ledger.settings.last_employer ?? "", period_from: today(), period_to: today(), pay_date: today(), account_id: ledger.settings.last_account_id ?? accountsFor(null)[0]?.id ?? null,
+  ot_month: M.addMonths(M.monthOf(today()), -1), gross: "", net: "", deposit: "", words: "",
+});
+// What the sheet holds, as the model wants it. `errors` names every typed amount that is not an amount.
+function payslipFromForm(f) {
+  const errors = [], pick = (prefix, kinds) => kinds.flatMap(([kind]) => {
+    const raw = (f[prefix + kind] ?? "").trim(); if (!raw) return [];
+    const a = M.parsePesos(raw); if (!a.ok || a.centavos <= 0) { errors.push(kind); return []; }
+    return [{ kind, amount: a.centavos, ...(kind === "overtime" ? { earned_month: f.ot_month } : {}) }];
+  });
+  const money = (raw) => { const a = M.parsePesos(raw ?? ""); return a.ok && a.centavos > 0 ? a.centavos : null; };
+  return { errors, earnings: pick("e_", M.EARNINGS), deductions: pick("d_", M.DEDUCTIONS), printed_gross: money(f.gross), printed_net: money(f.net), deposit: money(f.deposit) };
+}
+function savePayslipReady(f) {
+  const p = payslipFromForm(f);
+  return { p, ready: (f.employer ?? "").trim() && f.pay_date && f.period_from && f.period_to && f.account_id && !p.errors.length && p.earnings.length && p.printed_gross && p.printed_net && p.deposit };
+}
+async function savePayslip() {
+  const f = ui.form, { p } = savePayslipReady(f), id = newId("ps");
+  const r = M.planPayslip(S(), { id, transaction_id: newId("tx"), employer: f.employer, period_from: f.period_from, period_to: f.period_to, pay_date: f.pay_date, account_id: f.account_id,
+    printed_gross: p.printed_gross, printed_net: p.printed_net, deposit: p.deposit, net_words: (f.words ?? "").trim() || undefined, earnings: p.earnings, deductions: p.deductions }, new Date());
+  if (!r.ok) { showToast("Could not save: " + r.violations[0].message); return; }
+  let next = r.state, note = "";
+  const hasOvertime = r.lines.some((l) => l.kind === "overtime");
+  if (hasOvertime) {
+    const emerg = S().goals.find((x) => /emergency/i.test(x.name));
+    if (!emerg) note = " Add a goal named Emergency Fund to get the overtime draft.";
+    else { const d = M.overtimeDraft(next, id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date()); if (d?.ok && d.transaction) { next = M.applyDrafts(next, [d]); note = " The Emergency Fund draft is waiting in Verify."; } }
+  }
+  ui.sheet = null; renderSheet();
+  await commit(next, { ...ledger.settings, last_employer: f.employer.trim(), last_account_id: f.account_id });
+  showToast("Payslip saved: " + peso(p.deposit) + (r.flags.length ? ". " + r.flags.length + (r.flags.length === 1 ? " thing does" : " things do") + " not match; see Income." : ".") + note);
 }
 
 // ---------- scan: a photo of a receipt, payslip or payment screenshot ----------
@@ -922,11 +1000,12 @@ function renderSheet() {
       <label for="f-amount">Trip budget (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <p><button class="primary" id="f-save" data-action="save-trip" style="margin-top:14px" disabled>Save trip</button></p>`;
   } else if (sh.type === "income") {
-    body = `<h3>Pay received</h3>
-      <label for="f-amount">Net pay from the payslip (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off" placeholder="e.g. 9776.98">
+    body = `<h3>Money received</h3>
+      <label for="f-amount">Amount received (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off" placeholder="e.g. 9776.98">
       <label for="f-date">Date it arrived</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}" max="${esc(today())}">
+      <label>What it is</label>${chips(incomeCategories(), ui.form.category_id, "pick-cat")}
       <label>Arrived in</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
-      <p class="note">Overtime counts too: record it as its own amount. Saved as verified, because you are copying it off the payslip.</p>
+      <p class="note">Pay, interest or a refund. For a full payslip with its lines, use Add a payslip on the Income screen. Saved as verified, because you are copying it from paper or a statement.</p>
       <p><button class="primary" id="f-save" data-action="save-income" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "plan") {
     body = `<h3>Load a pay plan</h3>
@@ -972,6 +1051,27 @@ function renderSheet() {
       <div class="seg" role="group" aria-label="When it starts">${[[thisM, "This month"], [nextM, "Next month"]].map(([m, t]) => `<button data-action="budget-start" data-month="${m}" aria-pressed="${ui.form.start === m}">${t}</button>`).join("")}</div>
       <p class="note">${esc(M.monthLabel(ui.form.start))}. Enter 0 to remove the budget.</p>
       <p><button class="primary" id="f-save" data-action="save-budget" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "payslip") {
+    const f = ui.form, field = (prefix, [kind, label]) => `<label for="${prefix}${kind}">${esc(label)}</label><input id="${prefix}${kind}" data-field="${prefix}${kind}" inputmode="decimal" value="${esc(f[prefix + kind] ?? "")}" autocomplete="off" placeholder="0.00">`;
+    const months = Array.from({ length: 7 }, (_, i) => M.addMonths(M.monthOf(today()), -i));
+    body = `<h3>Add a payslip</h3>
+      <p class="note">Copy the figures off the payslip. Leave a line empty if it is not on the paper. Do not type any employee, tax or account number.</p>
+      <label for="p-emp">Employer</label><input id="p-emp" data-field="employer" value="${esc(f.employer ?? "")}" autocomplete="off">
+      <label for="p-from">Pay period from</label><input id="p-from" data-field="period_from" type="date" value="${esc(f.period_from)}">
+      <label for="p-to">Pay period to</label><input id="p-to" data-field="period_to" type="date" value="${esc(f.period_to)}">
+      <label for="p-date">Pay date</label><input id="p-date" data-field="pay_date" type="date" value="${esc(f.pay_date)}">
+      <label>Landed in</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
+      <h4>Earnings</h4>${M.EARNINGS.map((k) => field("e_", k)).join("")}
+      <label for="p-otm">Overtime was earned in</label><select id="p-otm" data-field="ot_month">${months.map((m) => `<option value="${m}"${f.ot_month === m ? " selected" : ""}>${esc(M.monthLabel(m))}</option>`).join("")}</select>
+      <h4>Deductions</h4>${M.DEDUCTIONS.map((k) => field("d_", k)).join("")}
+      <h4>As printed on the payslip</h4>
+      <label for="p-gross">Gross pay (₱)</label><input id="p-gross" data-field="gross" inputmode="decimal" value="${esc(f.gross ?? "")}" autocomplete="off">
+      <label for="p-net">Net pay (₱)</label><input id="p-net" data-field="net" inputmode="decimal" value="${esc(f.net ?? "")}" autocomplete="off">
+      <label for="p-dep">What really arrived in the account (₱)</label><input id="p-dep" data-field="deposit" inputmode="decimal" value="${esc(f.deposit ?? "")}" autocomplete="off">
+      <label for="p-words">Net pay in words, if written (optional)</label><input id="p-words" data-field="words" value="${esc(f.words ?? "")}" autocomplete="off" autocapitalize="off">
+      <div id="p-flags" role="status"></div>
+      <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>Save payslip</button></p>
+      <p class="note">If something does not match it is shown, never changed. It is still saved.</p>`;
   } else if (sh.type === "scan") {
     const f = ui.form, kind = M.kindById(f.kind), into = kind.direction === "in";
     body = `<h3>Check what I read</h3>
@@ -1060,6 +1160,16 @@ function refreshSave() {
   } else if (type === "trip") {
     const a = f.amount ? M.parsePesos(f.amount) : { ok: true };
     btn.disabled = !((f.name ?? "").trim() && a.ok);
+  } else if (type === "payslip") {
+    const { p, ready } = savePayslipReady(f);
+    btn.disabled = !ready;
+    const out = $("p-flags");
+    if (out) {
+      const lines = [...p.earnings.map((l) => ({ ...l, side: "earning" })), ...p.deductions.map((l) => ({ ...l, side: "deduction" }))];
+      const t = M.payslipTotals(lines);
+      const flags = p.printed_gross && p.printed_net && p.deposit ? M.payslipChecks({ printed_gross: p.printed_gross, printed_net: p.printed_net, deposit: p.deposit, net_words: (f.words ?? "").trim() || undefined }, lines) : [];
+      out.innerHTML = (lines.length ? `<p class="note">The lines add to gross ${peso(t.gross)}; minus deductions, net ${peso(t.net)}.</p>` : "") + (p.errors.length ? `<p class="note flag">\u25B2 Check the amount typed for: ${esc(p.errors.join(", "))}.</p>` : "") + flags.map(flagLine).join("");
+    }
   } else if (type === "scan") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && M.isPhDate(f.date) && f.category_id && f.account_id);
@@ -1292,15 +1402,15 @@ async function onClick(el) {
       break;
     }
     case "stop-trip": { const { active_tag_id, ...rest } = ledger.settings; await commit(S(), rest); break; }
-    case "open-income": ui.sheet = { type: "income" }; ui.form = { amount: "", date: today(), account_id: accountsFor(null)[0]?.id ?? null }; renderSheet(); break;
+    case "open-income": ui.sheet = { type: "income" }; ui.form = { amount: "", date: today(), account_id: accountsFor(null)[0]?.id ?? null, category_id: "cat-salary" }; renderSheet(); break;
     case "save-income": {
       const amount = M.parsePesos(ui.form.amount);
       if (!amount.ok) { showToast("Enter the pay like 9776.98"); break; }
-      const plan = M.planPayReceived(S(), { transaction_id: newId("tx"), date: ui.form.date, amount: amount.centavos, account_id: ui.form.account_id }, new Date());
+      const plan = M.planPayReceived(S(), { transaction_id: newId("tx"), date: ui.form.date, amount: amount.centavos, account_id: ui.form.account_id, category_id: ui.form.category_id }, new Date());
       if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
       ui.sheet = null; renderSheet();
       await commit(plan.state);
-      showToast("Pay recorded: " + peso(amount.centavos));
+      showToast("Recorded: " + peso(amount.centavos));
       break;
     }
     case "open-plan": ui.sheet = { type: "plan" }; ui.form = { text: "" }; renderSheet(); break;
@@ -1372,6 +1482,16 @@ async function onClick(el) {
     }
     case "open-other": ui.sheet = { type: "other" }; ui.form = { amount: "", category_id: null, account_id: accountsFor(null)[0]?.id }; renderSheet(); break;
     case "pick-cat": form.category_id = id; renderSheet(); break;
+    case "open-payslip": ui.sheet = { type: "payslip" }; ui.form = payslipDefaults(); renderSheet(); break;
+    case "save-payslip": await savePayslip(); break;
+    case "income-year": ui.incomeYear = String(Number(incomeYear()) + Number(el.dataset.step)); renderScreen(); break;
+    case "ot-draft": {
+      const emerg = S().goals.find((x) => /emergency/i.test(x.name));
+      if (!emerg) { showToast("Add a goal named Emergency Fund first (Menu, Goals)."); break; }
+      const d = M.overtimeDraft(S(), id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date());
+      if (!d?.ok || !d.transaction) { showToast("Could not make the draft."); break; }
+      await commit(M.applyDrafts(S(), [d])); showToast("The Emergency Fund draft is waiting in Verify."); break;
+    }
     case "pick-kind": form.kind = id; Object.assign(form, scanDefaults(id, form.guess)); renderSheet(); break;
     case "save-scan": await saveScan(); break;
     case "open-photo": ui.sheet = { type: "photo", id }; renderSheet(); break;
@@ -1631,6 +1751,7 @@ async function start() {
     device = { status: "CORRUPT", allowEntry: false, message: "The saved data on this phone could not be read, so nothing is shown and nothing will be overwritten. Restore from your encrypted backup." };
   } else {
     ledger = boot.ledger;
+    ledger.state = M.ensureIncomeCategories(ledger.state);   // older ledgers gain Interest, Refund and Other income (saved with the next save)
     if (boot.status === "NONE") ledger.state = { ...ledger.state, categories: M.defaultCategories(), presets: M.defaultPresets() };   // kept in memory until the first save
     // The two stores disagree on revision only (a save reached one and not the other): repair quietly from the newer.
     if (boot.status === "REPAIR" && local != null && idb != null && device.allowEntry) {
