@@ -68,3 +68,9 @@ test("the bottom bar holds only Log and Verify; everything else is in the menu",
   for (const id of ["money", "budget"]) assert.ok(menu.includes('"' + id + '"'), id + " is in the menu");
   assert.match(js, /item\("setup", "Setup"\)/, "Setup is pinned at the bottom of the menu");
 });
+
+test("the icon lookup asks for 'not found' instead of a placeholder picture when a bank has no icon", () => {
+  const js = read("app/app.js");
+  const line = js.split("\n").find((l) => l.includes("t2.gstatic.com/faviconV2"));
+  assert.ok(line && line.includes("nfrp=2") && !line.includes("fallback_opts"), "the Google icon address must not request a placeholder");
+});

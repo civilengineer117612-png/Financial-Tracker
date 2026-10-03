@@ -210,7 +210,8 @@ function viewVerify() {
 // from there (and remembered offline by the app's cache). Copying is tried first.
 const COPY_SOURCES = (domain) => [["Icon Horse", `https://icon.horse/icon/${domain}`], ["Favicon Kit", `https://api.faviconkit.com/${domain}/144`]];
 const LINK_SOURCES = (domain) => [
-  ["Google icons", `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128`],
+  // nfrp=2 makes the service answer "not found" for a site with no icon, instead of a generic grey placeholder picture
+  ["Google icons", `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&nfrp=2&url=https://${domain}&size=128`],
   ["Google", `https://www.google.com/s2/favicons?sz=128&domain=${domain}`],
   ["DuckDuckGo", `https://icons.duckduckgo.com/ip3/${domain}.ico`],
 ];
@@ -245,9 +246,12 @@ function withBankLinks(state) {
   }
   return next;
 }
-const wantsLogo = (a) => !a.icon && !a.icon_url && (a.bank || M.bankForName(a.name));
+// An address saved by an earlier version asked for a placeholder when a bank had no icon; those are thrown away and retried.
+const stalePlaceholder = (a) => (a.icon_url ?? "").includes("fallback_opts");
+const wantsLogo = (a) => !a.icon && (!a.icon_url || stalePlaceholder(a)) && (a.bank || M.bankForName(a.name));
 async function getBankLogos() {
   let state = withBankLinks(S());
+  for (const b of M.BANKS) if (state.accounts.some((a) => a.bank === b.id && stalePlaceholder(a))) state = M.setBankIconUrl(state, b.id, null).state;
   const wanted = M.BANKS.filter((b) => state.accounts.some((a) => a.bank === b.id && !a.icon && !a.icon_url));
   if (!wanted.length) { showToast("Every bank you use already has a picture. Accounts with other names: tap the tile and choose the bank."); return; }
   ui.logoBusy = true; ui.logoReport = null; renderScreen();
