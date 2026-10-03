@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spendingByCategory, spendingByAccount, monthlySpending, addMonths, monthLabel, monthOf, setAccountIcon, validateShape } from "../src/model/index.js";
+import { spendingByCategory, spendingByAccount, monthlySpending, dayTotal, addMonths, monthLabel, monthOf, setAccountIcon, validateShape } from "../src/model/index.js";
 import { makeState, account, tx, entry, commit } from "./fixtures.js";
 
 const VERIFIED = { status: "verified", verified_at: "2026-04-01T08:00:00.000+08:00" };
@@ -147,4 +147,22 @@ test("a picture that is not a small embedded image is refused", () => {
 test("a picture is a valid optional field of an account", () => {
   assert.deepEqual(validateShape("Account", account({ id: "x", name: "X", class: "asset", icon: PIC })), []);
   assert.deepEqual(validateShape("Account", account({ id: "x", name: "X", class: "asset" })), []);
+});
+
+// ---------- quick day totals ----------
+test("a day total counts that date only, drafts included and reported apart", () => {
+  const s = base();
+  spend(s, "a", "2026-03-10", "rent", 30000);
+  spend(s, "b", "2026-03-10", "rent", 5000, "chk", { status: "draft" });
+  spend(s, "c", "2026-03-11", "rent", 99900);
+  const d = dayTotal(s, "2026-03-10");
+  assert.deepEqual(d, { total: 35000, verified: 30000, draft: 5000, drafts: 1 });
+  assert.equal(dayTotal(s, "2026-03-12").total, 0);
+});
+test("a day total ignores check-in gaps and refunds reduce it", () => {
+  const s = base();
+  spend(s, "a", "2026-03-10", "rent", 30000);
+  spend(s, "r", "2026-03-10", "rent", -4000);
+  spend(s, "g", "2026-03-10", "unlogged", 70000, "chk", { ...VERIFIED, source: "reconciliation" });
+  assert.equal(dayTotal(s, "2026-03-10").total, 26000);
 });

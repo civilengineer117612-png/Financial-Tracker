@@ -69,3 +69,19 @@ export function monthlySpending(state, { endMonth, months = 6, categoryMaps = []
     return { month, amount: spendingByCategory(state, { month, categoryMaps, asOf: asOf ?? lastDayOf(month) }).total };
   });
 }
+
+// Quick day total (addendum, item 7): what was spent on one date, drafts INCLUDED because on the day you
+// log, nothing is verified yet. `verified` and `draft` are reported apart so the screen can say which is which.
+// Spending means expense categories only, net of refunds. A check-in's reconciliation is not an expense you made.
+export function dayTotal(state, date) {
+  const expense = new Set(state.categories.filter((c) => c.kind === "expense").map((c) => c.id));
+  const txById = new Map(state.transactions.map((t) => [t.id, t]));
+  let verified = 0, draft = 0, drafts = 0;
+  for (const e of state.entries) {
+    if (e.category_id == null || !expense.has(e.category_id)) continue;
+    const t = txById.get(e.transaction_id);
+    if (!t || t.date !== date || t.source === "reconciliation") continue;
+    if (t.status === "verified") verified += e.amount; else { draft += e.amount; drafts += 1; }
+  }
+  return { total: verified + draft, verified, draft, drafts };
+}
