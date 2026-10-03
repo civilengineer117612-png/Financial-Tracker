@@ -186,7 +186,7 @@ function viewLog() {
     <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
     <p><button class="primary" data-action="open-other" style="margin-top:12px">Other amount</button></p>
     ${homeSummaryCard()}
-    <h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
+    <h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2>${tintLegend(todays)}${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
 }
 
 // IN, SPENT, SAVED, LEFT for a month (verified entries only). The month has its own arrows; it starts on this month.
@@ -200,10 +200,17 @@ function homeSummaryCard() {
     <p class="note">Left = In \u2212 Spent \u2212 Saved. Only verified entries count${r.drafts ? ` (<button class="link" data-action="tab" data-tab="verify">${r.drafts} not verified yet</button>)` : ""}. Moving money between your own accounts, and paying a card bill, are not counted again.</p>`;
 }
 
+// A light tint names what a row is. The words are written too (on each row, and in this key), so colour is never alone.
+function tintLegend(list) {
+  const used = new Set(list.map((t) => M.rowGroup(S(), t)).filter(Boolean));
+  return used.size ? `<p class="tints">${M.GROUPS.filter(([id]) => used.has(id)).map(([id, label]) => `<span><i class="sw tint-${id}"></i>${esc(label)}</span>`).join("")}</p>` : "";
+}
+
 function rowFor(t) {
   const d = describe(t);
   const acct = d.kind === "expense" ? S().accounts.find((a) => a.id === d.account_id) : null;
-  return `<div class="row"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}</span></small></div><div class="amt">${peso(d.amount)}</div></div>`;
+  const g = M.rowGroup(S(), t);
+  return `<div class="row${g ? " tint-" + g : ""}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${g ? " · " + esc(M.GROUPS.find(([id]) => id === g)[1]) : ""}</span></small></div><div class="amt">${peso(d.amount)}</div></div>`;
 }
 
 // Everything waiting, oldest first. Nothing has to wait for tomorrow: verify whenever you have the time.
