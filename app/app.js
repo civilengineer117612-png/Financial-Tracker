@@ -152,7 +152,8 @@ function viewLog() {
       <button class="primary" data-action="tab" data-tab="setup">Add accounts</button>`;
   }
   const due = dueDrafts().length;
-  const todays = S().transactions.filter((t) => t.date === today() && !isGenerated(t)).sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  const shown = ui.dayPick && ui.dayPick !== today() ? ui.dayPick : today();   // the list follows the day chosen with "Select date"
+  const todays = S().transactions.filter((t) => t.date === shown && !isGenerated(t)).sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
   const age = M.daysSinceBackup(ledger.settings, today());
   const backupNote = age === null || age >= BACKUP_NOTE_DAYS
     ? `<p class="note"><button class="link" data-action="tab" data-tab="setup">${age === null ? "No backup yet" : "Last backup " + age + " days ago"}</button></p>` : "";
@@ -163,7 +164,7 @@ function viewLog() {
     ${dayCard()}
     <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
     <p><button class="primary" data-action="open-other" style="margin-top:12px">Other amount</button></p>
-    <h2 class="today">Today</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged today.</p>`}`;
+    <h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
 }
 
 function rowFor(t) {
@@ -211,6 +212,23 @@ const LINK_SOURCES = (domain) => [
   ["Google", `https://www.google.com/s2/favicons?sz=128&domain=${domain}`],
   ["DuckDuckGo", `https://icons.duckduckgo.com/ip3/${domain}.ico`],
 ];
+// Some services invent a flat grey tile with a letter on it when a site has no icon. That is not a logo, so it is refused.
+function looksLikeLetterTile(ctx) {
+  const d = ctx.getImageData(10, 10, ICON_PX - 20, ICON_PX - 20).data, buckets = new Map();
+  for (let i = 0; i < d.length; i += 4) { const k = (d[i] >> 4) * 256 + (d[i + 1] >> 4) * 16 + (d[i + 2] >> 4); buckets.set(k, (buckets.get(k) ?? 0) + 1); }
+  let best = 0, bestKey = 0;
+  for (const [k, n] of buckets) if (n > best) { best = n; bestKey = k; }
+  const r = (bestKey >> 8) * 16, g = ((bestKey >> 4) & 15) * 16, b = (bestKey & 15) * 16, mean = (r + g + b) / 3;
+  return best / (d.length / 4) > 0.75 && Math.abs(r - g) <= 16 && Math.abs(g - b) <= 16 && mean >= 140 && mean <= 235;
+}
+function pictureIsLetterTile(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onerror = () => resolve(false);
+    img.onload = () => { const c = document.createElement("canvas"); c.width = c.height = ICON_PX; const ctx = c.getContext("2d"); ctx.drawImage(img, 0, 0, ICON_PX, ICON_PX); try { resolve(looksLikeLetterTile(ctx)); } catch { resolve(false); } };
+    img.src = url;
+  });
+}
 // Resolves to {url} (a copied picture) or {ok:true} (loads fine, for LINK) or {why}, saying exactly what went wrong.
 function loadLogo(url, { copy = true, ms = 8000 } = {}) {
   return new Promise((resolve) => {
@@ -226,6 +244,7 @@ function loadLogo(url, { copy = true, ms = 8000 } = {}) {
         const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, ICON_PX, ICON_PX);
         const k = Math.min((ICON_PX - 8) / img.naturalWidth, (ICON_PX - 8) / img.naturalHeight), w = img.naturalWidth * k, h = img.naturalHeight * k;
         ctx.drawImage(img, (ICON_PX - w) / 2, (ICON_PX - h) / 2, w, h);
+        if (looksLikeLetterTile(ctx)) { resolve({ why: "only a generated letter tile came back" }); return; }
         let out = c.toDataURL("image/png"); if (out.length > 38000) out = c.toDataURL("image/jpeg", 0.8);
         resolve({ url: out });
       } catch { resolve({ why: "the service does not allow the picture to be copied" }); }
@@ -244,10 +263,15 @@ function withBankLinks(state) {
 }
 // An address saved by an earlier version asked for a placeholder when a bank had no icon; those are thrown away and retried.
 const stalePlaceholder = (a) => (a.icon_url ?? "").includes("fallback_opts");
-const wantsLogo = (a) => !a.icon && (!a.icon_url || stalePlaceholder(a)) && (a.bank || M.bankForName(a.name));
+const wantsLogo = (a) => a.bank || M.bankForName(a.name);
 async function getBankLogos() {
   let state = withBankLinks(S());
   for (const b of M.BANKS) if (state.accounts.some((a) => a.bank === b.id && stalePlaceholder(a))) state = M.setBankIconUrl(state, b.id, null).state;
+  // A copied picture that is only a generated letter tile (saved by an earlier version) is thrown away and retried.
+  for (const b of M.BANKS) {
+    const pic = state.accounts.find((a) => a.bank === b.id && a.icon)?.icon;
+    if (pic && await pictureIsLetterTile(pic)) state = M.setAccountIcon(state, state.accounts.find((a) => a.bank === b.id && a.icon).id, null).state;
+  }
   const wanted = M.BANKS.filter((b) => state.accounts.some((a) => a.bank === b.id && !a.icon && !a.icon_url));
   if (!wanted.length) { showToast("Every bank you use already has a picture. Accounts with other names: tap the tile and choose the bank."); return; }
   ui.logoBusy = true; ui.logoReport = null; renderScreen();
@@ -1326,7 +1350,7 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ui.menu) { ui.menu = false; renderMenu(); } });
 document.addEventListener("input", (e) => {
-  if (e.target.dataset?.day) { ui.dayPick = e.target.value || null; renderScreen(); return; }
+  if (e.target.dataset?.day) return;   // the date picker spins and fires this on every turn of the wheel; it is read on "change", when it closes
   const field = e.target.dataset?.field;
   if (!field) return;
   if (e.target.type === "file") return;   // handled on change
@@ -1336,6 +1360,7 @@ document.addEventListener("input", (e) => {
   else ui.accountForm[field] = e.target.value;
 });
 document.addEventListener("change", (e) => {
+  if (e.target.dataset?.day) { ui.dayPick = e.target.value || null; renderScreen(); return; }
   if (e.target.type === "file" && ui.sheet) {
     if (ui.sheet.type === "plan") {
       const file = e.target.files[0];

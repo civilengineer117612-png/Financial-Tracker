@@ -115,13 +115,15 @@ and words, never color alone. A black line marks how far through the month we ar
 
 **Choosing a bank:** in Setup, Add an account starts with ten bank tiles (GCash, Maya, GoTyme, MariBank, BDO, BPI, Metrobank, UnionBank, Landbank, Security Bank) and Cash. Choosing one names the account for you and offers an optional "which part of the bank", so an Emergency Fund kept inside GoTyme becomes "GoTyme · Emergency Fund". Not in the list: leave the tiles alone and type a name. The list is in `src/model/banks.js`. No logos are stored in this repository; a picture chosen once for one account is shared by every account of the same bank, and new accounts of that bank start with it.
 
-**Log screen:** the big centered number is the total for the day being looked at, with no label: today by default. "Select date" (a small link that opens the phone's own date picker) turns it into that day's total with the date under it; "Change date" and "Back to today" appear then.
+**Log screen:** the big centered number is the total for the day being looked at, with no label: today by default. "Select date" (a small link that opens the phone's own date picker) turns it into that day's total with the date under it, and the list of entries under the buttons switches to that day too; "Change date" and "Back to today" appear then.
 
 **Bank logos:** nothing is stored in this repository. If you have accounts at listed banks without a picture, Setup offers "Get bank logos": on the phone, it asks an icon service (Google, then DuckDuckGo) for each bank's website icon, shrinks it to 96 pixels and keeps it in the ledger on the phone. Accounts you typed before the picker existed ("Gotyme") are linked by name, and any account can be linked to a bank from its picture window. It needs internet, tells the service which banks you use, so it only runs when you tap it. If a bank's icon cannot be fetched, add it from a screenshot instead.
 
 **Check-in and backup:** the weekly check-in screen carries the backup reminder (when a backup is more than about a week old), and the weekly calendar reminder text mentions it too, so there is one reminder for both.
 
 **Two ways to get a logo:** first the app tries services that allow the picture to be copied (it is then shrunk and kept in the ledger on the phone). Many icon services only allow showing a picture, not copying it; for those the app keeps just the service's address (only a short allow-list of services is accepted) and shows the picture from there, over the letter tile. The app remembers those pictures so they still show offline after the first time, and a real picture you add yourself always replaces the address.
+
+**Generated letter tiles are not logos:** some icon services invent a flat grey tile with a letter when a site has no icon. "Get bank logos" now refuses those, throws away any saved by an earlier version, and retries. For a bank whose site has no usable icon (the failure line says so), add its picture once from a screenshot.
 
 **Wrong logo on an account?** Each account row says "linked to <bank>" when its name does not already say the bank. In the picture window, choosing a bank other than the one the account's name plainly means asks for a second tap, and changing the link drops the old bank's logo, so a mistake can be put right.
 
