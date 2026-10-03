@@ -22,9 +22,10 @@ const browser = await chromium.launch();
 // Every request for a bank logo goes through this, so the network is faked: by default nothing answers.
 let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
-async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE } = {}) {
+async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false } = {}) {
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
+  if (noSpeech) await ctx.addInitScript(() => { window.webkitSpeechRecognition = undefined; window.SpeechRecognition = undefined; });
   await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png|wikipedia\.org|wikimedia\.org/, (r) => { iconAsked.push(r.request().url()); iconServe(r); });
   const page = await ctx.newPage();
   const errors = [];
@@ -1007,7 +1008,7 @@ await page.click('button:has-text("Delete")'); await page.click('button:has-text
 // ----- quick capture from the scanner button on the Log screen -----
 await page.click('#nav button:has-text("Log")');
 check(await page.locator('#top .camicon input[data-scan="quick"]').count() === 1 && await page.locator("#top .camicon input[capture]").count() === 0, "the Log screen has one scanner button, with no forced camera, so the phone offers camera, photo library or files");
-check((await page.getAttribute("#top .camicon", "aria-label")).includes("take a photo or choose a file"), "and it says so");
+check((await page.getAttribute("#top label.camicon", "aria-label")).includes("take a photo or choose a file"), "and it says so");
 await page.setInputFiles('input[data-scan="quick"]', { name: "bank.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
 check(await seen(page, "#toast", "Saved", 180000), "one photo is enough: it is read and saved as a draft by itself");
 let q = JSON.parse((await stored(page)).local);
@@ -1086,6 +1087,43 @@ check(await page.locator(".sumgrid").count() === 0, "the Log screen has no In, S
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 await ctx.close();
 
+// ===== 5h. saying an entry =====
+console.log("Voice");
+({ ctx, page, errors } = await open({ blockSw: true, noSpeech: true }));
+await addAccount(page, "Wallet", "asset", "1000");
+await addAccount(page, "GCash", "asset", "500");
+await page.click('#nav button:has-text("Log")');
+check(await page.locator('#top button[aria-label="Say an entry out loud"]').count() === 1, "the Log screen has a microphone button beside the scanner button");
+await page.click('#top button[aria-label="Say an entry out loud"]');
+check((await text(page, "#sheet")).includes("Speech is not available in this browser") && await page.locator("#f-save").isDisabled(), "where speech is not available it says so and offers the box, and Use this waits for words");
+check((await text(page, "#sheet")).includes("audio leaves your phone") , "the window says plainly that the audio leaves the phone while speaking");
+await page.fill("#v-text", "lunch 95 pesos at Sample Burger using GCash yesterday");
+await page.click("#f-save");
+check(await seen(page, "#toast", "Saved Sample Burger"), "a clear sentence is saved as a draft at once");
+let vl = JSON.parse((await stored(page)).local);
+const vt = vl.state.transactions.find((t) => t.source === "voice");
+const gc = vl.state.accounts.find((a) => a.name === "GCash"), vEntries = vl.state.entries.filter((e) => e.transaction_id === vt.id);
+check(vt.status === "draft" && vt.edited_before_verify === false && vt.date === "2026-10-02" && vt.payee === "Sample Burger" && vt.memo.includes("lunch 95"), "as a voice draft dated yesterday, named, with what was said kept");
+check(vEntries.some((e) => e.account_id === gc.id && e.amount === -9500) && vEntries.some((e) => e.category_id === "cat-food" && e.amount === 9500), "paid from GCash, ₱95.00, Food");
+await page.click('#nav button:has-text("Verify")');
+check((await text(page, "#screen")).includes("Made from what you said") && (await text(page, "#screen")).includes("lunch 95 pesos"), "Verify shows what was said");
+await page.click('button:has-text("Edit")'); await page.fill("#f-amount", "90"); await page.click("#f-save"); await seen(page, "#screen", "₱90.00");
+check(JSON.parse((await stored(page)).local).state.transactions.find((t) => t.source === "voice").edited_before_verify === true, "fixing a spoken draft counts as an edit for the weekly survey");
+await page.click('#nav button:has-text("Log")');
+await page.click('#top button[aria-label="Say an entry out loud"]');
+await page.fill("#v-text", "bought something 120 at Sample Mart");
+await page.click("#f-save");
+check(await seen(page, "#sheet", "Check what I heard"), "when the account is not named it asks instead of guessing");
+check((await text(page, "#sheet")).includes("You said") && await page.locator("#f-save").isDisabled(), "and shows what was said, with saving waiting for an account");
+await page.click('#sheet .chip:has-text("Wallet")');
+check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Essentials")').count() === 1, "the category came from the place named (a mart)");
+await page.click("#f-save");
+check(await seen(page, "#toast", "Saved Sample Mart") || await seen(page, "#screen", "as a draft"), "after choosing the account it is saved");
+vl = JSON.parse((await stored(page)).local);
+check(vl.state.transactions.filter((t) => t.source === "voice").length === 2 && vl.state.attachments.length === 0, "two voice drafts, and a spoken entry has no photo");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+await ctx.close();
+
 // ===== 6. wrong phone, wrong place =====
 console.log("Wrong device");
 ({ ctx, page } = await open({ ua: ANDROID }));
@@ -1102,7 +1140,7 @@ await ctx.close();
 console.log("Trial");
 ({ ctx, page, errors } = await open({ ua: ANDROID, standalone: false, blockSw: true, url: BASE + "?trial" }));
 check((await text(page, "#banner")).includes("Trial copy") && (await text(page, "#banner")).includes("not your real ledger"), "the Android phone with ?trial says it is a trial copy, not the real ledger");
-check((await page.locator("#top .camicon").count()) === 1 && !(await text(page, "#screen")).includes("Entry is switched off"), "and entry is on, with the camera icon");
+check((await page.locator("#top label.camicon").count()) === 1 && !(await text(page, "#screen")).includes("Entry is switched off"), "and entry is on, with the camera icon");
 await addAccount(page, "Wallet", "asset", "100");
 await page.click('#nav button:has-text("Log")'); await page.click('button.tile:has-text("Lunch")'); await page.click('#sheet .chip:has-text("Wallet")');
 check(await seen(page, "#toast", "Saved Lunch"), "something can be logged in the trial copy");

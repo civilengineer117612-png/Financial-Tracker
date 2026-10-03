@@ -7,7 +7,7 @@ import { phTimestamp } from "./util.js";
 import { validateShape } from "./schema.js";
 
 const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }], drafts: [] });
-const EXPENSE_SOURCES = ["manual", "preset", "template", "photo"];
+const EXPENSE_SOURCES = ["manual", "preset", "template", "photo", "voice"];
 const partnerId = (id) => "rsv:" + id;   // the generated card reserve transfer (templates.js)
 
 export function applyDrafts(state, drafts) {
@@ -33,7 +33,7 @@ export function planExpense(state, input, now = new Date()) {
 
   if (tag_id != null && !(state.tags ?? []).some((t) => t.id === tag_id)) return fail("UNKNOWN_TAG", "no tag " + tag_id);
 
-  const transaction = { id, date, payee, memo, status: "draft", source, created_at: phTimestamp(now), ...(source === "photo" ? { edited_before_verify: false } : {}), ...(tag_id != null ? { tag_id } : {}) };
+  const transaction = { id, date, payee, memo, status: "draft", source, created_at: phTimestamp(now), ...(source === "photo" || source === "voice" ? { edited_before_verify: false } : {}), ...(tag_id != null ? { tag_id } : {}) };
   const entries = [
     { transaction_id: id, category_id, amount },
     { transaction_id: id, account_id, amount: -amount, ...(account.class === "liability" ? { card_state: "pending" } : {}) },
@@ -99,7 +99,7 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
     }, now);
     if (!plan.ok) return { ok: false, violations: plan.violations, state };
     plan.drafts[0].transaction.created_at = t.created_at;   // an edit does not change when it was captured
-    if (t.source === "photo") {   // survey Q4: did the owner have to fix what the photo reader guessed?
+    if (t.source === "photo" || t.source === "voice") {   // survey Q4: did the owner have to fix what the photo reader (or the speech) guessed?
       const moved = plan.drafts[0].transaction.date !== t.date || plan.drafts[0].transaction.payee !== t.payee || (changes.amount !== undefined && changes.amount !== cat.amount) || (changes.category_id ?? cat.category_id) !== cat.category_id || (changes.account_id ?? acct.account_id) !== acct.account_id;
       plan.drafts[0].transaction.edited_before_verify = t.edited_before_verify === true || moved;
     }
@@ -116,7 +116,7 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
     if (Math.sign(a.amount) === Math.sign(b.amount)) return { ok: false, violations: fail("NOT_EDITABLE", "unexpected entry signs").violations, state };
   }
   const updated = { ...t, date: changes.date ?? t.date, payee: changes.payee ?? t.payee };
-  if (t.source === "photo") updated.edited_before_verify = t.edited_before_verify === true || updated.date !== t.date || updated.payee !== t.payee || (changes.amount !== undefined && changes.amount !== Math.abs(entries[0]?.amount));
+  if (t.source === "photo" || t.source === "voice") updated.edited_before_verify = t.edited_before_verify === true || updated.date !== t.date || updated.payee !== t.payee || (changes.amount !== undefined && changes.amount !== Math.abs(entries[0]?.amount));
   const probe = discardDraft(state, id).state;
   const result = checkTransactionSave(probe, { transaction: updated, entries: next });
   if (!result.ok) return { ok: false, violations: result.violations, state };

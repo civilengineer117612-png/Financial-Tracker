@@ -32,7 +32,7 @@ const CLUES = {
 // What a store or a payee points to, by NAME of the category (the app finds the category with that name, if there is one).
 const CATEGORY_CLUES = [
   ["Food", /jollibee|mcdo|mcdonald|kfc|chowking|starbucks|caf[eé]|coffee|restaurant|bakery|burger|pizza|lunch|dinner|breakfast|milk\s?tea|carinderia|grill|foodpanda|grabfood|7-?eleven|ministop|mang inasal/],
-  ["Essentials", /grocery|supermarket|market|\bmart\b|pharmacy|drugstore|mercury|watsons|hardware|puregold|savemore|landers|meralco|water|pldt|converge|electric/],
+  ["Essentials", /grocery|groceries|supermarket|market|palengke|\bmart\b|pharmacy|botika|drugstore|mercury|watsons|hardware|puregold|savemore|landers|meralco|water|pldt|converge|electric/],
   ["Subscription", /netflix|spotify|youtube|icloud|google one|disney|chatgpt|claude/],
   ["Rent", /\brent(al)?\b/],
 ];
@@ -142,6 +142,10 @@ function bankFor(lines) {
   const all = BANKS.filter((b) => mentions(lines.join("\n"), b));
   return all.length === 1 ? all[0].id : null;
 }
+
+// The bank named in a piece of text when exactly one is named (never a guess between two), and the category its words point to.
+export const bankInText = (text) => bankFor(String(text ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean));
+export const categoryGuessFor = (text) => CATEGORY_CLUES.find(([, re]) => re.test(String(text ?? "").toLowerCase()))?.[0] ?? null;
 
 // ---------- payee ----------
 const NOT_A_NAME = /receipt|invoice|\btin\b|vat|date|tel\b|phone|address|official|cashier|\bor\b|reg\b|permit|thank|www\.|\.com|^\W*\d/i;
