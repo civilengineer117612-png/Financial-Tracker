@@ -44,8 +44,12 @@
   #menu .drawer .foot { border-top: 1px solid var(--line); padding-top: 8px; }
   h2.today { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
   #menu .drawer h2 { margin-top: 4px; }
-  #menu .drawer button.item { display: block; width: 100%; text-align: left; margin: 6px 0; font-size: 18px; min-height: 52px; }
-  #menu .drawer button.item[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  #menu .drawer button.item { display: flex; align-items: center; gap: 18px; width: 100%; text-align: left; margin: 0; padding: 0 4px; font-size: 18px; min-height: 56px;
+                              border: 0; border-radius: 0; background: none; color: var(--ink); }
+  #menu .drawer button.item[aria-current="page"] span { font-weight: 700; }
+  #menu .drawer hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
+  #menu .drawer .glabel { margin: 12px 4px 2px; font-size: 14px; color: var(--mid); }
+  .tbl td.vu { color: var(--chart); } .tbl td.vo { color: var(--critical); }
   .daycard { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
   .dline { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
   .dline .dval { font-weight: 700; font-size: 20px; } .dline small { font-weight: 400; font-size: 13px; color: var(--mid); display: block; text-align: right; }

@@ -89,3 +89,21 @@ export function planBudgetChange(state, { id, category_id, amount, from_month },
   if (!check.ok) return { ok: false, violations: check.violations, state };
   return { ok: true, violations: [], state: { ...state, rules: [...state.rules, rule] } };
 }
+
+// The monthly trend (addendum item 3): one point per month ending at `endMonth`, oldest first.
+// budget = the sum of the budgets in effect FOR THAT MONTH (null when none); actual = everything verified
+// that month (null when nothing at all was logged then). Never an error and never a made-up zero:
+// a month with nothing to show is a gap (null), and the chart breaks the line there.
+export function budgetTrend(state, { endMonth, months = 6, categoryMaps = [], asOf }) {
+  return Array.from({ length: months }, (_, i) => {
+    const month = addMonths(endMonth, i - (months - 1));
+    const rows = budgetStatus(state, { rules: state.rules, categoryMaps, month, asOf: asOf ?? month + "-31" });
+    const budgeted = rows.filter((r) => r.budget !== null);
+    const hasData = state.transactions.some((t) => t.date.slice(0, 7) === month);
+    return {
+      month,
+      budget: budgeted.length ? budgeted.reduce((n, r) => n + r.budget, 0) : null,
+      actual: hasData ? rows.reduce((n, r) => n + r.spent, 0) : null,
+    };
+  });
+}
