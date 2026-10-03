@@ -20,6 +20,7 @@
 import { reportingCategory } from "./rules.js";
 import { isPhDate, phTimestamp } from "./util.js";
 import { checkTransactionSave } from "./index.js";
+import { naturalBalance } from "./balances.js";
 
 const fail = (error) => ({ ok: false, error });
 const whole = (n) => Number.isSafeInteger(n) && n >= 0;
@@ -71,6 +72,26 @@ export function parsePlan(text) {
     emergency = { months, basis: basis.map((n) => lines.find((l) => key(l.name) === key(n)).name) };
   }
   return { ok: true, plan: { effective_from: raw.effective_from, paydays, lines, emergency } };
+}
+
+// The Emergency Fund, worked out from the plan in force and never typed in as a fixed number.
+// Target = months x (monthly Rent + Food + Essentials), or the months and names the plan itself sets (ef_target_*).
+// Monthly contribution = the plan's own goal line for the fund. `missing` names any basis line the plan does not have.
+// goal: the goal row whose account holds the fund. Returns null when the plan has none of the basis lines.
+export const DEFAULT_EF = { months: 3, basis: ["Rent", "Food", "Essentials"] };
+export function emergencyFundStatus(state, plan, goal) {
+  if (!plan || !goal) return null;
+  const { months, basis } = plan.emergency ?? DEFAULT_EF;
+  const found = basis.map((n) => plan.lines.find((l) => key(l.name) === key(n))).filter(Boolean);
+  if (!found.length) return null;
+  const monthlyBasis = found.reduce((n, l) => n + l.first + l.second, 0), target = months * monthlyBasis;
+  const account = state.accounts.find((a) => a.id === goal.account_id);
+  const balance = account ? naturalBalance(account, state.entries) : 0;
+  const line = plan.lines.find((l) => l.kind === "goal" && key(l.name) === key(goal.name)) ?? plan.lines.find((l) => l.kind === "goal" && /emergency/i.test(l.name));
+  const monthly = line ? line.first + line.second : 0, remaining = Math.max(0, target - balance);
+  return { target, months, basis: found.map((l) => l.name), missing: basis.filter((n) => !plan.lines.some((l) => key(l.name) === key(n))), monthlyBasis,
+    balance, remaining, percent: target ? Math.min(100, Math.floor((balance * 100) / target)) : 0, reached: balance >= target,
+    monthly, monthsToTarget: remaining === 0 ? 0 : monthly > 0 ? Math.ceil(remaining / monthly) : null };
 }
 
 // Adds a plan without ever editing one: the same effective date twice is refused unless it is the identical plan.

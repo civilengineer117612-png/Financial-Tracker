@@ -894,6 +894,14 @@ ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.settings.plans.length === 1 && ledgerNow.settings.plans[0].lines[0].first === 300000, "the plan is kept in the phone's settings as a dated list, in centavos");
 await menuGo(page, "Goals");
 check((await text(page, "#screen")).includes("at your plan's ₱2,000.00 a month"), "a goal shows how long the plan takes");
+await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.fill("#f-amount", "999"); await page.click("#sheet .chip >> nth=0"); await page.click("#f-save");
+await seen(page, "#screen", "Emergency Fund");
+if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
+const efText = await text(page, "#screen");
+check(/Target\s*₱24,000\.00/.test(efText) && efText.includes("3 months of Rent, Food from your plan"), "the Emergency Fund target is worked out from the plan (3 x Rent + Food), not the 999 typed when the goal was made");
+check(/Months to target\s*Not known yet/.test(efText) && /Monthly contribution\s*none in your plan/.test(efText), "with no contribution line in the plan, months to target says it is not known");
+check(!efText.includes("Your plan suggests") && !efText.includes("Use it"), "there is no 'use it' button that would freeze the target as a typed number");
+await shot(page, "41-emergency-target");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // pictures survive a reload and appear where you choose an account
