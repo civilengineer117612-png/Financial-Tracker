@@ -135,19 +135,15 @@ function renderScreen() {
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
 }
 
-// Quick day totals: today's spending sits centered on the Log screen with no label; "Another day" opens a date box.
-function dayLine(date, label) {
-  const d = M.dayTotal(S(), date);
-  const note = d.drafts ? ` <small>includes ${d.drafts} not yet verified</small>` : "";
-  return `<span class="dlabel">${esc(label)}</span><span class="dval">${peso(d.total)}${note}</span>`;
-}
+// The big number on the Log screen is the total for the day being looked at: today, or the day picked with "Select date".
+// "Back to today" returns to today. The date box is the phone's own picker, hidden under the link so nothing crowds the screen.
 function dayCard() {
-  const picked = ui.dayPick && ui.dayPick !== today() ? ui.dayPick : "";
-  const d = M.dayTotal(S(), today());
-  return `<div class="daytotal" role="status" aria-label="Spent today ${esc(peso(d.total))}${d.drafts ? ", including " + d.drafts + " not yet verified" : ""}">${peso(d.total)}</div>
-    <p class="center"><button class="link" data-action="toggle-day" aria-expanded="${ui.dayOpen === true}">${ui.dayOpen ? "Hide" : "Another day"}</button></p>
-    ${ui.dayOpen ? `<div class="daycard"><label for="d-pick">Total for</label><input id="d-pick" type="date" data-day="1" max="${esc(today())}" value="${esc(picked)}">
-      <div class="dline" id="d-out" role="status">${picked ? dayLine(picked, longDate(picked)) : ""}</div></div>` : ""}`;
+  const picked = ui.dayPick && ui.dayPick !== today() ? ui.dayPick : null;
+  const d = M.dayTotal(S(), picked ?? today());
+  const words = (picked ? longDate(picked) : "Today") + " " + peso(d.total) + (d.drafts ? ", including " + d.drafts + " not yet verified" : "");
+  return `<div class="daytotal" role="status" aria-label="${esc(words)}">${peso(d.total)}</div>
+    ${picked ? `<p class="center daycap">${esc(longDate(picked))}</p>` : ""}
+    <p class="center"><label class="link datelink">${picked ? "Change date" : "Select date"}<input type="date" data-day="1" max="${esc(today())}" value="${esc(picked ?? "")}" aria-label="Select a date"></label>${picked ? ` \u00b7 <button class="link" data-action="reset-day">Back to today</button>` : ""}</p>`;
 }
 
 function viewLog() {
@@ -210,7 +206,8 @@ function viewVerify() {
 // from there (and remembered offline by the app's cache). Copying is tried first.
 const COPY_SOURCES = (domain) => [["Icon Horse", `https://icon.horse/icon/${domain}`], ["Favicon Kit", `https://api.faviconkit.com/${domain}/144`]];
 const LINK_SOURCES = (domain) => [
-  ["Google icons", `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128`],
+  // nfrp=2 makes the service answer "not found" for a site with no icon, instead of a generic grey placeholder picture
+  ["Google icons", `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&nfrp=2&url=https://${domain}&size=128`],
   ["Google", `https://www.google.com/s2/favicons?sz=128&domain=${domain}`],
   ["DuckDuckGo", `https://icons.duckduckgo.com/ip3/${domain}.ico`],
 ];
@@ -245,9 +242,12 @@ function withBankLinks(state) {
   }
   return next;
 }
-const wantsLogo = (a) => !a.icon && !a.icon_url && (a.bank || M.bankForName(a.name));
+// An address saved by an earlier version asked for a placeholder when a bank had no icon; those are thrown away and retried.
+const stalePlaceholder = (a) => (a.icon_url ?? "").includes("fallback_opts");
+const wantsLogo = (a) => !a.icon && (!a.icon_url || stalePlaceholder(a)) && (a.bank || M.bankForName(a.name));
 async function getBankLogos() {
   let state = withBankLinks(S());
+  for (const b of M.BANKS) if (state.accounts.some((a) => a.bank === b.id && stalePlaceholder(a))) state = M.setBankIconUrl(state, b.id, null).state;
   const wanted = M.BANKS.filter((b) => state.accounts.some((a) => a.bank === b.id && !a.icon && !a.icon_url));
   if (!wanted.length) { showToast("Every bank you use already has a picture. Accounts with other names: tap the tile and choose the bank."); return; }
   ui.logoBusy = true; ui.logoReport = null; renderScreen();
@@ -255,23 +255,25 @@ async function getBankLogos() {
   for (const b of wanted) {
     const why = [];
     let done = false;
-    for (const [label, src] of COPY_SOURCES(b.domain)) {
-      const r = await loadLogo(src);
-      if (r.url) {
-        const set = M.setAccountIcon(state, state.accounts.find((a) => a.bank === b.id).id, r.url);
-        if (set.ok) { state = set.state; copied += 1; done = true; break; }
+    for (const domain of [b.domain, ...(b.alt ?? [])]) {
+      for (const [label, src] of COPY_SOURCES(domain)) {
+        const r = await loadLogo(src);
+        if (r.url) {
+          const set = M.setAccountIcon(state, state.accounts.find((a) => a.bank === b.id).id, r.url);
+          if (set.ok) { state = set.state; copied += 1; done = true; break; }
+        }
+        why.push(domain + " " + label + ": " + (r.why ?? "the picture was refused"));
       }
-      why.push(label + ": " + (r.why ?? "the picture was refused"));
-    }
-    if (!done) {
-      for (const [label, src] of LINK_SOURCES(b.domain)) {
+      if (done) break;
+      for (const [label, src] of LINK_SOURCES(domain)) {
         const r = await loadLogo(src, { copy: false });
         if (r.ok) {
           const set = M.setBankIconUrl(state, b.id, src);
           if (set.ok) { state = set.state; linked += 1; done = true; break; }
-          why.push(label + ": that address is not allowed");
-        } else why.push(label + ": " + r.why);
+          why.push(domain + " " + label + ": that address is not allowed");
+        } else why.push(domain + " " + label + ": " + r.why);
       }
+      if (done) break;
     }
     if (!done) report.push(b.name + " (" + why.join("; ") + ")");
   }
@@ -1095,7 +1097,7 @@ async function onClick(el) {
       if (r.ok) await commit(r.state);
       break;
     }
-    case "toggle-day": ui.dayOpen = !ui.dayOpen; renderScreen(); break;
+    case "reset-day": ui.dayPick = null; renderScreen(); break;
     case "get-logos": await getBankLogos(); break;
     case "pick-bank": ui.accountForm.bank = ui.accountForm.bank === id ? null : id; ui.accountForm.sub = ""; ui.setupError = null; renderScreen(); break;
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
@@ -1324,7 +1326,7 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ui.menu) { ui.menu = false; renderMenu(); } });
 document.addEventListener("input", (e) => {
-  if (e.target.dataset?.day) { ui.dayPick = e.target.value; $("d-out").innerHTML = e.target.value ? dayLine(e.target.value, longDate(e.target.value)) : ""; return; }
+  if (e.target.dataset?.day) { ui.dayPick = e.target.value || null; renderScreen(); return; }
   const field = e.target.dataset?.field;
   if (!field) return;
   if (e.target.type === "file") return;   // handled on change

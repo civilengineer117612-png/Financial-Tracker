@@ -600,11 +600,15 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 
 // ---- quick day totals ----
 await page.click('#nav button:has-text("Log")');
-check(/^₱\d/.test(await text(page, ".daytotal")) && !(await text(page, "#screen")).includes("Spent today") && (await page.locator("#d-pick").count()) === 0, "today's total is centered on the Log screen with no label and no date box");
-await page.click('button:has-text("Another day")');
-await page.fill("#d-pick", "2026-01-05");
-check((await text(page, "#d-out")).includes("₱0.00") && (await text(page, "#d-out")).includes("Jan"), "another date shows its own total");
+const todayTotal = await text(page, ".daytotal");
+check(/^₱\d/.test(todayTotal) && !(await text(page, "#screen")).includes("Spent today") && (await page.locator(".daycap").count()) === 0, "today's total is centered on the Log screen with no label");
+check((await text(page, ".datelink")).includes("Select date") && (await page.locator(".datelink").boundingBox()).height < 50, "a small 'Select date' link replaces the open date box");
+await page.fill('input[data-day]', "2026-01-05");
+check((await text(page, ".daytotal")).includes("₱0.00") && (await text(page, ".daycap")).includes("Jan"), "picking a date turns the big number into that day's total, with the date under it");
+check((await text(page, ".datelink")).includes("Change date") && (await text(page, "#screen")).includes("Back to today"), "and the links become Change date and Back to today");
 await shot(page, "23-day-totals");
+await page.click('button:has-text("Back to today")');
+check((await text(page, ".daytotal")) === todayTotal && (await page.locator(".daycap").count()) === 0, "Back to today shows today's total again");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- checks: card reserve and the Unlogged habit ----
