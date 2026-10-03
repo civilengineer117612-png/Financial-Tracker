@@ -722,6 +722,22 @@ await page.click('#sheet .chip:has-text("MariBank")');
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.state.accounts.find((a) => a.name === "Euf").bank === "maribank", "an account with its own name can be linked to a bank from its picture window");
 await page.click('#sheet button:has-text("Cancel")');
+// a stray tap must not give an account another bank's logo, and a wrong link can be put right
+await page.click('#screen .row:has-text("Landbank") .icobtn');
+await page.click('#sheet .chip:has-text("GCash")');
+check((await text(page, "#toast")).includes("Tap GCash again"), "tapping a different bank than the account's name asks for a second tap");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.state.accounts.find((a) => a.name === "Landbank").bank === "landbank", "and nothing changed yet");
+await page.click('#sheet .chip:has-text("GCash")');
+await seen(page, "#screen", "linked to GCash");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.state.accounts.find((a) => a.name === "Landbank").bank === "gcash", "the second tap links it, and the row says so");
+await page.click('#sheet .chip:has-text("Landbank")');
+await page.waitForFunction(() => !document.getElementById("screen").innerText.includes("linked to GCash"), null, { timeout: 4000 });
+ledgerNow = JSON.parse((await stored(page)).local);
+const lb = ledgerNow.state.accounts.find((a) => a.name === "Landbank");
+check(lb.bank === "landbank" && !(lb.icon_url ?? "").includes("gcash.com"), "putting it right drops the other bank's logo");
+await page.click('#sheet button:has-text("Cancel")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- goals ----
@@ -787,7 +803,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 // pictures survive a reload and appear where you choose an account
 await page.reload(); await page.waitForSelector("#nav button");
 await page.click('#nav button:has-text("Log")'); await page.click('button.tile:has-text("Breakfast")');
-check((await page.locator("#sheet .chip img.ico").count()) === 6, "pictures (two chosen, four fetched logos) are on the account buttons when you log, so you can tell them apart at a glance");
+check((await page.locator("#sheet .chip img.ico").count()) === 5, "pictures (two chosen, three fetched logos) are on the account buttons when you log, so you can tell them apart at a glance");
 await shot(page, "16-pay-with-pictures");
 await page.click('#sheet button:has-text("Cancel")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
