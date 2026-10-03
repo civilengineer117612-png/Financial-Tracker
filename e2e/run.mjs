@@ -25,7 +25,7 @@ async function open({ ua = IPHONE, standalone = true } = {}) {
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  page.on("console", (m) => { if (m.type() === "error" && !/favicon|gstatic|duckduckgo/.test(m.location().url ?? "")) errors.push(m.text()); });   // blocked icon requests are staged on purpose
   await page.clock.setFixedTime(T0);
   await page.goto(BASE);
   await page.waitForSelector("#nav button");
@@ -679,6 +679,7 @@ const pngB64 = await page.evaluate(() => { const c = document.createElement("can
 let asked = [];
 await page.route("https://www.google.com/s2/favicons**", (r) => { asked.push(new URL(r.request().url()).searchParams.get("domain")); r.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(pngB64, "base64") }); });
 await page.route("https://icons.duckduckgo.com/**", (r) => r.abort());
+await page.route("https://t2.gstatic.com/**", (r) => r.abort());
 await addAccount(page, "Landbank", "asset", "5"); await seen(page, "#toast", "Added Landbank");
 check((await text(page, "#screen")).includes("tells that service which banks you use") && (await text(page, "#screen")).includes("not airplane mode"), "the logo button says what it sends and that it needs internet");
 await page.click('button:has-text("Get bank logos")');
@@ -689,6 +690,13 @@ check(!(await text(page, "#screen")).includes("Get bank logos"), "the button goe
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.state.accounts.filter((a) => a.bank === "gotyme").every((a) => a.icon.startsWith("data:image/")), "the pictures live in the ledger on the phone");
 await shot(page, "31-logos");
+// a failed download says why, per bank and per service
+await addAccount(page, "BPI", "asset", "5"); await seen(page, "#toast", "Added BPI");
+await page.route("https://www.google.com/s2/favicons**", (r) => r.abort());
+await page.click('button:has-text("Get bank logos")');
+check(await seen(page, "#toast", "Got 0 of 1"), "when nothing can be downloaded it says so");
+const rep = await text(page, "#logo-report");
+check(rep.includes("BPI") && rep.includes("Google icons: could not be loaded") && rep.includes("DuckDuckGo: could not be loaded"), "and lists the reason for each service: " + rep.slice(0, 160));
 await addAccount(page, "Euf", "asset", "10"); await seen(page, "#toast", "Added Euf");
 await page.click('#screen .row:has-text("Euf") .icobtn');
 await page.click('#sheet .chip:has-text("MariBank")');

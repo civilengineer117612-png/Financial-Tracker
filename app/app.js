@@ -203,23 +203,28 @@ function viewVerify() {
 
 // ---------- bank logos (on the phone, only when asked) ----------
 // Asks an icon service for each bank's small icon and keeps it in the ledger on this phone. Nothing is in the repository.
-const LOGO_SOURCES = (domain) => [`https://www.google.com/s2/favicons?sz=128&domain=${domain}`, `https://icons.duckduckgo.com/ip3/${domain}.ico`];
+const LOGO_SOURCES = (domain) => [
+  ["Google icons", `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128`],
+  ["Google", `https://www.google.com/s2/favicons?sz=128&domain=${domain}`],
+  ["DuckDuckGo", `https://icons.duckduckgo.com/ip3/${domain}.ico`],
+];
+// Resolves to {url} on success, or {why} saying exactly what went wrong, so a failure can be reported and fixed.
 function loadLogo(url, ms = 8000) {
   return new Promise((resolve) => {
-    const img = new Image(), timer = setTimeout(() => resolve(null), ms);
+    const img = new Image(), timer = setTimeout(() => resolve({ why: "no answer in " + ms / 1000 + " seconds" }), ms);
     img.crossOrigin = "anonymous";
-    img.onerror = () => { clearTimeout(timer); resolve(null); };
+    img.onerror = () => { clearTimeout(timer); resolve({ why: "could not be loaded" }); };
     img.onload = () => {
       clearTimeout(timer);
-      if (img.naturalWidth < 32) { resolve(null); return; }   // the service's tiny "unknown site" placeholder
+      if (img.naturalWidth < 32) { resolve({ why: "only a tiny placeholder came back (" + img.naturalWidth + " pixels)" }); return; }
       try {
         const c = document.createElement("canvas"); c.width = c.height = ICON_PX;
         const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, ICON_PX, ICON_PX);
         const k = Math.min((ICON_PX - 8) / img.naturalWidth, (ICON_PX - 8) / img.naturalHeight), w = img.naturalWidth * k, h = img.naturalHeight * k;
         ctx.drawImage(img, (ICON_PX - w) / 2, (ICON_PX - h) / 2, w, h);
         let out = c.toDataURL("image/png"); if (out.length > 38000) out = c.toDataURL("image/jpeg", 0.8);
-        resolve(out);
-      } catch { resolve(null); }   // the service did not allow the picture to be copied
+        resolve({ url: out });
+      } catch { resolve({ why: "the service does not allow the picture to be copied" }); }
     };
     img.src = url;
   });
@@ -238,18 +243,23 @@ async function getBankLogos() {
   let state = withBankLinks(S());
   const wanted = M.BANKS.filter((b) => state.accounts.some((a) => a.bank === b.id && !a.icon));
   if (!wanted.length) { showToast("Every bank you use already has a picture. Accounts with other names: tap the tile and choose the bank."); return; }
-  ui.logoBusy = true; renderScreen();
-  let got = 0;
+  ui.logoBusy = true; ui.logoReport = null; renderScreen();
+  let got = 0; const report = [];
   for (const b of wanted) {
-    let url = null;
-    for (const src of LOGO_SOURCES(b.domain)) { url = await loadLogo(src); if (url) break; }
-    if (!url) continue;
+    let url = null; const why = [];
+    for (const [label, src] of LOGO_SOURCES(b.domain)) {
+      const r = await loadLogo(src);
+      if (r.url) { url = r.url; break; }
+      why.push(label + ": " + r.why);
+    }
+    if (!url) { report.push(b.name + " (" + why.join("; ") + ")"); continue; }
     const r = M.setAccountIcon(state, state.accounts.find((a) => a.bank === b.id).id, url);
-    if (r.ok) { state = r.state; got += 1; }
+    if (r.ok) { state = r.state; got += 1; } else report.push(b.name + " (the picture was refused)");
   }
   ui.logoBusy = false;
+  ui.logoReport = report.length ? "Could not get: " + report.join(" | ") : null;
   if (got || state !== S()) await commit(state); else renderScreen();
-  showToast(got === wanted.length ? "Got " + got + (got === 1 ? " logo." : " logos.") : "Got " + got + " of " + wanted.length + ". For the rest, tap the tile in the list and add a screenshot.");
+  showToast(got === wanted.length ? "Got " + got + (got === 1 ? " logo." : " logos.") : "Got " + got + " of " + wanted.length + ". The reason is under the button. For the rest, tap the tile in the list and add a screenshot.");
 }
 
 const accountPreview = (f) => { const b = M.bankById(f.bank), sub = (f.sub ?? "").trim(); return sub ? b.name + " \u00b7 " + sub : b.name; };
@@ -279,6 +289,7 @@ function viewSetup() {
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}
     ${S().accounts.some(wantsLogo) ? `<p class="note">Bank pictures: the app can ask an icon service for your banks' small icons (it tells that service which banks you use) and keep them on this phone only. It needs internet (not airplane mode). <button class="link" data-action="get-logos"${ui.logoBusy ? " disabled" : ""}>${ui.logoBusy ? "Getting logos..." : "Get bank logos"}</button></p>` : ""}
+    ${ui.logoReport ? `<p class="note" id="logo-report" role="status">${esc(ui.logoReport)}</p>` : ""}
     <h2>Pay plan</h2>
     <p class="note">${planOf() ? "A plan is in effect." : "No plan in effect."} <button class="link" data-action="${planOf() ? "tab" : "open-plan"}" data-tab="plan">${planOf() ? "Open it" : "Load a plan"}</button></p>
     <h2>Backup</h2>
@@ -727,9 +738,9 @@ function renderSheet() {
   } else if (sh.type === "icon") {
     const a = S().accounts.find((x) => x.id === sh.id);
     body = `<h3>Picture for ${esc(a.name)}</h3>
-      <label id="i-bank-l">Which bank is it? (accounts of one bank share the picture)</label>
+      <label id="i-bank-l">Which bank is it?</label>
       <div class="chips" role="group" aria-labelledby="i-bank-l">${[...M.BANKS, M.CASH].map((b) => `<button class="chip" data-action="link-bank" data-id="${esc(b.id)}" aria-pressed="${a.bank === b.id}"><span>${esc(b.name)}</span></button>`).join("")}</div>
-      <p class="note">Take a screenshot of the app's icon, choose it here, then zoom and drag until only the icon fills the square.</p>
+      <p class="note">Accounts of one bank share the picture. Take a screenshot of the app's icon, choose it here, then zoom and drag until only the icon fills the square.</p>
       <input id="i-file" type="file" accept="image/*" data-field="file" aria-label="Choose a picture">
       <div id="i-stage" class="stage"><img id="i-img" alt="" hidden></div>
       <label for="i-zoom">Zoom</label><input id="i-zoom" data-field="zoom" type="range" min="1" max="4" step="0.01" value="1" disabled>
