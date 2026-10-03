@@ -115,9 +115,11 @@ and words, never color alone. A black line marks how far through the month we ar
 
 **Log screen:** today's total sits centered under the date with no label; a small "Another day" link opens a date box for any other day.
 
-**Bank logos:** nothing is stored in this repository. If you have accounts at listed banks without a picture, Setup offers "Get bank logos": on the phone, it asks an icon service (Google, then DuckDuckGo) for each bank's website icon, shrinks it to 96 pixels and keeps it in the ledger on the phone. Accounts you typed before the picker existed ("Gotyme") are linked by name, and any account can be linked to a bank from its picture window. It needs internet (not airplane mode) and tells the service which banks you use, so it only runs when you tap it. If a bank's icon cannot be fetched, add it from a screenshot instead.
+**Bank logos:** nothing is stored in this repository. If you have accounts at listed banks without a picture, Setup offers "Get bank logos": on the phone, it asks an icon service (Google, then DuckDuckGo) for each bank's website icon, shrinks it to 96 pixels and keeps it in the ledger on the phone. Accounts you typed before the picker existed ("Gotyme") are linked by name, and any account can be linked to a bank from its picture window. It needs internet, tells the service which banks you use, so it only runs when you tap it. If a bank's icon cannot be fetched, add it from a screenshot instead.
 
 **Check-in and backup:** the weekly check-in screen carries the backup reminder (when a backup is more than about a week old), and the weekly calendar reminder text mentions it too, so there is one reminder for both.
+
+**If a logo cannot be downloaded,** the reason is listed under the button for each bank and each icon service (could not be loaded, only a tiny placeholder, not allowed to be copied), so it can be fixed; the screenshot route always works.
 
 **Account pictures:** in Setup, tap an account's tile to choose a picture (a screenshot of the app's icon works),
 then zoom and drag to crop it. It is shrunk to 96 pixels and stored inside the account on the phone, so it appears on
