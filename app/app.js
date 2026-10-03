@@ -111,7 +111,8 @@ const MENU = [["Overview", [["money", "Spending"], ["income", "Income"], ["budge
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
-  $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + `<h1>${esc(title)}</h1>`;
+  const camera = device.allowEntry && ui.tab === "log" ? `<label class="camicon" aria-label="Take a photo of a receipt or payment screen"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="12.5" r="3.5"/></svg><input type="file" accept="image/*" capture="environment" data-scan="quick" hidden></label>` : "";
+  $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + `<h1>${esc(title)}</h1>` + camera;
 }
 
 function renderMenu() {
@@ -176,7 +177,11 @@ function viewLog() {
   const dueNote = due ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">${due} ${due === 1 ? "entry" : "entries"} from before today ${due === 1 ? "needs" : "need"} verifying</button></p>` : "";
   const trip = S().tags.find((t) => t.id === ledger.settings.active_tag_id);
   const tripNote = trip ? `<p class="note">Tagging new entries: ${esc(trip.name)}. <button class="link" data-action="stop-trip">Stop</button></p>` : "";
-  return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${dueNote}${backupNote}${tripNote}
+  const waitingPhotos = scanQueue().filter((q) => !q.needs).length, needLook = scanQueue().filter((q) => q.needs).length;
+  const photoNote = (ui.scan?.busy ? `<p class="note" id="scan-msg" role="status">${esc(ui.scan.msg)}</p>` : ui.scan?.error ? `<p class="note" role="alert">${esc(ui.scan.error)}</p>` : "")
+    + (needLook ? `<p class="note"><button class="link" data-action="open-queue">${needLook} photo${needLook === 1 ? " needs" : "s need"} a look</button></p>` : "")
+    + (waitingPhotos && !ui.scan?.busy ? `<p class="note">${waitingPhotos} photo${waitingPhotos === 1 ? " is" : "s are"} kept, waiting to be read. <button class="link" data-action="read-queue">Read now</button></p>` : "");
+  return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${photoNote}${dueNote}${backupNote}${tripNote}
     ${dayCard()}
     <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
     <p><button class="primary" data-action="open-other" style="margin-top:12px">Other amount</button></p>
@@ -325,12 +330,13 @@ function viewScan() {
 }
 
 const incomeCategories = () => S().categories.filter((c) => c.kind === "income");
-function scanDefaults(kind, guess) {
+function scanDefaults(kind, guess, payee) {
   if (M.kindById(kind).direction === "in") {
     const inc = incomeCategories();
     return { category_id: (kind === "payslip" ? inc.find((c) => c.id === "cat-salary") : null)?.id ?? inc[0]?.id ?? null };
   }
-  return { category_id: expenseCategories().find((c) => guess && c.name.toLowerCase() === guess.toLowerCase())?.id ?? null };
+  const learned = M.categoryFromHistory(S(), payee);   // what you used last time for the same name wins over a guess from words
+  return { category_id: expenseCategories().find((c) => c.id === learned)?.id ?? expenseCategories().find((c) => guess && c.name.toLowerCase() === guess.toLowerCase())?.id ?? null };
 }
 
 // The account the paper names: the bank on its From line, matched to the owner's own accounts. A credit card screen prefers a card
@@ -353,31 +359,89 @@ async function startScan(file) {
   try { text = await readText(blob, (f, what) => say(what + (f ? " " + Math.round(f * 100) + "%" : "..."))); }
   catch (e) { failed = e.message; }
   ui.scan = null; renderScreen();
-  const r = M.readScan(text, today());
+  openScanSheet(blob, text, failed, null);
+}
+
+// The window for checking a guess: for a photo just taken, or for one kept in the queue because the app could not be sure.
+function openScanSheet(blob, text, failed, queueId) {
+  const r = M.readScan(text, today()), acct = accountForScan(r);
   if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.url);
   pendingPhoto = { blob, url: URL.createObjectURL(blob) };
-  const acct = accountForScan(r);
   const notes = failed ? ["The reader could not run (" + failed + "). Fill in the fields yourself; the photo is kept."] : r.readAnything ? [...r.notes, ...(acct.note ? [acct.note] : [])] : ["I could not read any words on the photo. Fill in the fields yourself; the photo is kept."];
   ui.form = { kind: r.kind, guess: r.categoryGuess, amount: r.amount ? (r.amount / 100).toFixed(2) : "", date: r.date ?? today(), payee: r.payee ?? "", notes, text,
-    account_id: acct.id, ...scanDefaults(r.kind, r.categoryGuess) };
-  ui.sheet = { type: "scan" }; renderSheet();
+    account_id: acct.id, ...scanDefaults(r.kind, r.categoryGuess, r.payee) };
+  ui.sheet = { type: "scan", queueId }; renderSheet();
+}
+
+// ---------- quick capture: the camera icon on the Log screen ----------
+// One tap, one photo, and the entry is a draft waiting in Verify. The photo is kept the moment it is taken and put in a queue,
+// so closing the app straight away loses nothing: the next time the app opens it reads what is waiting. If the app cannot be
+// sure of the amount, the account and the category, it keeps the photo and asks (a note on Log), instead of saving a guess.
+const scanQueue = () => ledger.settings.scan_queue ?? [];
+const withQueue = (q) => ({ ...ledger.settings, scan_queue: q });
+let queueRun = false;
+
+async function quickCapture(file) {
+  if (!file) return;
+  ui.scan = { busy: true, msg: "Keeping the photo..." }; renderScreen();
+  const id = newId("photo");
+  try { await putPhoto(id, await preparePhoto(file)); }
+  catch (e) { ui.scan = { error: "The photo could not be kept (" + e.message + ")." }; renderScreen(); return; }
+  ui.scan = null;
+  await commit(S(), withQueue([...scanQueue(), { id, at: M.phTimestamp() }]), { quiet: true });
+  await processScanQueue({ interactive: true });
+}
+
+async function processScanQueue({ interactive = false } = {}) {
+  if (queueRun || !device.allowEntry) return;
+  queueRun = true;
+  const say = (m) => { if (!interactive) return; const first = !ui.scan; ui.scan = { busy: true, msg: m }; const el = $("scan-msg"); if (el && !first) el.textContent = m; else renderScreen(); };
+  try {
+    for (const item of scanQueue().filter((q) => !q.needs)) {
+      if (!scanQueue().some((q) => q.id === item.id)) continue;
+      let blob = null, text = "";
+      try {
+        blob = await getPhoto(item.id);
+        if (blob) { say("Reading the photo..."); text = await readText(blob, (f, w) => say(w + (f ? " " + Math.round(f * 100) + "%" : "..."))); }
+      } catch (e) {
+        ui.scan = null; renderScreen();
+        if (interactive) showToast("The photo is kept and will be read when the reader can load (it needs internet the first time).");
+        break;
+      }
+      if (!blob) { await commit(S(), withQueue(scanQueue().filter((q) => q.id !== item.id)), { quiet: true }); continue; }   // the picture is gone (a restored backup has none)
+      const r = M.readScan(text, today()), acct = accountForScan(r), cat = scanDefaults(r.kind, r.categoryGuess, r.payee).category_id;
+      if (M.kindById(r.kind).direction === "out" && r.amount && acct.id && cat) {
+        const ok = await logExpense({ transaction_id: newId("tx"), date: r.date ?? today(), payee: r.payee ?? "", category_id: cat, amount: r.amount, account_id: acct.id, source: "photo", photo_id: item.id, drop_scan: item.id },
+          (r.payee || categoryName(cat)) + " " + peso(r.amount));
+        if (!ok) break;
+      } else {
+        await commit(S(), withQueue(scanQueue().map((q) => (q.id === item.id ? { ...q, needs: true, text } : q))), { quiet: true });
+        if (interactive) { ui.scan = null; await openQueuedScan(item.id); }
+      }
+    }
+  } finally { queueRun = false; ui.scan = null; renderScreen(); }
+}
+
+async function openQueuedScan(id) {
+  const item = scanQueue().find((q) => q.id === id), blob = item ? await getPhoto(id).catch(() => null) : null;
+  if (!blob) { showToast("That photo is no longer on this phone."); await commit(S(), withQueue(scanQueue().filter((q) => q.id !== id)), { quiet: true }); return; }
+  openScanSheet(blob, item.text ?? "", null, id);
 }
 
 async function saveScan() {
-  const f = ui.form, amount = M.parsePesos(f.amount).centavos, kind = M.kindById(f.kind), id = newId("tx"), photoId = newId("photo");
-  try { await putPhoto(photoId, pendingPhoto.blob); }
-  catch { showToast("The photo could not be kept on this phone, so nothing was saved."); return; }
+  const f = ui.form, amount = M.parsePesos(f.amount).centavos, kind = M.kindById(f.kind), id = newId("tx"), queueId = ui.sheet.queueId ?? null, photoId = queueId ?? newId("photo");
+  if (!queueId) { try { await putPhoto(photoId, pendingPhoto.blob); } catch { showToast("The photo could not be kept on this phone, so nothing was saved."); return; } }
   let ok = false;
   if (kind.direction === "in") {
     const p = M.planPayReceived(S(), { transaction_id: id, date: f.date, amount, account_id: f.account_id, category_id: f.category_id, source: "photo", payee: f.payee.trim() || kind.label }, new Date());
     if (p.ok) {
       const a = M.planAttachment(M.applyDrafts(S(), [p]), { id: photoId, transaction_id: id });
-      ok = a.ok && await commit(a.state, { ...ledger.settings, last_account_id: f.account_id });
+      ok = a.ok && await commit(a.state, { ...ledger.settings, last_account_id: f.account_id, ...(queueId ? { scan_queue: scanQueue().filter((q) => q.id !== queueId) } : {}) });
     } else showToast("Could not save: " + p.violations[0].message);
   } else {
-    ok = await logExpense({ transaction_id: id, date: f.date, payee: f.payee.trim(), category_id: f.category_id, amount, account_id: f.account_id, source: "photo", photo_id: photoId }, (f.payee.trim() || categoryName(f.category_id)) + " " + peso(amount));
+    ok = await logExpense({ transaction_id: id, date: f.date, payee: f.payee.trim(), category_id: f.category_id, amount, account_id: f.account_id, source: "photo", photo_id: photoId, drop_scan: queueId }, (f.payee.trim() || categoryName(f.category_id)) + " " + peso(amount));
   }
-  if (!ok) { deletePhoto(photoId).catch(() => {}); return; }   // the window stays open so nothing typed is lost
+  if (!ok) { if (!queueId) deletePhoto(photoId).catch(() => {}); return; }   // the window stays open so nothing typed is lost
   URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null;
   ui.sheet = null; ui.scan = { done: "Saved " + peso(amount) + " as a draft with its photo." };
   renderAll();
@@ -1130,7 +1194,8 @@ function renderSheet() {
       <label>${into ? "Arrived in" : "Paid from"}</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
       <details><summary>What the reader saw</summary><pre class="rawtext">${esc(f.text || "(nothing)")}</pre></details>
       <p><button class="primary" id="f-save" data-action="save-scan" style="margin-top:14px" disabled>Save to Verify</button></p>
-      <p class="note">It stays a draft and counts toward nothing until you verify it.</p>`;
+      <p class="note">It stays a draft and counts toward nothing until you verify it.</p>
+      ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
   } else if (sh.type === "photo") {
     body = `<h3>Photo</h3><img class="shotfull" data-photo="${esc(sh.id)}" alt="The photo this entry was read from" hidden>`;
   } else if (sh.type === "icon") {
@@ -1283,7 +1348,7 @@ async function logExpense(input, label) {
     drafts = plan.drafts;
     note = reserveNote(plan.violations);
   }
-  const settings = { ...ledger.settings, last_account_id: input.account_id,
+  const settings = { ...ledger.settings, last_account_id: input.account_id, ...(input.drop_scan ? { scan_queue: scanQueue().filter((q) => q.id !== input.drop_scan) } : {}),
     last_account_by_preset: { ...(ledger.settings.last_account_by_preset ?? {}), ...(input.preset_id ? { [input.preset_id]: input.account_id } : {}) } };
   let next = M.applyDrafts(S(), drafts);
   if (input.photo_id) { const a = M.planAttachment(next, { id: input.photo_id, transaction_id: drafts[0].transaction.id }); if (a.ok) next = a.state; }
@@ -1526,6 +1591,13 @@ async function onClick(el) {
     }
     case "open-other": ui.sheet = { type: "other" }; ui.form = { amount: "", category_id: null, account_id: accountsFor(null)[0]?.id }; renderSheet(); break;
     case "pick-cat": form.category_id = id; renderSheet(); break;
+    case "open-queue": { const next = scanQueue().find((q) => q.needs); if (next) await openQueuedScan(next.id); break; }
+    case "read-queue": await processScanQueue({ interactive: true }); break;
+    case "discard-scan": {
+      ui.sheet = null; renderSheet();
+      if (await commit(S(), withQueue(scanQueue().filter((q) => q.id !== id)))) deletePhoto(id).catch(() => {});
+      showToast("Photo thrown away."); break;
+    }
     case "open-payslip": ui.sheet = { type: "payslip" }; ui.form = payslipDefaults(); renderSheet(); break;
     case "save-payslip": await savePayslip(); break;
     case "home-month": ui.homeMonth = M.addMonths(ui.homeMonth ?? M.monthOf(today()), Number(el.dataset.step)); renderScreen(); break;
@@ -1544,7 +1616,7 @@ async function onClick(el) {
       if (!d?.ok || !d.transaction) { showToast("Could not make the draft."); break; }
       await commit(M.applyDrafts(S(), [d])); showToast("The Emergency Fund draft is waiting in Verify."); break;
     }
-    case "pick-kind": form.kind = id; Object.assign(form, scanDefaults(id, form.guess)); renderSheet(); break;
+    case "pick-kind": form.kind = id; Object.assign(form, scanDefaults(id, form.guess, form.payee)); renderSheet(); break;
     case "save-scan": await saveScan(); break;
     case "open-photo": ui.sheet = { type: "photo", id }; renderSheet(); break;
     case "pick-acct": form.account_id = id; renderSheet(); break;
@@ -1767,7 +1839,7 @@ document.addEventListener("input", (e) => {
   else ui.accountForm[field] = e.target.value;
 });
 document.addEventListener("change", (e) => {
-  if (e.target.dataset?.scan) { const file = e.target.files[0]; e.target.value = ""; startScan(file); return; }
+  if (e.target.dataset?.scan) { const file = e.target.files[0], quick = e.target.dataset.scan === "quick"; e.target.value = ""; if (quick) quickCapture(file); else startScan(file); return; }
   if (e.target.type === "file" && ui.sheet) {
     if (ui.sheet.type === "plan") {
       const file = e.target.files[0];
@@ -1818,7 +1890,9 @@ async function start() {
     // this happens right after the first save instead; see commit.)
     await dropOldPlaceholders();
     loadBankLogos();
+    processScanQueue();   // photos taken just before the app was closed are read now
   }
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && device.allowEntry) processScanQueue(); });
 start();

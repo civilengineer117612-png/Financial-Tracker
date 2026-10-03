@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readScan, wordsToCentavos } from "../src/model/index.js";
+import { readScan, wordsToCentavos, categoryFromHistory } from "../src/model/index.js";
 
 const TODAY = "2026-10-20";   // all texts below are invented
 
@@ -144,4 +144,16 @@ test("the bank is found by the From line, forgiving one misread letter, and the 
   assert.equal(readScan("GCash\nExpress Send\nSent to\nSAMPLE PERSON\nAmount 350.00", TODAY).bankId, "gcash");
   assert.equal(readScan("Sample Mart\nTOTAL 100.00", TODAY).bankId, null);
   assert.equal(readScan("From BDX\nPHP 10.00", TODAY).bankId, null, "short names must be exact");
+});
+
+test("the category used before for the same payee is remembered, verified entries only, most used first", () => {
+  const st = { categories: [{ id: "food", name: "Food", kind: "expense" }, { id: "ess", name: "Essentials", kind: "expense" }, { id: "inc", name: "Pay", kind: "income" }], transactions: [], entries: [] };
+  const add = (id, payee, date, cat, status = "verified") => { st.transactions.push({ id, payee, date, status }); st.entries.push({ transaction_id: id, category_id: cat, amount: 100 }); };
+  add("a", "Sample Mart", "2026-09-01", "ess"); add("b", "sample mart ", "2026-09-05", "food"); add("c", "Sample Mart", "2026-09-09", "food");
+  add("d", "Sample Mart", "2026-09-20", "ess", "draft"); add("e", "Other", "2026-09-02", "ess");
+  assert.equal(categoryFromHistory(st, "SAMPLE MART"), "food", "two food against one essentials; the draft does not count");
+  add("f", "Tie Shop", "2026-09-01", "food"); add("g", "Tie Shop", "2026-09-10", "ess");
+  assert.equal(categoryFromHistory(st, "Tie Shop"), "ess", "a tie goes to the more recent");
+  assert.equal(categoryFromHistory(st, "Never Seen"), null);
+  assert.equal(categoryFromHistory(st, ""), null);
 });

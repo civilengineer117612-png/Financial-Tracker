@@ -58,6 +58,6 @@ export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByRange, sp
 export { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, emergencyFundStatus, DEFAULT_EF, cutoffFor, planProgress, planIncome, planPayReceived } from "./plan.js";
 export { planTag, tagSummary } from "./trips.js";
 export { BANKS, CASH, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, bankPicture, isPlaceholderAddress, dropPlaceholderAddresses } from "./banks.js";
-export { KINDS, kindById, wordsToCentavos, readScan } from "./scan.js";
+export { KINDS, kindById, wordsToCentavos, readScan, categoryFromHistory } from "./scan.js";
 export { EARNINGS, DEDUCTIONS, GOVERNMENT, LOST, SOURCES, OVERTIME_SHARE, linesOf, payslipTotals, payslipChecks, planPayslip, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory } from "./income.js";
 export { homeSummary } from "./summary.js";
