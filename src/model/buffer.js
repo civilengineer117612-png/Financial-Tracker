@@ -100,3 +100,76 @@ export function underBudgetedCategories(state, bufferEnvelopeId, minMonths) {
   return [...monthsByCategory].filter(([, m]) => m.size >= minMonths)
     .map(([category_id, m]) => ({ category_id, months: [...m].sort() }));
 }
+
+const failv = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }] });
+
+// First-time setup of the GCash wallet's two envelopes (spec 6.4): the ride/load allowance and the overrun buffer.
+// Each is funded by a balanced transaction inside the same account (+amount tagged with the envelope, -amount
+// untagged), so the account balance does not change. Saved VERIFIED: it is the owner's own split of money they hold.
+// input: {gcash_account_id, allowance_envelope_id, buffer_envelope_id, allowance_amount, buffer_amount, date, transaction_ids:[a, b]}
+export function planEnvelopeSetup(state, input, now = new Date()) {
+  const account = state.accounts.find((a) => a.id === input.gcash_account_id);
+  if (!account || account.class !== "asset") return failv("UNKNOWN_ACCOUNT", "choose the GCash account");
+  const ok = (n) => Number.isSafeInteger(n) && n >= 0;
+  if (!ok(input.allowance_amount) || !ok(input.buffer_amount)) return failv("BAD_AMOUNT", "amounts must be whole centavos, zero or more");
+  const held = naturalBalance(account, state.entries);
+  if (input.allowance_amount + input.buffer_amount > held) return failv("MORE_THAN_HELD", "the envelopes cannot hold more than the account does");
+  const ids = [input.allowance_envelope_id, input.buffer_envelope_id];
+  if (ids.some((id) => (state.envelopes ?? []).some((e) => e.id === id))) return failv("DUPLICATE_ID", "the envelopes already exist");
+  const envelopes = [
+    { id: input.allowance_envelope_id, account_id: account.id, name: "Rides and load", purpose: "allowance" },
+    { id: input.buffer_envelope_id, account_id: account.id, name: "Overrun Buffer", purpose: "buffer" },
+  ];
+  let next = { ...state, envelopes: [...(state.envelopes ?? []), ...envelopes] };
+  const stamp = phTimestamp(now);
+  for (const [i, amount, name] of [[0, input.allowance_amount, "Rides and load"], [1, input.buffer_amount, "Overrun Buffer"]]) {
+    if (amount === 0) continue;
+    const transaction = { id: input.transaction_ids[i], date: input.date, payee: "Set aside: " + name, memo: "", status: "verified", source: "manual", created_at: stamp, verified_at: stamp };
+    const entries = [
+      { transaction_id: transaction.id, account_id: account.id, envelope_id: ids[i], amount },
+      { transaction_id: transaction.id, account_id: account.id, amount: -amount },
+    ];
+    const result = checkTransactionSave(next, { transaction, entries });
+    if (!result.ok) return { ok: false, violations: result.violations };
+    next = { ...next, transactions: [...next.transactions, transaction], entries: [...next.entries, ...entries] };
+  }
+  return { ok: true, violations: [], envelopes, state: next };
+}
+
+// Money moved INTO the buffer from another account, saved verified like the setup (a deliberate top-up).
+// input: {transaction_id, date, amount, from_account_id, gcash_account_id, buffer_envelope_id}
+export function planBufferFunding(state, input, now = new Date()) {
+  if (!Number.isSafeInteger(input.amount) || input.amount <= 0) return failv("BAD_AMOUNT", "amount must be more than zero");
+  if (input.from_account_id === input.gcash_account_id) return failv("SAME_ACCOUNT", "choose a different account to take the money from");
+  if (!state.accounts.some((a) => a.id === input.from_account_id)) return failv("UNKNOWN_ACCOUNT", "no account " + input.from_account_id);
+  const stamp = phTimestamp(now);
+  const transaction = { id: input.transaction_id, date: input.date, payee: "To Overrun Buffer", memo: "", status: "verified", source: "manual", created_at: stamp, verified_at: stamp };
+  const entries = [
+    { transaction_id: transaction.id, account_id: input.gcash_account_id, envelope_id: input.buffer_envelope_id, amount: input.amount },
+    { transaction_id: transaction.id, account_id: input.from_account_id, amount: -input.amount },
+  ];
+  const result = checkTransactionSave(state, { transaction, entries });
+  return { ...result, transaction, entries, state: result.ok ? { ...state, transactions: [...state.transactions, transaction], entries: [...state.entries, ...entries] } : state };
+}
+
+// What the buffer screen shows. draws = this month's spending that took from the buffer, by category, biggest first
+// (a draw is a buffer-tagged credit inside a transaction that has a category; the month-end sweep is not a draw).
+export function bufferSummary(state, { allowance_envelope_id, buffer_envelope_id, month }) {
+  const txById = new Map(state.transactions.map((t) => [t.id, t]));
+  const names = new Map(state.categories.map((c) => [c.id, c.name]));
+  const byCat = new Map();
+  for (const e of state.entries) {
+    if (e.envelope_id !== buffer_envelope_id || e.amount >= 0) continue;
+    const t = txById.get(e.transaction_id);
+    const cat = state.entries.find((x) => x.transaction_id === e.transaction_id && x.category_id != null);
+    if (!t || !cat || t.date.slice(0, 7) !== month) continue;
+    const row = byCat.get(cat.category_id) ?? { category_id: cat.category_id, name: names.get(cat.category_id) ?? cat.category_id, amount: 0, pending: 0 };
+    if (t.status === "verified") row.amount -= e.amount; else row.pending -= e.amount;
+    byCat.set(cat.category_id, row);
+  }
+  const draws = [...byCat.values()].sort((a, b) => b.amount + b.pending - (a.amount + a.pending) || a.name.localeCompare(b.name));
+  return {
+    allowance: envelopeBalance(state.entries, allowance_envelope_id), buffer: envelopeBalance(state.entries, buffer_envelope_id),
+    draws, drawn: draws.reduce((n, d) => n + d.amount + d.pending, 0),
+  };
+}

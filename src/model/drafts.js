@@ -122,9 +122,10 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
 export function setAccountIcon(state, accountId, dataUrl) {
   const a = state.accounts.find((x) => x.id === accountId);
   if (!a) return { ok: false, violations: fail("UNKNOWN_ACCOUNT", "no account " + accountId).violations, state };
-  const { icon, ...rest } = a;
-  const next = dataUrl == null ? rest : { ...rest, icon: dataUrl };
-  const problems = validateShape("Account", next);
+  // Every account of the same bank shares the picture, so a sub-account such as a pocket inside the bank looks the same.
+  const same = (x) => x.id === accountId || (a.bank != null && x.bank === a.bank);
+  const accounts = state.accounts.map((x) => { if (!same(x)) return x; const { icon, ...rest } = x; return dataUrl == null ? rest : { ...rest, icon: dataUrl }; });
+  const problems = accounts.filter(same).flatMap((x) => validateShape("Account", x));
   if (problems.length) return { ok: false, violations: [{ code: "BAD_ICON", severity: "error", message: "that picture cannot be used" }], state };
-  return { ok: true, violations: [], state: { ...state, accounts: state.accounts.map((x) => (x.id === accountId ? next : x)) } };
+  return { ok: true, violations: [], state: { ...state, accounts } };
 }

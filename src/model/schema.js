@@ -22,6 +22,7 @@ export const SCHEMAS = {
     opening_balance: centavos,   // natural sign: a liability's owed amount is positive
     opening_date: date,
     reserve_for: optional(id),   // ADDED: on a reserve account, the card account it must cover
+    bank: optional(text),   // ADDED: which bank the account belongs to (src/model/banks.js); accounts of one bank share a picture
     icon: optional({ type: "icon" }),   // ADDED: a small picture the owner chose for this account, kept on the phone
   },
   Goal: { id, account_id: id, name, target: optional(centavos), deadline: optional(date), hidden_by_default: bool },
