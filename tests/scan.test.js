@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readScan, readPayslip, wordsToCentavos, categoryFromHistory } from "../src/model/index.js";
+import { readScan, readPayslip, linesFromWords, wordsToCentavos, categoryFromHistory } from "../src/model/index.js";
 
 const TODAY = "2026-10-20";   // all texts below are invented
 
@@ -205,4 +205,52 @@ test("an old year on a payslip is not used as the pay date", () => {
 });
 test("an unreadable payslip gives an empty reading, never a crash", () => {
   for (const t of ["", null, undefined, "@@ ~~"]) { const r = readPayslip(t, TODAY); assert.deepEqual([r.earnings.length, r.deductions.length, r.printed_net], [0, 0, null]); }
+});
+
+// Words with boxes, like the reader returns them. A two-column payslip (earnings left, deductions right), tilted so the right side
+// sits lower: row pitch 40, word height 28, tilt 0.06 (every 100 across drops the line 6 down). All figures invented.
+function page(tilt) {
+  const words = [], row = (y, left, right) => {
+    const put = (x, text, base) => words.push({ text, x0: x, x1: x + 12 * text.length, y0: y + tilt * x, y1: y + 28 + tilt * x });
+    let x = 20; for (const t of left.label.split(" ")) { put(x, t); x += 12 * t.length + 14; } if (left.amount) put(330, left.amount);
+    x = 480; for (const t of right.label.split(" ")) { put(x, t); x += 12 * t.length + 14; } if (right.amount) put(840, right.amount);
+  };
+  row(100, { label: "EARNINGS", amount: "" }, { label: "DEDUCTIONS", amount: "" });
+  row(140, { label: "Basic Salary", amount: "9,000.00" }, { label: "Withholding Tax", amount: "794.22" });
+  row(180, { label: "Rice Subsidy", amount: "2,000.00" }, { label: "SSS Premium Cont.", amount: "1,700.00" });
+  row(220, { label: "Skills Allowance", amount: "9,000.00" }, { label: "Philhealth Premium Cont.", amount: "450.00" });
+  row(260, { label: "Clothing Allowance", amount: "3,000.00" }, { label: "Pag-Ibig Premium Cont.", amount: "360.00" });
+  row(300, { label: "Gross Earnings", amount: "23,000.00" }, { label: "Absences", amount: "827.39" });
+  row(340, { label: "", amount: "" }, { label: "Total Deductions", amount: "3,131.61" });
+  return words;
+}
+test("a two-column payslip keeps every label with its own amount, even when the photo is tilted", () => {
+  for (const tilt of [0, 0.06, -0.05]) {
+    const lines = linesFromWords(page(tilt)).split("\n");
+    for (const want of ["Basic Salary 9,000.00", "Withholding Tax 794.22", "SSS Premium Cont. 1,700.00", "Philhealth Premium Cont. 450.00", "Pag-Ibig Premium Cont. 360.00", "Absences 827.39", "Gross Earnings 23,000.00"]) {
+      assert.ok(lines.includes(want), "tilt " + tilt + ": " + want + " in " + JSON.stringify(lines));
+    }
+  }
+});
+test("the lines made from a tilted two-column page give the right tax, SSS, PhilHealth and Pag-IBIG", () => {
+  const r = readPayslip(linesFromWords(page(0.06)), TODAY);
+  assert.deepEqual(r.deductions.map((l) => [l.kind, l.amount]), [["tax", 79422], ["sss", 170000], ["philhealth", 45000], ["pagibig", 36000], ["absences", 82739]]);
+  assert.deepEqual(r.earnings.map((l) => [l.kind, l.amount]), [["basic", 900000], ["rice", 200000], ["skills", 900000], ["clothing", 300000]]);
+  assert.equal(r.printed_gross, 2300000);
+});
+test("a currency sign stays with its amount, a second figure joins the same label, and nothing found gives empty text", () => {
+  const w = (t, x, y = 0) => ({ text: t, x0: x, x1: x + 10 * t.length, y0: y, y1: y + 20 });
+  assert.equal(linesFromWords([w("Net", 0), w("Pay:", 40), w("P", 100), w("21,868.19", 120)]), "Net Pay: 21,868.19");
+  assert.equal(linesFromWords([w("Basic", 0), w("9,000.00", 80), w("18,000.00", 200)]), "Basic 9,000.00 18,000.00");
+  assert.equal(linesFromWords([]), "");
+  assert.equal(linesFromWords(null), "");
+});
+test("a payslip dated as a range, with the company's name under a title, is read", () => {
+  const r = readPayslip("PHIL SAMPLE, INC.\nPAYSLIP\nApr 16-30, 2026\nNet Pay: P 10,000.00\nGross Earnings 11,000.00", "2026-10-03");
+  assert.equal(r.employer, "PHIL SAMPLE, INC.");
+  assert.deepEqual([r.period_from, r.period_to, r.pay_date], ["2026-04-16", "2026-04-30", "2026-04-30"]);
+  assert.deepEqual([r.printed_net, r.printed_gross], [1000000, 1100000]);
+});
+test("Pag-IBIG is found under the spellings a photo gives it", () => {
+  for (const label of ["Pag-IBIG", "Pag-Ibig Premium Cont.", "Pag-big Premium Cont.", "PAGIBIG", "HDMF"]) assert.deepEqual(readPayslip(label + " 100.00", TODAY).deductions.map((l) => l.kind), ["pagibig"], label);
 });

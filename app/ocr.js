@@ -37,8 +37,32 @@ function loadScript() {
   return loading;
 }
 
-// Resolves to the text found. progress(fraction 0..1, words) is called while it works.
-export async function readText(blob, progress = () => {}) {
+// A copy of the photo with the shadows taken out, for reading paper that was photographed under uneven light: each spot is made black or
+// white by comparing it with the average of the spots around it (an adaptive threshold), so a shadow across a page no longer hides the words.
+export async function evenedCopy(blob) {
+  const bmp = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas"); canvas.width = bmp.width; canvas.height = bmp.height;
+  const ctx = canvas.getContext("2d"); ctx.drawImage(bmp, 0, 0); bmp.close?.();
+  const { width: W, height: H } = canvas, img = ctx.getImageData(0, 0, W, H), d = img.data;
+  const gray = new Uint8ClampedArray(W * H), sum = new Float64Array((W + 1) * (H + 1));
+  for (let y = 0; y < H; y++) { let row = 0; for (let x = 0; x < W; x++) { const i = y * W + x, g = (d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114); gray[i] = g; row += g; sum[(y + 1) * (W + 1) + x + 1] = sum[y * (W + 1) + x + 1] + row; } }
+  const r = Math.max(8, Math.round(Math.max(W, H) / 40));   // the size of the neighbourhood
+  for (let y = 0; y < H; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(H - 1, y + r);
+    for (let x = 0; x < W; x++) {
+      const x0 = Math.max(0, x - r), x1 = Math.min(W - 1, x + r), n = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const mean = (sum[(y1 + 1) * (W + 1) + x1 + 1] - sum[y0 * (W + 1) + x1 + 1] - sum[(y1 + 1) * (W + 1) + x0] + sum[y0 * (W + 1) + x0]) / n;
+      const v = gray[y * W + x] < mean * 0.88 ? 0 : 255, i = (y * W + x) * 4;
+      d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+}
+
+// Resolves to {text, words}: the text found, and every word with its box (x0, y0, x1, y1) so the reading can use where words sit on the
+// page. progress(fraction 0..1, what) is called while it works.
+export async function readPage(blob, progress = () => {}) {
   onProgress = progress;
   await loadScript();
   worker ??= await window.Tesseract.createWorker("eng", 1, {
@@ -47,6 +71,10 @@ export async function readText(blob, progress = () => {}) {
     langPath: BASE, gzip: true, workerBlobURL: false, cacheMethod: "none",
     logger: (m) => { if (m.status === "recognizing text") onProgress(m.progress, "Reading the photo"); else onProgress(0, "Getting the reader ready"); },
   });
-  const { data } = await worker.recognize(blob);
-  return data.text ?? "";
+  const { data } = await worker.recognize(blob, {}, { text: true, blocks: true });
+  const words = (data.blocks ?? []).flatMap((b) => b.paragraphs.flatMap((p) => p.lines.flatMap((l) => l.words))).map((w) => ({ text: w.text, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 }));
+  return { text: data.text ?? "", words };
 }
+
+// Just the text.
+export const readText = async (blob, progress) => (await readPage(blob, progress)).text;

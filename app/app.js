@@ -2,7 +2,7 @@
 // Plain and firm, never harsh: facts are stated once, nothing is red, nothing blocks logging.
 import * as M from "../src/model/index.js";
 import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto, useTrialStorage, clearTrialStorage } from "./store.js";
-import { preparePhoto, readText } from "./ocr.js";
+import { preparePhoto, readPage, evenedCopy } from "./ocr.js";
 import { speechSupported, listen } from "./voice.js";
 
 const $ = (id) => document.getElementById(id);
@@ -350,7 +350,7 @@ function viewScan() {
     <p class="note">This phone reads the photo itself. The photo is never sent anywhere. It guesses what the paper is, the amount and the date. You check each guess, and the entry waits in Verify with the photo beside it.</p>
     <label class="filebtn" aria-disabled="${busy}">${busy ? "Reading..." : "Take or choose a photo"}<input type="file" accept="image/*" data-scan="1" hidden${busy ? " disabled" : ""}></label>
     ${status}
-    <p class="note">The first photo downloads the reader (about 7 MB) while you are online. After that it works with no internet. Handwriting is read poorly, so check every number on a handwritten receipt. Photos stay on this phone and are not in the backup file.</p>`;
+    <p class="note">The first photo downloads the reader (about 7 MB) while you are online. After that it works with no internet. For the best reading hold the phone straight above the paper, in good light, with the whole page in view. Handwriting is read poorly, so check every number on a handwritten receipt. Photos stay on this phone and are not in the backup file.</p>`;
 }
 
 const incomeCategories = () => S().categories.filter((c) => c.kind === "income");
@@ -374,6 +374,20 @@ function accountForScan(r) {
   return { id: pick.id, note: hits.length > 1 ? "The paper names " + bank + "; I chose " + pick.name + ". Check it." : "" };
 }
 
+// Reads a photo. A payslip is read again from where its words sit on the page (so two columns stay apart and a tilted photo is straightened),
+// once as it is and once with shadows taken out, and the better reading is kept. Returns the text the rest of the app works from.
+async function readPhoto(blob, progress) {
+  const first = await readPage(blob, progress);
+  if (M.readScan(first.text, today()).kind !== "payslip") return first.text;
+  const score = (text) => { const r = M.readPayslip(text, today()); return r.earnings.length + r.deductions.length + (r.printed_gross ? 1 : 0) + (r.printed_net ? 1 : 0); };
+  let best = M.linesFromWords(first.words) || first.text;
+  try {
+    const second = await readPage(await evenedCopy(blob), (f, w) => progress(f, w + " (clearing shadows)")), alt = M.linesFromWords(second.words);
+    if (alt && score(alt) > score(best)) best = alt;
+  } catch { /* the first reading stands */ }
+  return score(best) >= score(first.text) ? best : first.text;
+}
+
 async function startScan(file) {
   if (!file) return;
   const say = (msg) => { if (ui.scan) ui.scan.msg = msg; const el = $("scan-msg"); if (el) el.textContent = msg; };
@@ -381,7 +395,7 @@ async function startScan(file) {
   let blob, text = "", failed = null;
   try { blob = await preparePhoto(file); }
   catch (e) { ui.scan = { error: "That file could not be opened as a picture (" + e.message + ")." }; renderScreen(); return; }
-  try { text = await readText(blob, (f, what) => say(what + (f ? " " + Math.round(f * 100) + "%" : "..."))); }
+  try { text = await readPhoto(blob, (f, what) => say(what + (f ? " " + Math.round(f * 100) + "%" : "..."))); }
   catch (e) { failed = e.message; }
   ui.scan = null; renderScreen();
   openScanSheet(blob, text, failed, null);
@@ -460,7 +474,7 @@ async function processScanQueue({ interactive = false } = {}) {
       let blob = null, text = "";
       try {
         blob = await getPhoto(item.id);
-        if (blob) { say("Reading the photo..."); text = await readText(blob, (f, w) => say(w + (f ? " " + Math.round(f * 100) + "%" : "..."))); }
+        if (blob) { say("Reading the photo..."); text = await readPhoto(blob, (f, w) => say(w + (f ? " " + Math.round(f * 100) + "%" : "..."))); }
       } catch (e) {
         ui.scan = null; renderScreen();
         if (interactive) showToast("The photo is kept and will be read when the reader can load (it needs internet the first time).");

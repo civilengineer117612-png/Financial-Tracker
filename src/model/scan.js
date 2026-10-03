@@ -255,7 +255,7 @@ export function categoryFromHistory(state, payee) {
 const EARNING_LABELS = [["basic", /basic|monthly\s*(salary|rate)/], ["rice", /rice/], ["skills", /skill/], ["clothing", /cloth|uniform/], ["transport", /transport/],
   ["overtime", /over\s*-?time|\bot\b/], ["thirteenth", /13\s*th|thirteenth/], ["bonus", /bonus/]];
 const DEDUCTION_LABELS = [["loan", /\bloans?\b/], ["tax", /withholding|w\/\s*tax|\bwtax\b|\btax\b(?!able)/], ["sss", /\bsss\b/], ["philhealth", /phil\s*-?health|\bphic\b/],
-  ["pagibig", /pag\s*-?\s*ibig|hdmf/], ["absences", /absen/], ["lates", /\blates?\b|undertime|tardi/]];
+  ["pagibig", /pag\s*-?\s*[il1]?\s*big|pagibig|hdmf/], ["absences", /absen/], ["lates", /\blates?\b|undertime|tardi/]];
 const SKIP_LINE = /total\s*(earnings|deductions|pay)|taxable|net\s*taxable|ytd|year\s*-?\s*to\s*-?\s*date|balance|leave/;
 
 export function readPayslip(text, today) {
@@ -284,7 +284,13 @@ export function readPayslip(text, today) {
   // dates: the pay period (two dates on a line that says period), and the pay date
   let period_from = null, period_to = null, pay_date = null;
   const ok = (iso) => iso <= addDaysIso(today, 1) && iso >= addDaysIso(today, -366);
-  const periodAt = lines.findIndex((l) => /period|covered|cutoff|cut-off/i.test(l) && datesIn(l).length >= 2);
+  // "Apr 16-30, 2026": a month, two days and a year
+  const range = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\s*(?:-|–|to)\s*(\d{1,2}),?\s*(\d{4})\b/i.exec(cleanDigits(lines.join("\n")));
+  if (range) {
+    const m = MONTHS.indexOf(range[1].toLowerCase()) + 1, a = iso(+range[4], m, +range[2]), b = iso(+range[4], m, +range[3]);
+    if (isPhDate(a) && isPhDate(b) && ok(a) && ok(b)) { period_from = a; period_to = b; }
+  }
+  const periodAt = period_from ? -1 : lines.findIndex((l) => /period|covered|cutoff|cut-off/i.test(l) && datesIn(l).length >= 2);
   if (periodAt >= 0) {
     let [a, b] = datesIn(lines[periodAt]);
     // "01/10/2026 - 15/10/2026": the second date can only be day first, so the first is too (the month-first habit applies to a date alone)
@@ -295,12 +301,63 @@ export function readPayslip(text, today) {
   }
   const payAt = lines.findIndex((l) => /pay\s*date|date\s*paid|payday|credit(ed)?\s*date|pay\s*out/i.test(l) && datesIn(l).length);
   if (payAt >= 0) { const d = datesIn(lines[payAt])[0]; if (ok(d.iso)) pay_date = d.iso; }
-  if (!pay_date) { const any = datesIn(lines.join("\n")).find((d) => ok(d.iso)); if (any && periodAt < 0) pay_date = any.iso; }
+  if (!pay_date && !period_from) { const any = datesIn(lines.join("\n")).find((d) => ok(d.iso)); if (any) pay_date = any.iso; }
   if (!pay_date && period_to) pay_date = period_to;
   if (!pay_date) notes.push("I could not find the pay date. Choose it.");
 
   // the employer: a line that starts "Employer:" or "Company:", else the first name-like line at the top (usually the company's own name)
   const labelled = lines.map((l) => /^\s*(?:employer|company)(?:\s+name)?\s*[:\-]\s*(.{3,})$/i.exec(l)?.[1]).find(Boolean);
-  const employer = (labelled ?? payeeFor("receipt", lines))?.replace(/\d{6,}/g, "").trim() || null;
+  const company = lines.slice(0, 10).find((l) => /\b(inc|corp|corporation|co|company|ltd|llc|enterprises?|services|group|hospital|school|bank)\b\.?/i.test(l) && (l.match(/[A-Za-z]/g) ?? []).length >= 5 && !amountsIn(l).length);
+  const title = /payslip|pay\s*slip|period|earnings|deductions|net\s*pay|amount|gross/i;
+  const named = lines.slice(0, 8).find((l) => !title.test(l) && payeeFor("receipt", [l]));
+  const employer = (labelled ?? company ?? (named ? payeeFor("receipt", [named]) : null))?.replace(/\d{6,}/g, "").replace(/^[:\s]+/, "").trim() || null;
   return { employer, period_from, period_to, pay_date, printed_gross, printed_net, earnings, deductions, notes };
+}
+
+// ---------- text from where the words sit on the page ----------
+// A payslip prints its earnings on the left and its deductions on the right, and a photo of paper is tilted. Reading order from the
+// reader then mixes the columns (the earnings figures end up on the deduction labels). So: take every word with its box, find the
+// tilt of the page from the words themselves, put the words into rows, and cut each row after every amount, so "label ... amount" stays
+// together whichever column it is in. Returns plain text, one "label amount" line per piece. words: [{text, x0, y0, x1, y1}].
+const AMOUNT_WORD = /^[₱#£]?\d{1,3}(?:,\d{3})*\.\d{2}$|^[₱#£]?\d+\.\d{2}$/;
+const CURRENCY_WORD = /^(?:₱|php|p|#)$/i;
+const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+
+export function linesFromWords(words) {
+  const w = (words ?? []).map((x) => ({ t: cleanDigits(String(x.text ?? "").trim()), x0: x.x0 ?? x.bbox?.x0, y0: x.y0 ?? x.bbox?.y0, x1: x.x1 ?? x.bbox?.x1, y1: x.y1 ?? x.bbox?.y1 }))
+    .filter((x) => x.t && [x.x0, x.y0, x.x1, x.y1].every(Number.isFinite));
+  if (!w.length) return "";
+  const h = median(w.map((x) => x.y1 - x.y0)) || 10;
+  for (const x of w) { x.cx = (x.x0 + x.x1) / 2; x.cy = (x.y0 + x.y1) / 2; }
+  const cluster = (slope) => {
+    const rows = [];
+    for (const x of [...w].sort((a, b) => (a.cy - slope * a.cx) - (b.cy - slope * b.cx))) {
+      const y = x.cy - slope * x.cx, row = rows[rows.length - 1];
+      if (row && y - row.y < 0.6 * h) { row.words.push(x); row.y = (row.y * (row.words.length - 1) + y) / row.words.length; } else rows.push({ y, words: [x] });
+    }
+    return rows;
+  };
+  // the tilt of the page: the slope that makes the words fall into the fewest, fullest rows (a projection profile), then refined
+  const sharp = (s) => { const bins = new Map(); for (const x of w) { const k = Math.round((x.cy - s * x.cx) / (0.5 * h)); bins.set(k, (bins.get(k) ?? 0) + (x.x1 - x.x0)); } let t = 0; for (const v of bins.values()) t += v * v; return t; };
+  let slope = 0, best = sharp(0);
+  for (let s = -0.15; s <= 0.15; s += 0.004) { const v = sharp(s); if (v > best * 1.0001) { best = v; slope = s; } }
+  for (let s = slope - 0.004; s <= slope + 0.004; s += 0.001) { const v = sharp(s); if (v > best) { best = v; slope = s; } }
+  const lines = [];
+  for (const row of cluster(slope).sort((a, b) => a.y - b.y)) {
+    const toks = row.words.sort((a, b) => a.x0 - b.x0).map((x) => x.t);
+    const segs = [];
+    let label = [];
+    for (let i = 0; i < toks.length; i++) {
+      const tok = toks[i];
+      if (CURRENCY_WORD.test(tok) && AMOUNT_WORD.test(toks[i + 1] ?? "")) continue;   // a currency sign belongs to the amount after it
+      if (AMOUNT_WORD.test(tok)) {
+        if (label.length) { segs.push({ label: label.join(" "), amounts: [tok] }); label = []; }
+        else if (segs.length) segs[segs.length - 1].amounts.push(tok);   // a second figure for the same label (the year so far)
+        else segs.push({ label: "", amounts: [tok] });
+      } else label.push(tok);
+    }
+    if (label.length) segs.push({ label: label.join(" "), amounts: [] });
+    for (const s of segs) lines.push((s.label + " " + s.amounts.join(" ")).trim());
+  }
+  return lines.join("\n");
 }
