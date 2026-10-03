@@ -1099,7 +1099,9 @@ check((await text(page, "#sheet")).includes("Speech is not available in this bro
 check((await text(page, "#sheet")).includes("audio leaves your phone") , "the window says plainly that the audio leaves the phone while speaking");
 await page.fill("#v-text", "lunch 95 pesos at Sample Burger using GCash yesterday");
 await page.click("#f-save");
-check(await seen(page, "#toast", "Saved Sample Burger", 15000), "a clear sentence is saved as a draft at once");
+const savedVoice = await seen(page, "#toast", "Saved Sample Burger", 15000);
+if (!savedVoice) console.log("   debug toast:", JSON.stringify(await text(page, "#toast")), "banner:", JSON.stringify(await text(page, "#banner")), "sheet:", JSON.stringify((await text(page, "#sheet")).slice(0, 300)), "errors:", JSON.stringify(errors));
+check(savedVoice, "a clear sentence is saved as a draft at once");
 let vl = JSON.parse((await stored(page)).local);
 const vt = vl.state.transactions.find((t) => t.source === "voice");
 const gc = vl.state.accounts.find((a) => a.name === "GCash"), vEntries = vl.state.entries.filter((e) => e.transaction_id === vt.id);
@@ -1179,6 +1181,30 @@ check(ps.state.payslipLines.filter((l) => l.side === "deduction").length === 4 &
 check(ps.state.attachments.length === 1 && ps.state.attachments[0].transaction_id === ps.state.payslips[0].transaction_id, "and the photo kept with the pay");
 await menuGo(page, "Income");
 check((await text(page, "#screen")).includes("Went to government this year: ₱1,200.00") && (await text(page, "#screen")).includes("View the photo"), "the Income screen counts the government deductions and offers the photo");
+// a payslip with the earnings on the left, the deductions on the right, photographed a little crooked (invented figures)
+const crookedPng = await page.evaluate(() => {
+  const c = document.createElement("canvas"); c.width = 1400; c.height = 1000;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 1400, 1000); x.fillStyle = "#000";
+  x.translate(60, 40); x.rotate(0.05);
+  x.font = "bold 36px sans-serif"; x.fillText("PHIL SAMPLE, INC.", 20, 60); x.fillText("PAYSLIP", 900, 60); x.font = "30px sans-serif"; x.fillText("Apr 16-30, 2026", 900, 110);
+  x.fillText("Net Pay:  P 9,075.00", 900, 170);
+  const left = [["EARNINGS", ""], ["Basic Salary", "9,000.00"], ["Rice Subsidy", "1,000.00"], ["Skills Allowance", "500.00"], ["Gross Earnings", "10,500.00"]];
+  const right = [["DEDUCTIONS", ""], ["Withholding Tax", "650.00"], ["SSS Premium Cont.", "400.00"], ["Philhealth Premium Cont.", "225.00"], ["Pag-Ibig Premium Cont.", "100.00"], ["Absences", "50.00"], ["Total Deductions", "1,425.00"]];
+  left.forEach(([l, a], i) => { x.fillText(l, 20, 260 + i * 55); if (a) x.fillText(a, 400, 260 + i * 55); });
+  right.forEach(([l, a], i) => { x.fillText(l, 560, 240 + i * 55); if (a) x.fillText(a, 1060, 240 + i * 55); });
+  return c.toDataURL("image/png").split(",")[1];
+});
+await menuGo(page, "Scan");
+await page.setInputFiles("input[data-scan]", { name: "crooked.png", mimeType: "image/png", buffer: Buffer.from(crookedPng, "base64") });
+check(await seen(page, "#sheet", "Add a payslip", 240000), "a crooked two-column payslip photo opens the payslip window");
+const got = [await val("d_tax"), await val("d_sss"), await val("d_philhealth"), await val("d_pagibig"), await val("d_absences")].join("|");
+check(got === "650.00|400.00|225.00|100.00|50.00", "the deductions side by side with the earnings still land on their own labels: tax, SSS, PhilHealth, Pag-IBIG, absences (" + got + ")");
+const earned = [await val("e_basic"), await val("e_rice"), await val("e_skills")].join("|");
+check(earned === "9000.00|1000.00|500.00", "and the earnings (" + earned + ")");
+const head = [await val("p-gross"), await val("p-net"), await val("p-emp"), await val("p-from"), await val("p-to")].join("|");
+check(head === "10500.00|9075.00|PHIL SAMPLE, INC.|2026-04-16|2026-04-30", "the printed gross and net with the P sign, the company under the title, and a date range (" + head + ")");
+await shot(page, "46-crooked-payslip");
+await page.click('#sheet button:has-text("Cancel")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 await ctx.close();
 
