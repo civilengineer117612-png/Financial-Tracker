@@ -10,6 +10,7 @@ const addDays = (d, n) => new Date(Date.parse(d) + n * 86400000).toISOString().s
 const longDate = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-PH", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 const newId = (prefix) => prefix + "-" + crypto.randomUUID();
 const peso = M.formatPesos;
+const BACKUP_NOTE_DAYS = 7;   // the Log page mentions a missing or old backup once it is a week old
 
 let ledger = M.emptyLedger();   // {rev, state, settings}
 let device = { status: "OK", message: "", allowEntry: true };
@@ -98,8 +99,11 @@ function viewLog() {
   }
   const due = dueDrafts().length;
   const todays = S().transactions.filter((t) => t.date === today() && !isGenerated(t)).sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  const age = M.daysSinceBackup(ledger.settings, today());
+  const backupNote = age === null || age >= BACKUP_NOTE_DAYS
+    ? `<p class="note"><button class="link" data-action="tab" data-tab="setup">${age === null ? "No backup yet" : "Last backup " + age + " days ago"}</button></p>` : "";
   const dueNote = due ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">${due} ${due === 1 ? "entry" : "entries"} from before today ${due === 1 ? "needs" : "need"} verifying</button></p>` : "";
-  return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${dueNote}
+  return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${dueNote}${backupNote}
     <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
     <p><button class="primary" data-action="open-other" style="margin-top:12px">Other amount</button></p>
     <h2>Today</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged today.</p>`}`;
@@ -157,7 +161,17 @@ function viewSetup() {
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}
+    <h2>Backup</h2>
+    <p class="note">${backupAgeText()}</p>
+    <p><button class="primary" data-action="open-backup">Back up now</button></p>
+    <p><button data-action="open-restore" style="width:100%">Restore from a backup</button></p>
     ${reserveExists ? `<h2>Card reserve</h2><label for="r-src">Reserve transfers come out of</label><select id="r-src" data-action-change="set-reserve-source"><option value="">Choose an account</option>${hosts.map((a) => `<option value="${esc(a.id)}"${ledger.settings.reserve_source_id === a.id ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select>` : ""}`;
+}
+
+function backupAgeText() {
+  const age = M.daysSinceBackup(ledger.settings, today());
+  if (age === null) return "No backup yet. Right now your data exists only on this phone.";
+  return age === 0 ? "Last backup: today." : "Last backup: " + age + (age === 1 ? " day" : " days") + " ago.";
 }
 
 // ---------- sheets ----------
@@ -187,15 +201,48 @@ function renderSheet() {
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
+  if (sh.type === "backup") {
+    body = `<h3>Back up now</h3>
+      <p class="note">Choose a passphrase of at least ${M.MIN_PASSPHRASE} characters. Write it down in two places, away from this phone. Without it nobody can open the backup, not even me.</p>
+      <label for="b-pass">Passphrase</label><input id="b-pass" data-field="pass" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(ui.form.pass ?? "")}">
+      <label for="b-pass2">Passphrase again</label><input id="b-pass2" data-field="pass2" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(ui.form.pass2 ?? "")}">
+      <p id="f-msg" role="alert" class="note"></p>
+      <p><button class="primary" id="f-save" data-action="make-backup" disabled>Create backup file</button></p>
+      <p class="note">Next you choose where to keep the file, for example Save to Files. It is encrypted, so it is safe in iCloud Drive or on a flash drive.</p>`;
+  } else if (sh.type === "restore" && !ui.form.restored) {
+    body = `<h3>Restore from a backup</h3>
+      <p class="note">This replaces everything on this phone with the backup.</p>
+      <label for="r-file">Backup file</label><input id="r-file" data-field="file" type="file" accept=".json,application/json">
+      <label for="r-pass">Passphrase</label><input id="r-pass" data-field="pass" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <p id="f-msg" role="alert" class="note"></p>
+      <p><button class="primary" id="f-save" data-action="open-backup-file" disabled>Open backup</button></p>`;
+  } else if (sh.type === "restore") {
+    const b = M.summarizeLedger(ui.form.restored), now = M.summarizeLedger(ledger);
+    const count = (n, one, many) => n + " " + (n === 1 ? one : many);
+    const line = (x) => `${count(x.accounts, "account", "accounts")}, ${x.transactions ? count(x.transactions, "entry", "entries") : "no entries"}${x.latest_date ? ", latest " + longDate(x.latest_date) : ""}`;
+    body = `<h3>Replace this phone's data?</h3>
+      <div class="card" style="border:0;padding:0"><dl><dt>The backup</dt><dd>${esc(line(b))}${b.saved_at ? "<br>saved " + esc(longDate(b.saved_at.slice(0, 10))) : ""}</dd><dt>This phone</dt><dd>${esc(line(now))}</dd></dl></div>
+      <p class="note">Anything entered on this phone since the backup was made will be gone.</p>
+      <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
+  }
   $("sheet").innerHTML = `<div id="scrim" data-action="close-sheet"></div><div class="sheet" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">Cancel</button></p></div>`;
   refreshSave();
 }
 
 function refreshSave() {
   const btn = $("f-save");
-  if (!btn || ui.sheet?.type !== "other") return;
-  const a = M.parsePesos(ui.form.amount);
-  btn.disabled = !(a.ok && a.centavos > 0 && ui.form.category_id && ui.form.account_id);
+  if (!btn) return;
+  const type = ui.sheet?.type, f = ui.form;
+  if (type === "other") {
+    const a = M.parsePesos(f.amount);
+    btn.disabled = !(a.ok && a.centavos > 0 && f.category_id && f.account_id);
+  } else if (type === "backup") {
+    const long = (f.pass ?? "").length >= M.MIN_PASSPHRASE, same = f.pass === f.pass2;
+    btn.disabled = !(long && same) || f.busy;
+    $("f-msg").textContent = !(f.pass ?? "").length ? "" : !long ? "At least " + M.MIN_PASSPHRASE + " characters." : !same && (f.pass2 ?? "").length ? "The two do not match." : "";
+  } else if (type === "restore" && !f.restored) {
+    btn.disabled = !(f.file && (f.pass ?? "").length) || f.busy;
+  }
 }
 
 // ---------- toast ----------
@@ -282,6 +329,11 @@ async function onClick(el) {
       if (r.ok) await commit(r.state);
       break;
     }
+    case "open-backup": ui.sheet = { type: "backup" }; ui.form = {}; renderSheet(); break;
+    case "open-restore": ui.sheet = { type: "restore" }; ui.form = {}; renderSheet(); break;
+    case "make-backup": await makeBackup(); break;
+    case "open-backup-file": await openBackupFile(); break;
+    case "restore-now": await restoreNow(); break;
     case "add-account": await addAccount(); break;
     case "remove-account": {
       if (S().entries.some((e) => e.account_id === id)) break;
@@ -299,6 +351,56 @@ async function onClick(el) {
       break;
     }
   }
+}
+
+// While the passphrase is being stretched (about a second) the sheet is not redrawn, so what you typed
+// stays; the button and message are changed in place.
+function working(on, message) {
+  ui.form.busy = on;
+  const btn = $("f-save"); if (btn) btn.disabled = on;
+  if ($("f-msg")) $("f-msg").textContent = message ?? "";
+}
+
+async function makeBackup() {
+  working(true, "Working...");
+  try {
+    const encrypted = await M.encryptLedgerBackup(ledger, ui.form.pass);
+    const name = M.backupFileName(today());
+    const file = new File([JSON.stringify(encrypted)], name, { type: "application/json" });
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: "Finance backup" });   // the share sheet: choose Save to Files
+    } else {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(file); a.download = name; document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    }
+  } catch (e) {
+    working(false, e.name === "AbortError" ? "Not saved. Tap Create backup file to try again." : "Could not create the backup: " + e.message);
+    return;
+  }
+  ui.sheet = null;
+  await commit(S(), { ...ledger.settings, last_backup_at: M.phTimestamp() });
+  showToast("Backup file created. Check that it is in Files or on your drive.");
+}
+
+async function openBackupFile() {
+  working(true, "Opening...");
+  try {
+    const restored = await M.decryptLedgerBackup(JSON.parse(await ui.form.file.text()), ui.form.pass);
+    ui.form = { restored, confirmRestore: false };
+    renderSheet();
+  } catch (e) {
+    working(false, e instanceof SyntaxError ? "That file is not a backup." : e.message.startsWith("could not decrypt") ? "Wrong passphrase, or the file is damaged." : e.message);
+  }
+}
+
+async function restoreNow() {
+  if (!ui.form.confirmRestore) { ui.form.confirmRestore = true; renderSheet(); return; }
+  const next = M.restoreLedger(ledger, ui.form.restored);
+  const r = await writeBoth(JSON.stringify(next));
+  if (r.local && r.idb) { location.reload(); return; }
+  ui.sheet = null; ui.error = "The restore could not be saved to " + [!r.local && "localStorage", !r.idb && "IndexedDB"].filter(Boolean).join(" and ") + ". Nothing else was changed.";
+  renderAll();
 }
 
 async function addAccount() {
@@ -328,10 +430,12 @@ document.addEventListener("click", (e) => {
 document.addEventListener("input", (e) => {
   const field = e.target.dataset?.field;
   if (!field) return;
+  if (e.target.type === "file") return;   // handled on change
   if (ui.sheet) { ui.form[field] = e.target.value; refreshSave(); }
   else ui.accountForm[field] = e.target.value;
 });
 document.addEventListener("change", (e) => {
+  if (e.target.type === "file" && ui.sheet) { ui.form.file = e.target.files[0] ?? null; refreshSave(); return; }
   const field = e.target.dataset?.field;
   if (field && !ui.sheet) { ui.accountForm[field] = e.target.value; if (field === "kind") { ui.accountForm.covers = ""; renderScreen(); } }
   if (e.target.dataset?.actionChange === "set-reserve-source") commit(S(), { ...ledger.settings, reserve_source_id: e.target.value || undefined });

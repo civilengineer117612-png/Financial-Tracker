@@ -3,6 +3,9 @@
 // It is not part of `npm test` (CI would need a browser); the unit tests cover the logic.
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
+import { readFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 const require = createRequire(import.meta.url);
 const { chromium } = require(execSync("npm root -g").toString().trim() + "/playwright");
 
@@ -230,6 +233,99 @@ check((await text(page, "#nav")).includes("Verify (1)"), "only yesterday's entry
 await page.click('#nav button:has-text("Verify")');
 check((await text(page, ".card")).includes("Breakfast") && (await text(page, "#screen")).includes("1 of 2"), "yesterday's comes first, today's after it");
 await ctx.close();
+
+// ===== 5d. backup and restore =====
+console.log("Backup and restore");
+const PASS = "correct horse battery";
+({ ctx, page, errors } = await open());
+await addAccount(page, "Test Cash", "asset", "500");
+await addAccount(page, "Test Card", "liability", "");
+await seen(page, "#screen", "Test Card");
+await page.click('#nav button:has-text("Log")');
+check(await seen(page, "#screen", "No backup yet"), "the Log page mentions that there is no backup");
+await page.click('button.tile:has-text("Lunch")'); await page.click('#sheet .chip:has-text("Test Cash")');
+await seen(page, "#toast", "Saved Lunch");
+await page.click('#nav button:has-text("Setup")');
+check((await text(page, "#screen")).includes("No backup yet"), "Setup says so too");
+await page.click('button:has-text("Back up now")');
+check(await page.locator("#f-save").isDisabled(), "creating is off until there is a passphrase");
+await page.fill("#b-pass", "short");
+check((await text(page, "#sheet")).includes("At least 12"), "a short passphrase is explained");
+await page.fill("#b-pass", PASS); await page.fill("#b-pass2", PASS.slice(0, -1) + "z");
+check((await text(page, "#sheet")).includes("do not match") && await page.locator("#f-save").isDisabled(), "a mismatch is explained and blocks");
+await page.fill("#b-pass2", PASS);
+check(await page.locator("#f-save").isEnabled(), "matching long passphrases turn it on");
+await shot(page, "10-backup-sheet");
+const [download] = await Promise.all([page.waitForEvent("download"), page.click("#f-save")]);
+const file = join(mkdtempSync(join(tmpdir(), "bk-")), download.suggestedFilename());
+await download.saveAs(file);
+check(download.suggestedFilename() === "finance-backup-2026-10-03.json", "the file is named with the date: " + download.suggestedFilename());
+const raw = readFileSync(file, "utf8"), box1 = JSON.parse(raw);
+check(box1.kind === "ledger" && box1.v === 1 && box1.iterations === 600000, "it is an encrypted ledger container");
+check(!["Test Cash", "Test Card", "Lunch", "9500"].some((x) => raw.includes(x)), "the file contains none of your data in the clear");
+check(await seen(page, "#toast", "Backup file created"), "the app says what to do next");
+check(await seen(page, "#screen", "Last backup: today"), "Setup shows when the last backup was made");
+await page.click('#nav button:has-text("Log")');
+check(!(await text(page, "#screen")).includes("No backup yet"), "the Log page stops mentioning it");
+
+// wipe everything, as if iOS had cleared the storage
+await page.evaluate(async () => { localStorage.clear(); await new Promise((res) => { const r = indexedDB.deleteDatabase("financialTracker"); r.onsuccess = r.onerror = r.onblocked = () => res(); }); });
+await page.reload(); await page.waitForSelector("#nav button");
+check((await text(page, "#banner")).includes("No data on this device"), "the empty phone says so");
+await page.click('#nav button:has-text("Setup")');
+await page.click('button:has-text("Restore from a backup")');
+check(await page.locator("#f-save").isDisabled(), "opening is off until a file and passphrase are given");
+await page.setInputFiles("#r-file", file);
+await page.fill("#r-pass", "a different passphrase");
+await page.click('button:has-text("Open backup")');
+check(await seen(page, "#sheet", "Wrong passphrase, or the file is damaged"), "a wrong passphrase is refused plainly");
+check((await page.inputValue("#r-pass")) === "a different passphrase" && await page.locator("#f-save").isEnabled(), "and you can try again without choosing the file again");
+await page.fill("#r-pass", PASS);
+await page.click('button:has-text("Open backup")');
+check(await seen(page, "#sheet", "Replace this phone's data?"), "the right passphrase shows what will be replaced");
+check((await text(page, "#sheet")).includes("2 accounts, 1 entry") && (await text(page, "#sheet")).includes("0 accounts, no entries"), "with the backup's counts beside the phone's own");
+await shot(page, "11-restore-sheet");
+await page.click("#f-save");
+check((await text(page, "#sheet")).includes("Tap again to replace"), "replacing asks for a second tap");
+await Promise.all([page.waitForNavigation(), page.click("#f-save")]);
+await page.waitForSelector("#nav button");
+await page.click('#nav button:has-text("Setup")');
+check(await seen(page, "#screen", "Test Cash") && (await text(page, "#screen")).includes("Test Card"), "the accounts are back");
+await page.click('#nav button:has-text("Log")');
+check(await seen(page, "#screen", "₱95.00"), "and so is the entry");
+s = await stored(page);
+check(s.local && s.local === s.idb, "both stores hold the restored ledger");
+check(JSON.parse(s.local).rev >= 2, "stamped newer than before");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+// a file that is not a backup
+await page.click('#nav button:has-text("Setup")'); await page.click('button:has-text("Restore from a backup")');
+const junk = join(mkdtempSync(join(tmpdir(), "bk-")), "notes.json"); (await import("node:fs")).writeFileSync(junk, "hello");
+await page.setInputFiles("#r-file", junk); await page.fill("#r-pass", PASS);
+await page.click('button:has-text("Open backup")');
+check(await seen(page, "#sheet", "That file is not a backup"), "a file that is not a backup is refused plainly");
+await ctx.close();
+
+// the share sheet path (iPhone) and cancelling it
+console.log("Share sheet");
+for (const cancel of [false, true]) {
+  ({ ctx, page } = await open());
+  await page.addInitScript((c) => { navigator.canShare = () => true; navigator.share = async (d) => { window.__shared = { name: d.files[0].name, type: d.files[0].type }; if (c) throw new DOMException("cancelled", "AbortError"); }; }, cancel);
+  await page.reload(); await page.waitForSelector("#nav button");
+  await addAccount(page, "Test Cash", "asset", "5"); await seen(page, "#screen", "Test Cash");
+  await page.click('button:has-text("Back up now")'); await page.fill("#b-pass", PASS); await page.fill("#b-pass2", PASS);
+  await page.click("#f-save");
+  if (!cancel) {
+    check(await seen(page, "#toast", "Backup file created"), "the share sheet path completes");
+    const shared = await page.evaluate(() => window.__shared);
+    check(shared?.name === "finance-backup-2026-10-03.json" && shared.type === "application/json", "it hands the share sheet a named JSON file");
+  } else {
+    check(await seen(page, "#sheet", "Not saved. Tap Create backup file to try again."), "cancelling the share sheet is not counted as a backup");
+    check(!(await text(page, "#sheet")).includes("Last backup"), "and no backup date is recorded");
+    await page.click('#sheet button:has-text("Cancel")');
+    check((await text(page, "#screen")).includes("No backup yet"), "Setup still says there is no backup");
+  }
+  await ctx.close();
+}
 
 // ===== 6. wrong phone, wrong place =====
 console.log("Wrong device");

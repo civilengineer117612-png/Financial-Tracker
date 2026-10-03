@@ -64,5 +64,11 @@ The ledger app, separate from the storage probe above. It installs as its own Ho
   a lost store, wrong device, offline). Serve the repo first: `python3 -m http.server 8124`.
   It is not part of CI because it needs a browser.
 
+**Backup:** Setup has Back up now and Restore. A backup is one encrypted file (PBKDF2 + AES-GCM, passphrase of at
+least 12 characters, never stored) holding every record and the app's settings; on iPhone it opens the share sheet
+(Save to Files), elsewhere it downloads. Restore replaces what is on the phone, shows what will be replaced first, and
+asks for a second tap. Wrong passphrase, damaged or edited files are refused, and the file's own key-stretching
+setting is range-checked.
+
 **Rules the screens follow:** nothing blocks logging, nothing is red, over-budget and shortages are
 stated once in plain words, and verification is one entry at a time with no "all correct" button.
