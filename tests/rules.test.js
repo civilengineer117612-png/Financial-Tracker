@@ -31,6 +31,14 @@ test("same effective date: the later-created row corrects the earlier one", () =
   assert.equal(ruleInEffect(rows, "budget", "food", "2026-04-02").id, "fixed");
   assert.equal(ruleInEffect([...rows].reverse(), "budget", "food", "2026-04-02").id, "fixed");   // order of storage does not matter
 });
+test("a full tie (same date, same save time) goes to the row added later, however the rows are read", () => {
+  const same = { effective_from: "2026-04-01", created_at: t("09") };
+  const rows = [rule({ id: "first", amount: 1, ...same }), rule({ id: "second", amount: 2, ...same })];
+  assert.equal(ruleInEffect(rows, "budget", "food", "2026-04-02").id, "second");
+  assert.equal(rulesInEffect(rows, "budget", "2026-04-02").get("food").id, "second");
+  const three = [...rows, rule({ id: "third", amount: 3, ...same })];
+  assert.equal(ruleInEffect(three, "budget", "food", "2026-04-02").id, "third");
+});
 test("a backdated row inserted later still sits in its place in time", () => {
   const rows = [...history, rule({ id: "late", amount: 420000, effective_from: "2026-02-01", created_at: t("23") })];
   assert.equal(ruleInEffect(rows, "budget", "food", "2026-02-15").id, "late");

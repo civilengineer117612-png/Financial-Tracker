@@ -32,6 +32,8 @@ async function open({ ua = IPHONE, standalone = true } = {}) {
   return { ctx, page, errors };
 }
 const text = (page, sel = "body") => page.locator(sel).innerText();
+// Money, Budget and Setup live in the menu at the upper left; only Log and Verify are on the bottom bar.
+const menuGo = async (page, name) => { await page.click("#menuBtn"); await page.click(`#menu .item:has-text("${name}")`); };
 // Saving is asynchronous (it writes two stores), so checks wait for the text to appear instead of racing it.
 const seen = async (page, sel, sub, ms = 4000) => { try { await page.waitForFunction(([q, t]) => document.querySelector(q)?.innerText.includes(t), [sel, sub], { timeout: ms }); return true; } catch { return false; } };
 const gone = async (page, sel, sub, ms = 4000) => { try { await page.waitForFunction(([q, t]) => !document.querySelector(q)?.innerText.includes(t), [sel, sub], { timeout: ms }); return true; } catch { return false; } };
@@ -43,7 +45,7 @@ const stored = (page) => page.evaluate(async () => {
 const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: SHOTS + "/" + name + ".png" }); };
 
 async function addAccount(page, name, kind, opening, covers) {
-  await page.click('#nav button:has-text("Setup")');
+  await menuGo(page, "Setup");
   await page.fill("#a-name", name);
   await page.selectOption("#a-kind", kind);
   if (opening) await page.fill("#a-open", opening);
@@ -172,14 +174,14 @@ await page.waitForSelector("#nav button");
 await page.waitForFunction(() => !document.querySelector("#banner .bar"));
 s = await stored(page);
 check(s.local && s.idb && s.local === s.idb, "repair restored both stores");
-check(await seen(page, "#screen", "Add the accounts") === false && await seen(page, "#screen", "Log"), "the app is usable again");
+check(await seen(page, "#top", "Log") && !(await text(page, "#screen")).includes("Add the accounts"), "the app is usable again");
 await ctx.close();
 
 // ===== 5b. several accounts in a row, by touch =====
 console.log("Adding accounts one after another");
 ({ ctx, page, errors } = await open());
 async function tapAdd(page, name, kind, opening) {
-  await page.tap('#nav button:has-text("Setup")');
+  await menuGo(page, "Setup");
   await page.tap("#a-name"); await page.keyboard.type(name);
   await page.selectOption("#a-kind", kind);
   await page.tap("#a-open"); await page.keyboard.type(opening);
@@ -245,7 +247,7 @@ await page.click('#nav button:has-text("Log")');
 check(await seen(page, "#screen", "No backup yet"), "the Log page mentions that there is no backup");
 await page.click('button.tile:has-text("Lunch")'); await page.click('#sheet .chip:has-text("Test Cash")');
 await seen(page, "#toast", "Saved Lunch");
-await page.click('#nav button:has-text("Setup")');
+await menuGo(page, "Setup");
 check((await text(page, "#screen")).includes("No backup yet"), "Setup says so too");
 await page.click('button:has-text("Back up now")');
 check(await page.locator("#f-save").isDisabled(), "creating is off until there is a passphrase");
@@ -272,7 +274,7 @@ check(!(await text(page, "#screen")).includes("No backup yet"), "the Log page st
 await page.evaluate(async () => { localStorage.clear(); await new Promise((res) => { const r = indexedDB.deleteDatabase("financialTracker"); r.onsuccess = r.onerror = r.onblocked = () => res(); }); });
 await page.reload(); await page.waitForSelector("#nav button");
 check((await text(page, "#banner")).includes("No data on this device"), "the empty phone says so");
-await page.click('#nav button:has-text("Setup")');
+await menuGo(page, "Setup");
 await page.click('button:has-text("Restore from a backup")');
 check(await page.locator("#f-save").isDisabled(), "opening is off until a file and passphrase are given");
 await page.setInputFiles("#r-file", file);
@@ -289,7 +291,7 @@ await page.click("#f-save");
 check((await text(page, "#sheet")).includes("Tap again to replace"), "replacing asks for a second tap");
 await Promise.all([page.waitForNavigation(), page.click("#f-save")]);
 await page.waitForSelector("#nav button");
-await page.click('#nav button:has-text("Setup")');
+await menuGo(page, "Setup");
 check(await seen(page, "#screen", "Test Cash") && (await text(page, "#screen")).includes("Test Card"), "the accounts are back");
 await page.click('#nav button:has-text("Log")');
 check(await seen(page, "#screen", "₱95.00"), "and so is the entry");
@@ -298,7 +300,7 @@ check(s.local && s.local === s.idb, "both stores hold the restored ledger");
 check(JSON.parse(s.local).rev >= 2, "stamped newer than before");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 // a file that is not a backup
-await page.click('#nav button:has-text("Setup")'); await page.click('button:has-text("Restore from a backup")');
+await menuGo(page, "Setup"); await page.click('button:has-text("Restore from a backup")');
 const junk = join(mkdtempSync(join(tmpdir(), "bk-")), "notes.json"); (await import("node:fs")).writeFileSync(junk, "hello");
 await page.setInputFiles("#r-file", junk); await page.fill("#r-pass", PASS);
 await page.click('button:has-text("Open backup")');
@@ -388,7 +390,7 @@ await page.clock.setFixedTime(T0);
 await logPreset("Lunch", "Wallet"); await logOther("300", "Shopping", "Bank"); await verifyAll();
 await logPreset("Dinner", "Wallet");   // left as a draft on purpose
 
-await page.click('#nav button:has-text("Money")');
+await menuGo(page, "Money");
 await shot(page, "13-money-category");
 let screen = await text(page, "#screen");
 check(screen.includes("October 2026") && screen.includes("₱395.00"), "the hero number is this month's verified spending");
@@ -439,6 +441,109 @@ await page.click('button[aria-label="Next month"]');
 check(await page.locator('button[aria-label="Next month"]').isDisabled(), "but not past this month");
 for (let i = 0; i < 4; i++) await page.click('button[aria-label="Previous month"]');
 check((await text(page, "#screen")).includes("Nothing verified for this month yet"), "an empty month says so plainly");
+
+// ---- the menu: only Log and Verify stay on the bottom bar ----
+console.log("Menu and budgets");
+await page.click('#nav button:has-text("Log")');
+check((await page.locator("#nav button").count()) === 2, "the bottom bar has just Log and Verify");
+const mb = await page.locator("#menuBtn").boundingBox();
+check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the menu button is at the upper left, big enough to tap");
+check((await page.locator("#menuBtn svg rect").count()) === 3, "it is the three-line icon");
+check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
+await page.click("#menuBtn");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Setup,Close", "the menu lists Money, Budget and Setup");
+check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
+await shot(page, "17-menu");
+await page.keyboard.press("Escape");
+check((await page.locator("#menu .drawer").count()) === 0, "Escape closes it");
+await page.click("#menuBtn"); await page.mouse.click(380, 700);
+check((await page.locator("#menu .drawer").count()) === 0, "tapping outside closes it");
+await page.click("#menuBtn"); await page.click('#menu .item:has-text("Budget")');
+check((await page.locator("#menu .drawer").count()) === 0 && (await text(page, "#top")).includes("Budget"), "choosing an item closes the menu and opens the screen");
+check((await page.locator("#nav [aria-current]").count()) === 0, "no bottom button is marked while a menu screen is open");
+
+// ---- setting budgets ----
+let budgetRows = await page.locator(".choice").allInnerTexts();
+check(budgetRows.length === 8 && !budgetRows.some((r) => r.includes("Unlogged")) && budgetRows.every((r) => r.includes("No budget")), "every spending category can have a budget, except Unlogged; none set yet");
+await shot(page, "18-budget");
+const setBudget = async (cat, amount, startLabel) => {
+  await page.click(`.choice:has-text("${cat}")`);
+  await page.fill("#f-amount", amount);
+  if (startLabel) await page.click(`#sheet button:has-text("${startLabel}")`);
+  await page.click("#f-save");
+  await seen(page, "#toast", (Number(amount) === 0 ? "Budget removed for " : "Budget saved for ") + cat);   // wait for THIS save, not an older message
+};
+await page.click('.choice:has-text("Shopping")');
+check((await page.inputValue("#f-amount")) === "" && (await page.getAttribute('#sheet button:has-text("This month")', "aria-pressed")) === "true", "a first budget starts this month by default");
+check(await page.locator("#f-save").isDisabled(), "saving is off until there is an amount");
+await page.fill("#f-amount", "350"); await page.click("#f-save");
+check(await seen(page, "#toast", "Budget saved for Shopping"), "a budget is saved");
+check(await seen(page, "#screen", "₱350.00 a month"), "and shown beside the category");
+await page.click('.choice:has-text("Shopping")');
+check((await page.inputValue("#f-amount")) === "350.00" && (await page.getAttribute('#sheet button:has-text("Next month")', "aria-pressed")) === "true", "a change to an existing budget starts next month by default");
+await page.click('#sheet button:has-text("Cancel")');
+await setBudget("Shopping", "250", "This month");
+await setBudget("Food", "100");
+await setBudget("Rent", "2000");
+check(await seen(page, "#screen", "₱250.00 a month"), "changing a budget this month replaces it from now on");
+await setBudget("Family", "500", "Next month");
+const famText = await text(page, ".choice:has-text('Family')");
+if (!famText.includes("from November 2026")) console.log("   Family row was:", JSON.stringify(famText));
+check(famText.includes("from November 2026"), "a budget that starts next month says so");
+await setBudget("Family", "0", "This month");
+check((await text(page, ".choice:has-text('Family')")).includes("No budget"), "0 removes a budget");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.state.rules.length === 6 && ledgerNow.state.rules.every((r) => r.kind === "budget"), "every change is a new dated row; none was edited: " + ledgerNow.state.rules.length);
+check(ledgerNow.state.rules.filter((r) => r.subject_id === "cat-shopping").map((r) => r.amount).join() === "35000,25000", "the first Shopping budget is still there, then the new one");
+
+// ---- the colours: green to red ----
+await menuGo(page, "Money");
+for (let i = 0; i < 9; i++) if (await page.locator('button[aria-label="Next month"]').isEnabled()) await page.click('button[aria-label="Next month"]');
+await page.click('button:has-text("Where it went")');
+await shot(page, "19-money-graded");
+const fills = await page.locator(".brow").evaluateAll((els) => els.map((e) => ({ name: e.innerText.split("\n")[0], cls: [...e.classList].find((c) => c.startsWith("g-")), color: getComputedStyle(e.querySelector(".bfill")).backgroundColor })));
+const food = fills.find((f) => f.name === "Food"), shop = fills.find((f) => f.name === "Shopping");
+check(shop.cls === "g-critical" && shop.color === "rgb(208, 59, 59)", "over budget is red: Shopping " + shop.cls + " " + shop.color);
+check(food.cls === "g-serious" && food.color === "rgb(236, 131, 90)", "95% of a budget is orange: Food " + food.cls + " " + food.color);
+check((await text(page, ".legend")).replace(/\s+/g, " ").includes("On track Getting there Nearly used up Over budget No budget"), "a legend says what the colours mean, in words");
+check((await page.locator(".legend svg").count()) === 5, "each with its own shape, so colour is never the only signal");
+await page.click('.brow:has-text("Shopping")');
+check((await text(page, ".caption")).includes("Budget ₱250.00: 120% used, over by ₱50.00."), "tapping a bar adds the budget in words");
+
+await page.click('button:has-text("Budgets")');
+await shot(page, "20-money-budgets");
+const cards = await page.locator(".bcard").allInnerTexts();
+check(cards.length === 3 && cards[0].includes("Shopping") && cards[1].includes("Food") && cards[2].includes("Rent"), "budgets are listed most-used first: " + cards.map((c) => c.split("\n")[0]).join(", "));
+check(cards[0].includes("₱300.00 of ₱250.00") && cards[0].includes("Over budget") && cards[0].includes("Over by ₱50.00"), "an overspent budget says by how much, in plain words");
+check(cards[1].includes("₱95.00 of ₱100.00") && cards[1].includes("Nearly used up") && cards[1].includes("₱5.00 left"), "a nearly used budget says what is left");
+check(cards[2].includes("₱0.00 of ₱2,000.00") && cards[2].includes("On track") && cards[2].includes("₱2,000.00 left"), "an untouched budget is on track");
+const meters = await page.locator(".meter").evaluateAll((els) => els.map((e) => ({ cls: [...e.classList].find((c) => c.startsWith("g-")), color: getComputedStyle(e.querySelector(".fill")).backgroundColor, w: Math.round(e.querySelector(".fill").getBoundingClientRect().width / e.getBoundingClientRect().width * 100) })));
+check(meters[0].cls === "g-critical" && meters[0].w === 100, "the over-budget meter is full and red");
+check(meters[1].cls === "g-serious" && meters[1].w === 95, "a 95% meter is 95% full and orange");
+check(meters[2].cls === "g-good" && meters[2].w === 0 && meters[2].color === "rgb(12, 163, 12)", "an unused meter is empty and green");
+const ticks = await page.locator(".meter .tick").evaluateAll((els) => els.map((e) => e.style.left));
+check(ticks.length === 3 && ticks.every((t) => t === "10%"), "each meter has a mark for today's place in the month (3 of 31 days): " + ticks.join());
+check((await text(page, "#screen")).includes("The black line is today's place in the month."), "and the page explains it");
+await page.click('button:has-text("Show as list")');
+check(/Shopping[\s\S]*Over budget/.test(await text(page, ".tbl")) && (await text(page, ".tbl")).includes("Total spent"), "the list twin has the same facts");
+await page.click('button:has-text("Show as chart")');
+await page.click('button[aria-label="Previous month"]');
+check((await text(page, "#screen")).includes("No budgets for September 2026 yet"), "a budget set this month does not rewrite September");
+
+// spending with no budget is listed, not hidden
+await page.click('button[aria-label="Next month"]');
+await page.click('#nav button:has-text("Log")');
+await page.click('button:has-text("Other amount")'); await page.fill("#f-amount", "80"); await page.click('#sheet .chip:has-text("Upskill")'); await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
+await page.click('#nav button:has-text("Verify")');
+await page.click('button:has-text("Correct")'); await seen(page, "#screen", "of");
+await verifyAll();
+await menuGo(page, "Money");
+for (let i = 0; i < 9; i++) if (await page.locator('button[aria-label="Next month"]').isEnabled()) await page.click('button[aria-label="Next month"]');
+await page.click('button:has-text("Budgets")');
+const noBud = await page.waitForFunction(() => document.getElementById("screen").innerText.toLowerCase().includes("no budget set"), null, { timeout: 4000 }).then(() => true, () => false);   // the heading is shown in capitals
+if (!noBud) console.log("   screen was:", JSON.stringify((await text(page, "#screen")).slice(0, 600)));
+check(noBud && /Upskill\s+₱80\.00/.test(await text(page, "#screen")), "spending in a category with no budget is shown under its own heading");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // pictures survive a reload and appear where you choose an account
 await page.reload(); await page.waitForSelector("#nav button");

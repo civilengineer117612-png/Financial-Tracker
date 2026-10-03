@@ -44,18 +44,26 @@ test("everything the app takes from the model is really exported", () => {
   assert.ok(used.size > 10);
   for (const name of used) assert.ok(name in M, "app.js uses M." + name + " but the model does not export it");
 });
-test("the app is black and gray except ONE chart color, and makes no network calls", () => {
+test("the app is black and gray except the chart blue and four budget-grade colors, each written once", () => {
   const css = read("app/index.html");
-  const CHART = "#2a78d6";   // the single validated hue used for chart bars; everything else is gray
-  const used = new Set(css.match(/#[0-9a-fA-F]{3,6}\b/g) ?? []);
-  assert.ok(used.has(CHART), "the chart color is declared");
-  assert.match(css, /--chart: #2a78d6;/);
+  const TOKENS = { "--chart": "#2a78d6", "--good": "#0ca30c", "--warn": "#fab219", "--serious": "#ec835a", "--critical": "#d03b3b" };
+  const used = [...(css.match(/#[0-9a-fA-F]{3,6}\b/g) ?? [])];
+  for (const [name, hex] of Object.entries(TOKENS)) {
+    assert.ok(css.includes(name + ": " + hex + ";"), name + " is declared as " + hex);
+    assert.equal(used.filter((h) => h.toLowerCase() === hex).length, 1, hex + " is written once, as a token, and used by name");
+  }
   for (const hex of used) {
-    if (hex.toLowerCase() === CHART) continue;
+    if (Object.values(TOKENS).includes(hex.toLowerCase())) continue;
     const h = hex.slice(1), full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
     const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
     assert.ok(r === g && g === b, hex + " is not a gray");
   }
-  assert.equal((css.match(/#2a78d6/gi) ?? []).length, 1, "the chart color is written once, as a token, and used by name");
   assert.ok(!/fetch\(|XMLHttpRequest|WebSocket|navigator\.sendBeacon/.test(read("app/app.js")), "the app must not talk to a server");
+});
+test("the bottom bar holds only Log and Verify; everything else is in the menu", () => {
+  const js = read("app/app.js");
+  assert.match(js, /\$\("nav"\)\.innerHTML = tab\("log", "Log"\) \+ tab\("verify"/);
+  assert.ok(!/tab\("(money|setup|budget)"/.test(js), "no menu screen is on the bottom bar");
+  const menu = /const MENU = \[(.*?)\];/s.exec(js)[1];
+  for (const id of ["money", "budget", "setup"]) assert.ok(menu.includes('"' + id + '"'), id + " is in the menu");
 });
