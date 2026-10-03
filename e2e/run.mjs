@@ -975,6 +975,41 @@ check(/SAMPLE SUPERMARKET/i.test(await page.inputValue("#f-payee")) && await pag
 check(await page.evaluate(() => { const sh = document.querySelector("#sheet .sheet"), d = document.querySelector("#sheet input[type=date]").getBoundingClientRect(), r = sh.getBoundingClientRect(); return sh.scrollWidth <= sh.clientWidth && d.left >= r.left && d.right <= r.right; }), "the window does not scroll sideways and its date box stays inside it");
 await shot(page, "42-scan-bank");
 await page.click('#sheet button:has-text("Cancel")');
+
+// ----- quick capture from the camera icon on the Log screen -----
+await page.click('#nav button:has-text("Log")');
+check(await page.locator('#top .camicon input[data-scan="quick"]').count() === 1 && await page.locator('#top .camicon input[capture="environment"]').count() === 1, "the Log screen has a camera icon that opens the rear camera");
+await page.setInputFiles('input[data-scan="quick"]', { name: "bank.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
+check(await seen(page, "#toast", "Saved", 180000), "one photo is enough: it is read and saved as a draft by itself");
+let q = JSON.parse((await stored(page)).local);
+const quick = q.state.transactions.find((t) => t.source === "photo" && t.status === "draft");
+check(quick && quick.edited_before_verify === false && q.state.attachments.some((a) => a.transaction_id === quick.id) && (q.settings.scan_queue ?? []).length === 0, "it is a photo draft with its photo, and the queue is empty again");
+const quickEntries = q.state.entries.filter((e) => e.transaction_id === quick.id), mari = q.state.accounts.find((a) => a.name === "MariBank");
+check(quickEntries.some((e) => e.account_id === mari.id && e.amount === -59250) && quickEntries.some((e) => e.category_id === "cat-essentials" && e.amount === 59250), "it chose MariBank, ₱592.50 and Essentials without being asked");
+await page.click('#nav button:has-text("Verify")');
+check(await page.waitForSelector("img.shot[data-photo]:not([hidden])", { timeout: 4000 }).then(() => true, () => false) && (await text(page, "#screen")).includes("Essentials"), "Verify shows the photo beside what was read");
+await shot(page, "43-quick-verify");
+await page.click('#nav button:has-text("Log")');
+
+// closing the app right after the photo: nothing is lost, it is read the next time the app opens
+await page.setInputFiles('input[data-scan="quick"]', { name: "bank2.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
+for (let i = 0; i < 100 && (JSON.parse((await stored(page)).local).settings.scan_queue ?? []).length === 0; i++) await page.waitForTimeout(100);
+check(JSON.parse((await stored(page)).local).settings.scan_queue?.length === 1, "the photo is kept in the queue the moment it is taken");
+await page.reload(); await page.waitForSelector("#nav button");
+let resumed = false;
+for (let i = 0; i < 1800 && !resumed; i++) { const l = JSON.parse((await stored(page)).local); resumed = l.state.transactions.filter((t) => t.source === "photo" && t.status === "draft").length === 2 && (l.settings.scan_queue ?? []).length === 0; if (!resumed) await page.waitForTimeout(100); }
+check(resumed, "after the app is closed and opened again, the waiting photo is read and saved as a draft");
+
+// when the paper does not name the account, the photo is kept and the app asks instead of guessing
+await page.click('#nav button:has-text("Log")');
+await page.setInputFiles('input[data-scan="quick"]', { name: "receipt.png", mimeType: "image/png", buffer: Buffer.from(receiptPng, "base64") });
+check(await seen(page, "#sheet", "Check what I read", 180000), "a photo that cannot be saved safely opens the window to ask");
+check(await page.locator('#sheet button:has-text("Throw this photo away")').count() === 1, "and lets you throw the photo away");
+await page.click('#sheet button:has-text("Cancel")');
+check((await text(page, "#screen")).includes("1 photo needs a look"), "closing the window leaves a note on Log that one photo needs a look");
+await page.click('button:has-text("1 photo needs a look")');
+await page.click('#sheet button:has-text("Throw this photo away")');
+check(await seen(page, "#toast", "thrown away") && (JSON.parse((await stored(page)).local).settings.scan_queue ?? []).length === 0, "throwing it away empties the queue");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 await ctx.close();
 

@@ -223,3 +223,21 @@ export function readScan(text, today) {
   const category = kind === "rent" ? "Rent" : (CATEGORY_CLUES.find(([, re]) => re.test(lower))?.[0] ?? null);
   return { kind, bankId: bankFor(lines), creditCard: /credit\s*card/.test(lower), kindLabel: kindById(kind).label, direction: kindById(kind).direction, amount, date, dateSeen: seen, payee: payeeFor(kind, lines), categoryGuess: category, notes, readAnything: lines.length > 0 };
 }
+
+// What the owner used last time for the same payee: the most used expense category among VERIFIED entries with that name
+// (a tie goes to the more recent). The more the app is used, the less it has to guess from words on the paper.
+export function categoryFromHistory(state, payee) {
+  const name = (payee ?? "").trim().toLowerCase();
+  if (!name) return null;
+  const expense = new Set(state.categories.filter((c) => c.kind === "expense").map((c) => c.id));
+  const byTx = new Map();
+  for (const e of state.entries) if (e.category_id != null && expense.has(e.category_id)) byTx.set(e.transaction_id, e.category_id);
+  const seen = new Map();
+  for (const t of state.transactions) {
+    if (t.status !== "verified" || (t.payee ?? "").trim().toLowerCase() !== name || !byTx.has(t.id)) continue;
+    const c = byTx.get(t.id), cur = seen.get(c) ?? { n: 0, last: "" };
+    seen.set(c, { n: cur.n + 1, last: t.date > cur.last ? t.date : cur.last });
+  }
+  const best = [...seen].sort((a, b) => b[1].n - a[1].n || (a[1].last < b[1].last ? 1 : -1))[0];
+  return best ? best[0] : null;
+}
