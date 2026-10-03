@@ -18,7 +18,8 @@
 //   kind: "expense" (tracked against the category of the same name), "goal" (savings; matched to a goal by name)
 //   or "buffer" (set aside). Internally everything is integer centavos.
 import { reportingCategory } from "./rules.js";
-import { isPhDate } from "./util.js";
+import { isPhDate, phTimestamp } from "./util.js";
+import { checkTransactionSave } from "./index.js";
 
 const fail = (error) => ({ ok: false, error });
 const whole = (n) => Number.isSafeInteger(n) && n >= 0;
@@ -137,4 +138,45 @@ export function planProgress(state, plan, date, { categoryMaps = [] } = {}) {
     return { name: l.name, kind: l.kind, category_id: id, planned, spent: s, remaining: planned - s, matched: true };
   });
   return { period, rows };
+}
+
+// Income variance (owner's decision): the plan holds PLANNING income; the ledger holds what the payslip really said,
+// in centavos, overtime included. The two are never reconciled by editing the plan; the gap is just shown.
+// For the cutoff containing `date`: planned = that payday's income, actual = verified income received in the cutoff,
+// variance = actual - planned (plus means more came in than planned).
+export function planIncome(state, plan, date) {
+  const period = cutoffFor(plan, date);
+  const income = new Set(state.categories.filter((c) => c.kind === "income").map((c) => c.id));
+  const txById = new Map(state.transactions.map((t) => [t.id, t]));
+  let received = 0, count = 0;
+  for (const e of state.entries) {
+    if (e.category_id == null || !income.has(e.category_id)) continue;
+    const t = txById.get(e.transaction_id);
+    if (!t || t.status !== "verified" || t.date < period.start || t.date > period.end) continue;
+    received -= e.amount;   // income is a credit, stored negative
+    count += 1;
+  }
+  const planned = plan.paydays[period.index - 1].income;
+  return { period, label: plan.paydays[period.index - 1].label, planned, actual: received, variance: received - planned, count };
+}
+
+// Pay received, typed in from a payslip: money arrives in an account and is booked to an income category.
+// It is saved VERIFIED, because copying a figure off a payslip is itself the careful look (like a check-in count).
+// input: {transaction_id, date, amount (centavos), account_id, category_id?, memo?}
+export function planPayReceived(state, input, now = new Date()) {
+  const bad = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }] });
+  if (!Number.isSafeInteger(input.amount) || input.amount <= 0) return bad("BAD_AMOUNT", "amount must be more than zero");
+  const account = state.accounts.find((a) => a.id === input.account_id);
+  if (!account || account.class !== "asset") return bad("UNKNOWN_ACCOUNT", "choose the account the pay arrived in");
+  const cat = input.category_id ? state.categories.find((c) => c.id === input.category_id) : state.categories.find((c) => c.kind === "income");
+  if (!cat || cat.kind !== "income") return bad("UNKNOWN_CATEGORY", "no income category found");
+  if (!isPhDate(input.date)) return bad("BAD_DATE", "date must be like 2026-10-15");
+  const stamp = phTimestamp(now);
+  const transaction = { id: input.transaction_id, date: input.date, payee: "Pay received", memo: input.memo ?? "", status: "verified", source: "manual", created_at: stamp, verified_at: stamp };
+  const entries = [
+    { transaction_id: transaction.id, account_id: account.id, amount: input.amount },
+    { transaction_id: transaction.id, category_id: cat.id, amount: -input.amount },
+  ];
+  const result = checkTransactionSave(state, { transaction, entries });
+  return { ...result, transaction, entries, state: result.ok ? { ...state, transactions: [...state.transactions, transaction], entries: [...state.entries, ...entries] } : state };
 }

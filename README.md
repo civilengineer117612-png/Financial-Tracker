@@ -92,6 +92,8 @@ amounts sit at the bar tip, and tapping a bar states its share in words.
 
 `unit` is `PHP_whole_pesos` or `PHP_centavos`. `kind` is `expense` (tracked against the category of the same name), `goal` (savings, matched to a goal by name) or `buffer`. `ef_target_basis` and `ef_target_months` are optional, together: the emergency target is months times the monthly total of the basis lines. Amounts are stored as integer centavos.
 
+**Income variance:** the plan holds planning income (overtime excluded). On the Pay plan screen, "Record pay received" saves what the payslip really said, in pesos and centavos (overtime as its own amount), as a verified entry in an account. The Income table shows plan against received for the last and current cutoff as a signed difference; the plan is never edited to match. The emergency target is always computed from the plan's `ef_target_basis`, never stored.
+
 **Checks (menu, Overview):** the card reserve check (reserve balance against what the card owes, pending plus posted, in words: covered or short by how much), the weekly Unlogged chart (what your counts could not explain; a week nobody counted is left out, never shown as zero) and the weekly-questions review by week.
 
 **Goals (menu, Overview):** a goal points at an account where the money really sits, with an optional target and finish date. Balances are hidden until you tap Show balances. "Put money in" saves a draft transfer from another account, counted once you verify it.

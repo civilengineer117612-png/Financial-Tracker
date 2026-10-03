@@ -425,9 +425,16 @@ function viewPlan() {
   const which = plan.paydays[prog.period.index - 1];
   const rem = mine.map((r) => `<tr><td>${esc(r.name)}</td><td class="n">${peso(r.planned)}</td><td class="n">${peso(r.spent)}</td>${vcell(r.remaining)}</tr>`).join("");
   const history = all.length > 1 ? `<p class="note">Earlier plans stay saved: ${esc([...all].sort((x, y) => (x.effective_from < y.effective_from ? -1 : 1)).map((x) => longDate(x.effective_from)).join(", "))}.</p>` : "";
+  const day = (iso, n) => new Date(Date.parse(iso) + n * 86400000).toISOString().slice(0, 10);
+  const ivar = (v) => v === 0 ? "As planned" : (v > 0 ? "+" : "\u2212") + peso(Math.abs(v)) + (v > 0 ? " more" : " less");
+  const incomeRows = [M.planIncome(S(), plan, day(prog.period.start, -1)), M.planIncome(S(), plan, today())].map((v) =>
+    `<tr><td>${esc(v.label)}<small> ${esc(longDate(v.period.start))}</small></td><td class="n">${peso(v.planned)}</td><td class="n">${peso(v.actual)}</td><td class="n">${esc(ivar(v.variance))}</td></tr>`).join("");
   return `<h1>Pay plan</h1><p class="sub">Paydays on ${esc(paydayText(p1.day))} and ${esc(paydayText(p2.day))}. In effect since ${esc(longDate(plan.effective_from))}.</p>
     <table class="tbl"><tr><th>Line</th><th class="n">${esc(p1.label)}</th><th class="n">${esc(p2.label)}</th><th class="n">Monthly</th></tr>${lines}
       <tr class="total"><td>Total (= income)</td><td class="n">${peso(t.first)}</td><td class="n">${peso(t.second)}</td><td class="n">${peso(t.month)}</td></tr></table>
+    <h2>Income</h2><table class="tbl"><tr><th>Payday</th><th class="n">Plan</th><th class="n">Received</th><th class="n">Difference</th></tr>${incomeRows}</table>
+    <p class="note">The plan holds planning income. Real pay, from your payslip, is recorded below and the gap is only shown here, never changed in the plan.</p>
+    <p><button data-action="open-income" style="width:100%">Record pay received</button></p>
     <h2>This cutoff</h2><p class="note">${esc(which.label)} to the day before the next: ${esc(longDate(prog.period.start))} to ${esc(longDate(prog.period.end))}. Only verified spending counts.</p>
     ${mine.length ? `<table class="tbl"><tr><th>Line</th><th class="n">Plan</th><th class="n">Spent</th><th class="n">Left</th></tr>${rem}</table>` : `<p class="note">No plan line matches one of your categories yet.</p>`}
     ${unmatched.length ? `<p class="note">Not matched to a category, so not tracked: ${esc(unmatched.map((r) => r.name).join(", "))}.</p>` : ""}
@@ -536,7 +543,14 @@ function renderSheet() {
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
-  if (sh.type === "plan") {
+  if (sh.type === "income") {
+    body = `<h3>Pay received</h3>
+      <label for="f-amount">Net pay from the payslip (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off" placeholder="e.g. 9776.98">
+      <label for="f-date">Date it arrived</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}" max="${esc(today())}">
+      <label>Arrived in</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <p class="note">Overtime counts too: record it as its own amount. Saved as verified, because you are copying it off the payslip.</p>
+      <p><button class="primary" id="f-save" data-action="save-income" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "plan") {
     body = `<h3>Load a pay plan</h3>
       <p class="note">Choose the plan file, or paste its text. It stays on this phone and in your encrypted backups.</p>
       <label for="p-file">Plan file</label><input id="p-file" type="file" data-field="file" accept=".json,application/json,text/plain">
@@ -635,6 +649,9 @@ function refreshSave() {
     if (out) out.textContent = a.ok && acct ? "The ledger says " + peso(M.ledgerBalanceFor(acct, S().entries)) + ". " + differenceText(a.centavos - M.ledgerBalanceFor(acct, S().entries)) + "." : "";
   } else if (type === "survey") {
     btn.disabled = !f.ease;
+  } else if (type === "income") {
+    const a = M.parsePesos(f.amount);
+    btn.disabled = !(a.ok && a.centavos > 0 && f.account_id && f.date);
   } else if (type === "plan") {
     const r = (f.text ?? "").trim() ? M.parsePlan(f.text) : null, out = $("p-prev");
     btn.disabled = !r?.ok;
@@ -757,6 +774,17 @@ async function onClick(el) {
       ui.sheet = null; renderSheet();
       await commit(plan.state);
       showToast(peso(amount.centavos) + " set for " + g.name + ". Verify it to count it.");
+      break;
+    }
+    case "open-income": ui.sheet = { type: "income" }; ui.form = { amount: "", date: today(), account_id: accountsFor(null)[0]?.id ?? null }; renderSheet(); break;
+    case "save-income": {
+      const amount = M.parsePesos(ui.form.amount);
+      if (!amount.ok) { showToast("Enter the pay like 9776.98"); break; }
+      const plan = M.planPayReceived(S(), { transaction_id: newId("tx"), date: ui.form.date, amount: amount.centavos, account_id: ui.form.account_id }, new Date());
+      if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      await commit(plan.state);
+      showToast("Pay recorded: " + peso(amount.centavos));
       break;
     }
     case "open-plan": ui.sheet = { type: "plan" }; ui.form = { text: "" }; renderSheet(); break;
