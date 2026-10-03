@@ -1004,9 +1004,10 @@ await page.click('#nav button:has-text("Verify")');
 check((await text(page, "#screen")).includes("Food ₱100.00") && (await text(page, "#screen")).includes("Essentials ₱50.00"), "Verify shows both parts and the photo");
 await page.click('button:has-text("Delete")'); await page.click('button:has-text("Tap again to delete")'); await page.waitForTimeout(400);
 
-// ----- quick capture from the camera icon on the Log screen -----
+// ----- quick capture from the scanner button on the Log screen -----
 await page.click('#nav button:has-text("Log")');
-check(await page.locator('#top .camicon input[data-scan="quick"]').count() === 1 && await page.locator('#top .camicon input[capture="environment"]').count() === 1, "the Log screen has a camera icon that opens the rear camera");
+check(await page.locator('#top .camicon input[data-scan="quick"]').count() === 1 && await page.locator("#top .camicon input[capture]").count() === 0, "the Log screen has one scanner button, with no forced camera, so the phone offers camera, photo library or files");
+check((await page.getAttribute("#top .camicon", "aria-label")).includes("take a photo or choose a file"), "and it says so");
 await page.setInputFiles('input[data-scan="quick"]', { name: "bank.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
 check(await seen(page, "#toast", "Saved", 180000), "one photo is enough: it is read and saved as a draft by itself");
 let q = JSON.parse((await stored(page)).local);

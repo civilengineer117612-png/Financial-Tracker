@@ -116,7 +116,8 @@ const MENU = [["Overview", [["money", "Spending"], ["income", "Income"], ["budge
 
 function renderTop(title) {
   const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
-  const camera = device.allowEntry && ui.tab === "log" ? `<label class="camicon" aria-label="Take a photo of a receipt or payment screen"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="12.5" r="3.5"/></svg><input type="file" accept="image/*" capture="environment" data-scan="quick" hidden></label>` : "";
+  // One scanner button. With no `capture` setting the phone itself asks: take a photo, choose from the photo library, or choose a file.
+  const camera = device.allowEntry && ui.tab === "log" ? `<label class="camicon" aria-label="Scan a receipt or payment screen: take a photo or choose a file"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.scan}</svg><input type="file" accept="image/*" data-scan="quick" hidden></label>` : "";
   $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + `<h1>${esc(title)}</h1>` + camera;
 }
 
@@ -375,7 +376,7 @@ function openScanSheet(blob, text, failed, queueId) {
   ui.sheet = { type: "scan", queueId }; renderSheet();
 }
 
-// ---------- quick capture: the camera icon on the Log screen ----------
+// ---------- quick capture: the scanner button on the Log screen ----------
 // One tap, one photo, and the entry is a draft waiting in Verify. The photo is kept the moment it is taken and put in a queue,
 // so closing the app straight away loses nothing: the next time the app opens it reads what is waiting. If the app cannot be
 // sure of the amount, the account and the category, it keeps the photo and asks (a note on Log), instead of saving a guess.
