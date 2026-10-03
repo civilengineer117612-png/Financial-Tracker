@@ -62,6 +62,13 @@ export const SCHEMAS = {
     q1_missed_count: count, q1_missed_amount: centavos,
     q2_ease: ease, q3_annoyance: text, q4_corrections_count: count,
   },
+  // A payslip copied from paper. Gross and net are NOT stored as facts: the printed figures are kept so the app can compare
+  // them with the lines and the deposit (src/model/income.js). Never an employee id, tax id or account number.
+  Payslip: {
+    id, employer: name, period_from: date, period_to: date, pay_date: date, account_id: id, transaction_id: id,
+    printed_gross: centavos, printed_net: centavos, deposit: centavos, net_words: optional(text),
+  },
+  PayslipLine: { payslip_id: id, side: oneOf("earning", "deduction"), kind: oneOf("basic", "rice", "skills", "clothing", "transport", "overtime", "thirteenth", "bonus", "tax", "sss", "philhealth", "pagibig", "absences", "lates", "loan", "other"), amount: centavos, earned_month: optional({ type: "month" }) },
   ForeignAmount: { transaction_id: id, currency: name, foreign_amount: centavos, rate: { type: "rate" } },
 };
 
@@ -78,6 +85,7 @@ const TYPE_CHECKS = {
   // A small picture stored right in the record, so it travels with backups and never leaves the phone.
   iconurl: (v) => typeof v === "string" && v.length <= 300 && /^https:\/\/(t[0-3]\.gstatic\.com|www\.google\.com|icons\.duckduckgo\.com|icon\.horse)\/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*$/.test(v),
   icon: (v) => typeof v === "string" && v.length <= 40000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(v),
+  month: (v) => typeof v === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(v),
   day: (v) => Number.isInteger(v) && v >= 1 && v <= 31,
   rate: (v) => typeof v === "number" && Number.isFinite(v) && v > 0,
   idList: (v) => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string" && x.length > 0),
@@ -100,6 +108,17 @@ const CROSS_FIELD = {
     if (e.card_state != null && e.account_id == null) out.push("card_state requires account_id");
     return out;
   },
+  Payslip: (p) => [
+    ...(p.period_to < p.period_from ? ["period_to is before period_from"] : []),
+    ...(p.printed_gross <= 0 || p.printed_net <= 0 || p.deposit <= 0 ? ["gross, net and deposit must be more than zero"] : []),
+  ],
+  PayslipLine: (l) => [
+    ...(l.amount <= 0 ? ["a payslip line must be more than zero"] : []),
+    ...(l.side === "earning" && ["tax", "sss", "philhealth", "pagibig", "absences", "lates", "loan"].includes(l.kind) ? ["that kind belongs under deductions"] : []),
+    ...(l.side === "deduction" && ["basic", "rice", "skills", "clothing", "transport", "overtime", "thirteenth", "bonus"].includes(l.kind) ? ["that kind belongs under earnings"] : []),
+    ...(l.kind === "overtime" && l.earned_month == null ? ["overtime needs the month it was earned"] : []),
+    ...(l.kind !== "overtime" && l.earned_month != null ? ["only overtime carries an earned month"] : []),
+  ],
   SurveyResponse: (r) => [
     ...(r.week_end < r.week_start ? ["week_end is before week_start"] : []),
     ...(r.q1_missed_amount < 0 ? ["q1_missed_amount cannot be negative"] : []),

@@ -7,7 +7,7 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 ## Layout and checks
 - `src/model/` all money rules, pure and tested. `app/` the screens. `index.html`, `sw.js` at the root are the storage
   probe, which must stay untouched while it is still running.
-- Screens: Log and Verify on the bottom bar; everything else is in the menu at the upper left (Spending, Budget, Goals,
+- Screens: Log and Verify on the bottom bar; everything else is in the menu at the upper left (Spending, Income, Budget, Goals,
   Pay plan, Checks, Trips, Buffer, Scan, Check-in, Setup). The menu is plain icon-and-text rows, no filled highlight.
 - Real plan numbers, paydays and account balances live only in the owner's phone (settings and ledger), never in this
   repo, tests or README: tests and examples use invented numbers. Plans are dated and append-only like budgets.

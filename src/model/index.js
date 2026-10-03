@@ -51,7 +51,7 @@ export { editDraft } from "./inbox.js";
 export { detectPlatform, assessDevice } from "./device.js";
 export { buildReminderCalendar, defaultReminders, validateReminder, foldLine } from "./reminders.js";
 export { parsePesos, formatPesos, formatPesosWhole } from "./money.js";
-export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID } from "./seed.js";
+export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID, ensureIncomeCategories, INCOME_CATEGORIES } from "./seed.js";
 export { applyDrafts, planExpense, discardDraft, verifyDraft, editDraftFields, setAccountIcon, planAttachment, attachmentsFor } from "./drafts.js";
 export { LEDGER_VERSION, emptyState, emptyLedger, nextLedger, parseLedger, chooseLedger, restoreLedger, summarizeLedger, backupFileName, daysSinceBackup } from "./persist.js";
 export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByRange, spendingByAccount, monthlySpending, dayTotal } from "./reports.js";
@@ -59,3 +59,4 @@ export { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, cuto
 export { planTag, tagSummary } from "./trips.js";
 export { BANKS, CASH, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, bankPicture, isPlaceholderAddress, dropPlaceholderAddresses } from "./banks.js";
 export { KINDS, kindById, wordsToCentavos, readScan } from "./scan.js";
+export { EARNINGS, DEDUCTIONS, GOVERNMENT, LOST, SOURCES, OVERTIME_SHARE, linesOf, payslipTotals, payslipChecks, planPayslip, overtimeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory } from "./income.js";
