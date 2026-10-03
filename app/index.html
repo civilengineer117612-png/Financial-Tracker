@@ -190,9 +190,10 @@
   #nav button { border-radius: 8px; padding: 12px 4px; font-size: 15px; }
   #nav button[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   #scrim { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.45); }
-  .sheet { z-index: 11; position: fixed; left: 0; right: 0; bottom: 0; max-height: 86vh; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; touch-action: pan-y; overflow-wrap: anywhere; background: var(--paper); border-top: 2px solid var(--ink);
+  .sheet { z-index: 11; position: fixed; left: 0; right: 0; bottom: 0; max-height: 86vh; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; overflow-wrap: anywhere; background: var(--paper); border-top: 2px solid var(--ink);
            border-radius: 14px 14px 0 0; padding: 16px 16px calc(20px + env(safe-area-inset-bottom)); }
   .sheet h3 { margin: 0 0 4px; font-size: 20px; }
+  body.locked { position: fixed; left: 0; right: 0; width: 100%; overflow: hidden; }   /* the page stays still while a window is open */
   #toast { position: fixed; left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 5; }
   #toast .bar { background: var(--ink); color: var(--paper); border-radius: 10px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   #toast .bar button { background: none; border: 1px solid var(--paper); color: var(--paper); min-height: 40px; }

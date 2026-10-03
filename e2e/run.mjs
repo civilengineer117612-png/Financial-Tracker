@@ -22,9 +22,14 @@ const browser = await chromium.launch();
 // Every request for a bank logo goes through this, so the network is faked: by default nothing answers.
 let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
-async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false } = {}) {
+async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false } = {}) {
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
+  // A pretend phone speech service that, like many real ones, ends after a moment of quiet: round 1 hears "lunch 95", round 2 hears "at sample burger".
+  if (fakeSpeech) await ctx.addInitScript(() => {
+    const said = ["lunch 95", "at sample burger using gcash"]; let round = 0;
+    window.SpeechRecognition = window.webkitSpeechRecognition = class { start() { const words = said[round++] ?? ""; setTimeout(() => { if (words) this.onresult?.({ results: [{ 0: { transcript: words }, isFinal: true, length: 1 }] }); }, 80); setTimeout(() => this.onend?.(), 260); } stop() { setTimeout(() => this.onend?.(), 20); } };
+  });
   if (noSpeech) await ctx.addInitScript(() => { window.webkitSpeechRecognition = undefined; window.SpeechRecognition = undefined; });
   await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png|wikipedia\.org|wikimedia\.org/, (r) => { iconAsked.push(r.request().url()); iconServe(r); });
   const page = await ctx.newPage();
@@ -1121,6 +1126,35 @@ await page.click("#f-save");
 check(await seen(page, "#toast", "Saved Sample Mart") || await seen(page, "#screen", "as a draft"), "after choosing the account it is saved");
 vl = JSON.parse((await stored(page)).local);
 check(vl.state.transactions.filter((t) => t.source === "voice").length === 2 && vl.state.attachments.length === 0, "two voice drafts, and a spoken entry has no photo");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+await ctx.close();
+
+// ===== 5i. windows and speech on a phone-sized screen =====
+console.log("Windows and speech");
+({ ctx, page, errors } = await open({ blockSw: true, fakeSpeech: true }));
+await addAccount(page, "Wallet", "asset", "1000"); await addAccount(page, "GCash", "asset", "500");
+await page.click('#nav button:has-text("Log")');
+await page.setViewportSize({ width: 360, height: 520 });   // a short screen, so a window has to scroll
+await page.click('button:has-text("Other amount")');
+await page.fill("#f-amount", "50");
+await page.evaluate(() => { const s = document.querySelector("#sheet .sheet"); s.scrollTop = s.scrollHeight; });
+const before = await page.evaluate(() => document.querySelector("#sheet .sheet").scrollTop);
+check(before > 50, "the window is taller than the screen and was scrolled to the bottom (" + before + ")");
+check(await page.evaluate(() => document.body.classList.contains("locked") && getComputedStyle(document.body).position === "fixed"), "while a window is open the page behind it is held still");
+await page.click('#sheet .chip:has-text("GCash")');
+const after = await page.evaluate(() => document.querySelector("#sheet .sheet").scrollTop);
+check(after >= before - 2, "choosing something at the bottom does not throw the window back to the top (" + before + " to " + after + ")");
+await page.click('#sheet button:has-text("Cancel")');
+check(await page.evaluate(() => !document.body.classList.contains("locked") && getComputedStyle(document.body).position !== "fixed"), "closing the window lets the page move again");
+await page.click('button[aria-label="Say an entry out loud"]');
+await page.click("#v-mic");
+check(await page.waitForFunction(() => document.getElementById("v-text")?.value === "lunch 95 at sample burger using gcash", null, { timeout: 5000 }).then(() => true, () => false), "listening carries on after the phone ends a round, and the words are joined");
+check((await text(page, "#sheet")).includes("Listening"), "and it still says it is listening");
+await page.click("#v-mic");
+check(await page.waitForFunction(() => document.getElementById("v-mic")?.textContent.includes("Tap and speak"), null, { timeout: 3000 }).then(() => true, () => false), "tapping stop stops it");
+check(await page.evaluate(() => { const s = document.querySelector("#sheet .sheet"); return s.scrollWidth <= s.clientWidth && document.documentElement.scrollWidth <= innerWidth; }), "neither the window nor the page is wider than the screen");
+await page.click("#f-save");
+check(await seen(page, "#toast", "Saved") && (await text(page, "#toast")).toLowerCase().includes("sample burger"), "the joined sentence is saved as one draft");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 await ctx.close();
 

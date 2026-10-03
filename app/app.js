@@ -393,7 +393,7 @@ function voiceToggle() {
   voiceMessage("");
   try {
     voiceListener = listen({
-      lang: ui.form.lang ?? "en-PH",
+      lang: ui.form.lang ?? "en-PH", startText: ui.form.spoken ?? "",
       onText: (text) => { ui.form.spoken = text; const box = $("v-text"); if (box) box.value = text; refreshSave(); },
       onDone: () => { voiceListener = null; const b = $("v-mic"); if (b) b.textContent = "Tap and speak"; },
       onError: (code) => voiceMessage((VOICE_ERRORS[code] ?? "Speech could not start (" + code + ").") + " You can type, or use the keyboard's microphone key, in the box below."),
@@ -1055,9 +1055,19 @@ function chips(items, selectedId, action) {
 }
 
 const calSelected = (target) => (target === "from" ? ui.periodDraft?.from : target === "to" ? ui.periodDraft?.to : ui.dayPick && ui.dayPick !== today() ? ui.dayPick : today());
+// While a window is open the page behind it is held still (so a drag moves only the window, never the page behind it, which looked like
+// sliding sideways), and the window keeps its scroll position when it is redrawn after a tap (so choosing the bank at the bottom does not
+// throw you back to the top).
+let lockY = null, lastSheetKey = null;
+function lockPage(on) {
+  if (on && lockY === null) { lockY = window.scrollY; document.body.style.top = -lockY + "px"; document.body.classList.add("locked"); }
+  else if (!on && lockY !== null) { const y = lockY; lockY = null; document.body.classList.remove("locked"); document.body.style.top = ""; window.scrollTo(0, y); }
+}
 function renderSheet() {
   const sh = ui.sheet;
-  if (!sh) { $("sheet").innerHTML = ""; return; }
+  if (!sh) { $("sheet").innerHTML = ""; lastSheetKey = null; lockPage(false); return; }
+  const key = [sh.type, sh.id ?? "", sh.queueId ?? ""].join(":"), keepAt = lastSheetKey === key ? document.querySelector("#sheet .sheet")?.scrollTop ?? 0 : 0;
+  lastSheetKey = key; lockPage(true);
   let body = "";
   if (sh.type === "pay") {
     const p = S().presets.find((x) => x.id === sh.id);
@@ -1291,6 +1301,8 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
   $("sheet").innerHTML = `<div id="scrim" data-action="close-sheet"></div><div class="sheet" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" ? "Close" : "Cancel"}</button></p></div>`;
+  const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
+  if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.textContent = "Listening... tap to stop"; }
   refreshSave();
   hydratePhotos();
 }
