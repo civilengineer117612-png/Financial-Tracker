@@ -22,7 +22,7 @@ const browser = await chromium.launch();
 // Every request for a bank logo goes through this, so the network is faked: by default nothing answers.
 let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
-async function open({ ua = IPHONE, standalone = true, blockSw = false } = {}) {
+async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE } = {}) {
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
   await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png|wikipedia\.org|wikimedia\.org/, (r) => { iconAsked.push(r.request().url()); iconServe(r); });
@@ -31,7 +31,7 @@ async function open({ ua = IPHONE, standalone = true, blockSw = false } = {}) {
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/favicon|gstatic|duckduckgo|icon\.horse|apple-touch-icon|wikipedia|wikimedia/.test(m.location().url ?? "")) errors.push(m.text()); });   // blocked icon requests are staged on purpose
   await page.clock.setFixedTime(T0);
-  await page.goto(BASE);
+  await page.goto(url);
   await page.waitForSelector("#nav button");
   return { ctx, page, errors };
 }
@@ -1074,6 +1074,30 @@ await ctx.close();
 ({ ctx, page } = await open({ standalone: false }));
 check((await text(page, "#banner")).includes("Safari tab"), "a Safari tab is told to open the Home Screen icon");
 check((await page.locator("button.tile").count()) === 0, "nothing can be logged in a Safari tab");
+await ctx.close();
+
+// ===== 6b. a trial copy on the Android phone =====
+console.log("Trial");
+({ ctx, page, errors } = await open({ ua: ANDROID, standalone: false, blockSw: true, url: BASE + "?trial" }));
+check((await text(page, "#banner")).includes("Trial copy") && (await text(page, "#banner")).includes("not your real ledger"), "the Android phone with ?trial says it is a trial copy, not the real ledger");
+check((await page.locator("#top .camicon").count()) === 1 && !(await text(page, "#screen")).includes("Entry is switched off"), "and entry is on, with the camera icon");
+await addAccount(page, "Wallet", "asset", "100");
+await page.click('#nav button:has-text("Log")'); await page.click('button.tile:has-text("Lunch")'); await page.click('#sheet .chip:has-text("Wallet")');
+check(await seen(page, "#toast", "Saved Lunch"), "something can be logged in the trial copy");
+const keys = await page.evaluate(async () => ({ ls: Object.keys(localStorage), dbs: (await indexedDB.databases()).map((d) => d.name) }));
+check(keys.ls.includes("financialTracker.trial.ledger") && !keys.ls.includes("financialTracker.ledger") && keys.dbs.includes("financialTracker-trial") && !keys.dbs.includes("financialTracker"), "the trial keeps its data under its own names, never the real ledger's");
+await page.click('button:has-text("Start the trial over")');
+check((await text(page, "#banner")).includes("Tap again to erase the trial copy"), "starting over asks for a second tap");
+await page.click('button:has-text("Tap again to erase the trial copy")');
+const erased = await page.waitForFunction(() => localStorage.getItem("financialTracker.trial.ledger") === null && document.querySelectorAll("button.tile").length === 0 && document.querySelector("#banner")?.innerText.includes("Trial copy") && !document.querySelector("#banner")?.innerText.includes("Tap again"), null, { timeout: 8000 }).then(() => true, () => false);
+check(erased, "starting over erases the trial copy and leaves a fresh, empty one");
+await ctx.close();
+({ ctx, page, errors } = await open({ ua: ANDROID, standalone: false, blockSw: true }));
+check((await text(page, "#banner")).includes("not the finance phone") && (await text(page, "#screen")).includes("Entry is switched off"), "the same Android phone without ?trial is still switched off");
+await ctx.close();
+({ ctx, page, errors } = await open({ blockSw: true, url: BASE + "?trial" }));
+check(!(await text(page, "#banner")).includes("Trial copy"), "the iPhone Home Screen app ignores ?trial, so the real ledger cannot be swapped for a trial");
+check((await page.evaluate(() => Object.keys(localStorage))).every((k) => k !== "financialTracker.trial.ledger"), "and writes nothing under the trial names");
 await ctx.close();
 
 // ===== 7. offline =====

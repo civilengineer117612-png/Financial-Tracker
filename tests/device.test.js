@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { detectPlatform, assessDevice } from "../src/model/index.js";
+import { detectPlatform, assessDevice, trialAllowed } from "../src/model/index.js";
 
 const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
 const ANDROID = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36";
@@ -57,4 +57,26 @@ test("a store that cannot be read stops saving", () => {
 });
 test("platform is checked before storage: an Android never reports data loss", () => {
   assert.notEqual(assessDevice({ platform: "android", standalone: true, stores: { local: true, idb: false } }).status, "PARTIAL_LOSS");
+});
+
+test("a trial copy turns entry on for an Android phone, a desktop or an iPhone browser tab, and says plainly that it is not the real ledger", () => {
+  for (const platform of ["android", "other", "ios"]) {
+    const r = assessDevice({ platform, standalone: false, stores: both(false), trial: true });
+    assert.equal(r.status, "TRIAL", platform);
+    assert.equal(r.allowEntry, true, platform);
+    assert.match(r.message, /not your real ledger/);
+    assert.match(r.message, /Do not enter real financial data/);
+  }
+});
+test("a trial can never be switched on in the iPhone Home Screen app, which holds the real ledger", () => {
+  assert.equal(trialAllowed({ platform: "ios", standalone: true }), false);
+  const r = assessDevice({ platform: "ios", standalone: true, stores: both(true), trial: true });
+  assert.equal(r.status, "OK", "the ?trial is ignored and the real ledger is shown as usual");
+  assert.equal(assessDevice({ platform: "ios", standalone: true, stores: both(false), trial: true }).status, "EMPTY");
+});
+test("without ?trial nothing changes: Android stays switched off; a trial still refuses unreadable storage", () => {
+  assert.equal(assessDevice({ platform: "android", standalone: false, stores: both(false) }).status, "ANDROID_NO_LEDGER");
+  const r = assessDevice({ platform: "android", standalone: false, stores: { local: null, idb: false }, trial: true });
+  assert.equal(r.status, "STORAGE_UNAVAILABLE");
+  assert.equal(r.allowEntry, false);
 });
