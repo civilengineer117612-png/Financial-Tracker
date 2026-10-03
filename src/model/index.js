@@ -48,3 +48,4 @@ export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOve
 export { validateState, encryptBackup, decryptBackup, MIN_PASSPHRASE } from "./backup.js";
 export { weekEndingOn, autoFillSurvey, planSurveyResponse, surveyReview } from "./survey.js";
 export { editDraft } from "./inbox.js";
+export { detectPlatform, assessDevice } from "./device.js";
