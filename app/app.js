@@ -143,7 +143,7 @@ function dayCard() {
   const words = (picked ? longDate(picked) : "Today") + " " + peso(d.total) + (d.drafts ? ", including " + d.drafts + " not yet verified" : "");
   return `<div class="daytotal" role="status" aria-label="${esc(words)}">${peso(d.total)}</div>
     ${picked ? `<p class="center daycap">${esc(longDate(picked))}</p>` : ""}
-    <p class="center"><label class="link datelink">${picked ? "Change date" : "Select date"}<input type="date" data-day="1" max="${esc(today())}" value="${esc(picked ?? "")}" aria-label="Select a date"></label>${picked ? ` \u00b7 <button class="link" data-action="reset-day">Back to today</button>` : ""}</p>`;
+    <p class="center"><button class="link datelink" data-action="open-cal">${picked ? "Change date" : "Select date"}</button>${picked ? ` \u00b7 <button class="link" data-action="reset-day">Back to today</button>` : ""}</p>`;
 }
 
 function viewLog() {
@@ -734,7 +734,19 @@ function renderSheet() {
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
-  if (sh.type === "bufsetup") {
+  if (sh.type === "cal") {
+    const [y, m] = ui.calMonth.split("-").map(Number), first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(), count = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const withEntries = new Set(S().transactions.filter((t) => t.date.startsWith(ui.calMonth) && !isGenerated(t)).map((t) => t.date));
+    const picked = ui.dayPick && ui.dayPick !== today() ? ui.dayPick : today();
+    const cells = Array.from({ length: first }, () => "<span></span>").concat(Array.from({ length: count }, (_, i) => {
+      const date = ui.calMonth + "-" + String(i + 1).padStart(2, "0");
+      return `<button data-action="cal-day" data-id="${date}" aria-pressed="${date === picked}" aria-label="${esc(longDate(date))}"${date > today() ? " disabled" : ""}${withEntries.has(date) ? ' class="has"' : ""}>${i + 1}</button>`;
+    })).join("");
+    body = `<h3>Select date</h3>
+      <div class="stepper"><button data-action="cal-step" data-step="-1" aria-label="Earlier month">\u2039</button><b>${esc(M.monthLabel(ui.calMonth))}</b><button data-action="cal-step" data-step="1" aria-label="Later month"${ui.calMonth >= M.monthOf(today()) ? " disabled" : ""}>\u203A</button></div>
+      <div class="cal" role="group" aria-label="Days">${["S", "M", "T", "W", "T", "F", "S"].map((d) => `<b class="dow">${d}</b>`).join("")}${cells}</div>
+      <p class="note">Days in bold have entries.</p>`;
+  } else if (sh.type === "bufsetup") {
     body = `<h3>Set up the buffer</h3>
       <label>Which account is the GCash wallet?</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
       <p class="note" id="b-held"></p>
@@ -1121,6 +1133,9 @@ async function onClick(el) {
       if (r.ok) await commit(r.state);
       break;
     }
+    case "open-cal": ui.calMonth = M.monthOf(ui.dayPick && ui.dayPick !== today() ? ui.dayPick : today()); ui.sheet = { type: "cal" }; renderSheet(); break;
+    case "cal-step": { const next = M.addMonths(ui.calMonth, Number(el.dataset.step)); if (next <= M.monthOf(today())) ui.calMonth = next; renderSheet(); break; }
+    case "cal-day": ui.dayPick = id === today() ? null : id; ui.sheet = null; renderAll(); break;
     case "reset-day": ui.dayPick = null; renderScreen(); break;
     case "get-logos": await getBankLogos(); break;
     case "pick-bank": ui.accountForm.bank = ui.accountForm.bank === id ? null : id; ui.accountForm.sub = ""; ui.setupError = null; renderScreen(); break;
@@ -1350,7 +1365,6 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ui.menu) { ui.menu = false; renderMenu(); } });
 document.addEventListener("input", (e) => {
-  if (e.target.dataset?.day) return;   // the date picker spins and fires this on every turn of the wheel; it is read on "change", when it closes
   const field = e.target.dataset?.field;
   if (!field) return;
   if (e.target.type === "file") return;   // handled on change
@@ -1360,7 +1374,6 @@ document.addEventListener("input", (e) => {
   else ui.accountForm[field] = e.target.value;
 });
 document.addEventListener("change", (e) => {
-  if (e.target.dataset?.day) { ui.dayPick = e.target.value || null; renderScreen(); return; }
   if (e.target.type === "file" && ui.sheet) {
     if (ui.sheet.type === "plan") {
       const file = e.target.files[0];
