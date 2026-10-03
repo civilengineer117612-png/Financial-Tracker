@@ -90,7 +90,7 @@ export function defaultReminders({ morning = null, cutoff = "18:00", checkin } =
   if (checkin) {
     if (!DAYS.includes(checkin.day)) throw new Error("check-in day must be one of " + DAYS.join(","));
     list.push({ id: "weekly-checkin", title: "Weekly check-in", time: checkin.time, repeat: "weekly:" + checkin.day, alarms: [0],
-      description: "Count each account and wallet in the finance app, then answer the weekly questions." });
+      description: "Count each account and wallet in the finance app, answer the weekly questions, then back up (Setup, Back up now)." });
     if (checkin.cutoff) {
       list.push({ id: "weekly-cutoff", title: "Check-in cutoff: finish the weekly check-in", time: checkin.cutoff, repeat: "weekly:" + checkin.day, alarms: [0],
         description: "The weekly check-in must be finished now. Open the finance app on the iPhone." });

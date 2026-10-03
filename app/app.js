@@ -199,6 +199,46 @@ function viewVerify() {
       </div></div>`;
 }
 
+// ---------- bank logos (on the phone, only when asked) ----------
+// Asks an icon service for each bank's small icon and keeps it in the ledger on this phone. Nothing is in the repository.
+const LOGO_SOURCES = (domain) => [`https://www.google.com/s2/favicons?sz=128&domain=${domain}`, `https://icons.duckduckgo.com/ip3/${domain}.ico`];
+function loadLogo(url, ms = 8000) {
+  return new Promise((resolve) => {
+    const img = new Image(), timer = setTimeout(() => resolve(null), ms);
+    img.crossOrigin = "anonymous";
+    img.onerror = () => { clearTimeout(timer); resolve(null); };
+    img.onload = () => {
+      clearTimeout(timer);
+      if (img.naturalWidth < 32) { resolve(null); return; }   // the service's tiny "unknown site" placeholder
+      try {
+        const c = document.createElement("canvas"); c.width = c.height = ICON_PX;
+        const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, ICON_PX, ICON_PX);
+        const k = Math.min((ICON_PX - 8) / img.naturalWidth, (ICON_PX - 8) / img.naturalHeight), w = img.naturalWidth * k, h = img.naturalHeight * k;
+        ctx.drawImage(img, (ICON_PX - w) / 2, (ICON_PX - h) / 2, w, h);
+        let out = c.toDataURL("image/png"); if (out.length > 38000) out = c.toDataURL("image/jpeg", 0.8);
+        resolve(out);
+      } catch { resolve(null); }   // the service did not allow the picture to be copied
+    };
+    img.src = url;
+  });
+}
+async function getBankLogos() {
+  const wanted = M.BANKS.filter((b) => S().accounts.some((a) => a.bank === b.id && !a.icon));
+  if (!wanted.length) { showToast("Every bank you use already has a picture."); return; }
+  ui.logoBusy = true; renderScreen();
+  let state = S(), got = 0;
+  for (const b of wanted) {
+    let url = null;
+    for (const src of LOGO_SOURCES(b.domain)) { url = await loadLogo(src); if (url) break; }
+    if (!url) continue;
+    const r = M.setAccountIcon(state, state.accounts.find((a) => a.bank === b.id).id, url);
+    if (r.ok) { state = r.state; got += 1; }
+  }
+  ui.logoBusy = false;
+  if (got) await commit(state); else renderScreen();
+  showToast(got === wanted.length ? "Got " + got + (got === 1 ? " logo." : " logos.") : "Got " + got + " of " + wanted.length + ". For the rest, tap the tile in the list and add a screenshot.");
+}
+
 const accountPreview = (f) => { const b = M.bankById(f.bank), sub = (f.sub ?? "").trim(); return sub ? b.name + " \u00b7 " + sub : b.name; };
 
 function viewSetup() {
@@ -225,6 +265,7 @@ function viewSetup() {
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}
+    ${S().accounts.some((a) => a.bank && !a.icon) ? `<p class="note">Bank pictures: the app can ask an icon service for your banks' small icons (it tells that service which banks you use) and keep them on this phone only. <button class="link" data-action="get-logos"${ui.logoBusy ? " disabled" : ""}>${ui.logoBusy ? "Getting logos..." : "Get bank logos"}</button></p>` : ""}
     <h2>Pay plan</h2>
     <p class="note">${planOf() ? "A plan is in effect." : "No plan in effect."} <button class="link" data-action="${planOf() ? "tab" : "open-plan"}" data-tab="plan">${planOf() ? "Open it" : "Load a plan"}</button></p>
     <h2>Backup</h2>
@@ -546,8 +587,10 @@ function viewCheckin() {
   const sv = surveyThisWeek();
   const questions = done
     ? `<h2 class="today">Weekly questions</h2><button class="choice" data-action="open-survey"><span>Three quick questions</span><span class="bval">${sv ? "Answered \u2713" : "Not answered"}</span></button>` : "";
+  const age = M.daysSinceBackup(ledger.settings, today());
+  const backupLine = age === null || age >= 6 ? `<p class="note"><b>One reminder:</b> back up after this check-in. ${esc(backupAgeText())} <button class="link" data-action="tab" data-tab="setup">Back up now</button></p>` : "";
   return `<h1>Check-in</h1><p class="sub">Week of ${esc(longDate(w.week_start))} to ${esc(longDate(w.week_end))}</p>
-    <p class="note">Open each account, look at the real balance, and type it in. ${done} of ${accts.length} counted.</p>${rows}${questions}
+    <p class="note">Open each account, look at the real balance, and type it in. ${done} of ${accts.length} counted.</p>${backupLine}${rows}${questions}
     <p class="note">Money the ledger cannot explain is recorded as Unlogged. It never blocks anything.</p>`;
 }
 
@@ -968,6 +1011,7 @@ async function onClick(el) {
       showToast("Target set from your plan");
       break;
     }
+    case "get-logos": await getBankLogos(); break;
     case "pick-bank": ui.accountForm.bank = ui.accountForm.bank === id ? null : id; ui.accountForm.sub = ""; ui.setupError = null; renderScreen(); break;
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
     case "save-icon": await saveIcon(); break;

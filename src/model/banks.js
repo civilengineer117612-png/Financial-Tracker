@@ -4,10 +4,14 @@
 // Ten commonly used banks and e-wallets in the Philippines, including the owner's own; edit this list to change it.
 import { validateShape } from "./schema.js";
 
+// `domain` is the bank's public website. It is used only when the owner taps "Get bank logos" on the phone, which asks
+// an icon service for that site's small icon and keeps it on the phone. Nothing is downloaded or stored in the repository.
 export const BANKS = [
-  { id: "gcash", name: "GCash" }, { id: "maya", name: "Maya" }, { id: "gotyme", name: "GoTyme" }, { id: "maribank", name: "MariBank" },
-  { id: "bdo", name: "BDO" }, { id: "bpi", name: "BPI" }, { id: "metrobank", name: "Metrobank" }, { id: "unionbank", name: "UnionBank" },
-  { id: "landbank", name: "Landbank" }, { id: "securitybank", name: "Security Bank" },
+  { id: "gcash", name: "GCash", domain: "gcash.com" }, { id: "maya", name: "Maya", domain: "maya.ph" },
+  { id: "gotyme", name: "GoTyme", domain: "gotyme.com.ph" }, { id: "maribank", name: "MariBank", domain: "maribank.ph" },
+  { id: "bdo", name: "BDO", domain: "bdo.com.ph" }, { id: "bpi", name: "BPI", domain: "bpi.com.ph" },
+  { id: "metrobank", name: "Metrobank", domain: "metrobank.com.ph" }, { id: "unionbank", name: "UnionBank", domain: "unionbank.com.ph" },
+  { id: "landbank", name: "Landbank", domain: "landbank.com" }, { id: "securitybank", name: "Security Bank", domain: "securitybank.com" },
 ];
 export const CASH = { id: "cash", name: "Cash" };
 export const bankById = (id) => [...BANKS, CASH].find((b) => b.id === id) ?? null;

@@ -27,7 +27,7 @@ self.addEventListener("activate", (e) => {
 });
 
 self.addEventListener("fetch", (e) => {
-  if (e.request.method !== "GET") return;
+  if (e.request.method !== "GET" || new URL(e.request.url).origin !== location.origin) return;   // never handle other sites
   e.respondWith(
     fetch(e.request)
       .then((res) => {

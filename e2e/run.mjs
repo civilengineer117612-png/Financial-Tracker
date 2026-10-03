@@ -567,6 +567,8 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 await menuGo(page, "Check-in");
 check((await text(page, "#top")).includes("Check-in") && (await text(page, "#screen")).includes("0 of"), "the check-in lists every account, none counted yet");
 check(!(await text(page, "#screen")).includes("Weekly questions"), "the weekly questions wait until something is counted");
+const ck = await text(page, "#screen"), lastBackup = JSON.parse((await stored(page)).local).settings.last_backup_at;
+check(ck.includes("One reminder: back up after this check-in") === !lastBackup, "the check-in carries the backup reminder when a backup is due, and stays quiet right after one (last backup: " + (lastBackup ? "today" : "never") + ")");
 await page.click('.choice:has-text("Wallet")');
 await page.fill("#f-amount", "1");
 check((await text(page, "#f-diff")).includes("missing"), "typing a count shows the difference before saving");
@@ -671,6 +673,22 @@ check(ledgerNow.state.accounts.filter((a) => a.bank === "gotyme").length === 2, 
 await shot(page, "30-banks");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
+// ---- bank logos, fetched on the phone only when asked (the network is faked here) ----
+const pngB64 = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"); x.fillStyle = "#1a8"; x.fillRect(0, 0, 64, 64); return c.toDataURL("image/png").split(",")[1]; });
+let asked = [];
+await page.route("https://www.google.com/s2/favicons**", (r) => { asked.push(new URL(r.request().url()).searchParams.get("domain")); r.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(pngB64, "base64") }); });
+await page.route("https://icons.duckduckgo.com/**", (r) => r.abort());
+check((await text(page, "#screen")).includes("tells that service which banks you use"), "the logo button says what it sends");
+await page.click('button:has-text("Get bank logos")');
+check(await seen(page, "#toast", "Got 1 logo"), "logos are fetched for the banks you use");
+check(asked.join() === "gotyme.com.ph", "and only for those banks: " + asked.join());
+check((await page.locator("#screen .row", { hasText: "GoTyme" }).locator("img.ico").count()) === 2, "both GoTyme accounts show the picture");
+check(!(await text(page, "#screen")).includes("Get bank logos"), "the button goes away once every bank has a picture");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.state.accounts.filter((a) => a.bank === "gotyme").every((a) => a.icon.startsWith("data:image/")), "the pictures live in the ledger on the phone");
+await shot(page, "31-logos");
+check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+
 // ---- goals ----
 await menuGo(page, "Goals");
 check((await text(page, "#screen")).includes("No goals yet"), "goals start empty");
@@ -734,7 +752,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 // pictures survive a reload and appear where you choose an account
 await page.reload(); await page.waitForSelector("#nav button");
 await page.click('#nav button:has-text("Log")'); await page.click('button.tile:has-text("Breakfast")');
-check((await page.locator("#sheet .chip img.ico").count()) === 2, "pictures are on the account buttons when you log, so you can tell them apart at a glance");
+check((await page.locator("#sheet .chip img.ico").count()) === 4, "pictures (two chosen, two shared GoTyme logos) are on the account buttons when you log, so you can tell them apart at a glance");
 await shot(page, "16-pay-with-pictures");
 await page.click('#sheet button:has-text("Cancel")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
