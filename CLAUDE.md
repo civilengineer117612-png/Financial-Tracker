@@ -31,9 +31,14 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 - Keep building without asking. Ask only when an answer changes how the app behaves or needs the owner's own
   experience. Put questions in ONE copy-paste box, at most 4, each with an `ANSWER:` line, and no recommendation under
   a question. Keep replies short and in plain words; no jargon without a one-line explanation.
+- Screen-by-screen review: the owner reviews one screen at a time from a text summary (Home screen first, then the menu screens). Revise at most 5 items per round, then stop and report; the rest wait for the next round.
 - A major change: say so, or give a PDF. Calendar and other outward actions need an explicit yes.
 - The owner is a VISUAL person: charts and account pictures matter. Charts: one color for a single series, values at the
   bar tip, a list twin for every chart (see the dataviz skill's rules).
 - No row tints or group labels (Fixed costs, Everyday spending) in the transaction lists: the owner removed them as pointless. Rows stay plain.
 - Tone is firm, never harsh: nothing blocks logging, red appears only on budget charts when a category is strictly over its budget (owner's choice), always with a shape and words, facts are stated once. Verification is one entry at
   a time with no "all correct" button; entries can be verified the day they are logged.
+
+## Screen-by-screen review (in progress)
+The owner reviews one screen at a time. Every copy-paste review box I give has at most 5 items (10 was overwhelming), each with a short plain assessment, a RATING line (KEEP / CHANGE / REMOVE) and a COMMENT line. Revise at most 5 items per round, then stop and report. Order: Home screen (Log) first, then the menu screens one at a time.
+Progress: Home screen, box 1 (top bar, notes under the title, the day's big number, quick tiles, Other amount) sent. Box 2 still to send (Today list, bottom bar, sizes and spacing, trial banner, anything missing).
