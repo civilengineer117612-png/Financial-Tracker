@@ -494,28 +494,30 @@ function openScanSheet(blob, text, failed, queueId, spoken = null) {
 let voiceListener = null;
 const VOICE_ERRORS = { "not-allowed": "The phone did not allow the microphone here.", "service-not-allowed": "The phone did not allow the microphone here.", "no-speech": "I did not hear anything. Try again.", "audio-capture": "No microphone was found.", network: "The speech service could not be reached (it needs internet)." };
 function voiceMessage(m) { const el = $("v-msg"); if (el) el.textContent = m; }
+const setWave = (on) => $("v-wave")?.classList.toggle("on", on);
 const LANG_NAME = { "en-PH": "English", "fil-PH": "Filipino" };
 const micLabel = (text) => `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.mic}</svg><span>${esc(text)}</span>`;
 function voiceToggle() {
   if (voiceListener) { voiceListener.stop(); return; }
   const lang = ui.form.lang ?? firstLanguage(), btn = $("v-mic");
   if (btn) btn.innerHTML = micLabel("Listening in " + LANG_NAME[lang] + "... tap to stop");
+  setWave(true);
   voiceMessage("");
   try {
     voiceListener = listen({
       lang, startText: ui.form.spoken ?? "",
       onText: (text) => { ui.form.spoken = text; const box = $("v-text"); if (box) box.value = text; refreshSave(); },
       onDone: ({ heard, confidence }) => {
-        voiceListener = null; const b = $("v-mic"); if (b) b.innerHTML = micLabel("Tap and speak");
+        voiceListener = null; setWave(false); const b = $("v-mic"); if (b) b.innerHTML = micLabel("Tap and speak");
         // Nothing caught, or a doubtful catch: the next tap listens for the other language, so the person never has to choose one.
         if (!heard || (confidence !== null && confidence < 0.55)) {
           ui.form.lang = other(lang);
           voiceMessage(heard ? "I am not sure I heard that right. Check the words, or tap and say it again (this time I listen for " + LANG_NAME[ui.form.lang] + ")." : "I did not catch anything in " + LANG_NAME[lang] + ". Tap and speak again (this time I listen for " + LANG_NAME[ui.form.lang] + ").");
         } else ui.form.lang = lang;
       },
-      onError: (code) => { voiceListener = null; const b = $("v-mic"); if (b) b.innerHTML = micLabel("Tap and speak"); voiceMessage((VOICE_ERRORS[code] ?? "Speech could not start (" + code + ").") + " You can type, or use the keyboard's microphone key, in the box below."); },
+      onError: (code) => { voiceListener = null; setWave(false); const b = $("v-mic"); if (b) b.innerHTML = micLabel("Tap and speak"); voiceMessage((VOICE_ERRORS[code] ?? "Speech could not start (" + code + ").") + " You can type, or use the keyboard's microphone key, in the box below."); },
     });
-  } catch (e) { voiceListener = null; if (btn) btn.innerHTML = micLabel("Tap and speak"); voiceMessage("Speech could not start. You can type, or use the keyboard's microphone key, in the box below."); }
+  } catch (e) { voiceListener = null; setWave(false); if (btn) btn.innerHTML = micLabel("Tap and speak"); voiceMessage("Speech could not start. You can type, or use the keyboard's microphone key, in the box below."); }
 }
 async function useSpoken() {
   voiceListener?.stop();
@@ -1364,7 +1366,7 @@ function renderSheet() {
   } else if (sh.type === "voice") {
     body = `<h3>Say it</h3>
       <p class="note">One sentence, for example: lunch 95 at Sample Burger using GCash. You can say the day (yesterday, last Friday) too.</p>
-      ${speechSupported() ? `<p><button class="primary micmain" id="v-mic" data-action="voice-toggle" style="margin-top:12px">${micLabel("Tap and speak")}</button></p>` : `<p class="note">Speech is not available in this browser. Type below, or tap the box and use your keyboard's microphone key.</p>`}
+      ${speechSupported() ? `<p><button class="primary micmain" id="v-mic" data-action="voice-toggle" style="margin-top:12px">${micLabel("Tap and speak")}</button><div class="wave" id="v-wave" aria-hidden="true">${"<i></i>".repeat(13)}</div></p>` : `<p class="note">Speech is not available in this browser. Type below, or tap the box and use your keyboard's microphone key.</p>`}
       <label for="v-text">What I heard (fix it, type it, or use the keyboard's microphone key)</label>
       <textarea id="v-text" data-field="spoken" rows="3" autocomplete="off" autocapitalize="sentences">${esc(ui.form.spoken ?? "")}</textarea>
       <p id="v-msg" class="note" role="status"></p>
@@ -1442,7 +1444,7 @@ function renderSheet() {
   }
   $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" ? "Close" : "Cancel"}</button></p></div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
-  if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); }
+  if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
   refreshSave();
   hydratePhotos();
 }
