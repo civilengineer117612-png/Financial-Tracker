@@ -45,9 +45,9 @@ test("everything the app takes from the model is really exported", () => {
   assert.ok(used.size > 10);
   for (const name of used) assert.ok(name in M, "app.js uses M." + name + " but the model does not export it");
 });
-test("the app is black and gray except the chart blue and four budget-grade colors, each written once", () => {
+test("the app is black and gray except the chart blue, its shades for the budget grades, and one red, each written once", () => {
   const css = read("app/index.html");
-  const TOKENS = { "--chart": "#2a78d6", "--good": "#0ca30c", "--warn": "#fab219", "--serious": "#ec835a", "--critical": "#d03b3b" };
+  const TOKENS = { "--chart": "#2a78d6", "--good": "#74abe8", "--warn": "#4f93e0", "--serious": "#1b4f8f", "--critical": "#d03b3b" };
   const used = [...(css.match(/#[0-9a-fA-F]{3,6}\b/g) ?? [])];
   for (const [name, hex] of Object.entries(TOKENS)) {
     assert.ok(css.includes(name + ": " + hex + ";"), name + " is declared as " + hex);
