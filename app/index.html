@@ -9,9 +9,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Finance">
-<meta name="theme-color" content="#111111">
+<meta name="theme-color" content="#262626">
 <style>
-  :root { --chart: #2a78d6; --good: #74abe8; --warn: #4f93e0; --serious: #1b4f8f; --critical: #d03b3b; --ink: #111; --mid: #555; --soft: #999; --line: #ccc; --wash: #f0f0f0; --paper: #fff; }
+  :root { --chart: #2a78d6; --good: #74abe8; --warn: #4f93e0; --serious: #1b4f8f; --critical: #d03b3b; --ink: #262626; --mid: #555; --soft: #999; --line: #ccc; --wash: #f0f0f0; --paper: #fff; }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; overflow-x: hidden; overscroll-behavior-x: none; }
   body { overflow-x: hidden; margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.4; color: var(--ink); background: var(--paper);
@@ -21,14 +21,15 @@
   p { margin: 6px 0; }
   .sub { color: var(--mid); margin: 0 0 12px; }
   .note { color: var(--mid); }
-  button { font: inherit; color: var(--ink); background: var(--wash); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-height: 48px; }
+  button { font: inherit; color: var(--ink); background: var(--wash); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; min-height: 48px; }
   button { transition: transform .12s ease, background-color .12s ease; }
   button:active { background: var(--line); transform: scale(.98); }
   button.rowbtn:active, .brow:active, .choice:active, .bankrow:active, #nav button:active, button.link:active { transform: none; }
   button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); width: 100%; font-size: 18px; min-height: 56px; }
   button.primary:active { background: var(--mid); }
+  button.primary.compact { display: block; width: auto; min-width: 200px; max-width: 80%; margin: 12px auto 0; padding: 0 32px; min-height: 52px; font-size: 17px; }
   button:disabled { opacity: .4; }
-  .filebtn { display: flex; align-items: center; justify-content: center; background: var(--ink); color: var(--paper); border-radius: 8px; font-size: 18px; min-height: 56px; margin-top: 12px; cursor: pointer; }
+  .filebtn { display: flex; align-items: center; justify-content: center; background: var(--ink); color: var(--paper); border-radius: 14px; font-size: 18px; min-height: 56px; margin-top: 12px; cursor: pointer; }
   .filebtn[aria-disabled="true"] { opacity: .4; }
   .filebtn.alt { background: var(--wash); color: var(--ink); border: 1px solid var(--line); margin-top: 8px; }
   .flag { color: var(--ink); border-left: 4px solid var(--ink); padding-left: 8px; }
@@ -39,7 +40,7 @@
   .btrack.stack .bfill + .bfill { margin-left: 2px; }
   .btrack .bfill.ot { opacity: .45; }
   h4 { font-size: 15px; margin: 18px 0 2px; }
-  .shot { display: block; width: 100%; max-height: 260px; object-fit: contain; background: var(--wash); border-radius: 8px; }
+  .shot { display: block; width: 100%; max-height: 260px; object-fit: contain; background: var(--wash); border-radius: 12px; }
   .shot[hidden], .shotfull[hidden] { display: none; }
   .shotbtn { display: block; width: 100%; padding: 0; min-height: 0; border: 0; background: none; margin-bottom: 10px; }
   .shotfull { display: block; width: 100%; max-height: 70vh; object-fit: contain; }
@@ -61,7 +62,7 @@
   .lbhint { color: #ccc; text-align: center; margin: 8px; }
   button.link { background: none; border: 0; padding: 4px 0; min-height: 0; text-decoration: underline; }
   .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .tile { border-radius: 14px; } .tile:active { transform: scale(.96); }
+  .tile { border-radius: 16px; } .tile:active { transform: scale(.96); }
   .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 84px; gap: 2px; }
   .tile b { font-size: 17px; }
   .tile span { color: var(--mid); }
@@ -71,7 +72,7 @@
   .daycapbtn { background: none; border: 0; padding: 2px 8px; min-height: 0; color: var(--mid); font-size: 16px; }
   .camicon.micbtn { margin-left: auto; padding: 0; border: 0; font-size: inherit; }
   .micbtn + .camicon { margin-left: 0; }
-  .camicon { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 14px; background: var(--ink); color: var(--paper); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .12s ease; } .camicon:active { transform: scale(.94); }
+  .camicon { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 16px; background: var(--ink); color: var(--paper); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .12s ease; } .camicon:active { transform: scale(.94); }
   .menubtn { width: 48px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
   .menubtn svg { display: block; }
   #menu .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); }
@@ -141,9 +142,9 @@
   .choice { display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 0; min-height: 56px; }
   .choice small { color: var(--mid); display: block; }
   .chip { display: inline-flex; align-items: center; gap: 8px; }
-  .icowrap { position: relative; display: inline-block; flex: none; vertical-align: middle; } .icowrap .ico.ov { position: absolute; inset: 0; }
+  .icowrap { position: relative; display: inline-block; flex: none; vertical-align: middle; } .icowrap .ico.ov { position: absolute; inset: 0; } .icowrap .mono { position: absolute; inset: 0; width: 100%; height: 100%; }
   /* every picture sits in the same white framed tile, whatever shape or padding the logo came with, so a list of banks looks like one set */
-  .ico { border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid var(--line); padding: 3px; box-sizing: border-box; flex: none; vertical-align: middle; }
+  .ico { border-radius: 10px; object-fit: contain; background: #fff; border: 1px solid var(--line); padding: 3px; box-sizing: border-box; flex: none; vertical-align: middle; }
   .mono { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; background: var(--wash); border: 1px solid var(--line); color: var(--mid); font-weight: bold; }
   .who { display: flex; align-items: center; gap: 12px; }
   .icobtn { padding: 0; min-height: 0; border: 0; background: none; }
@@ -185,10 +186,10 @@
   button.rowbtn { width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; min-height: 56px; }
   button.rowbtn:active { background: var(--wash); }
   .bigamt { font-size: 30px; font-weight: 700; margin: 4px 0 12px; font-variant-numeric: tabular-nums; }
-  .txdl { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0 0 14px; } .txdl dt { color: var(--mid); } .txdl dd { margin: 0; text-align: right; }
+  .txdl { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0 0 14px; } .txdl dt { color: var(--mid); } .txdl dd { margin: 0; text-align: right; } .txdl dd.who { justify-content: flex-end; }
   .row small { color: var(--mid); display: block; }
   .row .amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .card { border: 1px solid var(--ink); border-radius: 10px; padding: 16px; margin: 10px 0; }
+  .card { border: 1px solid var(--ink); border-radius: 16px; padding: 16px; margin: 10px 0; }
   .card .big { font-size: 34px; font-weight: bold; margin: 6px 0 10px; font-variant-numeric: tabular-nums; }
   .card .what { font-size: 20px; }
   .card dl { margin: 0; display: grid; grid-template-columns: 95px 1fr; gap: 4px 8px; color: var(--mid); }
@@ -200,15 +201,15 @@
   label { display: block; margin: 12px 0 4px; color: var(--mid); }
   /* the phone date box is wider than its window unless told otherwise, which made the window wobble sideways */
   input[type=date] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; text-align: left; }
-  input, select, textarea { font: inherit; width: 100%; padding: 12px; border: 1px solid var(--ink); border-radius: 8px; background: var(--paper); color: var(--ink); min-height: 48px; }
-  #banner .bar { background: var(--wash); border: 1px solid var(--ink); border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; }
+  input, select, textarea { font: inherit; width: 100%; padding: 12px; border: 1px solid var(--ink); border-radius: 12px; background: var(--paper); color: var(--ink); min-height: 48px; }
+  #banner .bar { background: var(--wash); border: 1px solid var(--ink); border-radius: 14px; padding: 10px 12px; margin: 0 0 10px; }
   #nav { z-index: 1; position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(2, 1fr); background: var(--paper); border-top: 1px solid var(--line);
          padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); gap: 8px; }
-  #nav button { border-radius: 8px; padding: 12px 4px; font-size: 15px; }
+  #nav button { border-radius: 14px; padding: 12px 4px; font-size: 15px; }
   #nav button[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   #scrim { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.45); }
   .sheet { z-index: 11; position: fixed; left: 0; right: 0; bottom: 0; max-height: 86vh; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; overflow-wrap: anywhere; background: var(--paper); border-top: 2px solid var(--ink);
-           border-radius: 14px 14px 0 0; padding: 16px 16px calc(20px + env(safe-area-inset-bottom)); }
+           border-radius: 22px 22px 0 0; padding: 16px 16px calc(20px + env(safe-area-inset-bottom)); }
   @keyframes sheetup { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes scrimin { from { opacity: 0; } to { opacity: 1; } }
   .sheet.enter { animation: sheetup .22s ease-out; } #scrim.enter { animation: scrimin .2s ease-out; }
@@ -216,9 +217,9 @@
   .sheet h3 { margin: 0 0 4px; font-size: 20px; }
   body.locked { position: fixed; left: 0; right: 0; width: 100%; overflow: hidden; }   /* the page stays still while a window is open */
   #toast { position: fixed; left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 5; }
-  #toast .bar { background: var(--ink); color: var(--paper); border-radius: 10px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  #toast .bar { background: var(--ink); color: var(--paper); border-radius: 14px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   #toast .bar button { background: none; border: 1px solid var(--paper); color: var(--paper); min-height: 40px; }
-  #toast .extra { background: var(--wash); border: 1px solid var(--ink); border-radius: 10px; padding: 8px 12px; margin-bottom: 6px; }
+  #toast .extra { background: var(--wash); border: 1px solid var(--ink); border-radius: 14px; padding: 8px 12px; margin-bottom: 6px; }
 </style>
 </head>
 <body>

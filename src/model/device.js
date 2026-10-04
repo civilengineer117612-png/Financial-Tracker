@@ -21,7 +21,7 @@ export const trialAllowed = ({ platform, standalone }) => !(platform === "ios" &
 export function assessDevice({ platform, standalone, stores, trial = false }) {
   if (trial && trialAllowed({ platform, standalone })) {
     if (stores.local === null || stores.idb === null) return result("STORAGE_UNAVAILABLE", "This device's storage cannot be read, so even the trial cannot save.", false);
-    return result("TRIAL", "Trial copy. This is not your real ledger: it is separate from the iPhone and from every backup. Do not enter real financial data here.", true);
+    return result("TRIAL", "Trial copy, not your real ledger. Do not enter real financial data.", true);
   }
   if (platform === "android") {
     return result("ANDROID_NO_LEDGER",
