@@ -66,7 +66,7 @@ function pieces(prob, w, h, thr = 0.3, minMean = 0.5) {
 async function readPiece(canvas, b, scale) {
   const Lu = (b.u1 - b.u0) * scale, Hv = (b.v1 - b.v0) * scale; if (Lu < 6 || Hv < 6) return null;
   const tw = Math.min(960, Math.max(32, Math.ceil((48 * Lu) / Hv))), strip = document.createElement("canvas"); strip.width = tw; strip.height = 48;
-  const ctx = strip.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, tw, 48);
+  const ctx = strip.getContext("2d"); ctx.imageSmoothingQuality = "high"; ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, tw, 48);
   const cs = Math.cos(b.th), sn = Math.sin(b.th), um = (b.u0 + b.u1) / 2, vm = (b.v0 + b.v1) / 2;
   const Cx = (b.cx + um * cs - vm * sn) * scale, Cy = (b.cy + um * sn + vm * cs) * scale, k = tw / Lu, k2 = 48 / Hv;
   ctx.setTransform(k * cs, -k2 * sn, k * sn, k2 * cs, tw / 2 - k * (cs * Cx + sn * Cy), 24 - k2 * (-sn * Cx + cs * Cy));

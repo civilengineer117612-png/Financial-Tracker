@@ -25,7 +25,7 @@ const CLUES = {
   gcash: [[/g-?cash/, 2], [/express\s*send|send\s*money|sent via/, 1], [/ref(erence)?\.?\s*no/, 1]],
   bank: [[/insta\s?pay|pesonet|fund\s*transfer|transfer\s*successful|transaction\s*successful/, 2], [/\bbdo\b|\bbpi\b|metrobank|unionbank|landbank|security\s*bank|gotyme|maribank|\bmaya\b|coins\.ph/, 2], [/\bbank\b|account\s*(no|number)/, 1]],
   received: [[/you(?:'ve| have)? received|money received|received php|credited|cash[- ]?in\b/, 3]],
-  bill: [[/meralco|electric|water\s*district|maynilad|manila water|pldt|converge|billing|statement of account/, 2], [/amount due|due date/, 2]],
+  bill: [[/meralco|electric|water\s*district|maynilad|manila water|pldt|converge|billing|statement of account/, 2], [/amount due|due date/, 2], [/bill\s*(amount|month|period)|\bkwh\b|meter\s*(no|number|reading)/, 2]],
   receipt: [[/official receipt|\bor\s*no|\bvat\b|sub-?\s?total|cashier|\bchange\b|tendered/, 1], [/\btotal\b/, 1], [/thank you|\bitem|\bqty\b|\btin\b/, 1]],
 };
 
@@ -40,7 +40,7 @@ const CATEGORY_CLUES = [
 // ---------- amounts ----------
 const cleanDigitsOnce = (s) => s.replace(/(?<=\d)[Oo]+(?=[\d/.,-])|(?<=[\d/.,-])[Oo]+(?=\d)/g, (r) => "0".repeat(r.length)).replace(/(?<=\d)[Il](?=[\d/.,-])|(?<=[\d/.,-])[Il](?=\d)/g, "1").replace(/(?<=[\d.,])B(?=[\d.,])/g, "8").replace(/(?<=[\d.,])S(?=[\d.,])/g, "5");
 const cleanDigits = (s) => { let t = s; for (let i = 0; i < 4; i++) { const n = cleanDigitsOnce(t); if (n === t) break; t = n; } return t; };   // "7oo.00" needs more than one pass
-const AMOUNT_RE = /(?:₱|php|\bp\b|#|£)?\s*(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})\b/gi;
+const AMOUNT_RE = /(?:₱|php|\bp\b|#|£)?\s*(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})\b(?![:\d])/gi;   // "2026.01:00" is a year and a time, not a figure
 
 function amountsIn(line) {
   const out = [];
@@ -100,12 +100,12 @@ const addDaysIso = (s, n) => { const t = new Date(s + "T00:00:00Z"); t.setUTCDat
 
 // Every date written in the text, in reading order: {iso, seen, ambiguous}.
 function datesIn(text) {
-  const t = cleanDigits(text).replace(/\b0ct/gi, "Oct").replace(/\b5ep/gi, "Sep"), found = [];   // a zero or a five read for the letter, same length so positions hold
+  const t = cleanDigits(text).replace(/(\b|\d)0ct/gi, "$1Oct").replace(/(\b|\d)5ep/gi, "$1Sep"), found = [];   // a zero or a five read for the letter (also glued to the day, "020ct"), same length so positions hold
   const push = (index, y, m, d, seen, ambiguous = false) => { if (isPhDate(iso(y, m, d))) found.push({ index, iso: iso(y, m, d), seen, ambiguous }); };
   for (const m of t.matchAll(/\b(20\d\d)[-/.](\d{1,2})[-/.](\d{1,2})\b/g)) push(m.index, +m[1], +m[2], +m[3], m[0]);
   const mon = "(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?";
-  for (const m of t.matchAll(new RegExp(`\\b${mon}\\s*(\\d{1,2})(?:st|nd|rd|th)?,?\\s*(\\d{4})\\b`, "gi"))) push(m.index, +m[3], MONTHS.indexOf(m[1].toLowerCase()) + 1, +m[2], m[0]);
-  for (const m of t.matchAll(new RegExp(`\\b(\\d{1,2})\\s*${mon},?\\s*(\\d{4})\\b`, "gi"))) push(m.index, +m[3], MONTHS.indexOf(m[2].toLowerCase()) + 1, +m[1], m[0]);
+  for (const m of t.matchAll(new RegExp(`(?:\\b|(?<=to))${mon}\\s*(\\d{1,2})(?:st|nd|rd|th)?[,.]?\\s*(\\d{4})(?!\\d)`, "gi"))) push(m.index, +m[3], MONTHS.indexOf(m[1].toLowerCase()) + 1, +m[2], m[0]);
+  for (const m of t.matchAll(new RegExp(`(?<!\\d)(\\d{1,2})[\\s.]*${mon},?\\s*(\\d{4})(?!\\d)`, "gi"))) push(m.index, +m[3], MONTHS.indexOf(m[2].toLowerCase()) + 1, +m[1], m[0]);
   for (const m of t.matchAll(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{4}|\d{2})\b/g)) {
     const a = +m[1], b = +m[2], y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
     if (a > 12 && b <= 12) push(m.index, y, b, a, m[0]);   // 25/10/2026 can only be day first
@@ -173,7 +173,7 @@ function payeeFor(kind, lines) {
   if (kind === "payslip") return after(/(?:employer|company)(.*)/i);
   for (const l of lines.slice(0, 6)) {
     const s = l.trim();
-    if (s.length >= 3 && s.length <= 40 && !/^(inc|corp|co|ltd)\.?$/i.test(s) && (s.match(/[A-Za-z]/g) ?? []).length >= s.length * 0.6 && !NOT_A_NAME.test(s)) return s;
+    if (s.length >= 3 && s.length <= 40 && !/^(in[ce]|corp|co|ltd)\.?$/i.test(s) && (s.match(/[A-Za-z]/g) ?? []).length >= s.length * 0.6 && !NOT_A_NAME.test(s)) return s;
   }
   return null;
 }
@@ -191,7 +191,7 @@ function pickAmount(kind, lines) {
     return hit;
   };
   if (kind === "payslip") return { c: find(/net\s*(pay|salary|income|amount)|take[- ]?home/), how: "net pay" };
-  const labelled = find(/total|amount due|amount paid|amount sent|^\s*amount\b|\bamount\b/, /sub\s?-?total|vat|change|tendered|\bcash\b|discount|tax|fee|balance|cash\s*back|reward|points/);
+  const labelled = find(/total|amount/, /sub\s?-?total|vat|change|tendered|\bcash\b|discount|tax|fee|balance|cash\s*back|reward|points/);
   if (labelled) return { c: labelled, how: "total" };
   const all = lines.flatMap((l) => (/change|tendered|\bcash\b|vat|sub\s?-?total|discount|cash\s*back|reward|points/i.test(l) ? [] : amountsIn(l)));
   return all.length ? { c: Math.max(...all), how: "largest" } : { c: null, how: null };
@@ -299,7 +299,9 @@ export function readPayslip(text, today) {
     const m = MONTHS.indexOf(range[1].toLowerCase()) + 1, a = iso(+range[4], m, +range[2]), b = iso(+range[4], m, +range[3]);
     if (isPhDate(a) && isPhDate(b) && ok(a) && ok(b)) { period_from = a; period_to = b; }
   }
-  const periodAt = period_from ? -1 : lines.findIndex((l) => /period|covered|cutoff|cut-off/i.test(l) && datesIn(l).length >= 2);
+  const saysPeriod = (l) => /period|covered|cutoff|cut-off/i.test(l ?? "");
+  // the label on the same line, or just above or below it (some payslips print the dates over their label)
+  const periodAt = period_from ? -1 : lines.findIndex((l, i) => datesIn(l).length >= 2 && (saysPeriod(l) || saysPeriod(lines[i - 1]) || saysPeriod(lines[i + 1])));
   if (periodAt >= 0) {
     let [a, b] = datesIn(lines[periodAt]);
     // "01/10/2026 - 15/10/2026": the second date can only be day first, so the first is too (the month-first habit applies to a date alone)

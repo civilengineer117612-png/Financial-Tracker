@@ -547,7 +547,8 @@ async function startScan(file, asPayslip = false) {
   let blob, text = "", failed = null;
   try { blob = await preparePhoto(file); }
   catch (e) { ui.scan = { error: "That file could not be opened as a picture (" + e.message + ")." }; renderScreen(); return; }
-  try { text = await readPhoto(blob, (f, what) => say(what + (f ? " " + Math.round(f * 100) + "%" : "...")), asPayslip); }
+  const forReading = await preparePhoto(file, 2400, "image/png").catch(() => blob);   // lossless, so words keep their spaces; only the JPEG is kept
+  try { text = await readPhoto(forReading, (f, what) => say(what + (f ? " " + Math.round(f * 100) + "%" : "...")), asPayslip); }
   catch (e) { failed = e.message; }
   ui.scan = null; renderScreen();
   if (asPayslip) { openPayslipFromPhoto(blob, text, null); return; }   // chosen as a payslip: the payslip window, whatever the reader thought it was

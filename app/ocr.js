@@ -5,9 +5,10 @@ const BASE = new URL("../src/vendor/ocr/", import.meta.url).href;
 // A phone that cannot run the faster SIMD build gets the plain one.
 const hasSimd = () => { try { return WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11])); } catch { return false; } };
 
-// Shrinks a photo so reading is quick and keeping it is cheap: the long side is at most `maxSide`, as a JPEG.
+// Shrinks a photo so reading is quick and keeping it is cheap: the long side is at most `maxSide`, as a JPEG (the copy kept).
+// The copy READ is lossless (type "image/png"): the JPEG squeeze blurs the gaps between words, and the reader then glues them ("JTSTHEZONE").
 // A phone photo carries its rotation inside the file, so it is applied here and the stored picture is the right way up.
-export async function preparePhoto(file, maxSide = 2400) {
+export async function preparePhoto(file, maxSide = 2400, type = "image/jpeg") {
   let bmp;
   try { bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }
   catch { bmp = await new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = () => reject(new Error("this file is not a picture it can open")); img.src = URL.createObjectURL(file); }); }
@@ -17,9 +18,9 @@ export async function preparePhoto(file, maxSide = 2400) {
   canvas.width = Math.max(1, Math.round(w * k)); canvas.height = Math.max(1, Math.round(h * k));
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingQuality = "high"; ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
   bmp.close?.();
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, type, type === "image/jpeg" ? 0.85 : undefined));
   if (!blob) throw new Error("the picture could not be shrunk");
   return blob;
 }
