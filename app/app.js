@@ -643,7 +643,16 @@ async function useSpoken() {
 // sure of the amount, the account and the category, it keeps the photo and asks (a note on Log), instead of saving a guess.
 const scanQueue = () => ledger.settings.scan_queue ?? [];
 const withQueue = (q) => ({ ...ledger.settings, scan_queue: q });
-let queueRun = false;
+let queueRun = false, queueTalk = false;   // queueTalk: the owner tapped Read now while a run (started by the app itself) was already going
+const STALL_MS = () => window.__stallMs ?? 240000;
+// The reader gets this long without any sign of progress before it is given up on, so a stuck reader can never leave the queue blocked for good.
+function readWithin(blob, progress) {
+  return new Promise((resolve, reject) => {
+    let t; const kick = () => { clearTimeout(t); t = setTimeout(() => reject(new Error("the reader stopped responding")), STALL_MS()); };
+    kick();
+    readPhoto(blob, (f, w) => { kick(); progress(f, w); }).then((x) => { clearTimeout(t); resolve(x); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
 
 async function quickCapture(file) {
   if (!file) return;
@@ -657,19 +666,23 @@ async function quickCapture(file) {
 }
 
 async function processScanQueue({ interactive = false } = {}) {
-  if (queueRun || !device.allowEntry) return;
+  if (!device.allowEntry) return;
+  if (queueRun) {   // the app already started reading by itself: say so instead of ignoring the tap
+    if (interactive && !queueTalk) { queueTalk = true; ui.scan = { busy: true, msg: "Reading the photos... (the first time it downloads the reader, about 30 MB)" }; renderScreen(); }
+    return;
+  }
   queueRun = true;
-  const say = (m) => { if (!interactive) return; const first = !ui.scan; ui.scan = { busy: true, msg: m }; const el = $("scan-msg"); if (el && !first) el.textContent = m; else renderScreen(); };
+  let failure = null;
+  const say = (m) => { if (!interactive && !queueTalk) return; const first = !ui.scan; ui.scan = { busy: true, msg: m }; const el = $("scan-msg"); if (el && !first) el.textContent = m; else renderScreen(); };
   try {
     for (const item of scanQueue().filter((q) => !q.needs)) {
       if (!scanQueue().some((q) => q.id === item.id)) continue;
       let blob = null, text = "";
       try {
         blob = await getPhoto(item.id);
-        if (blob) { say("Reading the photo..."); text = await readPhoto(blob, (f, w) => say(w + (f ? " " + Math.round(f * 100) + "%" : "..."))); }
+        if (blob) { say("Reading the photo..."); text = await readWithin(blob, (f, w) => say(w + (f ? " " + Math.round(f * 100) + "%" : "..."))); }
       } catch (e) {
-        ui.scan = null; renderScreen();
-        if (interactive) showToast("The photo is kept and will be read when the reader can load (it needs internet the first time).");
+        if (interactive || queueTalk) failure = "The photo is kept, but the reader could not run: " + (e?.message ?? e) + ". It needs the internet the first time. Tap Read now to try again.";
         break;
       }
       if (!blob) { await commit(S(), withQueue(scanQueue().filter((q) => q.id !== item.id)), { quiet: true }); continue; }   // the picture is gone (a restored backup has none)
@@ -683,7 +696,7 @@ async function processScanQueue({ interactive = false } = {}) {
         if (interactive) { ui.scan = null; await openQueuedScan(item.id); }
       }
     }
-  } finally { queueRun = false; ui.scan = null; renderScreen(); }
+  } finally { queueRun = false; queueTalk = false; ui.scan = failure ? { error: failure } : null; renderScreen(); }
 }
 
 async function openQueuedScan(id) {
