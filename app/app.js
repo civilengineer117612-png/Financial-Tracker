@@ -114,7 +114,7 @@ const ICONS = {
   checkin: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
   setup: '<path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/>',
 };
-const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Capture", [["scan", "Scan"]]], ["Weekly", [["checkin", "Weekly review"]]]];   // Setup is pinned at the bottom
+const MENU = [["Overview", [["money", "Cash flow"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Capture", [["scan", "Scan"]]], ["Weekly", [["checkin", "Weekly review"]]]];   // Setup is pinned at the bottom
 
 // Money holds two screens; this switch is at the top of both.
 const moneySwitch = (current) => `<div class="seg moneyswitch" role="group" aria-label="Spending or income">${[["money", "Spending"], ["income", "Income"]].map(([id, t]) => `<button data-action="tab" data-tab="${id}" aria-pressed="${current === id}">${t}</button>`).join("")}</div>`;
