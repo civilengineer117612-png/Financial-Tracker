@@ -1194,8 +1194,17 @@ await page.setInputFiles("input[data-scan]:not([capture])", { name: "payslip.png
 check(await seen(page, "#sheet", "Add a payslip", 180000), "a payslip photo opens the payslip window, not a one-line pay entry");
 const val = (id) => page.inputValue("#" + id);
 check((await text(page, "#sheet")).includes("Check each figure against the paper"), "the payslip window says, in one short line, that every figure was read from the photo and must be checked");
-check(/Total earnings\s*₱11,500\.00/.test(await text(page, "#sheet")) && /Total deductions\s*₱1,200\.00/.test(await text(page, "#sheet")), "the total earnings and total deductions are shown right away");
+check(/Total earnings[\s\S]*?₱11,500\.00/.test(await text(page, "#sheet")) && /Total deductions[\s\S]*?₱1,200\.00/.test(await text(page, "#sheet")), "the total earnings and total deductions are shown right away");
 check(await page.locator("#sheet details[data-keep='e']").evaluate((d) => !d.open) && await page.locator("#sheet details[data-keep='d']").evaluate((d) => !d.open), "the lines (basic, SSS and the rest) are folded away until opened");
+await page.click('#sheet button[data-action="view-shot"]');
+check(await page.locator(".lightbox img").isVisible(), "tapping the photo opens it full screen to compare with the figures");
+await page.click(".lightbox img"); check(await page.locator(".lightbox img.zoomed").count() === 1, "tapping it again zooms in");
+await page.click(".lbclose");
+check(await page.locator(".lightbox").count() === 0 && await val("p-emp") === "Sample Employer Inc", "closing it returns to the window with everything as it was");
+const order = await page.evaluate(() => { const ids = ["p-tot-e", "p-tot-d", "p-emp", "p-from", "p-to", "p-date"].map((i) => document.getElementById(i).getBoundingClientRect().top); return ids.every((v, i) => i === 0 || v > ids[i - 1]); });
+check(order, "the order is totals, landed in, employer, then the dates");
+const tv = await page.evaluate(() => parseFloat(getComputedStyle(document.getElementById("p-tot-e")).fontSize));
+check(tv >= 28, "the totals are the largest figures in the window (" + tv + "px)");
 check(await page.locator("#sheet .chip[data-action='pick-employer']").count() === 0, "no saved-employer suggestions are offered");
 const sheetBox = await page.locator("#sheet").boundingBox(), totBox = await page.locator("#p-tot-d").boundingBox();
 check(totBox && totBox.y + totBox.height < sheetBox.y + sheetBox.height, "the totals are on screen without scrolling");
