@@ -44,10 +44,10 @@ async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BAS
 }
 const text = (page, sel = "body") => page.locator(sel).innerText();
 // Money, Budget and Setup live in the menu at the upper left; only Log and Verify are on the bottom bar.
-const menuGo = async (page, name) => {   // Spending and Income are one menu item, Money, with a switch inside
+const menuGo = async (page, name) => {   // Spending and Income are one menu item, Cash flow, with a switch inside
   await page.click("#menuBtn");
   const money = name === "Spending" || name === "Income";
-  await page.click(`#menu .item:has-text("${money ? "Money" : name}")`);
+  await page.click(`#menu .item:has-text("${money ? "Cash flow" : name}")`);
   if (name === "Income") await page.click('#screen .moneyswitch button:has-text("Income")');
   await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
 };
@@ -471,7 +471,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3 && (await page.locator("#menuBtn").evaluate((b) => getComputedStyle(b).borderTopWidth === "0px" && getComputedStyle(b).backgroundColor === "rgba(0, 0, 0, 0)")), "it is just three lines, without a box around it");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Pay plan,Checks,Trips,Buffer,Scan,Weekly review,Setup", "the menu lists Money (Spending and Income together), Budget, Goals, Pay plan, Checks, Trips, Buffer, Scan, Weekly review and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Budget,Goals,Pay plan,Checks,Trips,Buffer,Scan,Weekly review,Setup", "the menu lists Cash flow (Spending and Income together), Budget, Goals, Pay plan, Checks, Trips, Buffer, Scan, Weekly review and Setup");
 check(await page.locator("#menu .drawer").evaluate((d) => d.scrollHeight <= d.clientHeight + 1), "everything fits without scrolling");
 check(await page.locator("#menu .drawer").evaluate((d) => getComputedStyle(d).borderRightWidth === "0px"), "there is no hard black line at the panel's edge");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
