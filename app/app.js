@@ -324,7 +324,7 @@ function viewIncome() {
   const IVIEWS = [["overview", "Overview"], ["months", "Months"], ["deductions", "Deductions"], ["history", "Pay history"]], view = IVIEWS.some(([v]) => v === ui.incomeView) ? ui.incomeView : "overview";
   const earned = per.kind === "range" ? "earned from " + fullDate(per.from) + " to " + fullDate(per.to) : "earned in " + label;
   const head = `<h1>Income</h1>${step}<div class="hero">${peso(y.ytd.total)}</div><p class="sub">${esc(earned)}</p>
-    <p><button class="primary compact" data-action="open-income-choice">Add income</button></p>
+    <p><button class="primary compact" data-action="open-payslip-choice">Add income</button></p>
     ${slips.length ? `<button class="choice" data-action="open-payslips"><span>Payslips</span><span class="bval">${slips.length} \u203A</span></button>` : ""}
     <div class="seg" role="group" aria-label="What to show">${IVIEWS.map(([v, t]) => `<button data-action="income-view" data-view="${v}" aria-pressed="${view === v}">${t}</button>`).join("")}</div><div class="viewmark"></div>`;
   if (!rows.length && !slips.length) return head + `<p class="note">Nothing recorded for ${esc(label)} yet. Add a payslip to see where your income comes from, your raises, and what went to government.</p>`;
@@ -1467,9 +1467,12 @@ function renderSheet() {
   } else if (sh.type === "scanpick") {
     body = `<h3>Scan</h3><p class="note">A receipt, a payment screen or a payslip. Take a photo now, or choose one you already have. If the app is sure of everything it saves a draft by itself; otherwise it asks.</p>${photoButtons("quick")}`;
   } else if (sh.type === "payslipchoice") {
-    body = `<h3>Add a payslip</h3>
-      <p><button class="primary" data-action="open-payslip" style="margin-top:6px">Type it in</button></p>
-      <p class="note">Or read it from a photo (you check every figure before it is saved):</p>${photoButtons("payslip")}`;
+    body = `<h3>Add income</h3>
+      <p class="note">A payslip:</p>
+      <p><button class="primary" data-action="open-payslip">Type a payslip</button></p>
+      <p class="note">Or read it from a photo (you check every figure before it is saved):</p>${photoButtons("payslip")}
+      <p class="note">Something else:</p>
+      <p><button data-action="open-income" style="width:100%">Other income</button></p>`;
   } else if (sh.type === "voice") {
     body = `<h3>Say it</h3>
       <p class="note">One sentence, for example: lunch 95 at Sample Burger using GCash. You can say the day (yesterday, last Friday) too.</p>
@@ -1511,10 +1514,6 @@ function renderSheet() {
         <dl class="txdl">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}${acct ? `<dt>${d.kind === "income" ? "Arrived in" : "Paid from"}</dt><dd class="who">${withIcon(acct, 22)}</dd>` : ""}</dl>
         ${shot ? `<p><button class="primary" data-action="open-photo" data-id="${esc(shot.id)}">See the photo</button></p>` : ""}`;
     }
-  } else if (sh.type === "incomechoice") {
-    body = `<h3>Add income</h3>
-      <p><button class="primary" data-action="open-payslip-choice" style="margin-top:6px">Payslip</button></p>
-      <p><button data-action="open-income" style="width:100%">Other income</button></p>`;
   } else if (sh.type === "payslips") {
     const [pf, pt] = periodBounds(period());
     body = `<h3>Payslips, ${esc(periodLabel(period()))}</h3>${payslipRows({ from: pf, to: pt })}`;
@@ -1965,7 +1964,6 @@ async function onClick(el) {
       await commit(M.applyDrafts(S(), [d])); showToast("The draft is waiting in Verify."); break;
     }
     case "income-view": ui.incomeView = el.dataset.view; renderScreen(); break;
-    case "open-income-choice": ui.sheet = { type: "incomechoice" }; renderSheet(); break;
     case "del-slip": ui.confirmDelSlip = id; renderSheet(); break;
     case "del-slip-yes": {
       const r = M.deletePayslip(S(), id);

@@ -44,7 +44,7 @@ async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BAS
 }
 const text = (page, sel = "body") => page.locator(sel).innerText();
 // Money, Budget and Setup live in the menu at the upper left; only Log and Verify are on the bottom bar.
-const addPayslipFlow = async (page) => { await page.click('button:has-text("Add income")'); await page.click('#sheet button[data-action="open-payslip-choice"]'); };   // Add income, then Payslip
+const addPayslipFlow = async (page) => { await page.click('button:has-text("Add income")'); };   // the Add income window offers the payslip ways straight away
 const menuGo = async (page, name) => {   // Spending and Income are one menu item, Cash flow, with a switch inside
   await page.click("#menuBtn");
   const money = name === "Spending" || name === "Income";
@@ -1176,20 +1176,21 @@ const receiptPngForSlip = await page.evaluate(() => { const c = document.createE
 await menuGo(page, "Income");
 check((await text(page, "#screen")).includes("Nothing recorded"), "Income starts empty and says how to begin");
 await page.click('button:has-text("Add income")');
-check((await text(page, "#sheet")).includes("Payslip") && (await text(page, "#sheet")).includes("Other income") && !(await text(page, "#sheet")).includes("(interest, refund)") && await page.locator('#screen button:has-text("Add other income")').count() === 0, "one Add income button asks which: a payslip or other income");
+{ const t = await text(page, "#sheet");
+  check(t.includes("Add income") && t.includes("Type a payslip") && t.includes("Take a photo") && t.includes("Choose from photos or files") && t.includes("Other income") && !t.includes("(interest, refund)") && await page.locator('#screen button:has-text("Add other income")').count() === 0, "Add income opens one window: type a payslip, take or choose a photo, or other income; no step in between"); }
 await page.click('#sheet button:has-text("Cancel")');
 await addPayslipFlow(page);
 const choice = await text(page, "#sheet");
-check(choice.includes("Type it in") && choice.includes("Take a photo") && choice.includes("Choose from photos or files") && await page.locator('#sheet input[data-scan="payslip"][capture="environment"]').count() === 1, "Add a payslip offers two ways: type it in, or read it from a photo (camera, or photos and files)");
-await page.click('#sheet button:has-text("Type it in")');
-check(await page.locator("#p-emp").count() === 1, "'Type it in' opens the payslip form");
+check(choice.includes("Type a payslip") && choice.includes("Take a photo") && choice.includes("Choose from photos or files") && await page.locator('#sheet input[data-scan="payslip"][capture="environment"]').count() === 1, "Add a payslip offers two ways: type it in, or read it from a photo (camera, or photos and files)");
+await page.click('#sheet button:has-text("Type a payslip")');
+check(await page.locator("#p-emp").count() === 1, "'Type a payslip' opens the payslip form");
 await page.click('#sheet button:has-text("Cancel")');
 await addPayslipFlow(page);
 await page.setInputFiles('#sheet input[data-scan="payslip"]:not([capture])', { name: "any.png", mimeType: "image/png", buffer: Buffer.from(receiptPngForSlip, "base64") });
 check(await seen(page, "#sheet", "Add a payslip", 180000) && await page.locator("#sheet img.shot").count() === 1, "choosing a photo from there opens the payslip window with the photo, whatever the reader thought it was");
 check((await page.inputValue("#p-from")) === "" && (await page.inputValue("#p-to")) === "" && (await page.inputValue("#p-date")) === "" && await page.locator("#f-save").isDisabled(), "dates the reader could not find are left empty (never today), and saving waits until they are chosen");
 await page.click('#sheet button:has-text("Cancel")');
-await addPayslipFlow(page); await page.click('#sheet button:has-text("Type it in")');
+await addPayslipFlow(page); await page.click('#sheet button:has-text("Type a payslip")');
 check(await page.locator("#sheet").innerText().then((t) => /tax id|employee|account number/i.test(t) && /Do not type/.test(t)), "the payslip window tells you not to type any id or account number");
 await page.fill("#p-emp", "Sample Employer Inc");
 await page.fill("#p-from", "2026-09-16"); await page.fill("#p-to", "2026-09-30"); await page.fill("#p-date", "2026-10-02");
