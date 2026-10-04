@@ -151,7 +151,7 @@ check(await page.locator(".tile.dragging").count() === 1, "dragging lifts the ti
 await page.mouse.up(); await page.waitForTimeout(500);
 check((await presetsNow()).map((p) => p.id).join() === "pre-lunch,pre-dinner,pre-breakfast" && await page.locator("#sheet .sheet").count() === 0, "dropping it on the last place moves it there and saves the new order, with no window opening");
 // tap a tile in arrange mode to change it; remove it from there
-await page.click('.tiles.arranging .tile[data-id="pre-breakfast"]');
+await page.click('.tiles.arranging .tile[data-id="pre-breakfast"]', { force: true });   // the tiles wiggle, so the browser never sees them as still
 check((await text(page, "#sheet")).includes("Change this tile"), "in arrange mode, tapping a tile opens its editor");
 await page.click('#sheet button[data-action="remove-tile"]');
 check((await text(page, "#sheet")).includes("Remove this tile?"), "the remove icon asks once more");
@@ -168,7 +168,7 @@ await page.click(".tile.addtile"); await page.fill("#pay-name", "Breakfast"); aw
 await seen(page, "#toast", "Tile added.");
 // the minus badge takes a tile away at once, with a vanishing, like an app on a phone's home screen
 const nTx = await txCount();
-await page.click('.tiles.arranging .tile:has-text("Coffee") .tminus');
+await page.click('.tiles.arranging .tile:has-text("Coffee") .tminus', { force: true });
 await page.waitForFunction(() => !document.querySelector('.tiles.arranging .tile[data-id]:not(.vanish) b')?.parentElement.textContent.includes("Coffee") && ![...document.querySelectorAll(".tiles.arranging .tile")].some((t) => t.textContent.includes("Coffee")));
 check((await presetsNow()).map((p) => p.name).join() === "Lunch,Dinner,Breakfast" && await txCount() === nTx && await page.locator("#sheet .sheet").count() === 0, "the minus removes the tile at once, logs nothing and opens no window");
 await page.click('button[data-action="arrange-done"]');
