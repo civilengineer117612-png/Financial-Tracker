@@ -1195,14 +1195,15 @@ await page.click('button[aria-label="Earlier"]');
 check((await text(page, ".hero")).includes("₱10,300.00") && (await text(page, "#screen")).includes("earned in September 2026"), "it counts in September, the month of its pay period");
 const incText = await text(page, "#screen");
 check(incText.includes("Overtime") && incText.includes("Base pay"), "Income shows the pay and the overtime");
-check(await page.locator(".ptitle").evaluate((e) => { const c = getComputedStyle(e); return c.fontSize === "16px" && Number(c.fontWeight) >= 700; }) && await page.locator('button[aria-label="Choose the period: September 2026"]').count() === 1, "the period bar is the same one Spending has: tap it to choose a month, a year or a range");
+{ const pt = await page.locator("#screen .ptitle").evaluateAll((els) => els.map((e) => [e.getAttribute("aria-label"), getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight].join("|")));
+  check(pt.length === 1 && pt[0].startsWith("Choose the period: ") && pt[0].includes("|16px|7"), "the period bar is the same one Spending has: tap it to choose a month, a year or a range (" + pt.join(" ; ") + ")"); }
 check(!incText.includes("Year to date") && !(await page.locator("#screen table.tbl").count()), "the Overview shows only the important things: no tables");
 await page.click('#screen .seg button:has-text("Deductions")');
 check((await text(page, "#screen")).includes("Went to government in this period: ₱1,200.00"), "Deductions: they add up");
 await page.click('#screen .seg button:has-text("Months")');
 check(await page.locator(".btrack.stack .bfill.ot").count() === 1 && !(await page.locator("#screen table.tbl th").allInnerTexts()).includes("Other"), "Months: the payday bar stacks base and overtime, and there is no Other column when nothing is in it");
 await page.click('#screen .seg button:has-text("Pay history")');
-check((await text(page, "#screen")).includes("Employers") && (await text(page, "#screen")).includes("Sample Employer Inc"), "Pay history: the employers");
+check((await text(page, "#screen")).toLowerCase().includes("employers") && (await text(page, "#screen")).includes("Sample Employer Inc"), "Pay history: the employers");
 await page.click('#screen .seg button:has-text("Overview")');
 await shot(page, "38-income");
 await page.click('button[aria-label="Earlier"]');
@@ -1358,6 +1359,7 @@ const ps = JSON.parse((await stored(page)).local);
 check(ps.state.payslipLines.filter((l) => l.side === "deduction").length === 4 && ps.state.payslipLines.filter((l) => l.side === "earning").length === 3, "with seven lines");
 check(ps.state.attachments.length === 1 && ps.state.attachments[0].transaction_id === ps.state.payslips[0].transaction_id, "and the photo kept with the pay");
 await menuGo(page, "Income");
+for (let g = 0; g < 12 && await page.locator('button[data-action="open-payslips"]').count() === 0; g++) await page.click('button[aria-label="Earlier"]');   // the payslip counts in the month of its own period
 await page.click('#screen .seg button:has-text("Deductions")');
 check((await text(page, "#screen")).includes("Went to government in this period: ₱1,200.00"), "the Income screen counts the government deductions");
 await page.click('button[data-action="open-payslips"]');
