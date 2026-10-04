@@ -494,7 +494,7 @@ const accRows = await page.locator(".brow").allInnerTexts();
 check(accRows.length === 2 && accRows[0].includes("Bank") && accRows[0].includes("₱300.00") && accRows[1].includes("Wallet") && accRows[1].includes("₱95.00"), "by account: where each peso came out of");
 check((await page.locator(".brow img.ico").count()) === 2, "each account shows its own picture beside its name");
 await page.click('#screen .seg button:has-text("Cards")');
-check((await text(page, "#screen")).toLowerCase().includes("credit cards") && (await text(page, "#screen")).includes("Test Card") && (await text(page, "#screen")).includes("you owe") && (await page.locator("#screen .modebar").count()) === 0, "Cards lists each credit card with what was spent, what was paid and what you owe");
+check((await text(page, "#screen")).includes("No credit cards yet") && (await page.locator("#screen .modebar").count()) === 0, "Cards with no credit card says so and points to Setup");
 await page.click('#screen .seg button:has-text("Accounts")');
 const widths = await page.locator(".bfill").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
 check(widths[0] > widths[1] * 2 && widths[0] > 100, "bar lengths are in proportion (" + widths.join(", ") + ")");
@@ -555,7 +555,7 @@ check((await page.locator("#nav [aria-current]").count()) === 0, "no bottom butt
 
 // ---- setting budgets ----
 let budgetRows = await page.locator(".choice").allInnerTexts();
-check(budgetRows.length === 8 && !budgetRows.some((r) => r.includes("Unlogged")) && budgetRows.every((r) => r.includes("No budget")), "every spending category can have a budget, except Unlogged; none set yet");
+check(budgetRows.length === 9 && budgetRows.some((r) => r.includes("Credit card")) && !budgetRows.some((r) => r.includes("Unlogged")) && budgetRows.every((r) => r.includes("No budget")), "every spending category can have a budget, except Unlogged; none set yet");
 await shot(page, "18-budget");
 const setBudget = async (cat, amount, startLabel) => {
   await page.click(`.choice:has-text("${cat}")`);
@@ -595,6 +595,9 @@ await shot(page, "19-money-graded");
 check((await page.locator("#screen .legend").count()) === 0 && (await page.locator("svg.donut").count()) === 1, "the category view has no budget legend");
 const names = (await page.locator("#screen .seg button").allInnerTexts()).join();
 check(names === "Category,Budget,Accounts,Cards,Trends", "the five views are Category, Budget, Accounts, Cards and Trends: " + names);
+await page.click('#screen .seg button:has-text("Cards")');
+check((await text(page, "#screen")).toLowerCase().includes("credit cards") && (await text(page, "#screen")).includes("Test Card") && (await text(page, "#screen")).includes("you owe"), "Cards lists each credit card with what was spent, what was paid and what you owe");
+await page.click('#screen .seg button:has-text("Category")');
 const sliceCount = await page.locator("svg.donut circle.slice").count();
 check((await page.locator(".legendlist .lrow").count()) === sliceCount && /₱[\d,.]+ · [\d.]+%/.test(await text(page, ".legendlist")), "its list shows each category with the peso amount and the percent");
 await shot(page, "32-donut");
