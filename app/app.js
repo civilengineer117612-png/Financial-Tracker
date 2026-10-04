@@ -312,7 +312,7 @@ function payslipRows(range) {
     const lines = M.linesOf(S(), p.id), flags = M.payslipChecks(p, lines), t = M.payslipTotals(lines);
     const shot = M.attachmentsFor(S(), p.transaction_id)[0];
     const draft = S().transactions.some((x) => x.id === "ot-" + p.id), freeDone = S().transactions.some((x) => x.id === "otf-" + p.id);
-    return `<div class="row"><div>${esc(p.employer)}<small>${esc(periodText(p))} · paid ${esc(fullDate(p.pay_date))} · gross ${peso(t.gross)} · deductions ${peso(t.deductions)}</small></div><div class="amt">${peso(p.deposit)}</div></div>${shot ? `<p class="note"><button class="link" data-action="open-photo" data-id="${esc(shot.id)}">View the photo</button></p>` : ""}${flags.map(flagLine).join("")}${t.overtime > 0 && !draft ? `<p class="note"><button class="link" data-action="ot-draft" data-id="${esc(p.id)}">Make the Emergency Fund draft for the overtime</button></p>` : ""}${t.overtime > 0 && !freeDone ? `<p class="note">The free ${peso(t.overtime - Math.round((t.overtime * M.OVERTIME_SHARE.num) / M.OVERTIME_SHARE.den))} of the overtime stays in the account the pay landed in. <button class="link" data-action="open-otfree" data-id="${esc(p.id)}">Move it somewhere else</button></p>` : ""}${ui.confirmDelSlip === p.id ? `<p class="note">Remove this payslip and the pay it recorded? <button class="link" data-action="del-slip-yes" data-id="${esc(p.id)}">Yes, remove it</button></p>` : `<p class="note"><button class="link" data-action="del-slip" data-id="${esc(p.id)}">Remove this payslip</button></p>`}`;
+    return `<div class="row"><div>${esc(p.employer)}<small>${esc(periodText(p))} · paid ${esc(fullDate(p.pay_date))} · gross ${peso(t.gross)} · deductions ${peso(t.deductions)}</small></div><div class="amt">${peso(p.deposit)}</div></div>${shot ? `<p class="note"><button class="link" data-action="open-photo" data-id="${esc(shot.id)}">View the photo</button></p>` : ""}${flags.map(flagLine).join("")}${t.overtime > 0 && !draft ? `<p class="note"><button class="link" data-action="ot-draft" data-id="${esc(p.id)}">Make the Emergency Fund draft for the overtime</button></p>` : ""}${t.overtime > 0 && !freeDone ? `<p class="note">The free ${peso(t.overtime - Math.round((t.overtime * M.OVERTIME_SHARE.num) / M.OVERTIME_SHARE.den))} of the overtime stays in the account the pay landed in. <button class="link" data-action="open-otfree" data-id="${esc(p.id)}">Move it somewhere else</button></p>` : ""}${ui.confirmDelSlip === p.id ? `<p class="note">Remove this payslip and the pay it recorded? <button class="link" data-action="del-slip-yes" data-id="${esc(p.id)}">Yes, remove it</button></p>` : `<p class="note"><button class="link" data-action="edit-slip" data-id="${esc(p.id)}">Change this payslip</button> · <button class="link" data-action="del-slip" data-id="${esc(p.id)}">Remove this payslip</button></p>`}`;
   }).join("")}`;
 }
 
@@ -331,8 +331,10 @@ function viewIncome() {
   if (!rows.length && !slips.length) return head + `<p class="note">Nothing recorded for ${esc(label)} yet. Add a payslip to see where your income comes from, your raises, and what went to government.</p>`;
   const bySrc = M.SOURCES.map(([id, label]) => ({ label, amount: y.ytd[id] })).filter((r) => r.amount !== 0);
   const other = (m) => m.interest + m.refunds + m.other, showOther = rows.some((m) => other(m) !== 0) || other(y.ytd) !== 0;   // the Other column appears only when there is something in it
-  const monthTable = `<table class="tbl"><tr><th>Month</th><th class="n">Base</th><th class="n">Overtime</th>${showOther ? '<th class="n">Other</th>' : ""}<th class="n">Total</th></tr>${rows.map((m) => `<tr><td>${esc(MONTH3[Number(m.month.slice(5)) - 1])}</td><td class="n">${peso(m.base)}</td><td class="n">${peso(m.overtime)}</td>${showOther ? `<td class="n">${peso(other(m))}</td>` : ""}<td class="n">${peso(m.total)}</td></tr>`).join("")}
-    <tr class="total"><td>${ytdLabel}</td><td class="n">${peso(y.ytd.base)}</td><td class="n">${peso(y.ytd.overtime)}</td>${showOther ? `<td class="n">${peso(other(y.ytd))}</td>` : ""}<td class="n">${peso(y.ytd.total)}</td></tr></table>`;
+  // A short list, one line per month with its total; tap a month to see where it came from (five columns did not fit a phone).
+  const parts = (m) => [["Base pay", m.base], ["Overtime", m.overtime], ...(showOther ? [["Other", other(m)]] : [])].filter(([, v]) => v !== 0);
+  const monthTable = `<div class="mlist">${rows.map((m) => `<details class="mrow"><summary><span class="mn">${esc(MONTH3[Number(m.month.slice(5)) - 1])}</span><b class="mv">${peso(m.total)}</b><span class="tchev" aria-hidden="true">\u203A</span></summary>${parts(m).map(([t, v]) => `<div class="mpart"><span>${t}</span><span>${peso(v)}</span></div>`).join("")}</details>`).join("")}
+    <div class="mrow mtotal"><span class="mn">${ytdLabel}</span><b class="mv">${peso(y.ytd.total)}</b></div></div>`;
   const pd = M.netPerPayday(S(), range);
   const paydays = pd.length ? `<h2>Net pay per payday</h2>${stackedPaydays(pd)}<table class="tbl"><tr><th>Payday</th><th class="n">Base</th><th class="n">Overtime</th><th class="n">Net</th></tr>${pd.map((r) => `<tr><td>${esc(longDate(r.date))}<small> ${esc(r.employer)}</small></td><td class="n">${peso(r.base)}</td><td class="n">${peso(r.overtime)}</td><td class="n">${peso(r.net)}</td></tr>`).join("")}</table>` : "";
   const raises = M.raiseHistory(S(), range);
@@ -458,11 +460,12 @@ function savePayslipReady(f) {
   return { p, ready: (f.employer ?? "").trim() && f.pay_date && f.period_from && f.period_to && f.account_id && !p.errors.length && p.earnings.length && p.printed_gross && p.printed_net && p.deposit };
 }
 async function savePayslip() {
-  const f = ui.form, { p } = savePayslipReady(f), id = newId("ps"), sh = ui.sheet;
-  const r = M.planPayslip(S(), { id, transaction_id: newId("tx"), employer: f.employer, period_from: f.period_from, period_to: f.period_to, pay_date: f.pay_date, account_id: f.account_id,
+  const f = ui.form, { p } = savePayslipReady(f), sh = ui.sheet, editId = sh?.editId ?? null, id = editId ?? newId("ps");
+  const plan = editId ? (input, now) => M.updatePayslip(S(), editId, input, now) : (input, now) => M.planPayslip(S(), input, now);
+  const r = plan({ id, transaction_id: newId("tx"), employer: f.employer, period_from: f.period_from, period_to: f.period_to, pay_date: f.pay_date, account_id: f.account_id,
     printed_gross: p.printed_gross, printed_net: p.printed_net, deposit: p.deposit, net_words: (f.words ?? "").trim() || undefined, earnings: p.earnings, deductions: p.deductions }, new Date());
   if (!r.ok) { showToast("Could not save: " + r.violations[0].message); return; }
-  let next = r.state, note = "";
+  let next = r.state, note = editId && r.draftsRemoved ? " The overtime draft was removed; make it again if you still want it." : "";
   const photoId = sh?.scanBlob ? (sh.queueId ?? newId("photo")) : null;   // a payslip read from a photo keeps the photo with the pay
   if (photoId) {
     if (!sh.queueId) { try { await putPhoto(photoId, sh.scanBlob); } catch { showToast("The photo could not be kept on this phone, so nothing was saved."); return; } }
@@ -472,12 +475,13 @@ async function savePayslip() {
   if (hasOvertime) {
     const emerg = S().goals.find((x) => /emergency/i.test(x.name));
     if (!emerg) note = " Add a goal named Emergency Fund to get the overtime draft.";
-    else { const d = M.overtimeDraft(next, id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date()); if (d?.ok && d.transaction) { next = M.applyDrafts(next, [d]); note = " The Emergency Fund draft is waiting in Verify."; } }
+    else if (!next.transactions.some((t) => t.id === "ot-" + id)) { const d = M.overtimeDraft(next, id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date()); if (d?.ok && d.transaction) { next = M.applyDrafts(next, [d]); note = " The Emergency Fund draft is waiting in Verify."; } }
   }
   ui.sheet = null; renderSheet();
   if (pendingPhoto) { URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null; }
-  await commit(next, { ...ledger.settings, last_employer: f.employer.trim(), last_account_id: f.account_id, ...(sh?.queueId ? { scan_queue: scanQueue().filter((q) => q.id !== sh.queueId) } : {}) });
-  showToast("Payslip saved: " + peso(p.deposit) + (r.flags.length ? ". " + r.flags.length + (r.flags.length === 1 ? " thing does" : " things do") + " not match; see Income." : ".") + note);
+  const saved = await commit(next, { ...ledger.settings, last_employer: f.employer.trim(), last_account_id: f.account_id, ...(sh?.queueId ? { scan_queue: scanQueue().filter((q) => q.id !== sh.queueId) } : {}) });
+  if (saved && editId) for (const ph of r.photoIds ?? []) deletePhoto(ph).catch(() => {});
+  showToast((editId ? "Payslip changed: " : "Payslip saved: ") + peso(p.deposit) + (r.flags.length ? ". " + r.flags.length + (r.flags.length === 1 ? " thing does" : " things do") + " not match; see Income." : ".") + note);
 }
 
 // ---------- scan: a photo of a receipt, payslip or payment screenshot ----------
@@ -1442,7 +1446,7 @@ function renderSheet() {
     const f = ui.form, field = (prefix, [kind, label]) => `<label for="${prefix}${kind}">${esc(label)}</label><input id="${prefix}${kind}" data-field="${prefix}${kind}" inputmode="decimal" value="${esc(f[prefix + kind] ?? "")}" autocomplete="off" placeholder="0.00">`;
     const months = Array.from({ length: 7 }, (_, i) => M.addMonths(M.monthOf(today()), -i));
     const open = (k) => (ui.pdet?.[k] ? " open" : "");
-    body = `<h3>Add a payslip</h3>
+    body = `<h3>${sh.editId ? "Change this payslip" : "Add a payslip"}</h3>
       ${sh.scanBlob ? `<button class="shotbtn enlarge" data-action="view-shot" aria-label="Open the photo full size to compare it with the figures"><img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your payslip photo" style="max-height:18vh;object-fit:contain"></button>${(f.notes ?? []).map((n) => `<p class="note small">${esc(n)}</p>`).join("")}` : ""}
       <details class="tot" data-keep="e"${open("e")}><summary><span class="tl">Total earnings<small>Tap to see the lines</small></span><b id="p-tot-e" class="tv"></b><span class="tchev" aria-hidden="true">\u203A</span></summary>
         ${M.EARNINGS.map((k) => field("e_", k)).join("")}
@@ -1464,7 +1468,7 @@ function renderSheet() {
       </details>
       <div id="p-flags" role="status"></div>
       <p class="note">Do not type any employee, tax or account number.</p>
-      <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>Save payslip</button></p>
+      <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>${sh.editId ? "Save changes" : "Save payslip"}</button></p>
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
   } else if (sh.type === "scanpick") {
     body = `<h3>Scan</h3><p class="note">A receipt, a payment screen or a payslip. Take a photo now, or choose one you already have. If the app is sure of everything it saves a draft by itself; otherwise it asks.</p>${photoButtons("quick")}`;
@@ -1974,6 +1978,13 @@ async function onClick(el) {
     case "open-scan-pick": ui.sheet = { type: "scanpick" }; renderSheet(); break;
     case "open-payslip-choice": ui.sheet = { type: "payslipchoice" }; renderSheet(); break;
     case "open-payslip": ui.pdet = {}; ui.sheet = { type: "payslip" }; ui.form = payslipDefaults(); renderSheet(); break;
+    case "edit-slip": {
+      const p = S().payslips.find((x) => x.id === id); if (!p) break;
+      const two = (c) => (c / 100).toFixed(2), f = { employer: p.employer, period_from: p.period_from, period_to: p.period_to, pay_date: p.pay_date, account_id: p.account_id,
+        gross: two(p.printed_gross), net: two(p.printed_net), deposit: two(p.deposit), words: p.net_words ?? "", ot_month: payslipDefaults().ot_month };
+      for (const l of M.linesOf(S(), id)) { f[(l.side === "earning" ? "e_" : "d_") + l.kind] = two(l.amount); if (l.earned_month) f.ot_month = l.earned_month; }
+      ui.pdet = { e: true, d: true }; ui.form = f; ui.sheet = { type: "payslip", editId: id }; renderSheet(); break;
+    }
     case "save-payslip": await savePayslip(); break;
     case "open-otfree": ui.sheet = { type: "otfree", id }; ui.form = { account_id: null }; renderSheet(); break;
     case "save-otfree": {

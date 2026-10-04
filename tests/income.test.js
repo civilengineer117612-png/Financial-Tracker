@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, incomeMonths, slipDate, deletePayslip,
+import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, incomeMonths, slipDate, deletePayslip, updatePayslip, planAttachment,
   ensureIncomeCategories, validateState, applyDrafts } from "../src/model/index.js";
 import { makeState, account } from "./fixtures.js";
 
@@ -199,4 +199,43 @@ test("the same payslip saved twice is refused: same period and same net pay", ()
   assert.match(again.violations[0].message, /already saved a payslip for 2026-10-01 to 2026-10-15/);
   assert.equal(planPayslip(first.state, base({ id: "ps3", transaction_id: "tx-ps3", deposit: 700000, printed_net: 700000 }), NOW).ok, true, "a second income in the same period, with another net pay, is allowed");
   assert.equal(planPayslip(first.state, base({ id: "ps4", transaction_id: "tx-ps4", period_from: "2026-10-16", period_to: "2026-10-31", pay_date: "2026-10-31" }), NOW).ok, true, "the next period with the same net pay is allowed");
+});
+
+test("editing a payslip replaces it in place: same ids, new figures, photo kept, the ledger stays valid and nothing is counted twice", () => {
+  let s = planPayslip(ledger(), base(), NOW).state;
+  s = planAttachment(s, { id: "ph1", transaction_id: "tx-ps1" }).state;
+  const r = updatePayslip(s, "ps1", base({ employer: "Sample Employer Inc.", printed_gross: 1100000, printed_net: 980000, deposit: 980000, earnings: [{ kind: "basic", amount: 1000000 }, { kind: "rice", amount: 100000 }] }), NOW);
+  assert.ok(r.ok, JSON.stringify(r.violations));
+  assert.equal(r.state.payslips.length, 1);
+  assert.equal(r.state.payslips[0].employer, "Sample Employer Inc.");
+  assert.equal(r.state.payslips[0].deposit, 980000);
+  assert.equal(r.state.transactions.filter((t) => t.id === "tx-ps1").length, 1);
+  assert.equal(r.state.transactions.find((t) => t.id === "tx-ps1").payee, "Sample Employer Inc.");
+  assert.equal(r.state.attachments.length, 1, "the photo stays with the pay");
+  assert.equal(incomeBySource(r.state, { from: "2026-10-01", to: "2026-10-31" }).total, 980000);
+  assert.deepEqual(validateState(r.state), []);
+});
+
+test("editing a payslip: a waiting overtime draft is dropped, a verified overtime transfer stays, an unknown id is refused", () => {
+  const ot = { printed_gross: 1150000, printed_net: 1030000, deposit: 1030000, earnings: [{ kind: "basic", amount: 900000 }, { kind: "rice", amount: 100000 }, { kind: "overtime", amount: 150000, earned_month: "2026-09" }] };
+  let s = planPayslip(ledger(), base(ot), NOW).state;
+  const d = overtimeDraft(s, "ps1", { transaction_id: "ot-ps1", emergency_account_id: "ef" }, NOW);
+  const withDraft = { ...s, transactions: [...s.transactions, d.transaction], entries: [...s.entries, ...d.entries] };
+  const r = updatePayslip(withDraft, "ps1", base(ot), NOW);
+  assert.equal(r.draftsRemoved, 1);
+  assert.equal(r.state.transactions.some((t) => t.id === "ot-ps1"), false);
+  const verified = { ...s, transactions: [...s.transactions, { ...d.transaction, status: "verified", verified_at: d.transaction.created_at }], entries: [...s.entries, ...d.entries] };
+  const r2 = updatePayslip(verified, "ps1", base(ot), NOW);
+  assert.equal(r2.draftsRemoved, 0);
+  assert.equal(r2.state.transactions.some((t) => t.id === "ot-ps1"), true);
+  assert.equal(updatePayslip(s, "nope", base(ot), NOW).ok, false);
+});
+
+test("editing a payslip may keep its own period and net pay, but may not copy another payslip's", () => {
+  let s = planPayslip(ledger(), base(), NOW).state;
+  s = planPayslip(s, base({ id: "ps2", transaction_id: "tx-ps2", period_from: "2026-10-16", period_to: "2026-10-31", pay_date: "2026-10-31" }), NOW).state;
+  assert.ok(updatePayslip(s, "ps1", base({ employer: "Renamed Inc" }), NOW).ok, "same period and net as itself is fine");
+  const clash = updatePayslip(s, "ps1", base({ period_from: "2026-10-16", period_to: "2026-10-31" }), NOW);
+  assert.equal(clash.ok, false);
+  assert.equal(clash.violations[0].code, "DUPLICATE_PAYSLIP");
 });

@@ -59,6 +59,6 @@ export { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, emer
 export { planTag, tagSummary } from "./trips.js";
 export { BANKS, CASH, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, bankPicture, isPlaceholderAddress, dropPlaceholderAddresses } from "./banks.js";
 export { KINDS, kindById, wordsToCentavos, readScan, readPayslip, linesFromWords, linesFromBoxes, snapEmployer, categoryFromHistory } from "./scan.js";
-export { EARNINGS, DEDUCTIONS, GOVERNMENT, LOST, SOURCES, OVERTIME_SHARE, linesOf, payslipTotals, payslipChecks, planPayslip, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeMonths, slipDate, deletePayslip, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory } from "./income.js";
+export { EARNINGS, DEDUCTIONS, GOVERNMENT, LOST, SOURCES, OVERTIME_SHARE, linesOf, payslipTotals, payslipChecks, planPayslip, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeMonths, slipDate, deletePayslip, updatePayslip, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory } from "./income.js";
 export { homeSummary } from "./summary.js";
 export { parseSpoken } from "./speech.js";

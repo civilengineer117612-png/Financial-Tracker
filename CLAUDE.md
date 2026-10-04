@@ -38,5 +38,11 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 - Tone is firm, never harsh: nothing blocks logging, red appears only on budget charts when a category is strictly over its budget (owner's choice), always with a shape and words, facts are stated once. Verification is one entry at
   a time with no "all correct" button; entries can be verified the day they are logged.
 
+## One thing at a time (owner's rule)
+One open item at a time: finish the current review round and its PR before starting anything else. A new problem that shows up mid-review
+(a bug, an idea) is NOT worked on at once: put it in a short "Waiting" list, tell the owner it was noted (one line), and raise it when
+the round ends. Only something that loses data or blocks logging may cut the line, and then say so. Keep the Waiting list in the reply,
+never more than 5 lines, so the owner always sees what is open.
+
 ## How screens are reviewed (the owner's process)
 The owner names the screen or section and gives their comments up front (no questionnaire boxes from me). I revise at most 5 items per round, open the PR, and stop. After the owner merges, I add a SHORT list (at most 5 bullets) of things I think need work in that part that they may have overlooked, each one line with the reason; the owner picks which to do. Always end that list with a copy-paste box of one plain number per line ("1", "2", ...; no "DO"), plus a separate "ALL" box, so the owner can keep the lines they want and send them without typing. When two lists are open, prefix the lines with the screen name (for example "INCOME 4"). Likewise end every PR message with a "Merge PR n" copy box. Reviewed so far: Home screen (Log), the menu, Cash flow (Spending, By category, Budget view names, chart/list switch), Income (year label, Other column, Payslips window); Income suggestions 1 to 5 were sent and await the owner's pick. Quick tiles (hold to arrange, move, change, remove, add; category label) are done. Next: the Budget, By account and Trends views, then the other menu screens.
