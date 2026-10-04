@@ -5,6 +5,7 @@
 //   - Categories are grouped as of `asOf` (the day the report is run), so a merge regroups history.
 //   - Unlogged counts: it is real money that left and was never logged.
 import { reportingCategory } from "./rules.js";
+import { naturalBalance } from "./balances.js";
 
 export const monthOf = (date) => date.slice(0, 7);
 
@@ -66,6 +67,25 @@ export function spendingByAccount(state, { month, from, to }) {
     .map(([account_id, amount]) => ({ account_id, name: accounts.get(account_id)?.name ?? account_id, amount }))
     .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
   return { total: rows.reduce((n, r) => n + r.amount, 0), rows };
+}
+
+// Each credit card: what was spent on it in the range, what was paid toward it (money moved onto the card with no spending category),
+// and what is owed on it now. Only verified entries count for spent and paid.
+export function cardsSummary(state, { from, to }) {
+  const spent = new Map(spendingByAccount(state, { from, to }).rows.map((r) => [r.account_id, r.amount]));
+  const txById = new Map(state.transactions.map((t) => [t.id, t]));
+  const expense = new Set(state.categories.filter((c) => c.kind === "expense").map((c) => c.id));
+  const spendingTx = new Set(state.entries.filter((e) => e.category_id != null && expense.has(e.category_id)).map((e) => e.transaction_id));
+  const cards = state.accounts.filter((a) => a.class === "liability" && !a.archived).map((a) => {
+    let paid = 0;
+    for (const e of state.entries) {
+      if (e.account_id !== a.id || e.amount <= 0 || spendingTx.has(e.transaction_id)) continue;
+      const t = txById.get(e.transaction_id);
+      if (t && t.status === "verified" && t.date >= from && t.date <= to) paid += e.amount;
+    }
+    return { account_id: a.id, name: a.name, spent: spent.get(a.id) ?? 0, paid, owe: naturalBalance(a, state.entries) };
+  });
+  return { cards, owe: cards.reduce((n, c) => n + c.owe, 0) };
 }
 
 // Total spending for each of the last `months` months ending at `endMonth`, oldest first.

@@ -13,12 +13,19 @@ export function ensureIncomeCategories(state) {
   return add.length ? { ...state, categories: [...state.categories, ...add] } : state;
 }
 
+// Interest, fees and other costs of a credit card are real spending; paying the card bill is NOT (the purchases were counted when they
+// were made), so a bill payment is a transfer to the card, never this category.
+export const CARD_CATEGORY = { id: "cat-creditcard", name: "Credit card", kind: "expense" };
+export function ensureCardCategory(state) {
+  return state.categories.some((c) => c.id === CARD_CATEGORY.id) ? state : { ...state, categories: [...state.categories, { ...CARD_CATEGORY }] };
+}
+
 export function defaultCategories() {
   const e = (id, name) => ({ id, name, kind: "expense" });
   return [
     e("cat-food", "Food"), e("cat-lakat", "Lakat/Date"), e("cat-family", "Family"), e("cat-shopping", "Shopping"),
     e("cat-essentials", "Essentials"), e("cat-upskill", "Upskill"), e("cat-subscription", "Subscription"),
-    e("cat-rent", "Rent"), e("cat-unlogged", "Unlogged"),
+    e("cat-rent", "Rent"), e("cat-creditcard", "Credit card"), e("cat-unlogged", "Unlogged"),
     ...INCOME_CATEGORIES,
   ];
 }

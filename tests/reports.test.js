@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spendingByCategory, spendingByRange, spendingByAccount, monthlySpending, dayTotal, addMonths, monthLabel, monthOf, setAccountIcon, validateShape } from "../src/model/index.js";
+import { spendingByCategory, spendingByRange, spendingByAccount, cardsSummary, ensureCardCategory, CARD_CATEGORY, defaultCategories, readScan, monthlySpending, dayTotal, addMonths, monthLabel, monthOf, setAccountIcon, validateShape } from "../src/model/index.js";
 import { makeState, account, tx, entry, commit } from "./fixtures.js";
 
 const VERIFIED = { status: "verified", verified_at: "2026-04-01T08:00:00.000+08:00" };
@@ -192,4 +192,37 @@ test("spending by account works for any date range too", () => {
   spend(s, "a", "2026-02-27", "rent", 1000, "cash"); spend(s, "b", "2026-03-02", "rent", 2000, "cash"); spend(s, "c", "2026-03-20", "rent", 4000, "cash");
   assert.equal(spendingByAccount(s, { from: "2026-02-27", to: "2026-03-02" }).total, 3000);
   assert.equal(spendingByAccount(s, { month: "2026-03" }).total, 6000, "a month still works");
+});
+
+test("each credit card shows what was spent on it, what was paid toward it, and what is owed now", () => {
+  const s = base();
+  s.accounts.find((a) => a.id === "card").opening_balance = 50000;   // owed before any entry
+  spend(s, "p1", "2026-03-05", "rent", 30000, "card");
+  spend(s, "p2", "2026-03-20", "rent", 20000, "card");
+  spend(s, "old", "2026-02-10", "rent", 99900, "card");   // another month
+  commit(s, { transaction: tx({ id: "pay", date: "2026-03-25", ...VERIFIED }), entries: [entry({ transaction_id: "pay", account_id: "chk", amount: -40000 }), entry({ transaction_id: "pay", account_id: "card", amount: 40000 })] });   // the bill, paid from checking
+  commit(s, { transaction: tx({ id: "draft", date: "2026-03-26", status: "draft" }), entries: [entry({ transaction_id: "draft", account_id: "chk", amount: -1000 }), entry({ transaction_id: "draft", account_id: "card", amount: 1000 })] });
+  const r = cardsSummary(s, { from: "2026-03-01", to: "2026-03-31" });
+  assert.equal(r.cards.length, 1);
+  const c = r.cards[0];
+  assert.equal(c.spent, 50000, "only March purchases");
+  assert.equal(c.paid, 40000, "the bill payment, not the unverified one");
+  assert.equal(c.owe, 50000 + 30000 + 20000 + 99900 - 40000 - 1000, "what is owed now counts everything on the card");
+  assert.equal(r.owe, c.owe);
+  assert.deepEqual(cardsSummary(makeState(), { from: "2026-03-01", to: "2026-03-31" }).cards.map((x) => x.name), ["Test Card"]);
+});
+
+test("a ledger without cards has an empty cards list", () => {
+  const s = base(); s.accounts = s.accounts.filter((a) => a.class !== "liability");
+  assert.deepEqual(cardsSummary(s, { from: "2026-03-01", to: "2026-03-31" }), { cards: [], owe: 0 });
+});
+
+test("the Credit card spending category is added to older ledgers once, and interest or fees on a paper point to it", () => {
+  const s = base();
+  const a = ensureCardCategory(s);
+  assert.equal(a.categories.filter((c) => c.id === CARD_CATEGORY.id).length, 1);
+  assert.deepEqual(a.categories.find((c) => c.id === "cat-creditcard"), { id: "cat-creditcard", name: "Credit card", kind: "expense" });
+  assert.equal(ensureCardCategory(a), a, "a second time changes nothing");
+  assert.ok(defaultCategories().some((c) => c.id === "cat-creditcard" && c.kind === "expense"));
+  assert.equal(readScan("Statement\nInterest charge 125.40\nTotal 125.40", "2026-03-31").categoryGuess, "Credit card");
 });
