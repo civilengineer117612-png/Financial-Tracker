@@ -1274,7 +1274,7 @@ function renderSheet() {
     const months = Array.from({ length: 7 }, (_, i) => M.addMonths(M.monthOf(today()), -i));
     const open = (k) => (ui.pdet?.[k] ? " open" : "");
     body = `<h3>Add a payslip</h3>
-      ${sh.scanBlob ? `<button class="shotbtn" data-action="view-shot" aria-label="Open the photo full size to compare it with the figures"><img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your payslip photo" style="max-height:22vh;object-fit:contain"></button><p class="note small">Tap the photo to see it full size.</p>${(f.notes ?? []).map((n) => `<p class="note small">${esc(n)}</p>`).join("")}` : ""}
+      ${sh.scanBlob ? `<button class="shotbtn enlarge" data-action="view-shot" aria-label="Open the photo full size to compare it with the figures"><img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your payslip photo" style="max-height:18vh;object-fit:contain"></button>${(f.notes ?? []).map((n) => `<p class="note small">${esc(n)}</p>`).join("")}` : ""}
       <details class="tot" data-keep="e"${open("e")}><summary><span class="tl">Total earnings<small>Tap to see the lines</small></span><b id="p-tot-e" class="tv"></b><span class="tchev" aria-hidden="true">\u203A</span></summary>
         ${M.EARNINGS.map((k) => field("e_", k)).join("")}
         <label for="p-otm">Overtime was earned in</label><select id="p-otm" data-field="ot_month">${months.map((m) => `<option value="${m}"${f.ot_month === m ? " selected" : ""}>${esc(M.monthLabel(m))}</option>`).join("")}</select>

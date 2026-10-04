@@ -49,6 +49,7 @@
   .tv { margin-left: auto; font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .tchev { font-size: 30px; line-height: 1; color: var(--mid); transition: transform .15s; } details[open] > summary .tchev { transform: rotate(90deg); }
   details[data-keep="t"] > summary { font-size: 15px; color: var(--mid); }
+  .shotbtn.enlarge { position: relative; } .shotbtn.enlarge::after { content: "Tap to enlarge"; position: absolute; right: 8px; bottom: 8px; background: var(--ink); color: var(--paper); font-size: 13px; padding: 4px 8px; border-radius: 6px; }
   .note.small { font-size: 13px; margin: 6px 0; }
   .lightbox { position: fixed; inset: 0; z-index: 100; background: #000; display: flex; flex-direction: column; }
   .lbclose { align-self: flex-end; margin: 10px; background: var(--paper); font-size: 18px; min-height: 52px; min-width: 96px; }

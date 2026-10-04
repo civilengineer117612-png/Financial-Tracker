@@ -1197,6 +1197,7 @@ check((await text(page, "#sheet")).includes("Check each figure against the paper
 check(/Total earnings[\s\S]*?₱11,500\.00/.test(await text(page, "#sheet")) && /Total deductions[\s\S]*?₱1,200\.00/.test(await text(page, "#sheet")), "the total earnings and total deductions are shown right away");
 check(await page.locator("#sheet details[data-keep='e']").evaluate((d) => !d.open) && await page.locator("#sheet details[data-keep='d']").evaluate((d) => !d.open), "the lines (basic, SSS and the rest) are folded away until opened");
 await page.click('#sheet button[data-action="view-shot"]');
+await page.waitForFunction(() => document.querySelector(".lightbox img")?.complete);
 check(await page.locator(".lightbox img").isVisible(), "tapping the photo opens it full screen to compare with the figures");
 await page.click(".lightbox img"); check(await page.locator(".lightbox img.zoomed").count() === 1, "tapping it again zooms in");
 await page.click(".lbclose");
