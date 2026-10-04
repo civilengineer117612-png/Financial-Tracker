@@ -1024,6 +1024,7 @@ console.log("Scan");
 ({ ctx, page, errors } = await open({ blockSw: true }));
 await addAccount(page, "Wallet", "asset", "1000");
 await addAccount(page, "MariBank", "asset", "0");
+await addAccount(page, "MariBank \u00b7 Credit card", "liability", "0");   // the same bank holds a money account and a credit card
 // An invented receipt drawn in the page, so no real paper is ever in the repository.
 const receiptPng = await page.evaluate(() => {
   const c = document.createElement("canvas"); c.width = 900; c.height = 1000;
@@ -1088,7 +1089,7 @@ const bankPng = await page.evaluate(() => {
 await menuGo(page, "Scan");
 await page.setInputFiles("input[data-scan]:not([capture])", { name: "bank.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
 check(await seen(page, "#sheet", "Check what I read", 180000), "a bank screenshot is read too");
-check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("MariBank")').count() === 1, "it chose MariBank, the bank on the From line, as the account that paid");
+check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("MariBank \u00b7 Credit card")').count() === 1, "it chose the MariBank credit card, because the paper says Credit Card Transaction");
 check(/SAMPLE ?SUPERMARKET/i.test(await page.inputValue("#f-payee")) && await page.inputValue("#f-amount") === "592.50" && await page.inputValue("#f-date") === "2026-10-01", "and read the payee, the amount and the date (" + [await page.inputValue("#f-payee"), await page.inputValue("#f-amount"), await page.inputValue("#f-date")].join("|") + ")");
 check(await page.evaluate(() => { const sh = document.querySelector("#sheet .sheet"), d = document.querySelector("#sheet input[type=date]").getBoundingClientRect(), r = sh.getBoundingClientRect(); return sh.scrollWidth <= sh.clientWidth && d.left >= r.left && d.right <= r.right; }), "the window does not scroll sideways and its date box stays inside it");
 await shot(page, "42-scan-bank");
@@ -1126,7 +1127,7 @@ check(await seen(page, "#toast", "Saved", 180000), "one photo is enough: it is r
 let q = JSON.parse((await stored(page)).local);
 const quick = q.state.transactions.find((t) => t.source === "photo" && t.status === "draft");
 check(quick && quick.edited_before_verify === false && q.state.attachments.some((a) => a.transaction_id === quick.id) && (q.settings.scan_queue ?? []).length === 0, "it is a photo draft with its photo, and the queue is empty again");
-const quickEntries = q.state.entries.filter((e) => e.transaction_id === quick.id), mari = q.state.accounts.find((a) => a.name === "MariBank");
+const quickEntries = q.state.entries.filter((e) => e.transaction_id === quick.id), mari = q.state.accounts.find((a) => a.name === "MariBank \u00b7 Credit card");
 check(quickEntries.some((e) => e.account_id === mari.id && e.amount === -59250) && quickEntries.some((e) => e.category_id === "cat-essentials" && e.amount === 59250), "it chose MariBank, ₱592.50 and Essentials without being asked");
 await page.click('#nav button:has-text("Verify")');
 check(await page.waitForSelector("img.shot[data-photo]:not([hidden])", { timeout: 4000 }).then(() => true, () => false) && (await text(page, "#screen")).includes("Essentials"), "Verify shows the photo beside what was read");
