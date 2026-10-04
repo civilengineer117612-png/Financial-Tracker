@@ -109,8 +109,12 @@ check(await seen(page, "#screen", "Nothing logged today"), "undo removes the dra
 await page.click('button.tile:has-text("Lunch")');
 await page.click('#sheet button[data-action="pay-edit"]');
 await page.fill("#pay-name", "Late lunch"); await page.fill("#f-amount", "110");
-await page.click('#sheet .chip:has-text("Test Cash")');
-check(await seen(page, "#toast", "Saved Late lunch ₱110.00 · Test Cash"), "the title in a tile's window has a small edit button: name and amount can be changed for this one entry");
+check(await page.locator("#sheet #f-save").isVisible() && (await text(page, "#sheet")).includes("Category") && (await text(page, "#sheet")).includes("Paid from"), "the edit window has the name, the amount, the category and the account, and a Save button");
+await page.click('#sheet .chip:has-text("Shopping")'); await page.click('#sheet .chip:has-text("Test Cash")');
+await page.click("#f-save");
+check(await seen(page, "#toast", "Saved Late lunch ₱110.00 · Test Cash"), "the title in a tile's window has a small edit button: name, amount, category and account can be changed for this one entry");
+{ const led = JSON.parse((await stored(page)).local), tx = led.state.transactions.find((t) => t.payee === "Late lunch"), es = led.state.entries.filter((e) => e.transaction_id === tx.id);
+  check(es.some((e) => e.category_id === "cat-shopping" && e.amount === 11000), "and the category chosen there is the one saved: Shopping"); }
 await page.click('#toast button:has-text("Undo")');
 check(await seen(page, "#screen", "Nothing logged today") && (await text(page, 'button.tile:has-text("Lunch")')).includes("₱95.00"), "and the tile itself is not changed");
 await page.click('button.tile:has-text("Lunch")');

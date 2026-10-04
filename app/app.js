@@ -1221,7 +1221,9 @@ function renderSheet() {
     // The title can be changed for this one entry (name and amount) before choosing the account; the tile itself stays as it is.
     const f = ui.form ?? {};
     body = f.editing
-      ? `<h3>Change this entry</h3><label for="pay-name">Name</label><input id="pay-name" data-field="name" value="${esc(f.name ?? p.name)}" autocomplete="off"><label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off"><p class="note">Paid from</p>${chips(accountsFor(p.id), null, "pay")}`
+      ? `<h3>Change this entry</h3><label for="pay-name">Name</label><input id="pay-name" data-field="name" value="${esc(f.name ?? p.name)}" autocomplete="off"><label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
+        <label>Category</label>${chips(expenseCategories(), f.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(p.id), f.account_id, "pick-acct")}
+        <p><button class="primary" id="f-save" data-action="save-pay-edit" style="margin-top:14px" disabled>Save</button></p>`
       : `<h3 class="paytitle"><span>${esc(f.name ?? p.name)} ${peso(M.parsePesos(f.amount ?? "").ok ? M.parsePesos(f.amount).centavos : p.amount)}</span><button class="editbtn" data-action="pay-edit" aria-label="Change the name or amount of this entry"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.edit}</svg></button></h3><p class="note">Paid from</p>${chips(accountsFor(p.id), null, "pay")}`;
   } else if (sh.type === "other") {
     body = `<h3>Add expense</h3>
@@ -1490,6 +1492,9 @@ function refreshSave() {
   if (type === "other") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && f.category_id && f.account_id);
+  } else if (type === "pay") {
+    const a = M.parsePesos(f.amount ?? "");
+    btn.disabled = !(a.ok && a.centavos > 0 && (f.name ?? "").trim() && f.category_id && f.account_id);
   } else if (type === "budget") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !a.ok;
@@ -1837,7 +1842,7 @@ async function onClick(el) {
       if (r.ok) await commit(r.state, settings);
       break;
     }
-    case "open-preset": { const p = S().presets.find((x) => x.id === id); ui.sheet = { type: "pay", id }; ui.form = { name: p.name, amount: (p.amount / 100).toFixed(2), editing: false }; renderSheet(); break; }
+    case "open-preset": { const p = S().presets.find((x) => x.id === id); ui.sheet = { type: "pay", id }; ui.form = { name: p.name, amount: (p.amount / 100).toFixed(2), editing: false, category_id: p.category_id, account_id: accountsFor(p.id)[0]?.id }; renderSheet(); break; }
     case "pay-edit": ui.form.editing = true; renderSheet(); $("pay-name")?.focus(); break;
     case "pay": {
       const p = S().presets.find((x) => x.id === ui.sheet.id), f = ui.form ?? {}, amt = M.parsePesos(f.amount ?? "");
@@ -1891,6 +1896,14 @@ async function onClick(el) {
       const amount = M.parsePesos(form.amount).centavos;
       ui.sheet = null; renderSheet();
       await logExpense({ transaction_id: newId("tx"), payee: "", category_id: form.category_id, amount, account_id: form.account_id, source: "manual" }, categoryName(form.category_id) + " " + peso(amount));
+      break;
+    }
+    case "save-pay-edit": {
+      const p = S().presets.find((x) => x.id === ui.sheet.id), f = ui.form, amt = M.parsePesos(f.amount ?? "");
+      const name = (f.name ?? "").trim();
+      if (!amt.ok || amt.centavos <= 0 || !name || !f.category_id || !f.account_id) break;
+      ui.sheet = null; renderSheet();
+      await logExpense({ transaction_id: newId("tx"), payee: name, category_id: f.category_id, amount: amt.centavos, account_id: f.account_id, source: "preset", preset_id: p.id }, name + " " + peso(amt.centavos));
       break;
     }
     case "undo": {
