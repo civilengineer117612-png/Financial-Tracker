@@ -509,18 +509,15 @@ ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.state.rules.length === 6 && ledgerNow.state.rules.every((r) => r.kind === "budget"), "every change is a new dated row; none was edited: " + ledgerNow.state.rules.length);
 check(ledgerNow.state.rules.filter((r) => r.subject_id === "cat-shopping").map((r) => r.amount).join() === "35000,25000", "the first Shopping budget is still there, then the new one");
 
-// ---- the colours: green to red ----
+// ---- the colours: light blue to dark blue, red only when over ----
 await menuGo(page, "Spending");
 for (let i = 0; i < 9; i++) if (await page.locator('button[aria-label="Later"]').isEnabled()) await page.click('button[aria-label="Later"]');
 await page.click('button:has-text("By category")');
 await shot(page, "19-money-graded");
-const fills = await page.locator(".brow").evaluateAll((els) => els.map((e) => ({ name: e.innerText.split("\n")[0], cls: [...e.classList].find((c) => c.startsWith("g-")), color: getComputedStyle(e.querySelector(".bfill")).backgroundColor })));
-const food = fills.find((f) => f.name === "Food"), shop = fills.find((f) => f.name === "Shopping");
-check(shop.cls === "g-critical" && shop.color === "rgb(208, 59, 59)", "over budget is red: Shopping " + shop.cls + " " + shop.color);
-check(food.cls === "g-serious" && food.color === "rgb(236, 131, 90)", "95% of a budget is orange: Food " + food.cls + " " + food.color);
-check((await text(page, ".legend")).replace(/\s+/g, " ").includes("On track Getting there Nearly used up Over budget No budget"), "a legend says what the colours mean, in words");
-check((await page.locator(".legend svg").count()) === 5, "each with its own shape, so colour is never the only signal");
-check((await page.locator("#screen .caption").count()) === 0, "graded bars have no caption either");
+const fills = await page.locator(".brow").evaluateAll((els) => els.map((e) => getComputedStyle(e.querySelector(".bfill")).backgroundColor));
+check(fills.length > 0 && fills.every((c) => c === "rgb(42, 120, 214)"), "the category bars are one calm blue, whatever the budgets say: " + [...new Set(fills)].join());
+check((await page.locator("#screen .legend").count()) === 0, "the category view has no budget legend");
+check((await page.locator("#screen .caption").count()) === 0, "the bars have no caption");
 const barCount = await page.locator(".bars .brow").count();
 await page.click(".bars");
 check((await page.locator("svg.donut").count()) === 1 && (await page.locator("svg.donut circle.slice").count()) === barCount, "tapping the bars makes a donut with one slice per category: " + barCount);
@@ -587,8 +584,9 @@ check(cards[1].includes("₱95.00 of ₱100.00") && cards[1].includes("Nearly us
 check(cards[2].includes("₱0.00 of ₱2,000.00") && cards[2].includes("On track") && cards[2].includes("₱2,000.00 left"), "an untouched budget is on track");
 const meters = await page.locator(".meter").evaluateAll((els) => els.map((e) => ({ cls: [...e.classList].find((c) => c.startsWith("g-")), color: getComputedStyle(e.querySelector(".fill")).backgroundColor, w: Math.round(e.querySelector(".fill").getBoundingClientRect().width / e.getBoundingClientRect().width * 100) })));
 check(meters[0].cls === "g-critical" && meters[0].w === 100, "the over-budget meter is full and red");
-check(meters[1].cls === "g-serious" && meters[1].w === 95, "a 95% meter is 95% full and orange");
-check(meters[2].cls === "g-good" && meters[2].w === 0 && meters[2].color === "rgb(12, 163, 12)", "an unused meter is empty and green");
+check(meters[1].cls === "g-serious" && meters[1].w === 95 && meters[1].color === "rgb(27, 79, 143)", "a 95% meter is 95% full and dark blue");
+check((await text(page, ".legend")).replace(/\s+/g, " ").includes("On track Getting there Nearly used up Over budget No budget") && (await page.locator(".legend svg").count()) === 5, "the Budgets view has the legend, in words, each with its own shape");
+check(meters[2].cls === "g-good" && meters[2].w === 0 && meters[2].color === "rgb(116, 171, 232)", "an unused meter is empty and light blue");
 const ticks = await page.locator(".meter .tick").evaluateAll((els) => els.map((e) => e.style.left));
 check(ticks.length === 3 && ticks.every((t) => t === "10%"), "each meter has a mark for today's place in the month (3 of 31 days): " + ticks.join());
 check((await text(page, "#screen")).includes("The black line is today's place in the month."), "and the page explains it");

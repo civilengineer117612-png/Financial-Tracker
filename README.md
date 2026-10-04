@@ -123,9 +123,9 @@ amounts sit at the bar tip, and tapping a bar states its share in words.
 **Check-in (menu, Weekly):** count each account against what the bank or wallet really shows. The app compares it with the ledger and records any gap as a verified Unlogged entry; it never blocks anything. After the first count, four weekly questions appear: 1 transactions missed (count and amount filled in from the week's counts; you confirm or change them), 2 was logging easier or harder than the spreadsheet (1 to 5), 3 one thing that annoyed you, 4 photo or voice entries that needed fixing (filled in by the app: a scanned entry whose fields you changed before verifying). Each week is saved; answering a week again replaces it. After about 4 weeks the Checks screen shows a review: Unlogged amount, missed, ease and fixes by week, the Unlogged trend in words, and what annoyed you each week.
 
 **Budgets and thermal colors:** set a monthly budget per category in the Budget screen (a change starts next month).
-Bars are graded by how much of the budget is used: green "On track" below 60%, yellow "Getting there" from 60%,
-orange "Nearly used up" from 85%, red "Over budget" only when spending is strictly over. Every grade also has a shape
-and words, never color alone. A black line marks how far through the month we are.
+In the Budgets view, bars are graded by how much of the budget is used, in shades of the app's blue from light to dark: light blue "On track" below 60%, blue "Getting there" from 60%,
+dark blue "Nearly used up" from 85%, and red "Over budget" only when spending is strictly over. Every grade also has a shape
+and words, never color alone. A black line (with a white edge, so it shows on any bar) marks how far through the month we are. The By category bars are always one blue: they show each category's share of the spending, not a budget grade.
 
 **Choosing a bank:** in Setup, the Bank button opens a scrollable list: GCash, Maya, GoTyme, MariBank, BDO, BPI, Metrobank, UnionBank, Landbank, Security Bank, Coins.ph, Cash, and "not in the list". Choosing one names the account for you and offers an optional "which part of the bank", so an Emergency Fund kept inside GoTyme becomes "GoTyme · Emergency Fund". Not in the list: leave the tiles alone and type a name. The list is in `src/model/banks.js`. No logos are stored in this repository; a picture chosen once for one account is shared by every account of the same bank, and new accounts of that bank start with it.
 

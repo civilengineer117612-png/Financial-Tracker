@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="Finance">
 <meta name="theme-color" content="#111111">
 <style>
-  :root { --chart: #2a78d6; --good: #0ca30c; --warn: #fab219; --serious: #ec835a; --critical: #d03b3b; --ink: #111; --mid: #555; --soft: #999; --line: #ccc; --wash: #f0f0f0; --paper: #fff; }
+  :root { --chart: #2a78d6; --good: #74abe8; --warn: #4f93e0; --serious: #1b4f8f; --critical: #d03b3b; --ink: #111; --mid: #555; --soft: #999; --line: #ccc; --wash: #f0f0f0; --paper: #fff; }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; overflow-x: hidden; overscroll-behavior-x: none; }
   body { overflow-x: hidden; margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.4; color: var(--ink); background: var(--paper);
@@ -130,7 +130,7 @@
   .meter { position: relative; height: 16px; background: var(--wash); border-radius: 0 4px 4px 0; margin: 5px 0 4px; }
   .meter.goal .fill { background: var(--chart); }
   .meter .fill { display: block; height: 16px; border-radius: 0 4px 4px 0; }
-  .meter .tick { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
+  .meter .tick { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1.5px; background: var(--ink); border-radius: 2px; box-shadow: 0 0 0 1.5px var(--paper); }
   .status { display: flex; align-items: center; color: var(--mid); font-size: 14px; }
   .bcard { padding: 10px 0; border-bottom: 1px solid var(--line); }
   .bcard .btop { margin-bottom: 0; }

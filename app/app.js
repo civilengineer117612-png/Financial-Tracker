@@ -873,12 +873,10 @@ function viewMoney() {
   }
 
   if (!cat.rows.length) return empty();
-  // In a month, a category with a budget takes that budget's colour; without any budgets (or for a year or range) one calm blue.
-  const budgetOf = (id) => (p.kind === "month" ? M.budgetFor(S().rules, id, p.month) : null);
-  const graded = cat.rows.some((r) => budgetOf(r.category_id) !== null);
+  // The bars here show each category's share of the spending, so they are one calm blue; budget colours belong to the Budgets view.
+  const graded = false;
   const rows = cat.rows.map((r) => {
-    const budget = budgetOf(r.category_id), g = M.budgetGrade(r.amount, budget);
-    return { id: r.category_id, label: esc(r.name), amount: r.amount, percent: r.percent, grade: graded && ui.shape !== "donut" ? (g ? g.level : "none") : null };
+    return { id: r.category_id, label: esc(r.name), amount: r.amount, percent: r.percent, grade: null };
   });
   if (ui.asList) return done(listTable(["Category", "Spent", "Share"], rows.map((r) => [r.label, peso(r.amount), r.percent + "%"]), "Total", cat.total));
   return done(flipChart(rows, cat.total, { graded: graded && ui.shape !== "donut" }));
