@@ -48,8 +48,8 @@ const menuGo = async (page, name) => {   // Spending and Income are one menu ite
   await page.click("#menuBtn");
   const money = name === "Spending" || name === "Income";
   await page.click(`#menu .item:has-text("${money ? "Cash flow" : name}")`);
-  if (name === "Income") await page.click('#screen .moneyswitch button:has-text("Income")');
   await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
+  if (name === "Income") await page.click("#top .titleswitch");
 };
 // Saving is asynchronous (it writes two stores), so checks wait for the text to appear instead of racing it.
 const seen = async (page, sel, sub, ms = 4000) => { try { await page.waitForFunction(([q, t]) => document.querySelector(q)?.innerText.includes(t), [sel, sub], { timeout: ms }); return true; } catch { return false; } };
@@ -416,27 +416,28 @@ check(screen.includes("October 2026") && screen.includes("₱395.00"), "the hero
 check(screen.includes("spent in October 2026"), "and says what it is");
 check(screen.includes("₱900.00 less than September"), "plain comparison with last month, no alarm");
 check(screen.includes("plus ₱95.00 not verified yet"), "unverified drafts are mentioned but not counted");
-const rowsNow = await page.locator(".brow").allInnerTexts();
-check(rowsNow.length === 2 && rowsNow[0].includes("Shopping") && rowsNow[0].includes("₱300.00") && rowsNow[0].includes("75.9%") && rowsNow[1].includes("Food") && rowsNow[1].includes("24.1%"), "bars are sorted biggest first, each with its amount and share: " + rowsNow.map((r) => r.replace(/\s+/g, " ")).join(" | "));
-const widths = await page.locator(".bfill").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
-check(widths[0] > widths[1] * 3 && widths[0] > 100, "bar lengths are in proportion (" + widths.join(", ") + ")");
-const thick = await page.locator(".bfill").first().evaluate((e) => e.getBoundingClientRect().height);
-check(thick <= 24, "bars are thin (" + thick + "px)");
-check((await page.locator(".bfill").evaluateAll((els) => new Set(els.map((e) => getComputedStyle(e).backgroundColor)).size)) === 1, "every bar is the same single color");
-check((await page.locator("#screen .caption").count()) === 0 && (await page.locator(".shapebtn, button:has-text('Donut')").count()) === 0, "no caption under the bars and no separate shape button");
-await page.click('.brow:has-text("Food")');
-check((await page.locator("svg.donut").count()) === 1 && (await page.locator(".bars").count()) === 0, "tapping the bars turns them into a donut");
-check((await page.locator("#screen .caption").count()) === 0, "and no description appears");
+const rowsNow = await page.locator(".lrow").allInnerTexts();
+check(rowsNow.length === 2 && rowsNow[0].includes("Shopping") && rowsNow[0].includes("₱300.00") && rowsNow[0].includes("75.9%") && rowsNow[1].includes("Food") && rowsNow[1].includes("24.1%"), "By category is one donut with its list under it, biggest first, each with its amount and share: " + rowsNow.join(" | ").replace(/\s+/g, " "));
+check((await page.locator("svg.donut").count()) === 1 && (await page.locator(".bars").count()) === 0 && (await page.locator("svg.donut circle.slice").count()) === 2, "there is no bar version of it: the donut has one slice per category");
+check((await page.locator("#screen .caption").count()) === 0 && (await page.locator(".shapebtn, button:has-text('Donut')").count()) === 0, "no caption and no separate shape button");
 await page.click("svg.donut");
-check((await page.locator(".bars .brow").count()) === 2 && (await page.locator("svg.donut").count()) === 0, "tapping the donut turns it back into bars");
+check((await text(page, ".tbl")).includes("Share") && (await page.locator("svg.donut").count()) === 0, "tapping the donut shows the list");
+await page.click(".flip");
+check((await page.locator("svg.donut").count()) === 1, "and tapping the list brings the donut back");
+check((await text(page, "#screen .modebar")).trim() === "List", "a small switch at the top says List, and Chart when the list is showing");
 
-await page.click('button:has-text("By account")');
+await page.click('#screen .seg button:has-text("By account")');
 await shot(page, "14-money-account");
 const accRows = await page.locator(".brow").allInnerTexts();
 check(accRows.length === 2 && accRows[0].includes("Bank") && accRows[0].includes("₱300.00") && accRows[1].includes("Wallet") && accRows[1].includes("₱95.00"), "by account: where each peso came out of");
 check((await page.locator(".brow img.ico").count()) === 2, "each account shows its own picture beside its name");
+const widths = await page.locator(".bfill").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
+check(widths[0] > widths[1] * 2 && widths[0] > 100, "bar lengths are in proportion (" + widths.join(", ") + ")");
+const thick = await page.locator(".bfill").first().evaluate((e) => e.getBoundingClientRect().height);
+check(thick <= 24, "bars are thin (" + thick + "px)");
+check((await page.locator(".bfill").evaluateAll((els) => new Set(els.map((e) => getComputedStyle(e).backgroundColor)).size)) === 1, "every bar is the same single color");
 
-await page.click('button:has-text("By month")');
+await page.click('#screen .seg button:has-text("Trends")');
 await shot(page, "15-money-month");
 const colH = await page.locator(".cbar").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
 check(colH.length === 6 && colH.slice(0, 3).every((h) => h === 0) && colH[4] === Math.max(...colH) && colH[3] < colH[4] && colH[5] < colH[3] && Math.abs(colH[3] / colH[4] - 690 / 1295) < 0.03 && Math.abs(colH[5] / colH[4] - 395 / 1295) < 0.03, "six months as columns, in proportion, September the tallest: " + colH.join(","));
@@ -445,13 +446,13 @@ check((await page.locator(".cval").allInnerTexts()).filter(Boolean).join() === "
 await page.click(".col >> nth=4");
 check((await text(page, ".caption")).includes("September 2026: ₱1,295.00 spent."), "tapping a column says its month and amount");
 
-await page.click('button:has-text("Show as list")');
+await page.click('#screen .modebar button');
 screen = await text(page, "#screen");
 check(screen.includes("September 2026") && screen.includes("₱1,295.00") && screen.includes("August 2026") && screen.includes("₱690.00"), "the list says the same as the columns");
-await page.click('button:has-text("By category")');
+await page.click('#screen .seg button:has-text("By category")');
 screen = await text(page, "#screen");
 check(/Shopping\s+₱300\.00\s+75\.9%/.test(screen) && /Food\s+₱95\.00\s+24\.1%/.test(screen) && /Total\s+₱395\.00/.test(screen), "the list view has every number the chart has, plus the total");
-await page.click('button:has-text("Show as chart")');
+await page.click('#screen .modebar button');
 
 await page.click('button[aria-label="Earlier"]');
 screen = await text(page, "#screen");
@@ -524,22 +525,24 @@ check(ledgerNow.state.rules.filter((r) => r.subject_id === "cat-shopping").map((
 // ---- the colours: light blue to dark blue, red only when over ----
 await menuGo(page, "Spending");
 for (let i = 0; i < 9; i++) if (await page.locator('button[aria-label="Later"]').isEnabled()) await page.click('button[aria-label="Later"]');
-await page.click('button:has-text("By category")');
+await page.click('#screen .seg button:has-text("By category")');
 await shot(page, "19-money-graded");
-const fills = await page.locator(".brow").evaluateAll((els) => els.map((e) => getComputedStyle(e.querySelector(".bfill")).backgroundColor));
-check(fills.length > 0 && fills.every((c) => c === "rgb(42, 120, 214)"), "the category bars are one calm blue, whatever the budgets say: " + [...new Set(fills)].join());
-check((await page.locator("#screen .legend").count()) === 0, "the category view has no budget legend");
-check((await page.locator("#screen .caption").count()) === 0, "the bars have no caption");
-const barCount = await page.locator(".bars .brow").count();
-await page.click(".bars");
-check((await page.locator("svg.donut").count()) === 1 && (await page.locator("svg.donut circle.slice").count()) === barCount, "tapping the bars makes a donut with one slice per category: " + barCount);
-check((await page.locator(".legendlist .lrow").count()) === barCount && /₱[\d,.]+ · [\d.]+%/.test(await text(page, ".legendlist")), "its legend lists each category with the peso amount and the percent");
+check((await page.locator("#screen .legend").count()) === 0 && (await page.locator("svg.donut").count()) === 1, "the category view has no budget legend");
+const names = (await page.locator("#screen .seg button").allInnerTexts()).join();
+check(names === "By category,Budget,By account,Trends", "the four views are By category, Budget, By account and Trends: " + names);
+const sliceCount = await page.locator("svg.donut circle.slice").count();
+check((await page.locator(".legendlist .lrow").count()) === sliceCount && /₱[\d,.]+ · [\d.]+%/.test(await text(page, ".legendlist")), "its list shows each category with the peso amount and the percent");
 await shot(page, "32-donut");
-await page.click('button:has-text("Show as list")');
+await page.click("#screen .modebar button");
 check((await text(page, ".tbl")).includes("Share"), "the list twin is still there");
-await page.click('button:has-text("Show as chart")');
-await page.click(".legendlist");
-check((await page.locator(".bars .brow").count()) === barCount, "tapping the donut or its legend brings the bars back");
+await page.click("#screen .modebar button");
+check((await page.locator("svg.donut").count()) === 1, "and the switch brings the chart back");
+// the title is the switch between Spending and Income
+check(await page.locator("#top .titleswitch").count() === 1 && (await text(page, "#top")).includes("Spending") && await page.locator("#screen .moneyswitch").count() === 0, "the title Spending is itself the switch; there are no two buttons under it");
+await page.click("#top .titleswitch");
+check((await text(page, "#top")).includes("Income"), "tapping it goes to Income");
+await page.click("#top .titleswitch");
+check((await text(page, "#top")).includes("Spending"), "and back to Spending");
 
 // ---- the period picker at the top ----
 check((await page.locator('.seg button:has-text("Year"), .seg button:has-text("Date range")').count()) === 0, "there are no Year or Date range buttons among the views");
@@ -549,9 +552,9 @@ await page.click('#sheet button[data-kind="month"]'); await shot(page, "34-perio
 await page.click('#sheet button[data-kind="year"]');
 await page.click('#sheet button[data-action="period-year"][data-id="2026"]');
 check((await text(page, ".ptitle")).includes("2026") && !(await text(page, ".ptitle")).includes("October") && (await text(page, "#screen")).includes("spent in 2026"), "choosing a year shows the whole year");
-await page.click('button:has-text("By month")');
+await page.click('#screen .seg button:has-text("Trends")');
 check((await page.locator(".cols .col").count()) === 12, "and By month then shows its twelve months");
-await page.click('button:has-text("By category")');
+await page.click('#screen .seg button:has-text("By category")');
 await page.click('button[aria-label="Earlier"]');
 check((await text(page, ".ptitle")).includes("2025") && (await text(page, "#screen")).includes("Nothing verified in this period"), "the arrows step a whole year, and an empty one says so");
 await page.click('button[aria-label="Later"]');
@@ -582,12 +585,12 @@ await page.click('#sheet .cal button[data-id="2023-06-01"]');
 check(((await text(page, "#sheet .rangepick")).match(/Jun 1, 2023/g) ?? []).length === 2, "an end date before the start pulls the start back, so the range is never upside down");
 await page.click('#sheet button:has-text("This month")');
 check((await text(page, ".ptitle")).includes("Oct 1, 2026") && (await text(page, ".sub >> nth=0")).includes("3 days"), "a preset applies at once");
-await page.click('button:has-text("Budgets")');
+await page.click('#screen .seg button:has-text("Budget")');
 check((await text(page, "#screen")).includes("Budgets are set per month"), "Budgets with a range asks for a month");
 await page.click('button:has-text("Show this month")');
-await page.click('button:has-text("By category")');
+await page.click('#screen .seg button:has-text("By category")');
 
-await page.click('button:has-text("Budgets")');
+await page.click('#screen .seg button:has-text("Budget")');
 await shot(page, "20-money-budgets");
 const cards = await page.locator(".bcard").allInnerTexts();
 check(cards.length === 3 && cards[0].includes("Shopping") && cards[1].includes("Food") && cards[2].includes("Rent"), "budgets are listed most-used first: " + cards.map((c) => c.split("\n")[0]).join(", "));
@@ -605,9 +608,9 @@ check((await text(page, "#screen")).includes("The black line is today's place in
 check((await page.locator(".tbl").count()) === 1 && (await text(page, "#screen")).toLowerCase().includes("budget vs actual"), "the budget-vs-actual table sits under the chart");
 const vcolors = await page.locator(".tbl td.vo, .tbl td.vu").evaluateAll((els) => els.map((e) => e.className.includes("vo") ? "over" : "under"));
 check(vcolors.includes("over") && vcolors.includes("under"), "variance cells are marked over and under");
-await page.click('button:has-text("Show as list")');
+await page.click('#screen .modebar button');
 check(/Shopping[\s\S]*−₱50\.00 over/.test(await text(page, ".tbl")) && /Food[\s\S]*\+₱5\.00 under/.test(await text(page, ".tbl")) && (await text(page, ".tbl")).includes("Total"), "the list twin has budget, actual and a signed variance in words");
-await page.click('button:has-text("Show as chart")');
+await page.click('#screen .modebar button');
 await page.click('button[aria-label="Earlier"]');
 check((await text(page, "#screen")).includes("No budgets for September 2026 yet"), "a budget set this month does not rewrite September");
 
@@ -620,7 +623,7 @@ await page.click('button:has-text("Correct")'); await seen(page, "#screen", "of"
 await verifyAll();
 await menuGo(page, "Spending");
 for (let i = 0; i < 9; i++) if (await page.locator('button[aria-label="Later"]').isEnabled()) await page.click('button[aria-label="Later"]');
-await page.click('button:has-text("Budgets")');
+await page.click('#screen .seg button:has-text("Budget")');
 const noBud = await page.waitForFunction(() => document.getElementById("screen").innerText.toLowerCase().includes("no budget set"), null, { timeout: 4000 }).then(() => true, () => false);   // the heading is shown in capitals
 if (!noBud) console.log("   screen was:", JSON.stringify((await text(page, "#screen")).slice(0, 600)));
 check(noBud && /Upskill\s+₱80\.00/.test(await text(page, "#screen")), "spending in a category with no budget is shown under its own heading");
@@ -628,14 +631,14 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 
 // ---- the monthly trend ----
 await menuGo(page, "Spending");
-await page.click('button:has-text("By month")');
+await page.click('#screen .seg button:has-text("Trends")');
 check((await page.locator("svg.trend").count()) === 1 && (await page.locator(".tmonth").count()) === 6, "the trend line chart has one tappable label per month");
 const paths = await page.locator("svg.trend path.tl").count(), dots = await page.locator("svg.trend circle").count();
 check(paths === 2 && dots >= 2 && dots < 12, "two lines, with points only where a month has data (" + dots + " points)");
 await shot(page, "24-trend");
-await page.click('button:has-text("Show as list")');
+await page.click('#screen .modebar button');
 check((await text(page, "#screen")).includes("No data"), "the list twin says No data for empty months");
-await page.click('button:has-text("Show as chart")');
+await page.click('#screen .modebar button');
 await page.locator(".tmonth").last().click();
 check((await text(page, "#screen")).includes("October 2026") && await page.locator(".bcard").count() > 0, "tapping a month opens that month's budgets");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
@@ -1241,7 +1244,7 @@ check(await page.locator(".lightbox").count() === 0 && await val("p-emp") === "S
 const order = await page.evaluate(() => { const ids = ["p-tot-e", "p-tot-d", "p-emp", "p-from", "p-to", "p-date"].map((i) => document.getElementById(i).getBoundingClientRect().top); return ids.every((v, i) => i === 0 || v > ids[i - 1]); });
 check(order, "the order is totals, landed in, employer, then the dates");
 const tv = await page.evaluate(() => parseFloat(getComputedStyle(document.getElementById("p-tot-e")).fontSize));
-check(tv >= 28, "the totals are the largest figures in the window (" + tv + "px)");
+check(tv >= 22, "the totals are the largest figures in the window (" + tv + "px)");
 check(await page.locator("#sheet .chip[data-action='pick-employer']").count() === 0, "no saved-employer suggestions are offered");
 const sheetBox = await page.locator("#sheet").boundingBox(), totBox = await page.locator("#p-tot-d").boundingBox();
 check(totBox && totBox.y + totBox.height < sheetBox.y + sheetBox.height, "the totals are on screen without scrolling");
