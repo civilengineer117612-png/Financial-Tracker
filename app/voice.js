@@ -4,35 +4,34 @@
 const Recognizer = () => window.SpeechRecognition || window.webkitSpeechRecognition;
 export const speechSupported = () => Boolean(Recognizer());
 
-const IDLE_MS = 8000, MAX_MS = 60000;   // stop after this long with no new words, or in all
+// Which language to listen for first: Filipino if the phone is set to it, else English (Philippines). The speech services cannot work out the
+// language by themselves, so the app tries the other one on the next tap when it could not catch anything (see `other`).
+export const firstLanguage = () => ((navigator.languages ?? [navigator.language ?? ""]).some((l) => /^(fil|tl)\b/i.test(l)) ? "fil-PH" : "en-PH");
+export const other = (lang) => (lang === "fil-PH" ? "en-PH" : "fil-PH");
 
-// Starts listening and KEEPS listening: many phones end one recognition after about a second of quiet, so it is restarted and the
-// words are joined, until you tap stop, or nothing new is heard for IDLE_MS, or MAX_MS have passed.
-// onText(textSoFar) as words come in; onDone() when it has really stopped; onError(code) on a problem that ends it. Returns {stop}.
+// Listens ONCE for one sentence. A phone's speech service opens the microphone, hears you, and closes it when you pause; opening it again
+// and again made the microphone flicker and lose words, so this does not restart it: tap again for more.
+// onText(textSoFar) as words come in (what was in the box before is kept in front); onDone({heard, confidence}) when it has stopped
+// (confidence 0..1, or null when the service gives none); onError(code) on a problem that ends it. Returns {stop}.
 export function listen({ lang, onText, onDone, onError, startText = "" }) {
-  let stopped = false, rec = null, base = startText.trim(), current = base, idle = null;
-  const began = Date.now();
-  const finish = () => { if (stopped === "done") return; stopped = "done"; clearTimeout(idle); onDone(); };
-  const bump = () => { clearTimeout(idle); idle = setTimeout(() => { stopped = true; try { rec?.stop(); } catch { finish(); } }, IDLE_MS); };
-  const begin = () => {
-    rec = new (Recognizer())();
-    rec.lang = lang; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 1;
-    rec.onresult = (e) => {
-      const heard = [...e.results].map((x) => x[0].transcript).join(" ").trim();
-      current = (base + " " + heard).trim();
-      onText(current); bump();
-    };
-    rec.onerror = (e) => {
-      if (e.error === "no-speech" || e.error === "aborted") return;   // quiet, or we stopped it: the end handler decides
-      stopped = true; onError(e.error);
-    };
-    rec.onend = () => {
-      base = current;   // what was heard so far stays; the next round adds to it
-      if (stopped || Date.now() - began > MAX_MS) { finish(); return; }
-      setTimeout(() => { if (!stopped) { try { begin(); } catch { finish(); } } }, 120);
-    };
-    rec.start();
+  const base = startText.trim();
+  let rec = null, ended = false, heard = "", confidence = null, failed = false;
+  const finish = () => { if (ended) return; ended = true; if (!failed) onDone({ heard: heard.length > 0, confidence }); };
+  rec = new (Recognizer())();
+  rec.lang = lang; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  rec.onresult = (e) => {
+    const parts = [...e.results];
+    heard = parts.map((x) => x[0].transcript).join(" ").trim();
+    const last = parts[parts.length - 1]?.[0];
+    confidence = typeof last?.confidence === "number" && last.confidence > 0 ? last.confidence : confidence;
+    onText((base + " " + heard).trim());
   };
-  begin(); bump();
-  return { stop: () => { stopped = true; try { rec?.stop(); } catch { finish(); } } };
+  rec.onerror = (e) => {
+    if (e.error === "aborted") return;   // we stopped it
+    if (e.error === "no-speech") return;   // quiet: the end handler reports that nothing was heard
+    failed = true; onError(e.error);
+  };
+  rec.onend = finish;
+  rec.start();
+  return { stop: () => { try { rec.stop(); } catch { finish(); } } };
 }

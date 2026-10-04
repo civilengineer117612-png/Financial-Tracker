@@ -52,8 +52,8 @@
   .shotbtn.enlarge { position: relative; } .shotbtn.enlarge::after { content: "Tap to enlarge"; position: absolute; right: 8px; bottom: 8px; background: var(--ink); color: var(--paper); font-size: 13px; padding: 4px 8px; border-radius: 6px; }
   .note.small { font-size: 13px; margin: 6px 0; }
   .lightbox { position: fixed; inset: 0; z-index: 100; background: #000; display: flex; flex-direction: column; }
-  .lbbar { display: flex; gap: 8px; justify-content: flex-end; padding: 10px; }
-  .lbbar button { background: var(--paper); font-size: 20px; min-height: 52px; min-width: 56px; }
+  button.micmain { display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .sronly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .lbstage { flex: 1; overflow: hidden; touch-action: none; display: flex; align-items: center; justify-content: center; }
   .lbstage img { width: 100%; height: 100%; object-fit: contain; transform-origin: center; user-select: none; -webkit-user-select: none; }
   .lbhint { color: #ccc; text-align: center; margin: 8px; }
@@ -177,6 +177,10 @@
   .tbl tr.total td { font-weight: bold; }
   .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   .row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  button.rowbtn { width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; min-height: 56px; }
+  button.rowbtn:active { background: var(--wash); }
+  .bigamt { font-size: 30px; font-weight: 700; margin: 4px 0 12px; font-variant-numeric: tabular-nums; }
+  .txdl { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0 0 14px; } .txdl dt { color: var(--mid); } .txdl dd { margin: 0; text-align: right; }
   .row small { color: var(--mid); display: block; }
   .row .amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .card { border: 1px solid var(--ink); border-radius: 10px; padding: 16px; margin: 10px 0; }

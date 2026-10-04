@@ -3,7 +3,7 @@
 import * as M from "../src/model/index.js";
 import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto, useTrialStorage, clearTrialStorage } from "./store.js";
 import { preparePhoto, readPage, evenedCopy } from "./ocr.js";
-import { speechSupported, listen } from "./voice.js";
+import { speechSupported, listen, firstLanguage, other } from "./voice.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -201,7 +201,7 @@ function viewLog() {
 function rowFor(t) {
   const d = describe(t);
   const acct = d.kind === "expense" ? S().accounts.find((a) => a.id === d.account_id) : null;
-  return `<div class="row"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}</span></small></div><div class="amt">${peso(d.amount)}</div></div>`;
+  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}</span></small></div><div class="amt">${peso(d.amount)}</div></button>`;
 }
 
 // Everything waiting, oldest first. Nothing has to wait for tomorrow: verify whenever you have the time.
@@ -304,13 +304,14 @@ function openPayslipFromPhoto(blob, text, queueId) {
   ui.pdet = {}; ui.form = f; ui.sheet = { type: "payslip", scanBlob: blob, queueId }; renderSheet();
 }
 
-// The photo full screen over the window, so it can be compared with the figures. Zoom: pinch with two fingers, double-tap, the + and
-// minus buttons, or the mouse wheel; drag to move when zoomed in. Close goes back to the window exactly as it was (nothing typed is lost).
+// The photo full screen over the window, so it can be compared with the figures. Zoom: pinch with two fingers (or double-tap, or the mouse
+// wheel); drag to move when zoomed in. Tap the dark background around the photo to close: the window underneath is exactly as it was
+// (nothing typed is lost). Escape also closes it.
 function viewShot(url) {
   const box = document.createElement("div");
-  box.className = "lightbox"; box.setAttribute("role", "dialog"); box.setAttribute("aria-label", "Photo");
-  box.innerHTML = `<div class="lbbar"><button class="lbminus" aria-label="Zoom out">\u2212</button><button class="lbplus" aria-label="Zoom in">+</button><button class="lbfit" aria-label="Fit the whole photo">Fit</button><button class="lbclose" aria-label="Close the photo">Close</button></div>
-    <div class="lbstage"><img alt="The photo, full size" src="${esc(url)}" draggable="false"></div><p class="note small lbhint">Pinch or double-tap to zoom. Drag to move.</p>`;
+  box.className = "lightbox"; box.setAttribute("role", "dialog"); box.setAttribute("aria-label", "Photo. Tap outside the photo to close.");
+  box.innerHTML = `<button class="sronly lbclose" aria-label="Close the photo">Close</button>
+    <div class="lbstage"><img alt="The photo, full size" src="${esc(url)}" draggable="false"></div><p class="note small lbhint">Pinch or double-tap to zoom. Tap outside the photo to close.</p>`;
   const stage = box.querySelector(".lbstage"), img = stage.querySelector("img");
   let k = 1, tx = 0, ty = 0;
   const MAX = 8;
@@ -325,13 +326,22 @@ function viewShot(url) {
     tx = px - (px - tx) * f; ty = py - (py - ty) * f; k = nk; apply();
   };
   const mid = (cx, cy) => { const r = stage.getBoundingClientRect(); return [cx - r.left - r.width / 2, cy - r.top - r.height / 2]; };
-  const pts = new Map(); let pinch = null, lastTap = { t: 0, x: 0, y: 0 };
+  // Is this point on the picture itself (as drawn, zoom and move included) or on the dark around it?
+  const onPicture = (cx, cy) => {
+    const r = stage.getBoundingClientRect(), nw = img.naturalWidth || r.width, nh = img.naturalHeight || r.height;
+    const fit = Math.min(r.width / nw, r.height / nh), w = nw * fit * k, h = nh * fit * k;
+    const [px, py] = mid(cx, cy);
+    return Math.abs(px - tx) <= w / 2 && Math.abs(py - ty) <= h / 2;
+  };
+  const pts = new Map(); let pinch = null, lastTap = { t: 0, x: 0, y: 0 }, down = null, multi = false;
+  const close = () => { box.remove(); document.removeEventListener("keydown", onKey); }, onKey = (e) => { if (e.key === "Escape") close(); };
   stage.addEventListener("pointerdown", (e) => {
     stage.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k }; }
+    if (pts.size === 2) { multi = true; const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k }; }
     if (pts.size === 1) {
+      multi = false; down = { x: e.clientX, y: e.clientY, t: Date.now() };
       const now = Date.now();
-      if (now - lastTap.t < 300 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) { const [px, py] = mid(e.clientX, e.clientY); zoomAt(k > 1.05 ? 1 : 3, px, py); lastTap.t = 0; }
+      if (now - lastTap.t < 300 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) { const [px, py] = mid(e.clientX, e.clientY); zoomAt(k > 1.05 ? 1 : 3, px, py); lastTap.t = 0; down = null; }
       else lastTap = { t: now, x: e.clientX, y: e.clientY };
     }
   });
@@ -343,13 +353,13 @@ function viewShot(url) {
       zoomAt(pinch.k * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.d), px, py);
     } else if (pts.size === 1 && k > 1) { tx += e.clientX - p.x; ty += e.clientY - p.y; pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); apply(); }
   });
-  const up = (e) => { pts.delete(e.pointerId); pinch = null; };
+  const up = (e) => {
+    // a short tap with no movement on the dark background closes the viewer
+    if (e.type === "pointerup" && down && !multi && pts.size === 1 && Date.now() - down.t < 350 && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 10 && !onPicture(e.clientX, e.clientY)) { close(); return; }
+    pts.delete(e.pointerId); pinch = null;
+  };
   stage.addEventListener("pointerup", up); stage.addEventListener("pointercancel", up);
   stage.addEventListener("wheel", (e) => { e.preventDefault(); const [px, py] = mid(e.clientX, e.clientY); zoomAt(k * Math.exp(-e.deltaY * 0.002), px, py); }, { passive: false });
-  box.querySelector(".lbplus").addEventListener("click", () => zoomAt(k * 1.6, 0, 0));
-  box.querySelector(".lbminus").addEventListener("click", () => zoomAt(k / 1.6, 0, 0));
-  box.querySelector(".lbfit").addEventListener("click", () => { k = 1; tx = ty = 0; apply(); });
-  const close = () => { box.remove(); document.removeEventListener("keydown", onKey); }, onKey = (e) => { if (e.key === "Escape") close(); };
   box.querySelector(".lbclose").addEventListener("click", close);
   document.addEventListener("keydown", onKey);
   document.body.appendChild(box);
@@ -482,18 +492,28 @@ function openScanSheet(blob, text, failed, queueId, spoken = null) {
 let voiceListener = null;
 const VOICE_ERRORS = { "not-allowed": "The phone did not allow the microphone here.", "service-not-allowed": "The phone did not allow the microphone here.", "no-speech": "I did not hear anything. Try again.", "audio-capture": "No microphone was found.", network: "The speech service could not be reached (it needs internet)." };
 function voiceMessage(m) { const el = $("v-msg"); if (el) el.textContent = m; }
+const LANG_NAME = { "en-PH": "English", "fil-PH": "Filipino" };
+const micLabel = (text) => `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.mic}</svg><span>${esc(text)}</span>`;
 function voiceToggle() {
   if (voiceListener) { voiceListener.stop(); return; }
-  const btn = $("v-mic"); if (btn) btn.textContent = "Listening... tap to stop";
+  const lang = ui.form.lang ?? firstLanguage(), btn = $("v-mic");
+  if (btn) btn.innerHTML = micLabel("Listening in " + LANG_NAME[lang] + "... tap to stop");
   voiceMessage("");
   try {
     voiceListener = listen({
-      lang: ui.form.lang ?? "en-PH", startText: ui.form.spoken ?? "",
+      lang, startText: ui.form.spoken ?? "",
       onText: (text) => { ui.form.spoken = text; const box = $("v-text"); if (box) box.value = text; refreshSave(); },
-      onDone: () => { voiceListener = null; const b = $("v-mic"); if (b) b.textContent = "Tap and speak"; },
-      onError: (code) => voiceMessage((VOICE_ERRORS[code] ?? "Speech could not start (" + code + ").") + " You can type, or use the keyboard's microphone key, in the box below."),
+      onDone: ({ heard, confidence }) => {
+        voiceListener = null; const b = $("v-mic"); if (b) b.innerHTML = micLabel("Tap and speak");
+        // Nothing caught, or a doubtful catch: the next tap listens for the other language, so the person never has to choose one.
+        if (!heard || (confidence !== null && confidence < 0.55)) {
+          ui.form.lang = other(lang);
+          voiceMessage(heard ? "I am not sure I heard that right. Check the words, or tap and say it again (this time I listen for " + LANG_NAME[ui.form.lang] + ")." : "I did not catch anything in " + LANG_NAME[lang] + ". Tap and speak again (this time I listen for " + LANG_NAME[ui.form.lang] + ").");
+        } else ui.form.lang = lang;
+      },
+      onError: (code) => { voiceListener = null; const b = $("v-mic"); if (b) b.innerHTML = micLabel("Tap and speak"); voiceMessage((VOICE_ERRORS[code] ?? "Speech could not start (" + code + ").") + " You can type, or use the keyboard's microphone key, in the box below."); },
     });
-  } catch (e) { voiceListener = null; voiceMessage("Speech could not start. You can type, or use the keyboard's microphone key, in the box below."); }
+  } catch (e) { voiceListener = null; if (btn) btn.innerHTML = micLabel("Tap and speak"); voiceMessage("Speech could not start. You can type, or use the keyboard's microphone key, in the box below."); }
 }
 async function useSpoken() {
   voiceListener?.stop();
@@ -1342,8 +1362,7 @@ function renderSheet() {
   } else if (sh.type === "voice") {
     body = `<h3>Say it</h3>
       <p class="note">One sentence, for example: lunch 95 at Sample Burger using GCash. You can say the day (yesterday, last Friday) too.</p>
-      <div class="seg" role="group" aria-label="Language">${[["en-PH", "English"], ["fil-PH", "Filipino"]].map(([v, t]) => `<button data-action="voice-lang" data-id="${v}" aria-pressed="${(ui.form.lang ?? "en-PH") === v}">${t}</button>`).join("")}</div>
-      ${speechSupported() ? `<p><button class="primary" id="v-mic" data-action="voice-toggle" style="margin-top:12px">Tap and speak</button></p>` : `<p class="note">Speech is not available in this browser. Type below, or tap the box and use your keyboard's microphone key.</p>`}
+      ${speechSupported() ? `<p><button class="primary micmain" id="v-mic" data-action="voice-toggle" style="margin-top:12px">${micLabel("Tap and speak")}</button></p>` : `<p class="note">Speech is not available in this browser. Type below, or tap the box and use your keyboard's microphone key.</p>`}
       <label for="v-text">What I heard (fix it, type it, or use the keyboard's microphone key)</label>
       <textarea id="v-text" data-field="spoken" rows="3" autocomplete="off" autocapitalize="sentences">${esc(ui.form.spoken ?? "")}</textarea>
       <p id="v-msg" class="note" role="status"></p>
@@ -1368,6 +1387,19 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-scan" style="margin-top:14px" disabled>Save to Verify</button></p>
       <p class="note">It stays a draft and counts toward nothing until you verify it.</p>
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
+  } else if (sh.type === "txdetail") {
+    const t = S().transactions.find((x) => x.id === sh.id), d = t ? describe(t) : null;
+    if (!t) { body = `<h3>Entry</h3><p class="note">This entry is no longer here.</p>`; }
+    else {
+      const acct = S().accounts.find((x) => x.id === d.account_id), shot = M.attachmentsFor(S(), t.id)[0];
+      const source = t.source === "photo" ? "Read from a photo" : t.source === "voice" ? "Made from what you said" : "Typed in";
+      const rows = [["Date", fullDate(t.date)], ["Status", t.status === "draft" ? "Draft, waiting in Verify" : "Verified"], ["How it was entered", source],
+        ...(d.kind === "split" ? d.parts.map((x) => [x.name, peso(x.amount)]) : d.category_id ? [["Category", categoryName(d.category_id)]] : []),
+        ...(d.kind === "transfer" ? [["Between", d.detail]] : []), ...(t.memo ? [["What was said or noted", "\u201C" + t.memo + "\u201D"]] : [])];
+      body = `<h3>${esc(d.title)}</h3><p class="bigamt">${peso(d.amount)}</p>
+        <dl class="txdl">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}${acct ? `<dt>${d.kind === "income" ? "Arrived in" : "Paid from"}</dt><dd class="who">${withIcon(acct, 22)}</dd>` : ""}</dl>
+        ${shot ? `<p><button class="primary" data-action="open-photo" data-id="${esc(shot.id)}">See the photo</button></p>` : ""}`;
+    }
   } else if (sh.type === "photo") {
     body = `<h3>Photo</h3><img class="shotfull" data-photo="${esc(sh.id)}" alt="The photo this entry was read from" hidden>`;
   } else if (sh.type === "icon") {
@@ -1406,9 +1438,9 @@ function renderSheet() {
       <p class="note">Anything entered on this phone since the backup was made will be gone.</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  $("sheet").innerHTML = `<div id="scrim" data-action="close-sheet"></div><div class="sheet" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" ? "Close" : "Cancel"}</button></p></div>`;
+  $("sheet").innerHTML = `<div id="scrim" data-action="close-sheet"></div><div class="sheet" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" ? "Close" : "Cancel"}</button></p></div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
-  if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.textContent = "Listening... tap to stop"; }
+  if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); }
   refreshSave();
   hydratePhotos();
 }
@@ -1779,8 +1811,7 @@ async function onClick(el) {
     case "pick-cat": form.category_id = id; if (form.split_cat === id) form.split_cat = null; renderSheet(); break;
     case "toggle-split": form.split = !form.split; renderSheet(); break;
     case "pick-split": form.split_cat = id; renderSheet(); break;
-    case "open-voice": ui.sheet = { type: "voice" }; ui.form = { spoken: "", lang: "en-PH" }; renderSheet(); break;
-    case "voice-lang": ui.form.lang = id; document.querySelectorAll('[data-action="voice-lang"]').forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.id === id))); break;
+    case "open-voice": ui.sheet = { type: "voice" }; ui.form = { spoken: "", lang: firstLanguage() }; renderSheet(); break;
     case "voice-toggle": voiceToggle(); break;
     case "use-spoken": await useSpoken(); break;
     case "open-queue": { const next = scanQueue().find((q) => q.needs); if (next) await openQueuedScan(next.id); break; }
@@ -1812,6 +1843,7 @@ async function onClick(el) {
     case "pick-kind": if (id === "payslip" && pendingPhoto && !ui.sheet.voice) { openPayslipFromPhoto(pendingPhoto.blob, form.text ?? "", ui.sheet.queueId ?? null); break; } form.kind = id; Object.assign(form, scanDefaults(id, form.guess, form.payee)); renderSheet(); break;
     case "save-scan": await saveScan(); break;
     case "view-shot": if (pendingPhoto) viewShot(pendingPhoto.url); break;
+    case "open-tx": ui.sheet = { type: "txdetail", id }; renderSheet(); break;
     case "open-photo": { const u = photoUrls.get(id) ?? (await getPhoto(id).then((b) => b && URL.createObjectURL(b))); if (u) { photoUrls.set(id, u); viewShot(u); } else showToast("The photo is not on this phone. Photos are not part of the backup file."); break; }
     case "pick-acct": form.account_id = id; renderSheet(); break;
     case "close-sheet": voiceListener?.stop(); ui.sheet = null; renderSheet(); break;

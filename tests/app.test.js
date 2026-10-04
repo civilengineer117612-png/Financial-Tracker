@@ -116,9 +116,12 @@ test("a window holds the page still behind it and keeps its place when redrawn",
   assert.match(js, /function lockPage\(on\)/);
   assert.match(js, /keepAt = lastSheetKey === key/, "the window's scroll position is kept when it is redrawn after a tap");
 });
-test("listening restarts when the phone ends it after a second of quiet, and stops by itself only after a long silence", () => {
-  const v = read("app/voice.js");
-  assert.match(v, /rec\.continuous = true/);
-  assert.match(v, /rec\.onend = \(\) => \{[\s\S]*begin\(\)/, "an ended recognition is started again");
-  assert.match(v, /IDLE_MS = 8000/);
+test("listening is one round per tap: no restart loop, no language buttons, the other language is tried by itself", () => {
+  const v = read("app/voice.js"), js = read("app/app.js");
+  assert.match(v, /rec\.continuous = false/);
+  assert.ok(!/begin\(\)/.test(v) && !/setTimeout/.test(v), "an ended recognition is not started again");
+  assert.match(v, /export const other = /);
+  assert.ok(!js.includes("voice-lang"), "no English/Filipino buttons");
+  assert.match(js, /ui\.form\.lang = other\(lang\)/);
 });
+
