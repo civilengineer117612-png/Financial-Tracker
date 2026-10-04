@@ -9,11 +9,11 @@ import { validateShape } from "./schema.js";
 // Wikipedia article, whose picture is its logo (Wikipedia's pictures can be copied by the page). It is used only when the owner taps "Get bank logos" on the phone, which asks
 // an icon service for that site's small icon and keeps it on the phone. Nothing is downloaded or stored in the repository.
 export const BANKS = [
-  { id: "gcash", name: "GCash", domain: "gcash.com" }, { id: "maya", name: "Maya", domain: "maya.ph", noLookup: true, wiki: "Maya Philippines fintech" },
+  { id: "gcash", name: "GCash", domain: "gcash.com" }, { id: "maya", name: "Maya", domain: "maya.ph", noLookup: true, wiki: ["Maya Philippines fintech", "Maya Bank Philippines", "PayMaya"] },
   { id: "gotyme", name: "GoTyme", domain: "gotyme.com.ph" }, { id: "maribank", name: "MariBank", domain: "maribank.ph" },
   { id: "bdo", name: "BDO", domain: "bdo.com.ph" }, { id: "bpi", name: "BPI", domain: "bpi.com.ph" },
   { id: "metrobank", name: "Metrobank", domain: "metrobank.com.ph" }, { id: "unionbank", name: "UnionBank", domain: "unionbankph.com", alt: ["unionbank.com.ph"] },
-  { id: "landbank", name: "Landbank", domain: "landbank.com" }, { id: "securitybank", name: "Security Bank", domain: "securitybank.com" },
+  { id: "landbank", name: "Landbank", domain: "landbank.com" }, { id: "securitybank", name: "Security Bank", domain: "securitybank.com", noLookup: true, wiki: ["Security Bank Corporation", "Security Bank Philippines"] },
   { id: "coinsph", name: "Coins.ph", domain: "coins.ph" },
 ];
 export const CASH = { id: "cash", name: "Cash" };

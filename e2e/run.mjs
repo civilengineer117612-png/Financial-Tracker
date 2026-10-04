@@ -768,6 +768,10 @@ check((await page.locator("#screen .chips .chip").count()) === 0 && (await page.
 await page.click("#a-bank");
 check((await page.locator("#sheet .bankrow").count()) === 13 && (await text(page, "#sheet")).includes("Coins.ph"), "it opens a list: eleven banks and wallets (Coins.ph included), Cash, and 'not in the list'");
 check((await page.locator("#sheet .banklist").evaluate((e) => getComputedStyle(e).overflowY)) === "auto", "the list scrolls");
+const tiles = await page.locator("#sheet .bankrow > :first-child").evaluateAll((els) => els.map((e) => { const c = getComputedStyle(e.matches(".icowrap") ? e.querySelector(".mono") ?? e : e); const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)].join("x"); }));
+check(tiles.length === 13 && new Set(tiles.filter((_, i) => i < 12)).size === 1, "every bank picture is the same size, in the same framed tile: " + [...new Set(tiles)].join());
+const framed = await page.locator("#sheet .bankrow img.ico").evaluateAll((els) => els.every((e) => getComputedStyle(e).borderTopWidth === "1px" && getComputedStyle(e).objectFit === "contain"));
+check(framed, "every logo sits inside a white frame, shrunk to fit, never cropped");
 await shot(page, "30-banks");
 await page.click('#sheet .bankrow:has-text("GoTyme")');
 check((await page.locator("#a-name").count()) === 0 && (await page.locator("#a-sub").count()) === 1 && (await text(page, "#a-bank")).includes("GoTyme"), "choosing a bank closes the list and asks which part of the bank");

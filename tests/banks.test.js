@@ -134,3 +134,8 @@ test("grey-placeholder addresses saved by earlier versions are thrown away; real
   assert.deepEqual([out.accounts.find((a) => a.id === "m").icon_url, out.accounts.find((a) => a.id === "b").icon_url], [undefined, good]);
   assert.equal(dropPlaceholderAddresses(out), out, "nothing to drop: the same state comes back");
 });
+
+test("a bank the icon services only answer with a placeholder for has Wikipedia phrases to try instead", () => {
+  for (const b of BANKS.filter((x) => x.noLookup)) assert.ok([b.wiki ?? []].flat().length >= 1, b.name + " needs a wiki phrase");
+  assert.ok(bankById("securitybank").noLookup, "Security Bank's grey placeholder is not used");
+});

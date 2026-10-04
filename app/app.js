@@ -697,7 +697,7 @@ async function fetchBankLogo(b) {
     for (const [label, src] of COPY_SOURCES(domain)) { const r = await loadLogo(src); if (r.url) return { icon: r.url }; why.push(domain + " " + label + ": " + r.why); }
     for (const [label, src] of LINK_SOURCES(domain)) { const r = await loadLogo(src, { copy: false }); if (r.ok) return { icon_url: src }; why.push(domain + " " + label + ": " + r.why); }
   }
-  if (b.wiki) { const r = await wikiLogo(b.wiki); if (r.url) return { icon: r.url }; why.push("Wikipedia: " + r.why); }
+  for (const term of [b.wiki ?? []].flat()) { const r = await wikiLogo(term); if (r.url) return { icon: r.url }; why.push("Wikipedia (" + term + "): " + r.why); }
   return { why: why.join("; ") };
 }
 let logoRun = null;

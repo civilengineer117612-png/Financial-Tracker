@@ -137,9 +137,10 @@
   .choice { display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 0; min-height: 56px; }
   .choice small { color: var(--mid); display: block; }
   .chip { display: inline-flex; align-items: center; gap: 8px; }
-  .icowrap { position: relative; display: inline-block; flex: none; vertical-align: middle; } .icowrap .ico.ov { position: absolute; inset: 0; background: #fff; }
-  .ico { border-radius: 8px; object-fit: cover; flex: none; vertical-align: middle; }
-  .mono { display: inline-flex; align-items: center; justify-content: center; background: var(--wash); border: 1px solid var(--line); color: var(--mid); font-weight: bold; }
+  .icowrap { position: relative; display: inline-block; flex: none; vertical-align: middle; } .icowrap .ico.ov { position: absolute; inset: 0; }
+  /* every picture sits in the same white framed tile, whatever shape or padding the logo came with, so a list of banks looks like one set */
+  .ico { border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid var(--line); padding: 3px; box-sizing: border-box; flex: none; vertical-align: middle; }
+  .mono { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; background: var(--wash); border: 1px solid var(--line); color: var(--mid); font-weight: bold; }
   .who { display: flex; align-items: center; gap: 12px; }
   .icobtn { padding: 0; min-height: 0; border: 0; background: none; }
   .stage { width: 240px; height: 240px; margin: 12px auto; border: 2px solid var(--ink); border-radius: 20px; overflow: hidden; position: relative; touch-action: none; background: var(--wash); }
