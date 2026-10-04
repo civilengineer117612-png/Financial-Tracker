@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseSchedule, isDue, datesBetween, categoryForPayee, draftFromTemplate, draftsForRange, planReserveTransfer, naturalBalance } from "../src/model/index.js";
+import { parseSchedule, isDue, datesBetween, categoryForPayee, draftFromTemplate, draftsForRange, planReserveTransfer, naturalBalance, updatePreset } from "../src/model/index.js";
 import { makeState, commit, cardPurchase } from "./fixtures.js";
 
 // Invented data only.
@@ -108,4 +108,26 @@ test("a purchase that is not on the card generates nothing", () => {
   const debit = { transaction: { id: "d", date: "2026-01-05" }, entries: [
     { transaction_id: "d", category_id: "food", amount: 100 }, { transaction_id: "d", account_id: "chk", amount: -100 } ] };
   assert.deepEqual(planReserveTransfer(s, debit, "chk"), []);
+});
+
+// invented tiles and categories
+const withTiles = () => ({ ...makeState(), categories: [{ id: "food", name: "Food", kind: "expense" }, { id: "shop", name: "Shopping", kind: "expense" }, { id: "pay", name: "Pay", kind: "income" }],
+  presets: [{ id: "pre-lunch", name: "Lunch", amount: 9500, category_id: "food" }, { id: "pre-dinner", name: "Dinner", amount: 9500, category_id: "food" }] });
+
+test("a quick tile can be renamed, repriced and moved to another spending category, and nothing else changes", () => {
+  const s = withTiles();
+  const r = updatePreset(s, "pre-lunch", { name: "  Snack ", amount: 4500, category_id: "shop" });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.state.presets, [{ id: "pre-lunch", name: "Snack", amount: 4500, category_id: "shop" }, { id: "pre-dinner", name: "Dinner", amount: 9500, category_id: "food" }]);
+  assert.equal(r.state.transactions.length, 0, "nothing is logged");
+});
+
+test("a quick tile refuses an empty name, a bad amount, a non-spending category or a missing tile", () => {
+  const s = withTiles();
+  assert.equal(updatePreset(s, "pre-lunch", { name: " ", amount: 100, category_id: "food" }).ok, false);
+  assert.equal(updatePreset(s, "pre-lunch", { name: "Snack", amount: 0, category_id: "food" }).ok, false);
+  assert.equal(updatePreset(s, "pre-lunch", { name: "Snack", amount: 10.5, category_id: "food" }).ok, false);
+  assert.equal(updatePreset(s, "pre-lunch", { name: "x".repeat(25), amount: 100, category_id: "food" }).ok, false);
+  assert.equal(updatePreset(s, "pre-lunch", { name: "Snack", amount: 100, category_id: "pay" }).ok, false);
+  assert.equal(updatePreset(s, "pre-nope", { name: "Snack", amount: 100, category_id: "food" }).ok, false);
 });

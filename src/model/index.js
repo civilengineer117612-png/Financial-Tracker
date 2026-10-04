@@ -41,7 +41,7 @@ export { ruleInEffect, rulesInEffect, reportingCategory, checkCategoryMapSave } 
 export { validateRatchetParams, wasMet, nextRatchet, ratchetSchedule, splitRatchet } from "./ratchet.js";
 export { planCheckIn, ledgerBalanceFor, unloggedTotal } from "./checkin.js";
 export { envelopeBalance, planGcashSpend, splitSweep, planMonthEndSweep, underBudgetedCategories, planEnvelopeSetup, planBufferFunding, bufferSummary } from "./buffer.js";
-export { parseSchedule, isDue, datesBetween, categoryForPayee, draftId, draftFromTemplate, draftsForRange, planReserveTransfer } from "./templates.js";
+export { parseSchedule, isDue, datesBetween, categoryForPayee, draftId, draftFromTemplate, draftsForRange, planReserveTransfer, updatePreset } from "./templates.js";
 export { budgetStatus, budgetTrend, budgetGrade, GRADE_AT, monthElapsedPercent, suggestedBudgetStart, budgetFor, planBudgetChange } from "./budget.js";
 export { pendingDrafts, verifyTransaction } from "./inbox.js";
 export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit, setGoalTarget } from "./goals.js";
