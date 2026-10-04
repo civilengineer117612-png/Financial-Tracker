@@ -304,18 +304,56 @@ function openPayslipFromPhoto(blob, text, queueId) {
   ui.pdet = {}; ui.form = f; ui.sheet = { type: "payslip", scanBlob: blob, queueId }; renderSheet();
 }
 
-// The photo full screen over the window, so it can be compared with the figures; tap it to zoom in (then drag to move), and close to go back
-// to the window exactly as it was (nothing typed is lost).
+// The photo full screen over the window, so it can be compared with the figures. Zoom: pinch with two fingers, double-tap, the + and
+// minus buttons, or the mouse wheel; drag to move when zoomed in. Close goes back to the window exactly as it was (nothing typed is lost).
 function viewShot(url) {
   const box = document.createElement("div");
   box.className = "lightbox"; box.setAttribute("role", "dialog"); box.setAttribute("aria-label", "Photo");
-  box.innerHTML = `<button class="lbclose" aria-label="Close the photo">Close</button><div class="lbscroll"><img alt="The photo, full size" src="${esc(url)}"></div><p class="note small lbhint">Tap the photo to zoom in or out.</p>`;
+  box.innerHTML = `<div class="lbbar"><button class="lbminus" aria-label="Zoom out">\u2212</button><button class="lbplus" aria-label="Zoom in">+</button><button class="lbfit" aria-label="Fit the whole photo">Fit</button><button class="lbclose" aria-label="Close the photo">Close</button></div>
+    <div class="lbstage"><img alt="The photo, full size" src="${esc(url)}" draggable="false"></div><p class="note small lbhint">Pinch or double-tap to zoom. Drag to move.</p>`;
+  const stage = box.querySelector(".lbstage"), img = stage.querySelector("img");
+  let k = 1, tx = 0, ty = 0;
+  const MAX = 8;
+  const apply = () => {   // keep the picture from being dragged off the screen
+    k = Math.min(MAX, Math.max(1, k));
+    const r = stage.getBoundingClientRect(), mx = ((k - 1) * r.width) / 2, my = ((k - 1) * r.height) / 2;
+    tx = Math.min(mx, Math.max(-mx, tx)); ty = Math.min(my, Math.max(-my, ty));
+    img.style.transform = `translate(${tx}px, ${ty}px) scale(${k})`; img.dataset.scale = k.toFixed(2);
+  };
+  const zoomAt = (nk, px, py) => {   // px, py: the point to keep still, from the middle of the stage
+    nk = Math.min(MAX, Math.max(1, nk)); const f = nk / k;
+    tx = px - (px - tx) * f; ty = py - (py - ty) * f; k = nk; apply();
+  };
+  const mid = (cx, cy) => { const r = stage.getBoundingClientRect(); return [cx - r.left - r.width / 2, cy - r.top - r.height / 2]; };
+  const pts = new Map(); let pinch = null, lastTap = { t: 0, x: 0, y: 0 };
+  stage.addEventListener("pointerdown", (e) => {
+    stage.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k }; }
+    if (pts.size === 1) {
+      const now = Date.now();
+      if (now - lastTap.t < 300 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) { const [px, py] = mid(e.clientX, e.clientY); zoomAt(k > 1.05 ? 1 : 3, px, py); lastTap.t = 0; }
+      else lastTap = { t: now, x: e.clientX, y: e.clientY };
+    }
+  });
+  stage.addEventListener("pointermove", (e) => {
+    const p = pts.get(e.pointerId); if (!p) return;
+    if (pts.size === 2 && pinch) {
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const [a, b] = [...pts.values()], [px, py] = mid((a.x + b.x) / 2, (a.y + b.y) / 2);
+      zoomAt(pinch.k * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.d), px, py);
+    } else if (pts.size === 1 && k > 1) { tx += e.clientX - p.x; ty += e.clientY - p.y; pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); apply(); }
+  });
+  const up = (e) => { pts.delete(e.pointerId); pinch = null; };
+  stage.addEventListener("pointerup", up); stage.addEventListener("pointercancel", up);
+  stage.addEventListener("wheel", (e) => { e.preventDefault(); const [px, py] = mid(e.clientX, e.clientY); zoomAt(k * Math.exp(-e.deltaY * 0.002), px, py); }, { passive: false });
+  box.querySelector(".lbplus").addEventListener("click", () => zoomAt(k * 1.6, 0, 0));
+  box.querySelector(".lbminus").addEventListener("click", () => zoomAt(k / 1.6, 0, 0));
+  box.querySelector(".lbfit").addEventListener("click", () => { k = 1; tx = ty = 0; apply(); });
   const close = () => { box.remove(); document.removeEventListener("keydown", onKey); }, onKey = (e) => { if (e.key === "Escape") close(); };
   box.querySelector(".lbclose").addEventListener("click", close);
-  box.querySelector("img").addEventListener("click", (e) => e.currentTarget.classList.toggle("zoomed"));
   document.addEventListener("keydown", onKey);
   document.body.appendChild(box);
-  box.querySelector(".lbclose").focus();
+  apply(); box.querySelector(".lbclose").focus();
 }
 
 // What the sheet holds, as the model wants it. `errors` names every typed amount that is not an amount.
@@ -1776,7 +1814,7 @@ async function onClick(el) {
     case "pick-kind": if (id === "payslip" && pendingPhoto && !ui.sheet.voice) { openPayslipFromPhoto(pendingPhoto.blob, form.text ?? "", ui.sheet.queueId ?? null); break; } form.kind = id; Object.assign(form, scanDefaults(id, form.guess, form.payee)); renderSheet(); break;
     case "save-scan": await saveScan(); break;
     case "view-shot": if (pendingPhoto) viewShot(pendingPhoto.url); break;
-    case "open-photo": ui.sheet = { type: "photo", id }; renderSheet(); break;
+    case "open-photo": { const u = photoUrls.get(id) ?? (await getPhoto(id).then((b) => b && URL.createObjectURL(b))); if (u) { photoUrls.set(id, u); viewShot(u); } else showToast("The photo is not on this phone. Photos are not part of the backup file."); break; }
     case "pick-acct": form.account_id = id; renderSheet(); break;
     case "close-sheet": voiceListener?.stop(); ui.sheet = null; renderSheet(); break;
     case "save-other": {
