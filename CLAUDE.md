@@ -40,16 +40,5 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
   a time with no "all correct" button; entries can be verified the day they are logged.
 
 ## Screen-by-screen review (in progress)
-The owner reviews one screen at a time from a text summary and writes a RATING (KEEP / CHANGE / REMOVE) and a COMMENT per item. Revise at most 5 items per round, then stop and report; the rest wait for the next round. After the Home screen come the menu screens, one at a time.
-
-### PART 1 OF N: HOME SCREEN (LOG) - assessment (the owner's ratings and comments are added in chat)
-1. TOP BAR: menu button (three lines) at the left, the title "Log", then a microphone button and a scanner button at the right, both black squares with a white icon. They are the most eye-catching thing, which fits (fastest ways to log), but microphone and scanner look alike at a glance.
-2. TRIAL BANNER (Android trial copy only): a boxed note saying this is not the real ledger, with "Start the trial over". Long, takes space at the top; never shows on the iPhone.
-3. NOTES UNDER THE TITLE (only when needed): the date, then one-line notes: photos waiting to be read, entries from before today that need verifying, "No backup yet" or "Last backup N days ago", "Tagging new entries: [trip]". Useful, but they stack as plain links and none looks more urgent; the backup note appears often.
-4. THE BIG NUMBER (the day's total) AND "Select date": a very large peso figure for the day being looked at (today by default); under it a small underlined "Select date" (or "Change date" and "Back to today"). Clear, but it does not say what it counts ("spent today"), and "including N not yet verified" is only in the hidden screen-reader text.
-5. QUICK TILES (Breakfast, Lunch, Dinner with fixed amounts): grey tiles; tapping one asks which account paid, then saves a draft. Fastest way to log a common meal; only useful if the presets match what is really bought (editing them from this screen is unconfirmed).
-6. "Other amount" BUTTON: wide black button that opens the window for any amount. The main action, and it looks like one.
-7. TODAY LIST: under "TODAY", one row per entry (name, amount; under the name the account picture, the account, "draft" or "verified"); tapping a row opens its details, with "See the photo" for photo entries. Rows are plain as asked; how an entry was made (typed, photo, voice) is not visible without opening it; a long list pushes the bottom bar out of reach.
-8. BOTTOM BAR (Log and Verify): two wide buttons, Log (black when active) and Verify (count badge when entries wait). Simple and thumb-reachable; everything else is behind the menu button, so a first-time user may not find Budget, Income or Spending.
-9. SIZES AND SPACING: body 16 px, big total about 56 px, tile names bold, notes grey. The hierarchy is right (total, actions, list); the top notes compete with the total when several show.
-10. ANYTHING MISSING OR ELSE: left to the owner.
+The owner reviews one screen at a time. Every copy-paste review box I give has at most 5 items (10 was overwhelming), each with a short plain assessment, a RATING line (KEEP / CHANGE / REMOVE) and a COMMENT line. Revise at most 5 items per round, then stop and report. Order: Home screen (Log) first, then the menu screens one at a time.
+Progress: Home screen, box 1 (top bar, notes under the title, the day's big number, quick tiles, Other amount) sent. Box 2 still to send (Today list, bottom bar, sizes and spacing, trial banner, anything missing).
