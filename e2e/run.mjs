@@ -129,6 +129,10 @@ await page.click('#sheet .chip:has-text("Test Cash")');
 await page.click('#toast button:has-text("Undo")');
 await seen(page, "#screen", "Nothing logged today");
 
+// change it back to Dinner, for the checks that follow
+await page.click('button.tile:has-text("Snack")'); await page.click('#sheet button[data-action="pay-edit"]');
+await page.fill("#pay-name", "Dinner"); await page.fill("#f-amount", "95"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save");
+check(await seen(page, "#toast", "Tile saved.") && (await text(page, ".tiles")).includes("Dinner"), "and a tile can be changed back");
 // hold a tile: arrange mode
 const centre = async (sel) => { const b = await page.locator(sel).first().boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
 let c0 = await centre('.tile[data-id="pre-breakfast"]');
