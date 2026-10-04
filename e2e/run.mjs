@@ -110,15 +110,15 @@ const txCount = async () => JSON.parse((await stored(page)).local).state.transac
 const nBefore = await txCount();
 await page.click('button.tile:has-text("Dinner")');
 await page.click('#sheet button[data-action="pay-edit"]');
-check((await text(page, "#sheet")).includes("Change this tile") && (await text(page, "#sheet")).includes("Category") && (await text(page, "#sheet")).includes("Paid from"), "the pencil opens the tile itself: name, amount, category and account, with Save tile");
+check((await text(page, "#sheet")).includes("Change this tile") && (await text(page, "#sheet")).includes("Category") && !(await text(page, "#sheet")).includes("Paid from") && (await text(page, "#f-save")).trim() === "Save", "the pencil opens the tile itself: name, amount and category, with a plain Save (no Paid from: that is asked every time the tile is tapped)");
 await page.fill("#pay-name", "Snack"); await page.fill("#f-amount", "45");
-await page.click('#sheet .chip:has-text("Shopping")'); await page.click('#sheet .chip:has-text("Test Card")');
+await page.click('#sheet .chip:has-text("Shopping")');
 await page.click("#f-save");
 check(await seen(page, "#toast", "Tile saved: Snack ₱45.00"), "saving changes the tile and says so");
 check(await seen(page, "#screen", "Snack") && (await text(page, ".tiles")).includes("₱45.00") && !(await text(page, ".tiles")).includes("Dinner"), "the tile on the Log screen now reads Snack ₱45.00");
 check(await txCount() === nBefore, "and nothing was logged");
 await page.click('button.tile:has-text("Snack")');
-check((await page.locator("#sheet .chip").first().innerText()).includes("Test Card"), "the account chosen there is offered first when the tile is tapped");
+check((await text(page, "#sheet")).includes("Paid from"), "tapping the changed tile still asks which account paid");
 await page.click('#sheet .chip:has-text("Test Cash")');
 { const led = JSON.parse((await stored(page)).local), t = led.state.transactions.find((x) => x.payee === "Snack"), es = led.state.entries.filter((e) => e.transaction_id === t.id);
   check(es.some((e) => e.category_id === "cat-shopping" && e.amount === 4500), "logging the changed tile uses its new amount and category"); }
@@ -127,7 +127,7 @@ await seen(page, "#screen", "Nothing logged today");
 // put the tile back as it was, for the checks that follow
 await page.click('button.tile:has-text("Snack")'); await page.click('#sheet button[data-action="pay-edit"]');
 await page.fill("#pay-name", "Dinner"); await page.fill("#f-amount", "95");
-await page.click('#sheet .chip:has-text("Food")'); await page.click('#sheet .chip:has-text("Test Cash")'); await page.click("#f-save");
+await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save");
 check(await seen(page, "#toast", "Tile saved: Dinner ₱95.00"), "and it can be changed back");
 await page.click('button.tile:has-text("Lunch")');
 check((await page.locator("#sheet .chip").first().innerText()) === "Test Debit" || true, "chips render");
