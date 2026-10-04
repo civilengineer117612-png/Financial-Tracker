@@ -922,6 +922,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 await ctx.close();
 
 // ===== 5f. scanning a photo =====
+const closeViewer = async () => { const b = await page.locator(".lightbox .lbstage").boundingBox(); await page.mouse.click(b.x + 5, b.y + 3); };   // the dark strip above the picture
 console.log("Scan");
 ({ ctx, page, errors } = await open({ blockSw: true }));
 await addAccount(page, "Wallet", "asset", "1000");
@@ -956,7 +957,7 @@ await page.click('#sheet button:has-text("See the photo")');
 await page.waitForFunction(() => document.querySelector(".lightbox img")?.complete);
 check(await page.locator(".lightbox img").isVisible(), "a photo entry offers See the photo, which opens the viewer");
 check(await page.locator(".lightbox button").count() === 1 && (await text(page, ".lightbox button")).trim() === "Close" && await page.locator(".lightbox .lbplus, .lightbox .lbminus, .lightbox .lbfit").count() === 0, "the viewer has no plus, minus or Fit buttons");
-await page.mouse.click(5, 300);
+await closeViewer();
 check(await page.locator(".lightbox").count() === 0, "tapping the dark background closes the viewer");
 await page.click('#sheet button:has-text("Close")');
 await page.click('#nav button:has-text("Verify")');
@@ -965,7 +966,7 @@ check((await text(page, "#screen")).includes("Read from the photo"), "and says i
 await shot(page, "36-verify-photo");
 await page.click('button[aria-label="Open the photo full size"]');
 check(await page.waitForSelector(".lightbox img", { timeout: 4000 }).then(() => true, () => false), "tapping the photo opens it full size");
-await page.mouse.click(5, 300);
+await closeViewer();
 await page.click('button:has-text("Edit")'); await page.fill("#f-amount", "140"); await page.click("#f-save");
 await seen(page, "#screen", "₱140.00");
 let scanned = JSON.parse((await stored(page)).local);
@@ -1217,7 +1218,7 @@ await page.dblclick(".lightbox .lbstage");
 check(Number(await page.locator(".lightbox img").getAttribute("data-scale")) >= 2.5, "a double-tap zooms in");
 await page.dblclick(".lightbox .lbstage");
 check(Number(await page.locator(".lightbox img").getAttribute("data-scale")) === 1, "and a second double-tap brings the whole photo back");
-await page.mouse.click(5, 400);
+await closeViewer();
 check(await page.locator(".lightbox").count() === 0 && await val("p-emp") === "Sample Employer Inc", "closing it returns to the window with everything as it was");
 const order = await page.evaluate(() => { const ids = ["p-tot-e", "p-tot-d", "p-emp", "p-from", "p-to", "p-date"].map((i) => document.getElementById(i).getBoundingClientRect().top); return ids.every((v, i) => i === 0 || v > ids[i - 1]); });
 check(order, "the order is totals, landed in, employer, then the dates");
