@@ -369,6 +369,32 @@ test("a bank screen with the value above its label and a cashback line: the tran
   assert.equal(r.creditCard, true);
 });
 
+test("a bank screen read with the spaces dropped: the amount, the date and the time are still found", () => {
+  const text = "Transaction Details\nPHP834.67\nFrom\nSampleBank\nTo\nSAMPLESTOREMALUGAY\nTransactionAmountPHP834.67\nCashback+PHP8.35\nCreditCardTransaction\nTransactionType\nTransactionTime020ct2026,21:16\nPostedTime04.0ct2026.01:00";
+  const r = readScan(text, "2026-10-04");
+  assert.equal(r.amount, 83467);
+  assert.equal(r.date, "2026-10-02");
+  assert.equal(r.creditCard, true);
+  assert.deepEqual(r.notes, []);
+});
+
+test("a payslip whose period is printed over its label, read with the spaces dropped", () => {
+  const r = readPayslip("SAMPLE CONSULTANCY\nNet Pay: 1,000.00\nGross Pay: 1,200.00\nAugust13.2026 toAugust25.2026\nCovered Period:", "2026-10-04");
+  assert.equal(r.period_from, "2026-08-13");
+  assert.equal(r.period_to, "2026-08-25");
+  const glued = readPayslip("Net Pay: 1,000.00\nDecember26,2025toJanuary12,2026\nCovered Period:", "2026-10-04");
+  assert.equal(glued.period_from, "2025-12-26");
+  assert.equal(glued.period_to, "2026-01-12");
+});
+
+test("an electricity bill that also prints a TIN is a bill, not a receipt", () => {
+  assert.equal(readScan("SAMPLE POWER COOP\nBILLING INVOICE\nTIN\nMeter No 123\nSub-Total: 10.00\nBill Amount 1,157.84", "2026-10-04").kind, "bill");
+});
+
+test("a year followed by a time is not a figure", () => {
+  assert.equal(readScan("Paid 04 Oct 2026.01:00\n120.50", "2026-10-04").amount, 12050);
+});
+
 test("a cashback or reward line is never taken as the amount", () => {
   assert.equal(readScan("Transaction Details\nTransaction Amount\nCashback +PHP 8.35\nFrom MariBank\nPHP 834.67", "2026-10-04").amount, 83467);
 });
