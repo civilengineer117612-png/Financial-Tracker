@@ -544,6 +544,15 @@ await page.click("#screen .modebar button");
 check((await text(page, ".tbl")).includes("Share"), "the list twin is still there");
 await page.click("#screen .modebar button");
 check((await page.locator("svg.donut").count()) === 1, "and the switch brings the chart back");
+// switching views keeps the top still: only what is under the view buttons fades
+const topY = () => page.evaluate(() => [".hero", "#screen .seg", "#screen .stepper"].map((q) => Math.round(document.querySelector(q).getBoundingClientRect().top)).join());
+const topBefore = await topY();
+await page.click('#screen .seg button:has-text("By account")');
+const topDuring = await topY();
+await page.waitForTimeout(40);
+const topLater = await topY();
+check(topBefore === topDuring && topDuring === topLater && await page.locator("#screen .viewbody").count() === 1, "switching views keeps the month, the total and the view buttons perfectly still (" + [topBefore, topDuring, topLater].join(" / ") + ")");
+await page.click('#screen .seg button:has-text("By category")');
 // the title is the switch between Spending and Income
 check(await page.locator("#top .titleswitch").count() === 1 && (await text(page, "#top")).includes("Spending") && await page.locator("#screen .moneyswitch").count() === 0, "the title Spending is itself the switch; there are no two buttons under it");
 await page.click("#top .titleswitch");

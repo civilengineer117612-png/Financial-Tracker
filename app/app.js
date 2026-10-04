@@ -173,7 +173,7 @@ function renderNav() {
   $("nav").innerHTML = tab("log", "Log") + tab("verify", n ? `Verify (${n})` : "Verify");   // photo and audio will join these two
 }
 
-let lastScreenSig = null, swapTimer = null;
+let lastTabSig = null, lastViewSig = null, swapTimer = null;
 function renderScreen() {
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
@@ -181,10 +181,15 @@ function renderScreen() {
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
-  // changing screen, view or chart/list fades the new content in
-  const sig = [ui.tab, ui.view, ui.asList, ui.period?.kind].join();
-  if (sig !== lastScreenSig) { const el = $("screen"); el.classList.remove("swap"); void el.offsetWidth; el.classList.add("swap"); clearTimeout(swapTimer); swapTimer = setTimeout(() => el.classList.remove("swap"), 260); }
-  lastScreenSig = sig;
+  // Changing screen fades the whole screen in; changing the view (category, budget...) or chart/list fades in ONLY what is under the view
+  // buttons, so the top (month, total, buttons) stays perfectly still. Fade only, nothing slides.
+  const tabSig = ui.tab, viewSig = [ui.view, ui.asList, ui.period?.kind].join(), scr = $("screen");
+  const bar = scr.querySelector(".modebar");
+  let body = null;
+  if (bar) { body = document.createElement("div"); body.className = "viewbody"; while (bar.nextSibling) body.appendChild(bar.nextSibling); scr.appendChild(body); }
+  if (tabSig !== lastTabSig) { scr.classList.remove("swap"); void scr.offsetWidth; scr.classList.add("swap"); clearTimeout(swapTimer); swapTimer = setTimeout(() => scr.classList.remove("swap"), 220); }
+  else if (body && viewSig !== lastViewSig) { body.classList.add("fade"); }
+  lastTabSig = tabSig; lastViewSig = viewSig;
   hydratePhotos();
 }
 
