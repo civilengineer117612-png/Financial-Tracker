@@ -202,6 +202,26 @@ export function employerHistory(state, range = null) {
   return [...by.values()].sort((a, b) => a.first.localeCompare(b.first));
 }
 
+// Changes a saved payslip: the same figures a new one takes, saved over the old. The payslip and its pay keep their ids (so the photo stays
+// with it) and are replaced together, so the ledger never holds half of the old and half of the new. An overtime transfer still waiting
+// as a draft is dropped because its amount may have changed (make it again); a verified one stays, as when a payslip is removed.
+// Returns what planPayslip returns, plus {draftsRemoved, photoIds} (picture files of removed drafts, for the caller to delete).
+export function updatePayslip(state, id, input, now = new Date()) {
+  const p = (state.payslips ?? []).find((x) => x.id === id);
+  if (!p) return fail("UNKNOWN_PAYSLIP", "That payslip is no longer there.");
+  const side = ["ot-" + id, "otf-" + id], drafts = new Set(state.transactions.filter((t) => side.includes(t.id) && t.status === "draft").map((t) => t.id));
+  const gone = new Set([p.transaction_id, ...drafts]), dropped = new Set(drafts);
+  const without = { ...state, payslips: state.payslips.filter((x) => x.id !== id), payslipLines: (state.payslipLines ?? []).filter((l) => l.payslip_id !== id),
+    transactions: state.transactions.filter((t) => !gone.has(t.id)), entries: state.entries.filter((e) => !gone.has(e.transaction_id)),
+    attachments: (state.attachments ?? []).filter((a) => !dropped.has(a.transaction_id)) };
+  const old = state.transactions.find((t) => t.id === p.transaction_id);
+  const r = planPayslip(without, { ...input, id, transaction_id: p.transaction_id }, now);
+  if (!r.ok) return r;
+  const transaction = old ? { ...r.transaction, created_at: old.created_at } : r.transaction;
+  return { ...r, transaction, draftsRemoved: drafts.size, photoIds: (state.attachments ?? []).filter((a) => dropped.has(a.transaction_id)).map((a) => a.id),
+    state: { ...r.state, transactions: r.state.transactions.map((t) => (t.id === transaction.id ? transaction : t)) } };
+}
+
 // Removes a payslip: its lines, the pay it recorded (the transaction, its entries and its photo link), and any overtime transfer still
 // waiting as a draft. An overtime transfer already verified stays (it is real money that moved); `keptTransfers` says how many.
 // Returns {ok, state, photoIds, keptTransfers}; photoIds are the picture files the caller deletes.

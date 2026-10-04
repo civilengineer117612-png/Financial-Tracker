@@ -1247,6 +1247,25 @@ check((await text(page, "#sheet")).includes("Sep 16\u201330, 2026") && (await te
 await page.click('#sheet button:has-text("Close")');
 await page.click('#nav button:has-text("Verify")');
 check((await text(page, "#screen")).includes("1 of 2"), "Verify now holds two drafts: the Emergency Fund part and the free part");
+// changing the payslip: the window opens filled in, and saving replaces the payslip (the pay is not counted twice)
+await menuGo(page, "Income");
+const heroBefore = await text(page, ".hero");
+await page.click('button[data-action="open-payslips"]');
+await page.click('#sheet button[data-action="edit-slip"]');
+check((await text(page, "#sheet")).includes("Change this payslip") && await page.locator("#p-emp").inputValue() !== "" && await page.locator("#p-net").inputValue() !== "", "Change this payslip opens the payslip window already filled in");
+await page.fill("#p-emp", "Renamed Test Employer"); await page.click("#f-save");
+check(await seen(page, "#toast", "Payslip changed"), "saving the change says so");
+check((await text(page, ".hero")) === heroBefore && await page.locator('button[data-action="open-payslips"] .bval:has-text("1")').count() === 1, "the Income total is the same and there is still one payslip");
+await page.click('button[data-action="open-payslips"]');
+check((await text(page, "#sheet")).includes("Renamed Test Employer"), "the list shows the changed employer");
+await page.click('#sheet button:has-text("Close")');
+// the Months view is a short list: one line per month, tap a month for where it came from
+await page.click('button[data-action="income-view"][data-view="months"]');
+check(await page.locator(".mlist details.mrow").count() >= 1 && await page.locator(".mlist .mtotal").count() === 1 && await page.locator("#screen table.tbl th:text-is('Month')").count() === 0, "Months is a short list with a total line, not a five-column table");
+await page.locator(".mlist details.mrow summary").first().click();
+check((await text(page, ".mlist")).includes("Base pay"), "tapping a month shows where it came from");
+await shot(page, "38-months");
+await page.click('button[data-action="income-view"][data-view="overview"]');
 // removing the payslip
 await menuGo(page, "Income");
 await page.click('button[data-action="open-payslips"]');
