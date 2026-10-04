@@ -74,9 +74,9 @@
   .titleswitch h1, .titleswitch .tt { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin: 0; }
   .titleswitch svg { color: var(--mid); flex: none; }
   .modebar { display: flex; justify-content: flex-end; margin: 4px 0 0; } .modebar button { min-height: 36px; padding: 4px 12px; font-size: 14px; color: var(--mid); background: none; }
-  @keyframes screenin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-  #screen.swap > * { animation: screenin .2s ease-out; }
-  @media (prefers-reduced-motion: reduce) { #screen.swap > * { animation: none; } }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  #screen.swap { animation: fadein .15s ease-out; } .viewbody.fade { animation: fadein .18s ease-out; }
+  @media (prefers-reduced-motion: reduce) { #screen.swap, .viewbody.fade { animation: none; } }
   .moneyswitch { display: flex; gap: 6px; margin: 4px 0 10px; } .moneyswitch button { flex: 1; min-height: 44px; } .moneyswitch button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   .paytitle { display: flex; align-items: center; justify-content: space-between; gap: 8px; } .editbtn { width: 44px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: none; border: 0; color: var(--mid); border-radius: 10px; } .editbtn:active { background: var(--wash); }
   .tile { border-radius: 12px; } .tile:active { transform: scale(.96); }
