@@ -1227,13 +1227,13 @@ function renderSheet() {
   let body = "";
   if (sh.type === "pay") {
     const p = S().presets.find((x) => x.id === sh.id);
-    // The title can be changed for this one entry (name and amount) before choosing the account; the tile itself stays as it is.
+    // The pencil changes the TILE itself (name, amount, category, and the account offered first). Saving logs nothing.
     const f = ui.form ?? {};
     body = f.editing
-      ? `<h3>Change this entry</h3><label for="pay-name">Name</label><input id="pay-name" data-field="name" value="${esc(f.name ?? p.name)}" autocomplete="off"><label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
-        <label>Category</label>${chips(expenseCategories(), f.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(p.id), f.account_id, "pick-acct")}
-        <p><button class="primary" id="f-save" data-action="save-pay-edit" style="margin-top:14px" disabled>Save</button></p>`
-      : `<h3 class="paytitle"><span>${esc(f.name ?? p.name)} ${peso(M.parsePesos(f.amount ?? "").ok ? M.parsePesos(f.amount).centavos : p.amount)}</span><button class="editbtn" data-action="pay-edit" aria-label="Change the name or amount of this entry"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.edit}</svg></button></h3><p class="note">Paid from</p>${chips(accountsFor(p.id), null, "pay")}`;
+      ? `<h3>Change this tile</h3><p class="note small">This changes the tile on the Log screen. Nothing is logged.</p><label for="pay-name">Name</label><input id="pay-name" data-field="name" value="${esc(f.name ?? p.name)}" autocomplete="off"><label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
+        <label>Category</label>${chips(expenseCategories(), f.category_id, "pick-cat")}<label>Paid from (offered first)</label>${chips(accountsFor(p.id), f.account_id, "pick-acct")}
+        <p><button class="primary" id="f-save" data-action="save-pay-edit" style="margin-top:14px" disabled>Save tile</button></p>`
+      : `<h3 class="paytitle"><span>${esc(f.name ?? p.name)} ${peso(M.parsePesos(f.amount ?? "").ok ? M.parsePesos(f.amount).centavos : p.amount)}</span><button class="editbtn" data-action="pay-edit" aria-label="Change this tile: name, amount, category and account"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.edit}</svg></button></h3><p class="note">Paid from</p>${chips(accountsFor(p.id), null, "pay")}`;
   } else if (sh.type === "other") {
     body = `<h3>Add expense</h3>
       <label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
@@ -1912,10 +1912,13 @@ async function onClick(el) {
     }
     case "save-pay-edit": {
       const p = S().presets.find((x) => x.id === ui.sheet.id), f = ui.form, amt = M.parsePesos(f.amount ?? "");
-      const name = (f.name ?? "").trim();
-      if (!amt.ok || amt.centavos <= 0 || !name || !f.category_id || !f.account_id) break;
+      const r = M.updatePreset(S(), p.id, { name: f.name, amount: amt.ok ? amt.centavos : 0, category_id: f.category_id });
+      if (!r.ok) { showToast(r.error); break; }
+      const byPreset = { ...(ledger.settings.last_account_by_preset ?? {}), ...(f.account_id ? { [p.id]: f.account_id } : {}) };
       ui.sheet = null; renderSheet();
-      await logExpense({ transaction_id: newId("tx"), payee: name, category_id: f.category_id, amount: amt.centavos, account_id: f.account_id, source: "preset", preset_id: p.id }, name + " " + peso(amt.centavos));
+      await commit(r.state, { ...ledger.settings, last_account_by_preset: byPreset });
+      const np = r.state.presets.find((x) => x.id === p.id);
+      showToast("Tile saved: " + np.name + " " + peso(np.amount));
       break;
     }
     case "undo": {

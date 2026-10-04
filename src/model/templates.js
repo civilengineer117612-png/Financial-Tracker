@@ -117,3 +117,16 @@ export function planReserveTransfer(state, { transaction, entries }, sourceAccou
   }
   return out;
 }
+
+// A quick tile on the Log screen, changed by the owner: its name, amount (centavos) and spending category. Only the tile changes;
+// nothing is logged. Returns {ok, state} or {ok: false, error} in plain words.
+export function updatePreset(state, id, { name, amount, category_id }) {
+  const p = (state.presets ?? []).find((x) => x.id === id);
+  if (!p) return { ok: false, error: "That tile is no longer there." };
+  const n = String(name ?? "").trim();
+  if (!n) return { ok: false, error: "Give the tile a name." };
+  if (n.length > 24) return { ok: false, error: "Keep the name short: 24 letters at most." };
+  if (!Number.isSafeInteger(amount) || amount <= 0) return { ok: false, error: "Type an amount above zero." };
+  if (!(state.categories ?? []).some((c) => c.id === category_id && c.kind === "expense")) return { ok: false, error: "Choose a spending category." };
+  return { ok: true, state: { ...state, presets: state.presets.map((x) => (x.id === id ? { ...x, name: n, amount, category_id } : x)) } };
+}
