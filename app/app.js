@@ -236,7 +236,8 @@ function viewLog() {
 // The quick tiles. Tap one to log it. Hold one to arrange: drag to move, tap to change, "+" to add, Done to finish.
 const TRASH = '<path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/>';
 function tilesHtml() {
-  const tile = (p, arranging) => `<${arranging ? "div" : "button"} class="tile" data-action="${arranging ? "edit-tile" : "open-preset"}" data-id="${esc(p.id)}"${arranging ? ' role="button" tabindex="0"' : ""}><b>${esc(p.name)}</b><span>${peso(p.amount)}</span><i class="tcat">${esc(categoryName(p.category_id))}</i></${arranging ? "div" : "button"}>`;
+  const tile = (p, arranging) => `<${arranging ? "div" : "button"} class="tile" data-action="${arranging ? "edit-tile" : "open-preset"}" data-id="${esc(p.id)}"${arranging ? ' role="button" tabindex="0"' : ""}><b>${esc(p.name)}</b><span>${peso(p.amount)}</span><i class="tcat">${esc(categoryName(p.category_id))}</i>${arranging ? `<button class="tminus" data-action="remove-tile-now" data-id="${esc(p.id)}" aria-label="Remove ${esc(p.name)}">\u2212</button>` : ""}</${arranging ? "div" : "button"}>`;
+  if (!ui.arrange && !S().presets.length) return `<p class="note center">No quick tiles. <button class="link" data-action="arrange-start">Add one</button></p>`;
   if (!ui.arrange) {
     const hint = ledger.settings.tile_hint_done ? "" : `<p class="note small center">Hold a tile to move, change or remove it.</p>`;
     return `<div class="tiles">${S().presets.map((p) => tile(p, false)).join("")}</div>${hint}`;
@@ -1924,6 +1925,23 @@ async function onClick(el) {
     case "edit-tile": { const p = S().presets.find((x) => x.id === id); if (!p) break; ui.confirmRemoveTile = false; ui.sheet = { type: "tile", id }; ui.form = { name: p.name, amount: (p.amount / 100).toFixed(2), category_id: p.category_id }; renderSheet(); break; }
     case "add-tile": ui.confirmRemoveTile = false; ui.sheet = { type: "tile", id: null }; ui.form = { name: "", amount: "", category_id: expenseCategories()[0]?.id }; renderSheet(); break;
     case "arrange-done": ui.arrange = false; renderScreen(); break;
+    case "arrange-start": enterArrange(); break;
+    case "remove-tile-now": {   // like taking an app off a phone's home screen: it shrinks away, the others slide over
+      const r = M.removePreset(S(), id);
+      if (!r.ok) { showToast(r.error); break; }
+      const tiles = [...document.querySelectorAll(".tiles.arranging .tile")], gone = tiles.find((t) => t.dataset.id === id);
+      const before = new Map(tiles.map((t) => [t.dataset.id, t.getBoundingClientRect()]));
+      gone?.classList.add("vanish");
+      await new Promise((res) => setTimeout(res, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200));
+      await commit(r.state);
+      for (const t of document.querySelectorAll(".tiles.arranging .tile[data-id]")) {   // the rest slide into the gap
+        const a = before.get(t.dataset.id), b = t.getBoundingClientRect();
+        if (!a || (a.left === b.left && a.top === b.top)) continue;
+        t.style.transition = "none"; t.style.transform = `translate(${a.left - b.left}px, ${a.top - b.top}px)`; void t.offsetWidth;
+        t.style.transition = ""; t.style.transform = "";
+      }
+      break;
+    }
     case "remove-tile": ui.confirmRemoveTile = true; renderSheet(); break;
     case "remove-tile-yes": {
       const r = M.removePreset(S(), ui.sheet.id);
@@ -2212,7 +2230,7 @@ const enterArrange = () => {
 document.addEventListener("click", (e) => { if (suppressClick) { suppressClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
 document.addEventListener("pointerdown", (e) => {
   const t = e.target.closest(".tile[data-id]");
-  if (!t || ui.tab !== "log" || ui.sheet) return;
+  if (!t || e.target.closest(".tminus") || ui.tab !== "log" || ui.sheet) return;
   if (!ui.arrange) {
     holdAt = { x: e.clientX, y: e.clientY };
     holdTimer = setTimeout(() => { holdTimer = null; suppressClick = true; enterArrange(); }, 450);
