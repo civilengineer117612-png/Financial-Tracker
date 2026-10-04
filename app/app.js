@@ -101,6 +101,7 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 // and audio capture beside Log and Verify) can be added without crowding the bottom bar.
 // Plain line icons (drawn in the text colour). Groups are separated by thin lines, like a settings list.
 const ICONS = {
+  cards: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
   money: '<path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3"/>',
   budget: '<path d="M21 12c.55 0 1-.45.95-1a10 10 0 0 0-8.95-8.95c-.55-.05-1 .4-1 .95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>',
   goals: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
@@ -115,7 +116,7 @@ const ICONS = {
   checkin: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
   setup: '<path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/>',
 };
-const MENU = [["Overview", [["money", "Cash flow"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Capture", [["scan", "Scan"]]], ["Weekly", [["checkin", "Weekly review"]]]];   // Setup is pinned at the bottom
+const MENU = [["Overview", [["money", "Cash flow"], ["cards", "Cards"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Capture", [["scan", "Scan"]]], ["Weekly", [["checkin", "Weekly review"]]]];   // Setup is pinned at the bottom
 
 // On the Cash flow screens the title itself is the switch: tap "Spending" to go to Income and back.
 const SWAP = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"/></svg>';
@@ -178,7 +179,7 @@ function renderScreen() {
   if (ui.tab !== "log") ui.arrange = false;
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
-    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "buffer" ? viewBuffer() : ui.tab === "scan" ? viewScan() : ui.tab === "income" ? viewIncome() : viewLog();
+    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "cards" ? viewCards() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "buffer" ? viewBuffer() : ui.tab === "scan" ? viewScan() : ui.tab === "income" ? viewIncome() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
@@ -902,8 +903,8 @@ const periodWords = (p) => (p.kind === "range" ? "from " + fullDate(p.from) + " 
 const MONTH3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const pendingNote = (n) => (n > 0 ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">plus ${peso(n)} not verified yet</button></p>` : "");
 // One small switch at the top, the same on every view: chart or list.
-const modeBar = () => ui.view === "cards" ? `<div class="viewmark"></div>` : `<div class="modebar"><button data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}" aria-label="${ui.asList ? "Show as a chart" : "Show as a list"}">${ui.asList ? "Chart" : "List"}</button></div>`;
-const moneyViews = () => `<div class="seg" role="group" aria-label="What to show">${[["category", "Category"], ["budget", "Budget"], ["account", "Accounts"], ["cards", "Cards"], ["month", "Trends"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
+const modeBar = () => `<div class="modebar"><button data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}" aria-label="${ui.asList ? "Show as a chart" : "Show as a list"}">${ui.asList ? "Chart" : "List"}</button></div>`;
+const moneyViews = () => `<div class="seg" role="group" aria-label="What to show">${[["category", "Category"], ["budget", "Budget"], ["account", "Accounts"], ["month", "Trends"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
 
 // A chart you tap to flip: bars become a donut and the donut becomes bars. Nothing else happens on a tap.
 function flipChart(rows, total, { shape = "donut" } = {}) {
@@ -922,6 +923,22 @@ function flipChart(rows, total, { shape = "donut" } = {}) {
   return `<div class="bars flip" data-action="chart-mode" data-mode="list" role="button" tabindex="0" aria-label="Bars of where the money went. Tap to show the list.">${shown.map((r) => `<div class="brow${r.grade ? " g-" + r.grade : ""}">
       <span class="btop"><span class="bname">${r.label}</span><span class="bval">${peso(r.amount)}${r.percent ? " \u00b7 " + r.percent + "%" : ""}</span></span>
       <span class="btrack"><span class="bfill" style="width:${Math.max(1, Math.round((r.amount * 100) / max))}%"></span></span></div>`).join("")}</div>`;
+}
+
+// The Cards screen (menu): every account in one place. Credit cards show what you owe and what was spent on and paid toward each in the
+// period; debit cards, savings, wallets and cash show their balance and what was spent from them. A card is just one of the accounts.
+function viewCards() {
+  const p = period(), [from, to] = periodBounds(p), o = M.accountsOverview(S(), { from, to });
+  const acct = (id) => S().accounts.find((a) => a.id === id);
+  const row = (a, main, small) => `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}<small>${small}</small></div></div><div class="amt">${main}</div></div>`;
+  const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), `${peso(c.owe)}<small>you owe</small>`, `spent ${peso(c.spent)} \u00b7 paid ${peso(c.paid)}`)).join("") : `<p class="note">No credit cards yet. Add one in Setup: choose the bank, then "Credit card" as the kind.</p>`;
+  const money = o.money.length ? o.money.map((m) => row(acct(m.account_id), `${peso(m.balance)}<small>in it</small>`, `spent ${peso(m.spent)}`)).join("") : `<p class="note">No accounts yet.</p>`;
+  return `<h1>Cards</h1>${periodStepper(p)}
+    <div class="tiles two"><div class="tile"><b>${peso(o.held)}</b><span>in your accounts</span></div><div class="tile"><b>${peso(o.owe)}</b><span>owed on cards</span></div></div>
+    <h2>Credit cards</h2>${cards}
+    <h2>Debit, savings and cash</h2>${money}
+    <p class="note">Paying a card bill is not spending: the purchases were counted when you made them. The amounts spent and paid are for ${esc(periodLabel(p))}.</p>
+    <p><button class="link" data-action="tab" data-tab="setup">Add or change accounts</button></p>`;
 }
 
 function viewMoney() {
@@ -968,15 +985,6 @@ function viewMoney() {
   if (ui.view === "budget") {
     if (p.kind !== "month") return hero + `<p class="note">Budgets are set per month. Choose a month at the top.</p><p><button class="link" data-action="period-this-month">Show this month</button></p>`;
     return viewBudgets(hero, p.month, maps, asOf, nowM, label);
-  }
-
-  if (ui.view === "cards") {
-    // Each credit card: spent on it in this period, paid toward it, and what is owed on it now. Paying the bill is not spending.
-    const cs = M.cardsSummary(S(), { from, to });
-    if (!cs.cards.length) return hero + `<p class="note">No credit cards yet. Add one in Setup: choose the bank, then "Credit card" as the kind.</p><p><button class="link" data-action="tab" data-tab="setup">Add a credit card</button></p>`;
-    const rows = cs.cards.map((c) => { const a = S().accounts.find((x) => x.id === c.account_id);
-      return `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(c.name)}<small>spent ${peso(c.spent)} \u00b7 paid ${peso(c.paid)} ${esc(periodWords(p))}</small></div></div><div class="amt">${peso(c.owe)}<small>you owe</small></div></div>`; }).join("");
-    return hero + `<h2>Credit cards</h2>${rows}<p class="note">Paying a card bill is not spending: the purchases were counted when you made them. Interest and fees go under the Credit card category.</p>`;
   }
 
   if (ui.view === "account") {
@@ -2312,7 +2320,7 @@ async function start() {
     device = { status: "CORRUPT", allowEntry: false, message: "The saved data on this phone could not be read, so nothing is shown and nothing will be overwritten. Restore from your encrypted backup." };
   } else {
     ledger = boot.ledger;
-    ledger.state = M.ensureCardCategory(M.ensureIncomeCategories(ledger.state));   // older ledgers gain Interest, Refund and Other income (saved with the next save)
+    ledger.state = M.dropUnusedCardCategory(M.ensureIncomeCategories(ledger.state));   // older ledgers gain Interest, Refund and Other income (saved with the next save)
     if (boot.status === "NONE") ledger.state = { ...ledger.state, categories: M.defaultCategories(), presets: M.defaultPresets() };   // kept in memory until the first save
     // The two stores disagree on revision only (a save reached one and not the other): repair quietly from the newer.
     if (boot.status === "REPAIR" && local != null && idb != null && device.allowEntry) {
