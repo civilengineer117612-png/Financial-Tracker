@@ -38,7 +38,7 @@ const CATEGORY_CLUES = [
 ];
 
 // ---------- amounts ----------
-const cleanDigitsOnce = (s) => s.replace(/(?<=\d)[Oo]+(?=[\d/.,-])|(?<=[\d/.,-])[Oo]+(?=\d)/g, (r) => "0".repeat(r.length)).replace(/(?<=\d)[Il](?=[\d/.,-])|(?<=[\d/.,-])[Il](?=\d)/g, "1");
+const cleanDigitsOnce = (s) => s.replace(/(?<=\d)[Oo]+(?=[\d/.,-])|(?<=[\d/.,-])[Oo]+(?=\d)/g, (r) => "0".repeat(r.length)).replace(/(?<=\d)[Il](?=[\d/.,-])|(?<=[\d/.,-])[Il](?=\d)/g, "1").replace(/(?<=[\d.,])B(?=[\d.,])/g, "8").replace(/(?<=[\d.,])S(?=[\d.,])/g, "5");
 const cleanDigits = (s) => { let t = s; for (let i = 0; i < 4; i++) { const n = cleanDigitsOnce(t); if (n === t) break; t = n; } return t; };   // "7oo.00" needs more than one pass
 const AMOUNT_RE = /(?:₱|php|\bp\b|#|£)?\s*(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})\b/gi;
 
@@ -158,8 +158,12 @@ function payeeFor(kind, lines) {
       const m = re.exec(lines[i]);
       if (!m) continue;
       const same = m[1].trim().replace(/^[:\-\s]+/, "");
-      const name = same.length >= 3 ? same : (lines[i + 1] ?? "").trim();
-      if (name.length >= 3) return name.replace(/\d{6,}/g, "").trim();   // never keep a long number: it may be an account or phone number
+      // a name has mostly letters: a masked number ("·..9650") or a bank's name under the label is not one, so the line above is tried (some screens print the name over its label)
+      const nameLike = (x) => (x.match(/[A-Za-z]/g) ?? []).length >= 3 && (x.match(/[A-Za-z]/g) ?? []).length >= x.length * 0.6 && !/\bbank\b/i.test(x);
+      const tidy = (x) => x.replace(/^\d+[.)]\s*/, "").replace(/\d{6,}/g, "").trim();
+      const candidates = [same, (lines[i + 1] ?? "").trim(), ...(same.length < 3 ? [(lines[i - 1] ?? "").trim()] : [])].map(tidy);
+      const name = candidates.find((x, k) => x.length >= 3 && (k === 0 || nameLike(x)));
+      if (name) return name;
     }
     return null;
   };
@@ -169,7 +173,7 @@ function payeeFor(kind, lines) {
   if (kind === "payslip") return after(/(?:employer|company)(.*)/i);
   for (const l of lines.slice(0, 6)) {
     const s = l.trim();
-    if (s.length >= 3 && s.length <= 40 && (s.match(/[A-Za-z]/g) ?? []).length >= s.length * 0.6 && !NOT_A_NAME.test(s)) return s;
+    if (s.length >= 3 && s.length <= 40 && !/^(inc|corp|co|ltd)\.?$/i.test(s) && (s.match(/[A-Za-z]/g) ?? []).length >= s.length * 0.6 && !NOT_A_NAME.test(s)) return s;
   }
   return null;
 }
@@ -379,11 +383,13 @@ export function linesFromWords(words) {
 // each amount is used once, the closest match first. Returns plain text, one "label amount" line per piece, top to bottom.
 // boxes: [{text, th, x0, y0, x1, y1}].
 const BOX_AMOUNT = /^[₱#£P]?\s*\d{1,3}(?:[,.]\d{3})*[.,]\d{2}$|^[₱#£P]?\s*\d+[.,]\d{2}$/;
+// A box that is only a figure may carry a stray mark in front ("：1.157.B4") and a letter for a digit: clean it so it reads as an amount.
+const tidyBox = (text) => { const t = text.trim().replace(/^[：:·•]+\s*/, ""); return /^[\d.,oOBSIl₱#£P\s]+$/.test(t) && /\d/.test(t) ? cleanDigits(t) : t; };
 export function linesFromBoxes(input) {
   let w = [];
   for (const x of input ?? []) {
     // "100:00" is an amount (no clock shows hour 100); "19:52" is a time and stays
-    const t = String(x.text ?? "").trim().replace(/^(\d{3,}|\d{1,3}(?:,\d{3})+|[3-9]\d|2[4-9]):(\d{2})$/, "$1.$2"); if (!t || ![x.x0, x.y0, x.x1, x.y1].every(Number.isFinite)) continue;
+    const t = tidyBox(String(x.text ?? "")).replace(/^(\d{3,}|\d{1,3}(?:,\d{3})+|[3-9]\d|2[4-9]):(\d{2})$/, "$1.$2"); if (!t || ![x.x0, x.y0, x.x1, x.y1].every(Number.isFinite)) continue;
     const m = /^(.*[A-Za-z:.].*?)\s+([₱#£P]?\s*\d{1,3}(?:[,.]\d{3})*[.,]\d{2})$/.exec(t);   // a label and its amount read as one box: split it
     if (m && !BOX_AMOUNT.test(t)) {
       const cut = x.x0 + (x.x1 - x.x0) * (m[1].length / t.length);

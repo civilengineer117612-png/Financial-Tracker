@@ -339,3 +339,19 @@ test("spaces the reader dropped: a date written 01Oct2026 and a payee after TOSA
   assert.equal(r.date, "2026-10-01");
   assert.equal(r.payee, "SAMPLESUPERMARKET");
 });
+
+test("a bank screen that prints the name above its To label and a masked number under it", () => {
+  const r = readScan("Transferred\nP2,690.00\nInstant\n1.SAMPLE PERSON\nTo\n·..1234\nSample Bank\nFrom\nAmount 2,690.00\nReference No.\nDate\n16 Sep 2026 at 18:24\nTransfer successful", "2026-10-04");
+  assert.equal(r.payee, "SAMPLE PERSON");
+  assert.equal(r.amount, 269000);
+});
+
+test("a corporate suffix alone is not a store name", () => {
+  assert.notEqual(readScan("Inc\nOfficial Receipt\nTOTAL 150.00", "2026-10-04").payee, "Inc");
+});
+
+test("linesFromBoxes cleans a stray mark and a B read for 8 so the amount pairs with its label", () => {
+  const out = linesFromBoxes([box("Sub-Total: 51.29", 20, 20, 250), box("：1.157.B4", 400, 60, 100), box("Bill Amount", 20, 60, 150)]);
+  assert.match(out, /Bill Amount 1\.157\.84/);
+  assert.equal(readScan("Billing Invoice\nMeralco\nBill Amount 1.157.84\nDue date Oct 10, 2026", "2026-10-04").amount, 115784);
+});
