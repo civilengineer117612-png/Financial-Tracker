@@ -130,3 +130,31 @@ export function updatePreset(state, id, { name, amount, category_id }) {
   if (!(state.categories ?? []).some((c) => c.id === category_id && c.kind === "expense")) return { ok: false, error: "Choose a spending category." };
   return { ok: true, state: { ...state, presets: state.presets.map((x) => (x.id === id ? { ...x, name: n, amount, category_id } : x)) } };
 }
+
+// Up to six quick tiles on the Log screen. Add, remove and move them; none of this logs anything.
+export const MAX_PRESETS = 6;
+const checkTile = (state, { name, amount, category_id }) => {
+  const n = String(name ?? "").trim();
+  if (!n) return { error: "Give the tile a name." };
+  if (n.length > 24) return { error: "Keep the name short: 24 letters at most." };
+  if (!Number.isSafeInteger(amount) || amount <= 0) return { error: "Type an amount above zero." };
+  if (!(state.categories ?? []).some((c) => c.id === category_id && c.kind === "expense")) return { error: "Choose a spending category." };
+  return { n };
+};
+export function addPreset(state, tile, id) {
+  if ((state.presets ?? []).length >= MAX_PRESETS) return { ok: false, error: "Six tiles is the most. Remove one first." };
+  if ((state.presets ?? []).some((p) => p.id === id)) return { ok: false, error: "That tile already exists." };
+  const c = checkTile(state, tile);
+  if (c.error) return { ok: false, error: c.error };
+  return { ok: true, state: { ...state, presets: [...(state.presets ?? []), { id, name: c.n, amount: tile.amount, category_id: tile.category_id }] } };
+}
+export function removePreset(state, id) {
+  if (!(state.presets ?? []).some((p) => p.id === id)) return { ok: false, error: "That tile is no longer there." };
+  return { ok: true, state: { ...state, presets: state.presets.filter((p) => p.id !== id) } };
+}
+// ids: every tile's id, in the new order (nothing missing, nothing added).
+export function reorderPresets(state, ids) {
+  const have = (state.presets ?? []).map((p) => p.id);
+  if (ids.length !== have.length || new Set(ids).size !== ids.length || !ids.every((i) => have.includes(i))) return { ok: false, error: "The new order does not match the tiles." };
+  return { ok: true, state: { ...state, presets: ids.map((i) => state.presets.find((p) => p.id === i)) } };
+}
