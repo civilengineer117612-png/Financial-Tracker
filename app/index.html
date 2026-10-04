@@ -82,7 +82,7 @@
   .yearlabel { display: flex; align-items: center; justify-content: center; }
   .tile { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
   .tile .tcat { display: block; font-style: normal; font-size: 11px; color: var(--soft); opacity: .8; margin-top: 1px; }
-  .tiles.arranging .tile { touch-action: none; cursor: grab; transition: transform .18s ease, opacity .2s ease; position: relative; }
+  .tiles.arranging .tile { touch-action: none; cursor: grab; transition: transform .18s ease, opacity .2s ease; position: relative; background: var(--wash); border: 1px solid var(--line); padding: 12px 14px; }   /* a div here, so it gets the look of the button tiles */
   .tiles.arranging .tile:not(.addtile):not(.dragging) { animation: wiggle .26s ease-in-out infinite alternate; }
   .tiles.arranging .tile:nth-child(even):not(.addtile):not(.dragging) { animation-direction: alternate-reverse; animation-delay: -.09s; }
   @keyframes wiggle { from { rotate: -1.4deg; } to { rotate: 1.4deg; } }
@@ -90,7 +90,7 @@
   .tminus { position: absolute; top: -9px; right: -9px; width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 50%; background: var(--ink); color: var(--paper); border: 2px solid var(--paper); font-size: 18px; line-height: 1; display: flex; align-items: center; justify-content: center; z-index: 3; }
   @media (prefers-reduced-motion: reduce) { .tiles.arranging .tile:not(.addtile):not(.dragging) { animation: none; } }
   .tiles.arranging .tile.dragging { transition: none; z-index: 5; position: relative; box-shadow: 0 8px 22px rgba(0,0,0,.18); background: var(--paper); }
-  .tile.addtile { background: none; color: var(--mid); } .tile.addtile b { font-size: 26px; font-weight: 400; }
+  .tiles.arranging .tile.addtile { background: none; color: var(--mid); } .tile.addtile b { font-size: 26px; font-weight: 400; }
   .tiles.two { grid-template-columns: repeat(2, 1fr); margin: 8px 0; } .tiles.two .tile { min-height: 72px; } .tiles.two .tile b { font-size: 17px; }
   .tile { border-radius: 12px; } .tile:active { transform: scale(.96); }
   .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 84px; gap: 2px; }
