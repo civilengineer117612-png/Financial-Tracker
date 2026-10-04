@@ -333,3 +333,9 @@ test("linesFromBoxes reads 100:00 as an amount but leaves a clock time alone", (
 test("an employer read without the space after its comma gets it back", () => {
   assert.equal(readPayslip("PHIL SAMPLE,INC.\nPAYSLIP\nNet Pay 9,075.00", "2026-10-04").employer, "PHIL SAMPLE, INC.");
 });
+
+test("spaces the reader dropped: a date written 01Oct2026 and a payee after TOSAMPLE", () => {
+  const r = readScan("Transaction Details\nPHP592.50\nFromMariBank\nTOSAMPLESUPERMARKET\nTransaction Time 01Oct2026, 19:52", "2026-10-20");
+  assert.equal(r.date, "2026-10-01");
+  assert.equal(r.payee, "SAMPLESUPERMARKET");
+});

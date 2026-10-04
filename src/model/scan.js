@@ -104,8 +104,8 @@ function datesIn(text) {
   const push = (index, y, m, d, seen, ambiguous = false) => { if (isPhDate(iso(y, m, d))) found.push({ index, iso: iso(y, m, d), seen, ambiguous }); };
   for (const m of t.matchAll(/\b(20\d\d)[-/.](\d{1,2})[-/.](\d{1,2})\b/g)) push(m.index, +m[1], +m[2], +m[3], m[0]);
   const mon = "(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?";
-  for (const m of t.matchAll(new RegExp(`\\b${mon}\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})\\b`, "gi"))) push(m.index, +m[3], MONTHS.indexOf(m[1].toLowerCase()) + 1, +m[2], m[0]);
-  for (const m of t.matchAll(new RegExp(`\\b(\\d{1,2})\\s+${mon},?\\s+(\\d{4})\\b`, "gi"))) push(m.index, +m[3], MONTHS.indexOf(m[2].toLowerCase()) + 1, +m[1], m[0]);
+  for (const m of t.matchAll(new RegExp(`\\b${mon}\\s*(\\d{1,2})(?:st|nd|rd|th)?,?\\s*(\\d{4})\\b`, "gi"))) push(m.index, +m[3], MONTHS.indexOf(m[1].toLowerCase()) + 1, +m[2], m[0]);
+  for (const m of t.matchAll(new RegExp(`\\b(\\d{1,2})\\s*${mon},?\\s*(\\d{4})\\b`, "gi"))) push(m.index, +m[3], MONTHS.indexOf(m[2].toLowerCase()) + 1, +m[1], m[0]);
   for (const m of t.matchAll(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{4}|\d{2})\b/g)) {
     const a = +m[1], b = +m[2], y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
     if (a > 12 && b <= 12) push(m.index, y, b, a, m[0]);   // 25/10/2026 can only be day first
@@ -163,7 +163,7 @@ function payeeFor(kind, lines) {
     }
     return null;
   };
-  if (kind === "gcash" || kind === "bank") { lines = lines.map((l) => l.replace(/^(\s*To)(?=[A-Z]{3})/, "$1 ")); return after(/(?:sent to|paid to|recipient|beneficiary|to:|^\s*to\b)(.*)/i); }   // the reader sometimes glues the word To to the name after it
+  if (kind === "gcash" || kind === "bank") { lines = lines.map((l) => l.replace(/^(\s*(?:To|TO))(?=[A-Z]{3})/, "$1 ")); return after(/(?:sent to|paid to|recipient|beneficiary|to:|^\s*to\b)(.*)/i); }   // the reader sometimes glues the word To to the name after it
   if (kind === "received") return after(/(?:received from|from:|sender)(.*)/i);
   if (kind === "rent") return after(/(?:received from|paid to|paid by|landlord|landlady)(.*)/i);
   if (kind === "payslip") return after(/(?:employer|company)(.*)/i);
