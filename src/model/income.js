@@ -117,6 +117,10 @@ export function overtimeFreeDraft(state, payslipId, input, now = new Date()) {
 }
 
 // ---------- the views ----------
+// A payslip belongs to the month of the period it pays for, not the day it was received: "June 16-30" received on July 2 is June's.
+export const slipDate = (p) => p.period_to || p.pay_date;
+// A range for the views below: a year ("2026"), {from, to} dates, or null for everything.
+const inRange = (range, p) => range === null || range === undefined ? true : typeof range === "string" ? slipDate(p).startsWith(range + "-") : slipDate(p) >= range.from && slipDate(p) <= range.to;
 const SOURCE_OF = { "cat-salary": "base", "cat-overtime": "overtime", "cat-interest": "interest", "cat-refund": "refunds" };
 export const SOURCES = [["base", "Base pay"], ["overtime", "Overtime"], ["interest", "Interest"], ["refunds", "Refunds"], ["other", "Other"]];
 
@@ -124,14 +128,25 @@ export const SOURCES = [["base", "Base pay"], ["overtime", "Overtime"], ["intere
 export function incomeBySource(state, { from, to }) {
   const income = new Set(state.categories.filter((c) => c.kind === "income").map((c) => c.id));
   const txById = new Map(state.transactions.map((t) => [t.id, t]));
+  const periodOf = new Map((state.payslips ?? []).map((p) => [p.transaction_id, slipDate(p)]));   // pay from a payslip counts on its period
   const out = { base: 0, overtime: 0, interest: 0, refunds: 0, other: 0 };
   for (const e of state.entries) {
     if (e.category_id == null || !income.has(e.category_id)) continue;
     const t = txById.get(e.transaction_id);
-    if (!t || t.status !== "verified" || t.date < from || t.date > to) continue;
+    const day = t ? periodOf.get(t.id) ?? t.date : null;
+    if (!t || t.status !== "verified" || day < from || day > to) continue;
     out[SOURCE_OF[e.category_id] ?? "other"] -= e.amount;   // income is a credit, stored negative
   }
   return { ...out, total: Object.values(out).reduce((a, b) => a + b, 0) };
+}
+// The months of any range (clamped at its ends), each by source, plus the total for the whole range.
+export function incomeMonths(state, { from, to }) {
+  const months = [];
+  for (let m = monthOf(from); m <= monthOf(to); m = monthOf(new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5)), 1)).toISOString().slice(0, 10))) {
+    const a = m + "-01" > from ? m + "-01" : from, b = m + "-31" < to ? m + "-31" : to;
+    months.push({ month: m, ...incomeBySource(state, { from: a, to: b }) });
+  }
+  return { months, ytd: incomeBySource(state, { from, to }) };
 }
 // Twelve months of one year, plus the year to date.
 export function incomeByMonth(state, year) {
@@ -140,8 +155,8 @@ export function incomeByMonth(state, year) {
 }
 
 // One row per payslip in the year, oldest first: what arrived, split into base and overtime.
-export function netPerPayday(state, year) {
-  return (state.payslips ?? []).filter((p) => p.pay_date.startsWith(year + "-")).sort((a, b) => a.pay_date.localeCompare(b.pay_date) || a.id.localeCompare(b.id)).map((p) => {
+export function netPerPayday(state, range) {
+  return (state.payslips ?? []).filter((p) => inRange(range, p)).sort((a, b) => a.pay_date.localeCompare(b.pay_date) || a.id.localeCompare(b.id)).map((p) => {
     const t = payslipTotals(linesOf(state, p.id)), overtime = Math.min(t.overtime, p.deposit);
     return { payslip_id: p.id, date: p.pay_date, employer: p.employer, net: p.deposit, overtime, base: p.deposit - overtime };
   });
@@ -151,21 +166,21 @@ export function netPerPayday(state, year) {
 // With a year, only that year's payslips are listed, but each change is still measured against the payslip before it (even from an earlier year).
 export function raiseHistory(state, year = null) {
   const rows = (state.payslips ?? []).slice().sort((a, b) => a.pay_date.localeCompare(b.pay_date) || a.id.localeCompare(b.id))
-    .map((p) => ({ date: p.pay_date, employer: p.employer, basic: sum(linesOf(state, p.id).filter((l) => l.side === "earning" && l.kind === "basic")) }))
+    .map((p) => ({ date: p.pay_date, slip: slipDate(p), employer: p.employer, basic: sum(linesOf(state, p.id).filter((l) => l.side === "earning" && l.kind === "basic")) }))
     .filter((r) => r.basic > 0);
-  return rows.map((r, i) => ({ ...r, change: i === 0 ? null : r.basic - rows[i - 1].basic, raised: i > 0 && r.basic > rows[i - 1].basic })).filter((r) => year === null || r.date.startsWith(year + "-"));
+  return rows.map((r, i) => ({ ...r, change: i === 0 ? null : r.basic - rows[i - 1].basic, raised: i > 0 && r.basic > rows[i - 1].basic })).filter((r) => inRange(year, { period_to: r.slip }));
 }
 
 // Deductions by month of pay date and for the year to date: government (tax, SSS, PhilHealth, Pag-IBIG), pay lost (absences,
 // lates), and loans.
-export function deductionsByMonth(state, year) {
+export function deductionsByMonth(state, range) {
   const zero = () => ({ tax: 0, sss: 0, philhealth: 0, pagibig: 0, absences: 0, lates: 0, loan: 0, other: 0 });
   const by = new Map();
   for (const p of state.payslips ?? []) {
-    if (!p.pay_date.startsWith(year + "-")) continue;
-    const m = by.get(monthOf(p.pay_date)) ?? zero();
+    if (!inRange(range, p)) continue;
+    const m = by.get(monthOf(slipDate(p))) ?? zero();
     for (const l of linesOf(state, p.id)) if (l.side === "deduction") m[l.kind] += l.amount;
-    by.set(monthOf(p.pay_date), m);
+    by.set(monthOf(slipDate(p)), m);
   }
   const shape = (m) => ({ ...m, government: GOVERNMENT.reduce((n, k) => n + m[k], 0), lost: LOST.reduce((n, k) => n + m[k], 0) });
   const months = [...by].sort(([a], [b]) => a.localeCompare(b)).map(([month, m]) => ({ month, ...shape(m) }));
@@ -174,13 +189,30 @@ export function deductionsByMonth(state, year) {
 }
 
 // Employers in the order they were worked for: first and last pay date, and how many payslips.
-export function employerHistory(state, year = null) {
+export function employerHistory(state, range = null) {
   const by = new Map();
   for (const p of state.payslips ?? []) {
-    if (year !== null && !p.pay_date.startsWith(year + "-")) continue;
+    if (!inRange(range, p)) continue;
     const e = by.get(p.employer) ?? { employer: p.employer, first: p.pay_date, last: p.pay_date, payslips: 0 };
     e.first = e.first < p.pay_date ? e.first : p.pay_date; e.last = e.last > p.pay_date ? e.last : p.pay_date; e.payslips += 1;
     by.set(p.employer, e);
   }
   return [...by.values()].sort((a, b) => a.first.localeCompare(b.first));
+}
+
+// Removes a payslip: its lines, the pay it recorded (the transaction, its entries and its photo link), and any overtime transfer still
+// waiting as a draft. An overtime transfer already verified stays (it is real money that moved); `keptTransfers` says how many.
+// Returns {ok, state, photoIds, keptTransfers}; photoIds are the picture files the caller deletes.
+export function deletePayslip(state, id) {
+  const p = (state.payslips ?? []).find((x) => x.id === id);
+  if (!p) return { ok: false, error: "That payslip is no longer there." };
+  const side = ["ot-" + id, "otf-" + id], drafts = new Set(state.transactions.filter((t) => side.includes(t.id) && t.status === "draft").map((t) => t.id));
+  const gone = new Set([p.transaction_id, ...drafts]);
+  return {
+    ok: true,
+    photoIds: (state.attachments ?? []).filter((a) => gone.has(a.transaction_id)).map((a) => a.id),
+    keptTransfers: state.transactions.filter((t) => side.includes(t.id) && t.status !== "draft").length,
+    state: { ...state, payslips: state.payslips.filter((x) => x.id !== id), payslipLines: (state.payslipLines ?? []).filter((l) => l.payslip_id !== id),
+      transactions: state.transactions.filter((t) => !gone.has(t.id)), entries: state.entries.filter((e) => !gone.has(e.transaction_id)), attachments: (state.attachments ?? []).filter((a) => !gone.has(a.transaction_id)) },
+  };
 }

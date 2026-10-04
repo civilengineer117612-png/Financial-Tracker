@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory,
+import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, incomeMonths, slipDate, deletePayslip,
   ensureIncomeCategories, validateState, applyDrafts } from "../src/model/index.js";
 import { makeState, account } from "./fixtures.js";
 
@@ -137,4 +137,55 @@ test("looking at a year lists only that year's raises, employers and payslips, b
   assert.deepEqual(employerHistory(s, "2026").map((e) => e.employer), ["Sample Employer Inc"]);
   assert.deepEqual(employerHistory(s, "2024"), []);
   assert.equal(employerHistory(s).length, 2, "with no year, all of them");
+});
+
+test("a payslip belongs to the month of the period it pays for, not the day it arrived", () => {
+  let s = ledger();
+  s = planPayslip(s, base({ id: "j", transaction_id: "tj", period_from: "2026-06-16", period_to: "2026-06-30", pay_date: "2026-07-02" }), NOW).state;
+  s = planPayslip(s, base({ id: "k", transaction_id: "tk", period_from: "2026-07-01", period_to: "2026-07-15", pay_date: "2026-07-15" }), NOW).state;
+  assert.equal(slipDate(s.payslips[0]), "2026-06-30");
+  const m = Object.fromEntries(incomeMonths(s, { from: "2026-06-01", to: "2026-07-31" }).months.map((x) => [x.month, x.total]));
+  assert.deepEqual(m, { "2026-06": 880000, "2026-07": 880000 }, "the July 2 payslip counts in June");
+  assert.equal(incomeBySource(s, { from: "2026-06-01", to: "2026-06-30" }).total, 880000);
+  assert.deepEqual(deductionsByMonth(s, { from: "2026-06-01", to: "2026-06-30" }).months.map((x) => x.month), ["2026-06"]);
+  assert.deepEqual(employerHistory(s, { from: "2026-07-01", to: "2026-07-31" }).map((e) => e.payslips), [1]);
+  assert.equal(netPerPayday(s, { from: "2026-06-01", to: "2026-06-30" }).length, 1);
+});
+
+test("incomeMonths clamps the first and last month to the range asked for", () => {
+  let s = ledger();
+  s = planPayslip(s, base({ id: "a", transaction_id: "ta", period_from: "2026-06-01", period_to: "2026-06-15", pay_date: "2026-06-15" }), NOW).state;
+  s = planPayslip(s, base({ id: "b", transaction_id: "tb", period_from: "2026-06-16", period_to: "2026-06-30", pay_date: "2026-06-30" }), NOW).state;
+  const r = incomeMonths(s, { from: "2026-06-20", to: "2026-06-30" });
+  assert.deepEqual(r.months.map((x) => [x.month, x.total]), [["2026-06", 880000]]);
+  assert.equal(r.ytd.total, 880000);
+});
+
+test("removing a payslip removes its lines, its pay, its photo link and draft overtime transfers, and the ledger stays valid", () => {
+  let s = ledger();
+  const r0 = planPayslip(s, base({ printed_gross: 1150000, printed_net: 1030000, deposit: 1030000, earnings: [{ kind: "basic", amount: 900000 }, { kind: "rice", amount: 100000 }, { kind: "overtime", amount: 150000, earned_month: "2026-09" }] }), NOW);
+  s = r0.state;
+  const ot = overtimeDraft(s, "ps1", { transaction_id: "ot-ps1", emergency_account_id: "ef" }, NOW);
+  s = { ...s, transactions: [...s.transactions, ot.transaction], entries: [...s.entries, ...ot.entries], attachments: [{ id: "ph1", transaction_id: "tx-ps1", mime: "image/jpeg", created_at: "2026-10-16T12:00:00.000+08:00" }] };
+  const d = deletePayslip(s, "ps1");
+  assert.equal(d.ok, true);
+  assert.deepEqual(d.photoIds, ["ph1"]);
+  assert.equal(d.keptTransfers, 0);
+  assert.equal(d.state.payslips.length, 0);
+  assert.equal(d.state.payslipLines.length, 0);
+  assert.equal(d.state.transactions.some((t) => t.id === "tx-ps1" || t.id === "ot-ps1"), false);
+  assert.equal(d.state.entries.some((e) => e.transaction_id === "tx-ps1" || e.transaction_id === "ot-ps1"), false);
+  assert.equal(incomeBySource(d.state, { from: "2026-10-01", to: "2026-10-31" }).total, 0);
+  assert.deepEqual(validateState(d.state), []);
+  assert.equal(deletePayslip(s, "nope").ok, false);
+});
+
+test("a verified overtime transfer stays when its payslip is removed, and the result says so", () => {
+  let s = ledger();
+  s = planPayslip(s, base({ printed_gross: 1150000, printed_net: 1030000, deposit: 1030000, earnings: [{ kind: "basic", amount: 900000 }, { kind: "rice", amount: 100000 }, { kind: "overtime", amount: 150000, earned_month: "2026-09" }] }), NOW).state;
+  const ot = overtimeDraft(s, "ps1", { transaction_id: "ot-ps1", emergency_account_id: "ef" }, NOW);
+  s = { ...s, transactions: [...s.transactions, { ...ot.transaction, status: "verified", verified_at: ot.transaction.created_at }], entries: [...s.entries, ...ot.entries] };
+  const d = deletePayslip(s, "ps1");
+  assert.equal(d.keptTransfers, 1);
+  assert.equal(d.state.transactions.some((t) => t.id === "ot-ps1"), true);
 });
