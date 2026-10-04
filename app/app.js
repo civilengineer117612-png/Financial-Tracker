@@ -304,6 +304,20 @@ function openPayslipFromPhoto(blob, text, queueId) {
   ui.pdet = {}; ui.form = f; ui.sheet = { type: "payslip", scanBlob: blob, queueId }; renderSheet();
 }
 
+// The photo full screen over the window, so it can be compared with the figures; tap it to zoom in (then drag to move), and close to go back
+// to the window exactly as it was (nothing typed is lost).
+function viewShot(url) {
+  const box = document.createElement("div");
+  box.className = "lightbox"; box.setAttribute("role", "dialog"); box.setAttribute("aria-label", "Photo");
+  box.innerHTML = `<button class="lbclose" aria-label="Close the photo">Close</button><div class="lbscroll"><img alt="The photo, full size" src="${esc(url)}"></div><p class="note small lbhint">Tap the photo to zoom in or out.</p>`;
+  const close = () => { box.remove(); document.removeEventListener("keydown", onKey); }, onKey = (e) => { if (e.key === "Escape") close(); };
+  box.querySelector(".lbclose").addEventListener("click", close);
+  box.querySelector("img").addEventListener("click", (e) => e.currentTarget.classList.toggle("zoomed"));
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(box);
+  box.querySelector(".lbclose").focus();
+}
+
 // What the sheet holds, as the model wants it. `errors` names every typed amount that is not an amount.
 function payslipFromForm(f) {
   const errors = [], pick = (prefix, kinds) => kinds.flatMap(([kind]) => {
@@ -1260,19 +1274,19 @@ function renderSheet() {
     const months = Array.from({ length: 7 }, (_, i) => M.addMonths(M.monthOf(today()), -i));
     const open = (k) => (ui.pdet?.[k] ? " open" : "");
     body = `<h3>Add a payslip</h3>
-      ${sh.scanBlob ? `<img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your payslip photo" style="max-height:22vh;object-fit:contain">${(f.notes ?? []).map((n) => `<p class="note">${esc(n)}</p>`).join("")}` : ""}
-      <details data-keep="e"${open("e")}><summary><span>Total earnings</span><b id="p-tot-e" style="margin-left:auto"></b></summary>
+      ${sh.scanBlob ? `<button class="shotbtn enlarge" data-action="view-shot" aria-label="Open the photo full size to compare it with the figures"><img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your payslip photo" style="max-height:18vh;object-fit:contain"></button>${(f.notes ?? []).map((n) => `<p class="note small">${esc(n)}</p>`).join("")}` : ""}
+      <details class="tot" data-keep="e"${open("e")}><summary><span class="tl">Total earnings<small>Tap to see the lines</small></span><b id="p-tot-e" class="tv"></b><span class="tchev" aria-hidden="true">\u203A</span></summary>
         ${M.EARNINGS.map((k) => field("e_", k)).join("")}
         <label for="p-otm">Overtime was earned in</label><select id="p-otm" data-field="ot_month">${months.map((m) => `<option value="${m}"${f.ot_month === m ? " selected" : ""}>${esc(M.monthLabel(m))}</option>`).join("")}</select>
       </details>
-      <details data-keep="d"${open("d")}><summary><span>Total deductions</span><b id="p-tot-d" style="margin-left:auto"></b></summary>
+      <details class="tot" data-keep="d"${open("d")}><summary><span class="tl">Total deductions<small>Tap to see the lines</small></span><b id="p-tot-d" class="tv"></b><span class="tchev" aria-hidden="true">\u203A</span></summary>
         ${M.DEDUCTIONS.map((k) => field("d_", k)).join("")}
       </details>
       <label>Landed in</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
+      <label for="p-emp">Employer</label><input id="p-emp" data-field="employer" value="${esc(f.employer ?? "")}" autocomplete="off">
       <label for="p-from">Pay period from</label><input id="p-from" data-field="period_from" type="date" value="${esc(f.period_from)}">
       <label for="p-to">Pay period to</label><input id="p-to" data-field="period_to" type="date" value="${esc(f.period_to)}">
       <label for="p-date">Pay date</label><input id="p-date" data-field="pay_date" type="date" value="${esc(f.pay_date)}">
-      <label for="p-emp">Employer</label><input id="p-emp" data-field="employer" value="${esc(f.employer ?? "")}" autocomplete="off">
       <details data-keep="t"${open("t")}><summary>As printed on the payslip</summary>
         <label for="p-gross">Gross pay (\u20B1)</label><input id="p-gross" data-field="gross" inputmode="decimal" value="${esc(f.gross ?? "")}" autocomplete="off">
         <label for="p-net">Net pay (\u20B1)</label><input id="p-net" data-field="net" inputmode="decimal" value="${esc(f.net ?? "")}" autocomplete="off">
@@ -1302,7 +1316,7 @@ function renderSheet() {
   } else if (sh.type === "scan") {
     const f = ui.form, kind = M.kindById(f.kind), into = kind.direction === "in";
     body = `<h3>${sh.voice ? "Check what I heard" : "Check what I read"}</h3>
-      ${sh.voice ? `<p class="note">You said: \u201C${esc(f.text)}\u201D</p>` : `<img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your photo">`}
+      ${sh.voice ? `<p class="note">You said: \u201C${esc(f.text)}\u201D</p>` : `<button class="shotbtn" data-action="view-shot" aria-label="Open the photo full size to compare it with what was read"><img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your photo"></button>`}
       <label>It looks like</label>${chips(M.KINDS.map((k) => ({ id: k.id, name: k.label })), f.kind, "pick-kind")}
       ${f.notes.map((n) => `<p class="note">${esc(n)}</p>`).join("")}
       <label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
@@ -1761,6 +1775,7 @@ async function onClick(el) {
     }
     case "pick-kind": if (id === "payslip" && pendingPhoto && !ui.sheet.voice) { openPayslipFromPhoto(pendingPhoto.blob, form.text ?? "", ui.sheet.queueId ?? null); break; } form.kind = id; Object.assign(form, scanDefaults(id, form.guess, form.payee)); renderSheet(); break;
     case "save-scan": await saveScan(); break;
+    case "view-shot": if (pendingPhoto) viewShot(pendingPhoto.url); break;
     case "open-photo": ui.sheet = { type: "photo", id }; renderSheet(); break;
     case "pick-acct": form.account_id = id; renderSheet(); break;
     case "close-sheet": voiceListener?.stop(); ui.sheet = null; renderSheet(); break;
