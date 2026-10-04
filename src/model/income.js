@@ -20,6 +20,8 @@ const peso = (c) => "₱" + (c / 100).toLocaleString("en-US", { minimumFractionD
 const sum = (rows) => rows.reduce((n, r) => n + r.amount, 0);
 const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }], state: undefined });
 
+// Bump when a fix changes what a saved payslip should hold. A payslip saved under an older version may carry wrong figures until it is saved again.
+export const PAYSLIP_VERSION = 2;
 export const linesOf = (state, payslipId) => (state.payslipLines ?? []).filter((l) => l.payslip_id === payslipId);
 export const payslipTotals = (lines) => {
   const earn = lines.filter((l) => l.side === "earning"), ded = lines.filter((l) => l.side === "deduction");
@@ -70,7 +72,7 @@ export function planPayslip(state, input, now = new Date()) {
   ];
   const payslip = { id: input.id, employer, period_from: input.period_from, period_to: input.period_to, pay_date: input.pay_date, account_id: account.id,
     transaction_id: input.transaction_id, printed_gross: input.printed_gross, printed_net: input.printed_net, deposit: input.deposit,
-    ...(input.net_words ? { net_words: input.net_words } : {}) };
+    ...(input.net_words ? { net_words: input.net_words } : {}), ...(input.printed_deductions > 0 ? { printed_deductions: input.printed_deductions } : {}), version: PAYSLIP_VERSION };
   for (const row of lines) { const v = validateShape("PayslipLine", row); if (v.length) return fail("BAD_LINE", v[0].message); }
   const bad = validateShape("Payslip", payslip);
   if (bad.length) return fail("BAD_PAYSLIP", bad[0].message ?? "the payslip is not complete");
@@ -218,8 +220,53 @@ export function updatePayslip(state, id, input, now = new Date()) {
   const r = planPayslip(without, { ...input, id, transaction_id: p.transaction_id }, now);
   if (!r.ok) return r;
   const transaction = old ? { ...r.transaction, created_at: old.created_at } : r.transaction;
+  // Remember the old figures when the new save really changes them (saving the same figures again leaves no entry).
+  const oldLines = linesOf(state, id).map(({ side, kind, amount, earned_month }) => ({ side, kind, amount, ...(earned_month ? { earned_month } : {}) }));
+  const figures = (x, lines) => JSON.stringify([x.employer, x.period_from, x.period_to, x.pay_date, x.printed_gross, x.printed_net, x.deposit, x.printed_deductions ?? null,
+    lines.map((l) => [l.side, l.kind, l.amount, l.earned_month ?? null]).sort()]);
+  const changed = figures(p, oldLines) !== figures(r.payslip, r.lines);
+  const n = (state.payslipRevisions ?? []).filter((x) => x.payslip_id === id).length + 1;
+  const revision = { id: id + "-r" + n, payslip_id: id, changed_on: phTimestamp(now).slice(0, 10), employer: p.employer, period_from: p.period_from, period_to: p.period_to, pay_date: p.pay_date,
+    printed_gross: p.printed_gross, printed_net: p.printed_net, deposit: p.deposit, ...(p.printed_deductions ? { printed_deductions: p.printed_deductions } : {}), lines: oldLines };
+  const bad = changed ? validateShape("PayslipRevision", revision) : [];
+  if (bad.length) return fail("BAD_REVISION", bad[0].message);
   return { ...r, transaction, draftsRemoved: drafts.size, photoIds: (state.attachments ?? []).filter((a) => dropped.has(a.transaction_id)).map((a) => a.id),
-    state: { ...r.state, transactions: r.state.transactions.map((t) => (t.id === transaction.id ? transaction : t)) } };
+    state: { ...r.state, transactions: r.state.transactions.map((t) => (t.id === transaction.id ? transaction : t)), ...(changed ? { payslipRevisions: [...(state.payslipRevisions ?? []), revision] } : {}) } };
+}
+
+// "Earlier figures": what a payslip held before each change, newest change first.
+export const revisionsOf = (state, payslipId) => (state.payslipRevisions ?? []).filter((x) => x.payslip_id === payslipId).slice().reverse();
+
+// One plain line each, only when it applies (no colour, no new checks): a payslip saved before the fixes, a pay date long after the period
+// ended, and the printed deductions total against the lines.
+export function payslipNotes(state, p) {
+  const out = [], gap = Math.round((Date.parse(p.pay_date + "T00:00:00Z") - Date.parse(p.period_to + "T00:00:00Z")) / 86400000);
+  if (gap > 7) out.push("Pay date is " + gap + " days after period end.");
+  if (p.printed_deductions > 0) {
+    const diff = p.printed_deductions - payslipTotals(linesOf(state, p.id)).deductions;
+    out.push(diff === 0 ? "Lines match paper." : "Lines differ from paper by " + peso(Math.abs(diff)) + ".");
+  }
+  if (!(p.version >= PAYSLIP_VERSION)) out.push("Saved before the fix, may be wrong.");
+  return out;
+}
+
+// Pay periods with no payslip. Pay is read as twice a month (the 1st to 15th and the 16th to month end), and only when the payslips show that
+// (some month holds two). A period counts from the first payslip on, and only once it ended more than a week ago (pay arrives after the period).
+// A payslip belongs to the half of its period end. Returns [{from, to}] oldest first, limited to `range` (see inRange).
+export function missingPayPeriods(state, range, today) {
+  const slips = state.payslips ?? [], half = (d) => monthOf(d) + (Number(d.slice(8)) <= 15 ? "-a" : "-b");
+  const have = new Set(slips.map((p) => half(slipDate(p))));
+  const twice = slips.some((p) => have.has(monthOf(slipDate(p)) + "-a") && have.has(monthOf(slipDate(p)) + "-b"));
+  if (!slips.length || !twice) return [];
+  const first = slips.map(slipDate).sort()[0], limit = new Date(Date.parse(today + "T00:00:00Z") - 8 * 86400000).toISOString().slice(0, 10), out = [];
+  for (let y = Number(first.slice(0, 4)), m = Number(first.slice(5, 7)); ; m = m === 12 ? (y++, 1) : m + 1) {
+    const mm = String(m).padStart(2, "0"), end = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    for (const [h, a, b] of [["a", 1, 15], ["b", 16, end]]) {
+      const from = `${y}-${mm}-${String(a).padStart(2, "0")}`, to = `${y}-${mm}-${String(b).padStart(2, "0")}`;
+      if (to > limit) return out;
+      if (to >= first && !have.has(`${y}-${mm}-${h}`) && inRange(range, { period_to: to })) out.push({ from, to });
+    }
+  }
 }
 
 // Income that arrived WITHOUT a payslip behind it (a payslip photo once saved as plain "pay received", interest, a refund): verified entries
@@ -263,6 +310,7 @@ export function deletePayslip(state, id) {
     photoIds: (state.attachments ?? []).filter((a) => gone.has(a.transaction_id)).map((a) => a.id),
     keptTransfers: state.transactions.filter((t) => side.includes(t.id) && t.status !== "draft").length,
     state: { ...state, payslips: state.payslips.filter((x) => x.id !== id), payslipLines: (state.payslipLines ?? []).filter((l) => l.payslip_id !== id),
+      ...(state.payslipRevisions ? { payslipRevisions: state.payslipRevisions.filter((x) => x.payslip_id !== id) } : {}),
       transactions: state.transactions.filter((t) => !gone.has(t.id)), entries: state.entries.filter((e) => !gone.has(e.transaction_id)), attachments: (state.attachments ?? []).filter((a) => !gone.has(a.transaction_id)) },
   };
 }
