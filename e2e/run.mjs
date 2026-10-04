@@ -1484,6 +1484,25 @@ await page.click('#sheet button:has-text("Cancel")');
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 await ctx.close();
 
+// ===== 5k. Read now while the app is already reading by itself =====
+console.log("Read now");
+{ const HUNG = /\/src\/vendor\/paddle\/ort\.wasm\.min\.mjs/;   // a reader that never answers
+  ({ ctx, page, errors } = await open({ blockSw: true }));   // without the service worker the page's own requests can be held back
+  await addAccount(page, "Test Cash", "asset", "500");
+  await page.addInitScript(() => { window.__stallMs = 6000; });
+  await page.route(HUNG, () => {});   // the request stays open for ever
+  await page.reload(); await page.waitForSelector("#nav button");
+  await page.click('button[data-action="open-scan-pick"]'); await page.setInputFiles('input[data-scan="quick"]:not([capture])', { name: "bank.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
+  check(await page.waitForFunction(() => /Keeping the photo|Reading|Getting the/.test(document.querySelector("#screen")?.innerText ?? ""), null, { timeout: 20000, polling: 50 }).then(() => true, () => false), "a photo taken starts reading and says so");
+  check(await seen(page, "#screen", "could not run", 30000) && (await text(page, "#screen")).includes("stopped responding"), "a reader that never answers is given up on and the screen says why");
+  check((await text(page, "#screen")).includes("kept") || (await text(page, "#screen")).includes("waiting to be read") || (await text(page, "#screen")).includes("Read now"), "the photo is still kept");
+  await page.reload(); await page.waitForSelector("#nav button");   // the app now starts reading by itself, and that run hangs too
+  await page.waitForSelector('button[data-action="read-queue"]');
+  await page.click('button[data-action="read-queue"]');
+  check(await seen(page, "#screen", "Reading the photos", 4000), "tapping Read now while the app is already reading says it is still reading (it used to do nothing)");
+  check(await seen(page, "#screen", "could not run", 30000), "and when that run gives up the reason is shown, with Read now to try again");
+  await ctx.close(); }
+
 // ===== 6. wrong phone, wrong place =====
 console.log("Wrong device");
 ({ ctx, page } = await open({ ua: ANDROID }));
