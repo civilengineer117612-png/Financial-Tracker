@@ -956,7 +956,6 @@ await shot(page, "36-verify-photo");
 await page.click('button[aria-label="Open the photo full size"]');
 check(await page.waitForSelector(".lightbox img", { timeout: 4000 }).then(() => true, () => false), "tapping the photo opens it full size");
 await page.click(".lightbox .lbclose");
-await page.click('#sheet button:has-text("Close")');
 await page.click('button:has-text("Edit")'); await page.fill("#f-amount", "140"); await page.click("#f-save");
 await seen(page, "#screen", "₱140.00");
 let scanned = JSON.parse((await stored(page)).local);
