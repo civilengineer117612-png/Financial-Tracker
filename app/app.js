@@ -106,7 +106,7 @@ const ICONS = {
   goals: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
   plan: '<path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/>',
   checks: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
-  trips: '<path d="M20 10c0 5-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 15 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  trips: '<path d="M3 11l18-7-7 18-3-8z"/>',
   income: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
   mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/>',
   scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/>',
@@ -114,23 +114,38 @@ const ICONS = {
   checkin: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
   setup: '<path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/>',
 };
-const MENU = [["Overview", [["money", "Spending"], ["income", "Income"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Capture", [["scan", "Scan"]]], ["Weekly", [["checkin", "Check-in"]]]];   // Setup is pinned at the bottom
+const MENU = [["Overview", [["money", "Money"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Capture", [["scan", "Scan"]]], ["Weekly", [["checkin", "Weekly review"]]]];   // Setup is pinned at the bottom
+
+// Money holds two screens; this switch is at the top of both.
+const moneySwitch = (current) => `<div class="seg moneyswitch" role="group" aria-label="Spending or income">${[["money", "Spending"], ["income", "Income"]].map(([id, t]) => `<button data-action="tab" data-tab="${id}" aria-pressed="${current === id}">${t}</button>`).join("")}</div>`;
 
 function renderTop(title) {
-  const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="0" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="6.5" width="22" height="3" rx="1.5" fill="currentColor"/><rect y="13" width="22" height="3" rx="1.5" fill="currentColor"/></svg>`;
+  const lines = `<svg width="24" height="16" viewBox="0 0 24 16" aria-hidden="true"><rect y="0" width="24" height="2.5" rx="1.25" fill="currentColor"/><rect y="6.75" width="17" height="2.5" rx="1.25" fill="currentColor"/><rect y="13.5" width="10" height="2.5" rx="1.25" fill="currentColor"/></svg>`;   // lines of falling length, no box
   // One scanner button: it opens the two choices, camera or photos/files.
   const camera = device.allowEntry && ui.tab === "log" ? `<button class="camicon" data-action="open-scan-pick" aria-label="Scan a receipt or payment screen: take a photo or choose from photos or files"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.scan}</svg></button>` : "";
   const mic = device.allowEntry && ui.tab === "log" ? `<button class="camicon micbtn" data-action="open-voice" aria-label="Say an entry out loud"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.mic}</svg></button>` : "";
   $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + `<h1>${esc(title)}</h1>` + mic + camera;
 }
 
+let menuTimer = null;
 function renderMenu() {
-  if (!ui.menu || !device.allowEntry) { $("menu").innerHTML = ""; return; }
-  const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}"${ui.tab === id ? ' aria-current="page"' : ""}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span></button>`;
+  const el = $("menu"), reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!ui.menu || !device.allowEntry) {
+    // closing slides the panel away first, then removes it; a reopen during that slide cancels it
+    if (el.firstChild && !el.classList.contains("leaving") && !reduced) {
+      el.classList.add("leaving"); clearTimeout(menuTimer);
+      menuTimer = setTimeout(() => { if (!ui.menu) el.innerHTML = ""; el.classList.remove("leaving"); }, 200);
+    } else if (!el.classList.contains("leaving")) el.innerHTML = "";
+    return;
+  }
+  const opening = !el.firstChild || el.classList.contains("leaving");
+  clearTimeout(menuTimer); el.classList.remove("leaving");
+  const current = (id) => ui.tab === id || (id === "money" && ui.tab === "income");   // Money holds Spending and Income
+  const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}"${current(id) ? ' aria-current="page"' : ""}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span></button>`;
   const age = M.daysSinceBackup(ledger.settings, today());
   const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
-  $("menu").innerHTML = `<div class="scrim" data-action="close-menu"></div><aside class="drawer" role="dialog" aria-label="Menu">
-    <div class="groups">${MENU.map(([group, items]) => `<p class="glabel">${group}</p>${items.map(([id, label]) => item(id, label)).join("")}`).join('<hr>')}</div>
+  el.innerHTML = `<div class="scrim${opening ? " enter" : ""}" data-action="close-menu"></div><aside class="drawer${opening ? " enter" : ""}" role="dialog" aria-label="Menu">
+    <div class="groups">${MENU.map(([group, items]) => `<p class="glabel">${group}</p>${items.map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
     <div class="foot"><p class="note">${backup}</p>${item("setup", "Setup")}</div></aside>`;
 }
 
@@ -254,7 +269,7 @@ function viewIncome() {
   const year = incomeYear(), ytdLabel = year === today().slice(0, 4) ? "Year to date" : "Whole year", y = M.incomeByMonth(S(), year), rows = y.months.filter((m) => m.total !== 0);
   const slips = (S().payslips ?? []).filter((p) => p.pay_date.startsWith(year + "-")).sort((a, b) => (a.pay_date < b.pay_date ? 1 : -1));   // only the year being looked at
   const step = `<div class="stepper"><button data-action="income-year" data-step="-1" aria-label="Earlier year">‹</button><span>${esc(year)}</span><button data-action="income-year" data-step="1" aria-label="Later year"${year >= today().slice(0, 4) ? " disabled" : ""}>›</button></div>`;
-  const head = `<h1>Income</h1>${step}<p><button class="primary" data-action="open-payslip-choice">Add a payslip</button></p><p><button data-action="open-income" style="width:100%">Add other income</button></p>`;
+  const head = `<h1>Income</h1>${moneySwitch("income")}${step}<p><button class="primary" data-action="open-payslip-choice">Add a payslip</button></p><p><button data-action="open-income" style="width:100%">Add other income</button></p>`;
   if (!rows.length && !slips.length) return head + `<p class="note">Nothing recorded for ${esc(year)} yet. Add a payslip to see where your income comes from, your raises, and what went to government.</p>`;
   const bySrc = M.SOURCES.map(([id, label]) => ({ label, amount: y.ytd[id] })).filter((r) => r.amount !== 0);
   const monthTable = `<table class="tbl"><tr><th>Month</th><th class="n">Base</th><th class="n">Overtime</th><th class="n">Other</th><th class="n">Total</th></tr>${rows.map((m) => `<tr><td>${esc(MONTH3[Number(m.month.slice(5)) - 1])}</td><td class="n">${peso(m.base)}</td><td class="n">${peso(m.overtime)}</td><td class="n">${peso(m.interest + m.refunds + m.other)}</td><td class="n">${peso(m.total)}</td></tr>`).join("")}
@@ -860,7 +875,7 @@ function viewMoney() {
   const title = `<button class="ptitle" data-action="open-period" aria-label="Choose the period: ${esc(label)}">${esc(label)}</button>`;
   const stepper = p.kind === "range" ? `<div class="stepper single">${title}</div>`
     : `<div class="stepper"><button data-action="period-step" data-step="-1" aria-label="Earlier">\u2039</button>${title}<button data-action="period-step" data-step="1" aria-label="Later"${atEnd ? " disabled" : ""}>\u203A</button></div>`;
-  const hero = `<h1>Spending</h1>${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">${esc(sub)}</p>${delta}${pendingNote(cat.pending)}${moneyViews()}`;
+  const hero = `<h1>Spending</h1>${moneySwitch("money")}${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">${esc(sub)}</p>${delta}${pendingNote(cat.pending)}${moneyViews()}`;
   const modeLink = `<p><button class="link" data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}">${ui.asList ? "Show as chart" : "Show as list"}</button></p>`;
   const done = (html) => hero + html + modeLink;
   const empty = () => hero + (p.kind === "month" ? emptyMoney() : `<p class="note">Nothing verified in this period.</p>`);
@@ -1129,7 +1144,7 @@ const differenceText = (d) => d === 0 ? "Matches the ledger" : d < 0 ? peso(-d) 
 
 function viewCheckin() {
   const accts = activeAccounts();
-  if (!accts.length) return `<h1>Check-in</h1><p class="note">Add accounts first.</p><button class="primary" data-action="tab" data-tab="setup">Add accounts</button>`;
+  if (!accts.length) return `<h1>Weekly review</h1><p class="note">Add accounts first.</p><button class="primary" data-action="tab" data-tab="setup">Add accounts</button>`;
   const w = thisWeek();
   const rows = accts.map((a) => {
     const c = countedThisWeek(a.id);
@@ -1142,7 +1157,7 @@ function viewCheckin() {
     ? `<h2 class="today">Weekly questions</h2><button class="choice" data-action="open-survey"><span>Four quick questions</span><span class="bval">${sv ? "Answered \u2713" : "Not answered"}</span></button>` : "";
   const age = M.daysSinceBackup(ledger.settings, today());
   const backupLine = age === null || age >= 6 ? `<p class="note"><b>One reminder:</b> back up after this check-in. ${esc(backupAgeText())} <button class="link" data-action="tab" data-tab="setup">Back up now</button></p>` : "";
-  return `<h1>Check-in</h1><p class="sub">Week of ${esc(longDate(w.week_start))} to ${esc(longDate(w.week_end))}</p>
+  return `<h1>Weekly review</h1><p class="sub">Week of ${esc(longDate(w.week_start))} to ${esc(longDate(w.week_end))}</p>
     <p class="note">Open each account, look at the real balance, and type it in. ${done} of ${accts.length} counted.</p>${backupLine}${rows}${questions}
     <p class="note">Money the ledger cannot explain is recorded as Unlogged. It never blocks anything.</p>`;
 }
