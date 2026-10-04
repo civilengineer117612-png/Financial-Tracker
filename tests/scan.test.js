@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readScan, readPayslip, linesFromWords, snapEmployer, wordsToCentavos, categoryFromHistory } from "../src/model/index.js";
+import { readScan, readPayslip, linesFromWords, linesFromBoxes, snapEmployer, wordsToCentavos, categoryFromHistory } from "../src/model/index.js";
 
 const TODAY = "2026-10-20";   // all texts below are invented
 
@@ -272,4 +272,70 @@ test("an employer read from a photo snaps to one already saved, and a different 
   assert.equal(snapEmployer("Te SULTANGY", known), "Te SULTANGY");
   assert.equal(snapEmployer("", known), "");
   assert.equal(snapEmployer("PHIL. JAC, INC.", []), "PHIL. JAC, INC.");
+});
+
+// ---- the stronger reader's boxes ----
+// Boxes are built the way the reader reports them: a label on the left, its amount at the right of the same row, the whole page tilted.
+const box = (text, x, y, w = 200, tilt = 0, h = 20) => ({ text, th: tilt, x0: x, x1: x + w, y0: y + tilt * x, y1: y + h + tilt * x });
+
+test("linesFromBoxes pairs a label with the amount at its height on a tilted page", () => {
+  const t = 0.05, rows = [["Basic Pay", "12,000.00"], ["SSS", "500.00"], ["Philhealth", "300.00"], ["Withholding Tax", "250.00"]];
+  const boxes = rows.flatMap(([l, a], i) => [box(l, 20, 40 + i * 30, 150, t), box(a, 400, 40 + i * 30, 90, t)]);
+  const out = linesFromBoxes(boxes).split("\n");
+  assert.deepEqual(out, ["Basic Pay 12,000.00", "SSS 500.00", "Philhealth 300.00", "Withholding Tax 250.00"]);
+});
+
+test("linesFromBoxes splits a box that holds a label and its amount, and keeps two columns apart", () => {
+  const boxes = [box("Basic Pay 9,000.00", 20, 40, 300), box("SSS 400.00", 420, 40, 200), box("Rice 1,000.00", 20, 70, 300), box("Philhealth 250.00", 420, 70, 200)];
+  const out = linesFromBoxes(boxes).split("\n");
+  assert.deepEqual(out, ["Basic Pay 9,000.00", "SSS 400.00", "Rice 1,000.00", "Philhealth 250.00"]);
+});
+
+test("linesFromBoxes uses each amount once", () => {
+  const out = linesFromBoxes([box("Basic", 20, 40, 100), box("Rice", 20, 42, 100), box("5,000.00", 400, 41, 90)]).split("\n");
+  assert.equal(out.filter((l) => /5,000/.test(l)).length, 1);
+  assert.equal(linesFromBoxes([]), "");
+});
+
+test("readPayslip copes with dotted thousands, a count times a rate, garbled labels and advances", () => {
+  const r = readPayslip(["PHIL JAC INC", "Apr 16-30, 2026", "Total Salary 6.250.50", "Overtime 2.50 x 114.18", "555: 300.00", "Phitheahh 150.00", "Advances 200.00", "1/2 Day 125.00", "Net Pay 5,400.00"].join("\n"), "2026-05-02");
+  assert.equal(r.printed_gross, 625050);
+  assert.deepEqual(r.earnings.map((e) => [e.kind, e.amount]), [["overtime", 11418]]);
+  const d = Object.fromEntries(r.deductions.map((x) => [x.kind, x.amount]));
+  assert.deepEqual(d, { sss: 30000, philhealth: 15000, loan: 20000, absences: 12500 });
+  assert.equal(r.printed_net, 540000);
+});
+
+test("a month whose letter was read as a digit (0ct, 5ep) is still a month", () => {
+  assert.equal(readScan("SAMPLE STORE\nDate: 0ct 2, 2026\nTOTAL 150.00", "2026-10-20").date, "2026-10-02");
+  assert.equal(readScan("SAMPLE STORE\nDate: 5ep 9, 2026\nTOTAL 150.00", "2026-10-20").date, "2026-09-09");
+});
+
+test("a payee after a To that the reader glued to the name is still found", () => {
+  const r = readScan("Transaction Details\nPHP592.50\nFrom MariBank\nToSAMPLE SUPERMARKET\nTransaction Time 01 Oct 2026, 19:52", "2026-10-20");
+  assert.equal(r.payee, "SAMPLE SUPERMARKET");
+  assert.equal(r.amount, 59250);
+});
+
+test("a payslip whose figures and labels were misread letter for digit is still read", () => {
+  const r = readPayslip(["Withnolding 1ax  7oo.00", "SSS 3oo.00", "PhnHeaitn 1oo.00", "Net Pay 10,3oo.00"].join("\n"), "2026-10-04");
+  assert.deepEqual(Object.fromEntries(r.deductions.map((d) => [d.kind, d.amount])), { tax: 70000, sss: 30000, philhealth: 10000 });
+  assert.equal(r.printed_net, 1030000);
+});
+
+test("linesFromBoxes reads 100:00 as an amount but leaves a clock time alone", () => {
+  const out = linesFromBoxes([box("Pag-IBIG", 20, 40, 150), box("100:00", 400, 40, 90), box("Time", 20, 80, 100), box("19:52", 400, 80, 90)]);
+  assert.match(out, /Pag-IBIG 100\.00/);
+  assert.match(out, /19:52/);
+  assert.ok(!/Time 19\.52/.test(out));
+});
+
+test("an employer read without the space after its comma gets it back", () => {
+  assert.equal(readPayslip("PHIL SAMPLE,INC.\nPAYSLIP\nNet Pay 9,075.00", "2026-10-04").employer, "PHIL SAMPLE, INC.");
+});
+
+test("spaces the reader dropped: a date written 01Oct2026 and a payee after TOSAMPLE", () => {
+  const r = readScan("Transaction Details\nPHP592.50\nFromMariBank\nTOSAMPLESUPERMARKET\nTransaction Time 01Oct2026, 19:52", "2026-10-20");
+  assert.equal(r.date, "2026-10-01");
+  assert.equal(r.payee, "SAMPLESUPERMARKET");
 });

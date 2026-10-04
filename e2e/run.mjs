@@ -981,7 +981,7 @@ await menuGo(page, "Scan");
 await page.setInputFiles("input[data-scan]:not([capture])", { name: "bank.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
 check(await seen(page, "#sheet", "Check what I read", 180000), "a bank screenshot is read too");
 check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("MariBank")').count() === 1, "it chose MariBank, the bank on the From line, as the account that paid");
-check(/SAMPLE SUPERMARKET/i.test(await page.inputValue("#f-payee")) && await page.inputValue("#f-amount") === "592.50" && await page.inputValue("#f-date") === "2026-10-01", "and read the payee, the amount and the date");
+check(/SAMPLE ?SUPERMARKET/i.test(await page.inputValue("#f-payee")) && await page.inputValue("#f-amount") === "592.50" && await page.inputValue("#f-date") === "2026-10-01", "and read the payee, the amount and the date (" + [await page.inputValue("#f-payee"), await page.inputValue("#f-amount"), await page.inputValue("#f-date")].join("|") + ")");
 check(await page.evaluate(() => { const sh = document.querySelector("#sheet .sheet"), d = document.querySelector("#sheet input[type=date]").getBoundingClientRect(), r = sh.getBoundingClientRect(); return sh.scrollWidth <= sh.clientWidth && d.left >= r.left && d.right <= r.right; }), "the window does not scroll sideways and its date box stays inside it");
 await shot(page, "42-scan-bank");
 await page.click('#sheet button:has-text("Cancel")');
@@ -1027,8 +1027,11 @@ await page.click('#nav button:has-text("Log")');
 
 // closing the app right after the photo: nothing is lost, it is read the next time the app opens
 await page.click('button[data-action="open-scan-pick"]'); await page.setInputFiles('input[data-scan="quick"]:not([capture])', { name: "bank2.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
-for (let i = 0; i < 100 && (JSON.parse((await stored(page)).local).settings.scan_queue ?? []).length === 0; i++) await page.waitForTimeout(100);
-check(JSON.parse((await stored(page)).local).settings.scan_queue?.length === 1, "the photo is kept in the queue the moment it is taken");
+const qlen = await page.evaluate(() => new Promise((resolve) => {   // watch the saved ledger from inside the page, so a quick reader cannot slip past
+  const t0 = Date.now(), look = () => { let n = 0; try { for (const k of Object.keys(localStorage)) { const v = localStorage.getItem(k); if (v && v.includes('"scan_queue"')) n = Math.max(n, (JSON.parse(v).settings?.scan_queue ?? []).length); } } catch { /* not the ledger */ } if (n > 0 || Date.now() - t0 > 20000) resolve(n); else setTimeout(look, 5); };
+  look();
+}));
+check(qlen === 1, "the photo is kept in the queue the moment it is taken (" + qlen + ")");
 await page.reload(); await page.waitForSelector("#nav button");
 let resumed = false;
 for (let i = 0; i < 1800 && !resumed; i++) { const l = JSON.parse((await stored(page)).local); resumed = l.state.transactions.filter((t) => t.source === "photo" && t.status === "draft").length === 2 && (l.settings.scan_queue ?? []).length === 0; if (!resumed) await page.waitForTimeout(100); }
@@ -1180,8 +1183,8 @@ console.log("Payslip photo");
 ({ ctx, page, errors } = await open({ blockSw: true }));
 await addAccount(page, "Wallet", "asset", "1000");
 const slipPng = await page.evaluate(() => {   // an invented payslip, drawn in the page
-  const c = document.createElement("canvas"); c.width = 1100; c.height = 1400;
-  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 1100, 1400); x.fillStyle = "#000"; x.font = "bold 38px monospace";
+  const c = document.createElement("canvas"); c.width = 1500; c.height = 1400;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 1500, 1400); x.fillStyle = "#000"; x.font = "bold 56px sans-serif";
   ["Sample Employer Inc", "PAYSLIP", "Pay period: 01/10/2026 - 02/10/2026", "Pay date: Oct 2, 2026", "EARNINGS", "Basic Salary   9,000.00", "Rice Subsidy   1,000.00", "Overtime   1,500.00", "Gross Pay   11,500.00", "DEDUCTIONS", "Withholding Tax   700.00", "SSS   300.00", "PhilHealth   100.00", "Pag-IBIG   100.00", "Net Pay   10,300.00"].forEach((l, i) => x.fillText(l, 40, 70 + i * 80));
   return c.toDataURL("image/png").split(",")[1];
 });

@@ -388,6 +388,7 @@ function accountForScan(r) {
 // once as it is and once with shadows taken out, and the better reading is kept. Returns the text the rest of the app works from.
 async function readPhoto(blob, progress, forcePayslip = false) {
   const first = await readPage(blob, progress);
+  if (first.boxes) return M.linesFromBoxes(first.boxes) || first.text;   // the stronger reader sees the page's layout: no second pass needed
   if (!forcePayslip && M.readScan(first.text, today()).kind !== "payslip") return first.text;
   const score = (text) => { const r = M.readPayslip(text, today()); return r.earnings.length + r.deductions.length + (r.printed_gross ? 1 : 0) + (r.printed_net ? 1 : 0); };
   let best = M.linesFromWords(first.words) || first.text;
