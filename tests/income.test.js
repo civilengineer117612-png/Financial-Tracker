@@ -196,7 +196,7 @@ test("the same payslip saved twice is refused: same period and same net pay", ()
   const again = planPayslip(first.state, base({ id: "ps2", transaction_id: "tx-ps2", employer: "Sample Employer Inc (misread)" }), NOW);
   assert.equal(again.ok, false);
   assert.equal(again.violations[0].code, "DUPLICATE_PAYSLIP");
-  assert.match(again.violations[0].message, /already saved a payslip for 2026-10-01 to 2026-10-15/);
+  assert.match(again.violations[0].message, /already saved one for 2026-10-01 to 2026-10-15/);
   assert.equal(planPayslip(first.state, base({ id: "ps3", transaction_id: "tx-ps3", deposit: 700000, printed_net: 700000 }), NOW).ok, true, "a second income in the same period, with another net pay, is allowed");
   assert.equal(planPayslip(first.state, base({ id: "ps4", transaction_id: "tx-ps4", period_from: "2026-10-16", period_to: "2026-10-31", pay_date: "2026-10-31" }), NOW).ok, true, "the next period with the same net pay is allowed");
 });
@@ -278,4 +278,19 @@ test("deductions by month carry a total of every deduction line, including absen
   assert.equal(d.months[0].total, payslipTotals(linesOf(s, "ps1")).deductions);
   assert.equal(d.months[0].government, 100000, "absences are not government money");
   assert.equal(d.months[0].lost, 105000);
+});
+
+test("the same payslip saved twice is refused with a message that says what to do; a different net pay or period is allowed", () => {
+  const first = planPayslip(ledger(), base(), NOW);
+  assert.ok(first.ok);
+  const again = planPayslip(first.state, base({ id: "ps2", transaction_id: "tx-ps2" }), NOW);
+  assert.equal(again.ok, false);
+  assert.equal(again.violations[0].code, "DUPLICATE_PAYSLIP");
+  assert.match(again.violations[0].message, /Duplicate payslip.*Change this payslip/);
+  const other = planPayslip(first.state, base({ id: "ps3", transaction_id: "tx-ps3", deposit: 870000, printed_net: 870000 }), NOW);
+  assert.ok(other.ok, "a different net pay is a different payslip");
+  const next = planPayslip(first.state, base({ id: "ps4", transaction_id: "tx-ps4", period_from: "2026-10-16", period_to: "2026-10-31" }), NOW);
+  assert.ok(next.ok, "a different period is a different payslip");
+  const edit = updatePayslip(first.state, "ps1", base(), NOW);
+  assert.ok(edit.ok, "changing a payslip is never a duplicate of itself");
 });
