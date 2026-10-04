@@ -185,15 +185,15 @@ function pickAmount(kind, lines) {
     lines.forEach((line, i) => {
       if (!labelRe.test(line.toLowerCase()) || (notRe && notRe.test(line.toLowerCase()))) return;
       const a = amountsIn(line);
-      const pick = a.length ? a[a.length - 1] : amountsIn(lines[i + 1] ?? "")[0];
+      const next = lines[i + 1] ?? "", pick = a.length ? a[a.length - 1] : /[a-z]{3}/i.test(next.replace(/php|peso/gi, "")) ? undefined : amountsIn(next)[0];   // a figure on the next line only if that line is just a figure, not another label's
       if (pick) hit = pick;   // the last matching line wins: the grand total comes after the subtotal
     });
     return hit;
   };
   if (kind === "payslip") return { c: find(/net\s*(pay|salary|income|amount)|take[- ]?home/), how: "net pay" };
-  const labelled = find(/total|amount due|amount paid|amount sent|^\s*amount\b|\bamount\b/, /sub\s?-?total|vat|change|tendered|\bcash\b|discount|tax|fee|balance/);
+  const labelled = find(/total|amount due|amount paid|amount sent|^\s*amount\b|\bamount\b/, /sub\s?-?total|vat|change|tendered|\bcash\b|discount|tax|fee|balance|cash\s*back|reward|points/);
   if (labelled) return { c: labelled, how: "total" };
-  const all = lines.flatMap((l) => (/change|tendered|\bcash\b|vat|sub\s?-?total|discount/i.test(l) ? [] : amountsIn(l)));
+  const all = lines.flatMap((l) => (/change|tendered|\bcash\b|vat|sub\s?-?total|discount|cash\s*back|reward|points/i.test(l) ? [] : amountsIn(l)));
   return all.length ? { c: Math.max(...all), how: "largest" } : { c: null, how: null };
 }
 
@@ -382,7 +382,7 @@ export function linesFromWords(words) {
 // the amount to its right whose height matches once the LOCAL tilt (the middle of the angles of the nearest wide boxes) is allowed for;
 // each amount is used once, the closest match first. Returns plain text, one "label amount" line per piece, top to bottom.
 // boxes: [{text, th, x0, y0, x1, y1}].
-const BOX_AMOUNT = /^[₱#£P]?\s*\d{1,3}(?:[,.]\d{3})*[.,]\d{2}$|^[₱#£P]?\s*\d+[.,]\d{2}$/;
+const BOX_AMOUNT = /^[+\u2212-]?\s*(?:₱|php|[#£P])?\s*(?:\d{1,3}(?:[,.]\d{3})*|\d+)[.,]\d{2}$/i;
 // A box that is only a figure may carry a stray mark in front ("：1.157.B4") and a letter for a digit: clean it so it reads as an amount.
 const tidyBox = (text) => { const t = text.trim().replace(/^[：:·•]+\s*/, ""); return /^[\d.,oOBSIl₱#£P\s]+$/.test(t) && /\d/.test(t) ? cleanDigits(t) : t; };
 export function linesFromBoxes(input) {

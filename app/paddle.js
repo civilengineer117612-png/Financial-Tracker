@@ -3,7 +3,7 @@
 // (even tilted or on curved paper), then the reader reads each line. Returns every line with its box; what the lines MEAN is decided in
 // src/model/scan.js. Written for the browser, no libraries beyond the runtime.
 const BASE = new URL("../src/vendor/paddle/", import.meta.url).href;
-const DET_MAX = 1536;   // the longest side the finder looks at; bigger reads small print better and is slower
+const DET_MAX = 2048;   // the longest side the finder looks at; bigger reads small print better (a tall phone screenshot at 1536 was read as gibberish) and is slower
 
 let ort = null, det = null, rec = null, dict = null;
 async function load(progress) {

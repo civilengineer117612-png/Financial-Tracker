@@ -139,3 +139,22 @@ test("a bank the icon services only answer with a placeholder for has Wikipedia 
   for (const b of BANKS.filter((x) => x.noLookup)) assert.ok([b.wiki ?? []].flat().length >= 1, b.name + " needs a wiki phrase");
   assert.ok(bankById("securitybank").noLookup, "Security Bank's grey placeholder is not used");
 });
+
+test("a bank can hold a savings account and a credit card side by side: the card is named for what it is", () => {
+  const s0 = makeState();
+  const a = planAccount(s0, { id: "a1", bank: "metrobank", kind: "asset", date: "2026-01-01" });
+  assert.equal(a.account.name, "Metrobank");
+  const c = planAccount(a.state, { id: "a2", bank: "metrobank", kind: "liability", date: "2026-01-01" });
+  assert.equal(c.ok, true, JSON.stringify(c));
+  assert.equal(c.account.name, "Metrobank \u00b7 Credit card");
+  assert.equal(c.account.class, "liability");
+  assert.deepEqual(c.state.accounts.filter((x) => x.bank === "metrobank").map((x) => x.class).sort(), ["asset", "liability"]);
+});
+
+test("a second plain account at the same bank says how to tell them apart", () => {
+  const a = planAccount(makeState(), { id: "a1", bank: "metrobank", kind: "asset", date: "2026-01-01" });
+  const again = planAccount(a.state, { id: "a2", bank: "metrobank", kind: "asset", date: "2026-01-01" });
+  assert.equal(again.ok, false);
+  assert.match(again.violations[0].message, /say which part it is/);
+  assert.equal(planAccount(a.state, { id: "a3", bank: "metrobank", sub: "Payroll", kind: "asset", date: "2026-01-01" }).account.name, "Metrobank \u00b7 Payroll");
+});

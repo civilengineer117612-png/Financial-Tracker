@@ -865,6 +865,14 @@ check((await text(page, "#a-preview")).includes("GoTyme · Emergency Fund"), "th
 await page.fill("#a-open", "100"); await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added GoTyme · Emergency Fund");
 await page.click("#a-bank"); await page.click('#sheet .bankrow:has-text("GoTyme")'); await page.fill("#a-sub", "Savings"); await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added GoTyme · Savings");
 check((await page.locator("#screen .row", { hasText: "GoTyme" }).count()) === 2, "two accounts can live in the same bank");
+// a savings account and a credit card at the same bank
+await page.click("#a-bank"); await page.click('#sheet .bankrow:has-text("Metrobank")'); await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added Metrobank");
+await page.click("#a-bank"); await page.click('#sheet .bankrow:has-text("Metrobank")'); await page.selectOption("#a-kind", "liability");
+check((await text(page, "#a-preview")).includes("Saved as: Metrobank \u00b7 Credit card"), "a credit card at a bank is previewed as 'Bank \u00b7 Credit card'");
+await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added Metrobank \u00b7 Credit card");
+ledgerNow = JSON.parse((await stored(page)).local);
+check(ledgerNow.state.accounts.filter((a) => a.bank === "metrobank").map((a) => a.class).sort().join() === "asset,liability", "the same bank holds a money account and a credit card");
+await page.selectOption("#a-kind", "asset");
 await page.click("#a-bank"); await page.click('#sheet .bankrow:has-text("Not in the list")');
 check((await page.locator("#a-name").count()) === 1, "'not in the list' goes back to typing a name");
 ledgerNow = JSON.parse((await stored(page)).local);
