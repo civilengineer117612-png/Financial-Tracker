@@ -175,6 +175,7 @@ function renderNav() {
 
 let lastTabSig = null, lastViewSig = null, swapTimer = null;
 function renderScreen() {
+  if (ui.tab !== "log") ui.arrange = false;
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
     : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "buffer" ? viewBuffer() : ui.tab === "scan" ? viewScan() : ui.tab === "income" ? viewIncome() : viewLog();
@@ -226,9 +227,21 @@ function viewLog() {
     + (waitingPhotos && !ui.scan?.busy ? `<p class="note">${waitingPhotos} photo${waitingPhotos === 1 ? " is" : "s are"} kept, waiting to be read. <button class="link" data-action="read-queue">Read now</button></p>` : "");
   return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${photoNote}${dueNote}${backupNote}${tripNote}
     ${dayCard()}
-    <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
+    ${tilesHtml()}
     <p><button class="primary compact" data-action="open-other">Add expense</button></p>
     <h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
+}
+
+// The quick tiles. Tap one to log it. Hold one to arrange: drag to move, tap to change, "+" to add, Done to finish.
+const TRASH = '<path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/>';
+function tilesHtml() {
+  const tile = (p, arranging) => `<${arranging ? "div" : "button"} class="tile" data-action="${arranging ? "edit-tile" : "open-preset"}" data-id="${esc(p.id)}"${arranging ? ' role="button" tabindex="0"' : ""}><b>${esc(p.name)}</b><span>${peso(p.amount)}</span><i class="tcat">${esc(categoryName(p.category_id))}</i></${arranging ? "div" : "button"}>`;
+  if (!ui.arrange) {
+    const hint = ledger.settings.tile_hint_done ? "" : `<p class="note small center">Hold a tile to move, change or remove it.</p>`;
+    return `<div class="tiles">${S().presets.map((p) => tile(p, false)).join("")}</div>${hint}`;
+  }
+  const add = S().presets.length < M.MAX_PRESETS ? `<div class="tile addtile" data-action="add-tile" role="button" tabindex="0" aria-label="Add a tile"><b>+</b></div>` : "";
+  return `<div class="tiles arranging">${S().presets.map((p) => tile(p, true)).join("")}${add}</div><p class="center"><button class="link" data-action="arrange-done">Done</button></p>`;
 }
 
 function rowFor(t) {
@@ -1227,13 +1240,17 @@ function renderSheet() {
   let body = "";
   if (sh.type === "pay") {
     const p = S().presets.find((x) => x.id === sh.id);
-    // The pencil changes the TILE itself (name, amount, category, and the account offered first). Saving logs nothing.
-    const f = ui.form ?? {};
-    body = f.editing
-      ? `<h3>Change this tile</h3><p class="note small">This changes the tile on the Log screen. Nothing is logged.</p><label for="pay-name">Name</label><input id="pay-name" data-field="name" value="${esc(f.name ?? p.name)}" autocomplete="off"><label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
-        <label>Category</label>${chips(expenseCategories(), f.category_id, "pick-cat")}<label>Paid from (offered first)</label>${chips(accountsFor(p.id), f.account_id, "pick-acct")}
-        <p><button class="primary" id="f-save" data-action="save-pay-edit" style="margin-top:14px" disabled>Save tile</button></p>`
-      : `<h3 class="paytitle"><span>${esc(f.name ?? p.name)} ${peso(M.parsePesos(f.amount ?? "").ok ? M.parsePesos(f.amount).centavos : p.amount)}</span><button class="editbtn" data-action="pay-edit" aria-label="Change this tile: name, amount, category and account"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.edit}</svg></button></h3><p class="note">Paid from</p>${chips(accountsFor(p.id), null, "pay")}`;
+    // The pencil opens the tile editor; tapping an account logs the tile as it is.
+    body = `<h3 class="paytitle"><span>${esc(p.name)} ${peso(p.amount)}</span><button class="editbtn" data-action="pay-edit" aria-label="Change this tile"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.edit}</svg></button></h3><p class="note">Paid from</p>${chips(accountsFor(p.id), null, "pay")}`;
+  } else if (sh.type === "tile") {
+    // Change a tile (name, amount, category), or add one. Saving logs nothing.
+    const f = ui.form ?? {}, isNew = !sh.id;
+    body = `<h3 class="paytitle"><span>${isNew ? "Add a tile" : "Change this tile"}</span>${isNew ? "" : `<button class="editbtn" data-action="remove-tile" aria-label="Remove this tile"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TRASH}</svg></button>`}</h3>
+      ${ui.confirmRemoveTile ? `<p class="note">Remove this tile? <button class="link" data-action="remove-tile-yes">Yes, remove it</button></p>` : `<p class="note small">This changes the tile on the Log screen. Nothing is logged.</p>`}
+      <label for="pay-name">Name</label><input id="pay-name" data-field="name" value="${esc(f.name ?? "")}" autocomplete="off">
+      <label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
+      <label>Category</label>${chips(expenseCategories(), f.category_id, "pick-cat")}
+      <p><button class="primary" id="f-save" data-action="save-tile" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "other") {
     body = `<h3>Add expense</h3>
       <label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
@@ -1503,9 +1520,9 @@ function refreshSave() {
   if (type === "other") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && f.category_id && f.account_id);
-  } else if (type === "pay") {
+  } else if (type === "tile") {
     const a = M.parsePesos(f.amount ?? "");
-    btn.disabled = !(a.ok && a.centavos > 0 && (f.name ?? "").trim() && f.category_id && f.account_id);
+    btn.disabled = !(a.ok && a.centavos > 0 && (f.name ?? "").trim() && f.category_id);
   } else if (type === "budget") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !a.ok;
@@ -1853,14 +1870,23 @@ async function onClick(el) {
       if (r.ok) await commit(r.state, settings);
       break;
     }
-    case "open-preset": { const p = S().presets.find((x) => x.id === id); ui.sheet = { type: "pay", id }; ui.form = { name: p.name, amount: (p.amount / 100).toFixed(2), editing: false, category_id: p.category_id, account_id: accountsFor(p.id)[0]?.id }; renderSheet(); break; }
-    case "pay-edit": ui.form.editing = true; renderSheet(); $("pay-name")?.focus(); break;
+    case "open-preset": ui.sheet = { type: "pay", id }; renderSheet(); break;
+    case "pay-edit": { const p = S().presets.find((x) => x.id === ui.sheet.id); ui.confirmRemoveTile = false; ui.sheet = { type: "tile", id: p.id }; ui.form = { name: p.name, amount: (p.amount / 100).toFixed(2), category_id: p.category_id }; renderSheet(); break; }
+    case "edit-tile": { const p = S().presets.find((x) => x.id === id); if (!p) break; ui.confirmRemoveTile = false; ui.sheet = { type: "tile", id }; ui.form = { name: p.name, amount: (p.amount / 100).toFixed(2), category_id: p.category_id }; renderSheet(); break; }
+    case "add-tile": ui.confirmRemoveTile = false; ui.sheet = { type: "tile", id: null }; ui.form = { name: "", amount: "", category_id: expenseCategories()[0]?.id }; renderSheet(); break;
+    case "arrange-done": ui.arrange = false; renderScreen(); break;
+    case "remove-tile": ui.confirmRemoveTile = true; renderSheet(); break;
+    case "remove-tile-yes": {
+      const r = M.removePreset(S(), ui.sheet.id);
+      if (!r.ok) { showToast(r.error); break; }
+      ui.sheet = null; ui.confirmRemoveTile = false; renderSheet();
+      await commit(r.state); showToast("Tile removed.");
+      break;
+    }
     case "pay": {
-      const p = S().presets.find((x) => x.id === ui.sheet.id), f = ui.form ?? {}, amt = M.parsePesos(f.amount ?? "");
-      if (!amt.ok || amt.centavos <= 0) { showToast("Check the amount."); break; }
-      const name = (f.name ?? "").trim() || p.name;
+      const p = S().presets.find((x) => x.id === ui.sheet.id);
       ui.sheet = null; renderSheet();
-      await logExpense({ transaction_id: newId("tx"), payee: name, category_id: p.category_id, amount: amt.centavos, account_id: id, source: "preset", preset_id: p.id }, name + " " + peso(amt.centavos));
+      await logExpense({ transaction_id: newId("tx"), payee: p.name, category_id: p.category_id, amount: p.amount, account_id: id, source: "preset", preset_id: p.id }, p.name + " " + peso(p.amount));
       break;
     }
     case "open-other": ui.sheet = { type: "other" }; ui.form = { amount: "", category_id: null, account_id: accountsFor(null)[0]?.id }; renderSheet(); break;
@@ -1910,15 +1936,14 @@ async function onClick(el) {
       await logExpense({ transaction_id: newId("tx"), payee: "", category_id: form.category_id, amount, account_id: form.account_id, source: "manual" }, categoryName(form.category_id) + " " + peso(amount));
       break;
     }
-    case "save-pay-edit": {
-      const p = S().presets.find((x) => x.id === ui.sheet.id), f = ui.form, amt = M.parsePesos(f.amount ?? "");
-      const r = M.updatePreset(S(), p.id, { name: f.name, amount: amt.ok ? amt.centavos : 0, category_id: f.category_id });
+    case "save-tile": {
+      const f = ui.form, amt = M.parsePesos(f.amount ?? ""), tile = { name: f.name, amount: amt.ok ? amt.centavos : 0, category_id: f.category_id };
+      const r = ui.sheet.id ? M.updatePreset(S(), ui.sheet.id, tile) : M.addPreset(S(), tile, newId("pre"));
       if (!r.ok) { showToast(r.error); break; }
-      const byPreset = { ...(ledger.settings.last_account_by_preset ?? {}), ...(f.account_id ? { [p.id]: f.account_id } : {}) };
+      const adding = !ui.sheet.id;
       ui.sheet = null; renderSheet();
-      await commit(r.state, { ...ledger.settings, last_account_by_preset: byPreset });
-      const np = r.state.presets.find((x) => x.id === p.id);
-      showToast("Tile saved: " + np.name + " " + peso(np.amount));
+      await commit(r.state);
+      showToast(adding ? "Tile added." : "Tile saved.");
       break;
     }
     case "undo": {
@@ -2118,6 +2143,63 @@ async function addAccount() {
   showToast((ok ? "Added " : "Not safely stored: ") + plan.account.name);
 }
 
+// ---- the quick tiles: hold to arrange, drag to move ----
+// Holding a tile (about half a second) switches the tiles to arrange mode. There: drag a tile onto another place and the others slide aside;
+// tap a tile to change it; "+" adds one; Done finishes. A hold or a drag must not also count as a tap.
+let holdTimer = null, holdAt = null, suppressClick = false, tdrag = null;
+const enterArrange = () => {
+  ui.arrange = true; renderScreen(); navigator.vibrate?.(12);
+  if (!ledger.settings.tile_hint_done) commit(S(), { ...ledger.settings, tile_hint_done: true }, { quiet: true });
+};
+document.addEventListener("click", (e) => { if (suppressClick) { suppressClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
+document.addEventListener("pointerdown", (e) => {
+  const t = e.target.closest(".tile[data-id]");
+  if (!t || ui.tab !== "log" || ui.sheet) return;
+  if (!ui.arrange) {
+    holdAt = { x: e.clientX, y: e.clientY };
+    holdTimer = setTimeout(() => { holdTimer = null; suppressClick = true; enterArrange(); }, 450);
+    return;
+  }
+  const tiles = [...document.querySelectorAll(".tiles.arranging .tile[data-id]")];
+  tdrag = { id: t.dataset.id, el: t, x0: e.clientX, y0: e.clientY, moved: false, tiles, rects: tiles.map((x) => x.getBoundingClientRect()), order: tiles.map((x) => x.dataset.id) };
+  tdrag.index = tdrag.order.indexOf(tdrag.id);
+  try { t.setPointerCapture(e.pointerId); } catch { /* the tdrag still works without capture */ }
+});
+document.addEventListener("pointermove", (e) => {
+  if (holdTimer && holdAt && Math.hypot(e.clientX - holdAt.x, e.clientY - holdAt.y) > 10) { clearTimeout(holdTimer); holdTimer = null; }
+  if (!tdrag) return;
+  const dx = e.clientX - tdrag.x0, dy = e.clientY - tdrag.y0;
+  if (!tdrag.moved && Math.hypot(dx, dy) < 8) return;
+  if (!tdrag.moved) { tdrag.moved = true; tdrag.el.classList.add("dragging"); }
+  tdrag.el.style.transform = `translate(${dx}px, ${dy}px) scale(1.04)`;
+  const home = tdrag.rects[tdrag.tiles.indexOf(tdrag.el)], cx = home.left + home.width / 2 + dx, cy = home.top + home.height / 2 + dy;
+  let best = tdrag.index, bestD = Infinity;
+  tdrag.rects.forEach((r, k) => { const d = Math.hypot(cx - (r.left + r.width / 2), cy - (r.top + r.height / 2)); if (d < bestD) { bestD = d; best = k; } });
+  if (best !== tdrag.index) {   // the others slide into their new places
+    tdrag.order.splice(tdrag.index, 1); tdrag.order.splice(best, 0, tdrag.id); tdrag.index = best;
+    tdrag.order.forEach((id, k) => {
+      if (id === tdrag.id) return;
+      const el = tdrag.tiles.find((x) => x.dataset.id === id), from = tdrag.rects[tdrag.tiles.indexOf(el)], to = tdrag.rects[k];
+      el.style.transform = `translate(${to.left - from.left}px, ${to.top - from.top}px)`;
+    });
+  }
+});
+const endPointer = async (e) => {
+  clearTimeout(holdTimer); holdTimer = null;
+  if (e.type === "pointerup" || e.type === "pointercancel") setTimeout(() => { suppressClick = false; }, 60);
+  if (!tdrag) return;
+  const d = tdrag; tdrag = null;
+  if (!d.moved) return;   // a tap: the click opens the tile
+  suppressClick = true;
+  const slot = d.rects[d.index], home = d.rects[d.tiles.indexOf(d.el)];
+  d.el.classList.remove("dragging"); d.el.style.transform = `translate(${slot.left - home.left}px, ${slot.top - home.top}px)`;   // it settles into its place
+  const changed = d.order.join() !== d.tiles.map((x) => x.dataset.id).join();
+  await new Promise((r) => setTimeout(r, 190));
+  if (changed) { const r = M.reorderPresets(S(), d.order); if (r.ok) { await commit(r.state); return; } }
+  renderScreen();
+};
+document.addEventListener("pointerup", endPointer);
+document.addEventListener("pointercancel", endPointer);
 document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-action]");
   if (el) onClick(el);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseSchedule, isDue, datesBetween, categoryForPayee, draftFromTemplate, draftsForRange, planReserveTransfer, naturalBalance, updatePreset } from "../src/model/index.js";
+import { parseSchedule, isDue, datesBetween, categoryForPayee, draftFromTemplate, draftsForRange, planReserveTransfer, naturalBalance, updatePreset, addPreset, removePreset, reorderPresets, MAX_PRESETS } from "../src/model/index.js";
 import { makeState, commit, cardPurchase } from "./fixtures.js";
 
 // Invented data only.
@@ -130,4 +130,32 @@ test("a quick tile refuses an empty name, a bad amount, a non-spending category 
   assert.equal(updatePreset(s, "pre-lunch", { name: "x".repeat(25), amount: 100, category_id: "food" }).ok, false);
   assert.equal(updatePreset(s, "pre-lunch", { name: "Snack", amount: 100, category_id: "pay" }).ok, false);
   assert.equal(updatePreset(s, "pre-nope", { name: "Snack", amount: 100, category_id: "food" }).ok, false);
+});
+
+test("tiles can be added up to six, removed and moved, and none of it logs anything", () => {
+  let s = withTiles();
+  const a = addPreset(s, { name: " Coffee ", amount: 12000, category_id: "food" }, "pre-coffee");
+  assert.equal(a.ok, true);
+  assert.deepEqual(a.state.presets.map((p) => p.name), ["Lunch", "Dinner", "Coffee"]);
+  s = a.state;
+  const moved = reorderPresets(s, ["pre-coffee", "pre-lunch", "pre-dinner"]);
+  assert.deepEqual(moved.state.presets.map((p) => p.id), ["pre-coffee", "pre-lunch", "pre-dinner"]);
+  const gone = removePreset(moved.state, "pre-lunch");
+  assert.deepEqual(gone.state.presets.map((p) => p.id), ["pre-coffee", "pre-dinner"]);
+  assert.equal(gone.state.transactions.length, 0);
+  for (let i = 0; i < MAX_PRESETS; i++) { const r = addPreset(s, { name: "T" + i, amount: 100, category_id: "food" }, "pre-x" + i); if (r.ok) s = r.state; }
+  assert.equal(s.presets.length, MAX_PRESETS);
+  assert.equal(addPreset(s, { name: "One more", amount: 100, category_id: "food" }, "pre-more").ok, false, "six is the most");
+});
+
+test("tiles refuse a bad new tile, a duplicate id, a missing tile and a reorder that drops or invents a tile", () => {
+  const s = withTiles();
+  assert.equal(addPreset(s, { name: "", amount: 100, category_id: "food" }, "p1").ok, false);
+  assert.equal(addPreset(s, { name: "A", amount: 0, category_id: "food" }, "p1").ok, false);
+  assert.equal(addPreset(s, { name: "A", amount: 100, category_id: "pay" }, "p1").ok, false);
+  assert.equal(addPreset(s, { name: "A", amount: 100, category_id: "food" }, "pre-lunch").ok, false);
+  assert.equal(removePreset(s, "pre-nope").ok, false);
+  assert.equal(reorderPresets(s, ["pre-lunch"]).ok, false);
+  assert.equal(reorderPresets(s, ["pre-lunch", "pre-lunch"]).ok, false);
+  assert.equal(reorderPresets(s, ["pre-lunch", "pre-other"]).ok, false);
 });

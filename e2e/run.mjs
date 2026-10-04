@@ -107,28 +107,65 @@ check(await seen(page, "#screen", "₱95.00"), "today's list shows it");
 await page.click('#toast button:has-text("Undo")');
 check(await seen(page, "#screen", "Nothing logged today"), "undo removes the draft");
 const txCount = async () => JSON.parse((await stored(page)).local).state.transactions.length;
+const presetsNow = async () => JSON.parse((await stored(page)).local).state.presets;
 const nBefore = await txCount();
+check((await text(page, ".tiles")).includes("Food") && await page.locator(".tile .tcat").first().evaluate((e) => getComputedStyle(e).fontSize === "11px"), "each tile shows its category, small and quiet");
+check((await text(page, "#screen")).includes("Hold a tile to move, change or remove it."), "a one-line hint says how to arrange the tiles");
+// the pencil in a tile's window opens the tile editor
 await page.click('button.tile:has-text("Dinner")');
 await page.click('#sheet button[data-action="pay-edit"]');
-check((await text(page, "#sheet")).includes("Change this tile") && (await text(page, "#sheet")).includes("Category") && (await text(page, "#sheet")).includes("Paid from"), "the pencil opens the tile itself: name, amount, category and account, with Save tile");
+check((await text(page, "#sheet")).includes("Change this tile") && (await text(page, "#sheet")).includes("Category") && !(await text(page, "#sheet")).includes("Paid from") && (await text(page, "#f-save")).trim() === "Save" && await page.locator('#sheet button[data-action="remove-tile"]').count() === 1, "the pencil opens the tile editor: name, amount, category, Save, and a remove icon");
 await page.fill("#pay-name", "Snack"); await page.fill("#f-amount", "45");
-await page.click('#sheet .chip:has-text("Shopping")'); await page.click('#sheet .chip:has-text("Test Card")');
+await page.click('#sheet .chip:has-text("Shopping")');
 await page.click("#f-save");
-check(await seen(page, "#toast", "Tile saved: Snack ₱45.00"), "saving changes the tile and says so");
+check(await seen(page, "#toast", "Tile saved."), "saving changes the tile and says so");
 check(await seen(page, "#screen", "Snack") && (await text(page, ".tiles")).includes("₱45.00") && !(await text(page, ".tiles")).includes("Dinner"), "the tile on the Log screen now reads Snack ₱45.00");
 check(await txCount() === nBefore, "and nothing was logged");
 await page.click('button.tile:has-text("Snack")');
-check((await page.locator("#sheet .chip").first().innerText()).includes("Test Card"), "the account chosen there is offered first when the tile is tapped");
+check((await text(page, "#sheet")).includes("Paid from"), "tapping the changed tile still asks which account paid");
 await page.click('#sheet .chip:has-text("Test Cash")');
 { const led = JSON.parse((await stored(page)).local), t = led.state.transactions.find((x) => x.payee === "Snack"), es = led.state.entries.filter((e) => e.transaction_id === t.id);
   check(es.some((e) => e.category_id === "cat-shopping" && e.amount === 4500), "logging the changed tile uses its new amount and category"); }
 await page.click('#toast button:has-text("Undo")');
 await seen(page, "#screen", "Nothing logged today");
-// put the tile back as it was, for the checks that follow
+
+// change it back to Dinner, for the checks that follow
 await page.click('button.tile:has-text("Snack")'); await page.click('#sheet button[data-action="pay-edit"]');
-await page.fill("#pay-name", "Dinner"); await page.fill("#f-amount", "95");
-await page.click('#sheet .chip:has-text("Food")'); await page.click('#sheet .chip:has-text("Test Cash")'); await page.click("#f-save");
-check(await seen(page, "#toast", "Tile saved: Dinner ₱95.00"), "and it can be changed back");
+await page.fill("#pay-name", "Dinner"); await page.fill("#f-amount", "95"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save");
+check(await seen(page, "#toast", "Tile saved.") && (await text(page, ".tiles")).includes("Dinner"), "and a tile can be changed back");
+// hold a tile: arrange mode
+const centre = async (sel) => { const b = await page.locator(sel).first().boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+let c0 = await centre('.tile[data-id="pre-breakfast"]');
+await page.mouse.move(c0.x, c0.y); await page.mouse.down(); await page.waitForTimeout(700); await page.mouse.up();
+check(await page.locator(".tiles.arranging").count() === 1 && await page.locator("#sheet .sheet").count() === 0, "holding a tile switches the tiles to arrange mode, and does not also log or open it");
+check(!(await text(page, "#screen")).includes("Hold a tile to move"), "the hint goes away once it has been used");
+check(await page.locator(".tile.addtile").count() === 1 && await page.locator('.tiles.arranging .tile[data-id]').count() === 3, "a + sits after the three tiles");
+// drag the first tile to the last place
+c0 = await centre('.tile[data-id="pre-breakfast"]'); const c2 = await centre('.tile[data-id="pre-lunch"]'), c3 = await centre('.tile[data-id="' + (await presetsNow())[2].id + '"]');
+await page.mouse.move(c0.x, c0.y); await page.mouse.down();
+for (let k = 1; k <= 12; k++) await page.mouse.move(c0.x + ((c3.x - c0.x) * k) / 12, c0.y + ((c3.y - c0.y) * k) / 12);
+await page.waitForTimeout(100);
+check(await page.locator(".tile.dragging").count() === 1, "dragging lifts the tile");
+await page.mouse.up(); await page.waitForTimeout(500);
+check((await presetsNow()).map((p) => p.id).join() === "pre-lunch,pre-dinner,pre-breakfast" && await page.locator("#sheet .sheet").count() === 0, "dropping it on the last place moves it there and saves the new order, with no window opening");
+// tap a tile in arrange mode to change it; remove it from there
+await page.click('.tiles.arranging .tile[data-id="pre-breakfast"]');
+check((await text(page, "#sheet")).includes("Change this tile"), "in arrange mode, tapping a tile opens its editor");
+await page.click('#sheet button[data-action="remove-tile"]');
+check((await text(page, "#sheet")).includes("Remove this tile?"), "the remove icon asks once more");
+await page.click('#sheet button[data-action="remove-tile-yes"]');
+check(await seen(page, "#toast", "Tile removed.") && (await presetsNow()).length === 2 && await txCount() === nBefore, "removing takes the tile away and logs nothing");
+// add one with the +
+await page.click(".tile.addtile");
+check((await text(page, "#sheet")).includes("Add a tile") && await page.locator('#sheet button[data-action="remove-tile"]').count() === 0 && await page.locator("#f-save").isDisabled(), "the + opens an empty editor with no remove icon");
+await page.fill("#pay-name", "Coffee"); await page.fill("#f-amount", "120");
+await page.click("#f-save");
+check(await seen(page, "#toast", "Tile added.") && (await presetsNow()).map((p) => p.name).join() === "Lunch,Dinner,Coffee", "saving adds the new tile at the end");
+// put Breakfast back (the checks after this use it)
+await page.click(".tile.addtile"); await page.fill("#pay-name", "Breakfast"); await page.fill("#f-amount", "20"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save");
+await seen(page, "#toast", "Tile added.");
+await page.click('button[data-action="arrange-done"]');
+check(await page.locator(".tiles.arranging").count() === 0 && (await text(page, ".tiles")).includes("Coffee"), "Done goes back to the normal tiles");
 await page.click('button.tile:has-text("Lunch")');
 check((await page.locator("#sheet .chip").first().innerText()) === "Test Debit" || true, "chips render");
 await page.click('#sheet .chip:has-text("Test Cash")');
