@@ -1235,28 +1235,32 @@ await page.click('button[aria-label="Later"]');
 await page.click('#nav button:has-text("Verify")');
 check((await text(page, "#screen")).includes("Overtime to Emergency Fund") && (await text(page, "#screen")).includes("₱900.00"), "Verify holds the 60% draft: 60% of ₱1,500.00 is ₱900.00");
 await menuGo(page, "Income");
-check(!(await text(page, "#screen")).includes("stays in the account the pay landed in") && await page.locator('#screen button[data-action="open-payslips"]').count() === 1, "the payslips are not listed on the Income screen: one Payslips button opens them");
-await page.click('button[data-action="open-payslips"]');
+check(!(await text(page, "#screen")).includes("stays in the account the pay landed in") && await page.locator('#screen button.choice[data-action="open-payslips"]').count() === 1, "the payslips are not listed on the Income screen: one Payslips button opens them");
+await page.click('button.choice[data-action="open-payslips"]');
 check((await text(page, "#sheet")).includes("stays in the account the pay landed in"), "in the Payslips window, the free part of the overtime stays put by default and says so");
 await page.click('#sheet button:has-text("Move it somewhere else")');
 await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save");
 check(await seen(page, "#toast", "waiting in Verify"), "choosing an account makes a second draft");
-await page.click('button[data-action="open-payslips"]');
+await page.click('button.choice[data-action="open-payslips"]');
 check(!(await text(page, "#sheet")).includes("stays in the account the pay landed in"), "and the choice is no longer offered");
 check((await text(page, "#sheet")).includes("Sep 16\u201330, 2026") && (await text(page, "#sheet")).includes("paid Oct 2, 2026"), "each payslip shows the period it pays for and the day it was paid");
 await page.click('#sheet button:has-text("Close")');
 await page.click('#nav button:has-text("Verify")');
 check((await text(page, "#screen")).includes("1 of 2"), "Verify now holds two drafts: the Emergency Fund part and the free part");
+// the title and the first line below it sit at the same height on Log and on Verify
+const barAt = () => page.evaluate(() => ({ h1: Math.round(document.querySelector("#top h1").getBoundingClientRect().top), below: Math.round(document.querySelector("#screen").getBoundingClientRect().top) }));
+const onVerify = await barAt(); await page.click('#nav button:has-text("Log")'); const onLog = await barAt(); await page.click('#nav button:has-text("Verify")');
+check(onVerify.h1 === onLog.h1 && onVerify.below === onLog.below, "the title and the content start at the same height on Log and Verify (" + JSON.stringify(onVerify) + " vs " + JSON.stringify(onLog) + ")");
 // changing the payslip: the window opens filled in, and saving replaces the payslip (the pay is not counted twice)
 await menuGo(page, "Income");
 const heroBefore = await text(page, ".hero");
-await page.click('button[data-action="open-payslips"]');
+await page.click('button.choice[data-action="open-payslips"]');
 await page.click('#sheet button[data-action="edit-slip"]');
 check((await text(page, "#sheet")).includes("Change this payslip") && await page.locator("#p-emp").inputValue() !== "" && await page.locator("#p-net").inputValue() !== "", "Change this payslip opens the payslip window already filled in");
 await page.fill("#p-emp", "Renamed Test Employer"); await page.click("#f-save");
 check(await seen(page, "#toast", "Payslip changed"), "saving the change says so");
-check((await text(page, ".hero")) === heroBefore && await page.locator('button[data-action="open-payslips"] .bval:has-text("1")').count() === 1, "the Income total is the same and there is still one payslip");
-await page.click('button[data-action="open-payslips"]');
+check((await text(page, ".hero")) === heroBefore && await page.locator('button.choice[data-action="open-payslips"] .bval:has-text("1")').count() === 1, "the Income total is the same and there is still one payslip");
+await page.click('button.choice[data-action="open-payslips"]');
 check((await text(page, "#sheet")).includes("Renamed Test Employer"), "the list shows the changed employer");
 await page.click('#sheet button:has-text("Close")');
 // the Months view is a short list: one line per month, tap a month for where it came from
@@ -1266,15 +1270,39 @@ await page.locator(".mlist details.mrow summary").first().click();
 check((await text(page, ".mlist")).includes("Base pay"), "tapping a month shows where it came from");
 await shot(page, "38-months");
 await page.click('button[data-action="income-view"][data-view="overview"]');
+// income added without a payslip (a payslip photo once saved as plain pay received) is listed and can be removed
+await page.click('button:has-text("Add income")'); await page.click('#sheet button:has-text("Other income")');
+await page.fill("#f-amount", "777"); await page.fill("#f-date", "2026-09-20"); await page.click('#sheet .chip:has-text("Salary")'); await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save");
+await seen(page, 'button.choice[data-action="open-payslips"]', "without one");
+check(/without one/.test(await text(page, 'button.choice[data-action="open-payslips"]')), "an income entry with no payslip behind it shows on the Payslips row (+ 1 without one)");
+await page.click('button.choice[data-action="open-payslips"]');
+check((await text(page, "#sheet")).includes("Added without a payslip") && (await text(page, "#sheet")).includes("₱777.00"), "and the Payslips window lists it");
+await page.click('#sheet button[data-action="del-inc"]');
+check((await text(page, "#sheet")).includes("also comes out of"), "Remove asks once, and says the money also leaves the account");
+await page.click('#sheet button[data-action="del-inc-yes"]');
+check(await seen(page, "#toast", "Entry removed") && !(await text(page, "#sheet")).includes("Added without a payslip"), "removing takes it out of the list");
+await page.click('#sheet button:has-text("Close")');
+// the view buttons stay exactly where they are when the view or the month changes (with or without payslips in the month)
+const segTop = () => page.evaluate(() => Math.round(document.querySelector("#screen .seg").getBoundingClientRect().top));
+const vp = page.viewportSize(); await page.setViewportSize({ width: vp.width, height: 560 });   // short enough that the Months list scrolls, so a shorter view could make the page jump
+await page.click('#screen .seg button:has-text("Months")'); await page.evaluate(() => window.scrollTo(0, 120));
+const t0 = await segTop();
+await page.click('#screen .seg button:has-text("Deductions")'); const t1 = await segTop();
+await page.click('#screen .seg button:has-text("Months")'); const t2 = await segTop();
+await page.evaluate(() => document.querySelector('button[aria-label="Earlier"]').click()); const t3 = await segTop();
+await page.evaluate(() => document.querySelector('button[aria-label="Later"]').click()); const t4 = await segTop();
+check([t1, t2, t3, t4].every((t) => t === t0), "the view buttons do not move when the view or the month changes (" + [t0, t1, t2, t3, t4].join(", ") + ")");
+await page.setViewportSize(vp);
+await page.click('#screen .seg button:has-text("Overview")');
 // removing the payslip
 await menuGo(page, "Income");
-await page.click('button[data-action="open-payslips"]');
+await page.click('button.choice[data-action="open-payslips"]');
 await page.click('#sheet button[data-action="del-slip"]');
 check((await text(page, "#sheet")).includes("Remove this payslip and the pay it recorded?"), "Remove asks once more");
 await page.click('#sheet button[data-action="del-slip-yes"]');
 check(await seen(page, "#toast", "Payslip removed.") && (await text(page, "#sheet")).includes("No payslips in this period."), "removing takes the payslip out of the list");
 await page.click('#sheet button:has-text("Close")');
-check((await text(page, ".hero")).includes("₱0.00") && await page.locator('button[data-action="open-payslips"]').count() === 0, "and its pay out of the Income total");
+check((await text(page, ".hero")).includes("₱0.00") && /^Payslips\s*0\b/.test(await text(page, 'button.choice[data-action="open-payslips"]')), "and its pay out of the Income total, with the Payslips row still in its place saying 0");
 await page.click('#nav button:has-text("Verify")');
 check(!(await text(page, "#screen")).includes("Overtime to Emergency Fund"), "and the overtime drafts that waited for it out of Verify");
 await page.click('#nav button:has-text("Log")');
@@ -1400,10 +1428,10 @@ const ps = JSON.parse((await stored(page)).local);
 check(ps.state.payslipLines.filter((l) => l.side === "deduction").length === 4 && ps.state.payslipLines.filter((l) => l.side === "earning").length === 3, "with seven lines");
 check(ps.state.attachments.length === 1 && ps.state.attachments[0].transaction_id === ps.state.payslips[0].transaction_id, "and the photo kept with the pay");
 await menuGo(page, "Income");
-for (let g = 0; g < 12 && await page.locator('button[data-action="open-payslips"]').count() === 0; g++) await page.click('button[aria-label="Earlier"]');   // the payslip counts in the month of its own period
+for (let g = 0; g < 12 && /^Payslips\s*0\b/.test(await text(page, 'button.choice[data-action="open-payslips"]')); g++) await page.click('button[aria-label="Earlier"]');   // the payslip counts in the month of its own period
 await page.click('#screen .seg button:has-text("Deductions")');
-check((await text(page, "#screen")).includes("Went to government in this period: ₱1,200.00"), "the Income screen counts the government deductions");
-await page.click('button[data-action="open-payslips"]');
+check((await text(page, "#screen")).includes("Went to government in this period: ₱1,200.00") && (await text(page, ".mtotal")).includes("Total deductions"), "the Income screen counts the government deductions and shows a Total deductions line");
+await page.click('button.choice[data-action="open-payslips"]');
 check((await text(page, "#sheet")).includes("View the photo"), "and the Payslips window offers the photo");
 await page.click('#sheet button:has-text("Close")');
 

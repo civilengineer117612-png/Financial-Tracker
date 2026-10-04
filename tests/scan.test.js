@@ -391,6 +391,41 @@ test("an electricity bill that also prints a TIN is a bill, not a receipt", () =
   assert.equal(readScan("SAMPLE POWER COOP\nBILLING INVOICE\nTIN\nMeter No 123\nSub-Total: 10.00\nBill Amount 1,157.84", "2026-10-04").kind, "bill");
 });
 
+// A payslip with two columns (earnings left, deductions right) photographed on a slant. Every figure is invented.
+const slantedSlip = (ownOffset = 4) => {
+  const t = -0.05, at = (x, y, w, text, dy = 0) => box(text, x, y + dy, w, t);
+  return [
+    at(20, 300, 150, "Basic Salary"), at(300, 300, 80, "5,000.00"), at(500, 300, 170, "Withholding Tax"), at(800, 300, 70, "400.00"),
+    at(20, 340, 150, "Clothing Allowance"), at(300, 340, 80, "3 000.00", ownOffset), at(500, 340, 170, "Pag-lbig Premium Cont"), at(800, 340, 70, "100.00"),
+    at(20, 380, 200, "Transportation Allowance"), at(300, 380, 80, "2,000.00", ownOffset), at(500, 380, 170, "Absences"), at(800, 380, 70, "250.00"),
+    at(20, 420, 150, "Gross Earnings"), at(300, 420, 80, "10-000-00"), at(500, 420, 170, "Total Deductions"), at(800, 420, 70, "750.00"),
+    at(20, 460, 200, "NET PAYABLE"), at(300, 460, 80, "9,250.00"),
+  ];
+};
+
+test("a payslip on a slant: a label takes its own figure, not the same slanted row's figure of the other column", () => {
+  const text = linesFromBoxes(slantedSlip());
+  assert.match(text, /Clothing Allowance 3,000\.00/);
+  assert.match(text, /Transportation Allowance 2,000\.00/);
+  const r = readPayslip(text, "2026-10-04");
+  assert.equal(r.earnings.find((l) => l.kind === "clothing").amount, 300000);
+  assert.equal(r.earnings.reduce((n, l) => n + l.amount, 0), 1000000, "the earnings add to the printed gross");
+  assert.equal(r.printed_gross, 1000000, "a figure written 10-000-00 is 10,000.00");
+  assert.equal(r.deductions.reduce((n, l) => n + l.amount, 0), 75000, "the deductions add to the printed total");
+  assert.deepEqual(r.notes.filter((n) => !/pay date/.test(n)), [], "nothing is flagged as missing or not adding up");
+});
+
+test("a payslip label the reader misspelled still counts: Paa-lbig is Pag-IBIG, Ahsences is Absences", () => {
+  const r = readPayslip("Withholding Tax 400.00\nPaa-lbig Premium Cont 100.00\nAhsences 250.00\nTotal Deductions 750.00\nBasic Salary 10,000.00\nGross Earnings 10,000.00\nNet Pay 9,250.00", "2026-10-04");
+  assert.deepEqual(r.deductions.map((l) => l.kind), ["tax", "pagibig", "absences"]);
+});
+
+test("when the lines read do not add to the printed total deductions, the gap is said in plain words", () => {
+  const r = readPayslip("Withholding Tax 400.00\nTotal Deductions 750.00\nBasic Salary 10,000.00\nGross Earnings 10,000.00\nNet Pay 9,250.00", "2026-10-04");
+  assert.equal(r.printed_deductions, 75000);
+  assert.ok(r.notes.some((n) => /total deductions is ₱750\.00 but the lines I read add to ₱400\.00, so ₱350\.00 is missing/.test(n)), r.notes.join(" | "));
+});
+
 test("a year followed by a time is not a figure", () => {
   assert.equal(readScan("Paid 04 Oct 2026.01:00\n120.50", "2026-10-04").amount, 12050);
 });

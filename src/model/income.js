@@ -184,7 +184,7 @@ export function deductionsByMonth(state, range) {
     for (const l of linesOf(state, p.id)) if (l.side === "deduction") m[l.kind] += l.amount;
     by.set(monthOf(slipDate(p)), m);
   }
-  const shape = (m) => ({ ...m, government: GOVERNMENT.reduce((n, k) => n + m[k], 0), lost: LOST.reduce((n, k) => n + m[k], 0) });
+  const shape = (m) => ({ ...m, government: GOVERNMENT.reduce((n, k) => n + m[k], 0), lost: LOST.reduce((n, k) => n + m[k], 0), total: Object.keys(zero()).reduce((n, k) => n + m[k], 0) });   // total: every deduction line
   const months = [...by].sort(([a], [b]) => a.localeCompare(b)).map(([month, m]) => ({ month, ...shape(m) }));
   const ytd = shape(months.reduce((acc, m) => { for (const k of Object.keys(zero())) acc[k] += m[k]; return acc; }, zero()));
   return { months, ytd };
@@ -220,6 +220,34 @@ export function updatePayslip(state, id, input, now = new Date()) {
   const transaction = old ? { ...r.transaction, created_at: old.created_at } : r.transaction;
   return { ...r, transaction, draftsRemoved: drafts.size, photoIds: (state.attachments ?? []).filter((a) => dropped.has(a.transaction_id)).map((a) => a.id),
     state: { ...r.state, transactions: r.state.transactions.map((t) => (t.id === transaction.id ? transaction : t)) } };
+}
+
+// Income that arrived WITHOUT a payslip behind it (a payslip photo once saved as plain "pay received", interest, a refund): verified entries
+// under an income category, by the day they arrived, one row per transaction. They count in every Income total, so they are listed to be seen.
+export function incomeWithoutPayslip(state, { from, to }) {
+  const income = new Set(state.categories.filter((c) => c.kind === "income").map((c) => c.id));
+  const slipTx = new Set((state.payslips ?? []).map((p) => p.transaction_id));
+  const rows = [];
+  for (const t of state.transactions) {
+    if (t.status !== "verified" || slipTx.has(t.id) || t.date < from || t.date > to) continue;
+    const mine = state.entries.filter((e) => e.transaction_id === t.id), amount = -mine.filter((e) => e.category_id != null && income.has(e.category_id)).reduce((n, e) => n + e.amount, 0);
+    if (amount === 0) continue;
+    rows.push({ transaction_id: t.id, date: t.date, payee: t.payee, amount, account_id: mine.find((e) => e.account_id != null)?.account_id ?? null });
+  }
+  return rows.sort((a, b) => a.date.localeCompare(b.date) || a.transaction_id.localeCompare(b.transaction_id));
+}
+
+// Removes one income entry that has no payslip (a stray or double one): the transaction, its entries and its photo link. The money also
+// leaves the account it was added to. A payslip's own pay, or anything that is not plain income, is refused (use the payslip's Remove).
+// Returns {ok, state, photoIds} or {ok: false, error}.
+export function removeIncomeEntry(state, id) {
+  const t = state.transactions.find((x) => x.id === id);
+  if (!t) return { ok: false, error: "That entry is no longer there." };
+  if ((state.payslips ?? []).some((p) => p.transaction_id === id)) return { ok: false, error: "That is a payslip's pay. Remove the payslip instead." };
+  const income = new Set(state.categories.filter((c) => c.kind === "income").map((c) => c.id)), mine = state.entries.filter((e) => e.transaction_id === id);
+  if (!mine.some((e) => e.category_id != null && income.has(e.category_id)) || mine.some((e) => e.category_id != null && !income.has(e.category_id))) return { ok: false, error: "That is not a plain income entry." };
+  return { ok: true, photoIds: (state.attachments ?? []).filter((a) => a.transaction_id === id).map((a) => a.id),
+    state: { ...state, transactions: state.transactions.filter((x) => x.id !== id), entries: state.entries.filter((e) => e.transaction_id !== id), attachments: (state.attachments ?? []).filter((a) => a.transaction_id !== id) } };
 }
 
 // Removes a payslip: its lines, the pay it recorded (the transaction, its entries and its photo link), and any overtime transfer still
