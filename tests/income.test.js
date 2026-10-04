@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, incomeMonths, slipDate, deletePayslip, updatePayslip, planAttachment,
+import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, incomeMonths, slipDate, deletePayslip, updatePayslip, planAttachment, incomeWithoutPayslip, removeIncomeEntry, planPayReceived,
   ensureIncomeCategories, validateState, applyDrafts } from "../src/model/index.js";
 import { makeState, account } from "./fixtures.js";
 
@@ -238,4 +238,44 @@ test("editing a payslip may keep its own period and net pay, but may not copy an
   const clash = updatePayslip(s, "ps1", base({ period_from: "2026-10-16", period_to: "2026-10-31" }), NOW);
   assert.equal(clash.ok, false);
   assert.equal(clash.violations[0].code, "DUPLICATE_PAYSLIP");
+});
+
+// A payslip plus a plain "pay received" of the same amount (a payslip photo once saved the older way): the month counts it twice.
+function withStray() {
+  let s = planPayslip(ledger(), base(), NOW).state;
+  const p = planPayReceived(s, { transaction_id: "tx-stray", date: "2026-10-15", amount: 880000, account_id: "chk", category_id: "cat-salary", payee: "Pay received" }, NOW);
+  return { s: p.state, before: p.state };
+}
+
+test("income without a payslip is listed, and it is what makes a month count twice", () => {
+  const { s } = withStray(), oct = { from: "2026-10-01", to: "2026-10-31" };
+  assert.equal(incomeBySource(s, oct).total, 1760000, "one payslip and one stray entry: the month shows double");
+  const rows = incomeWithoutPayslip(s, oct);
+  assert.deepEqual(rows.map((r) => [r.transaction_id, r.amount, r.account_id]), [["tx-stray", 880000, "chk"]]);
+  assert.deepEqual(incomeWithoutPayslip(s, { from: "2026-11-01", to: "2026-11-30" }), [], "another month has none");
+  assert.equal(incomeWithoutPayslip(planPayslip(ledger(), base(), NOW).state, oct).length, 0, "a payslip's own pay is not listed");
+});
+
+test("removing a stray income entry takes it out of the totals and the account, and leaves the payslip alone", () => {
+  const { s } = withStray(), oct = { from: "2026-10-01", to: "2026-10-31" };
+  const r = removeIncomeEntry(s, "tx-stray");
+  assert.equal(r.ok, true);
+  assert.equal(incomeBySource(r.state, oct).total, 880000);
+  assert.equal(r.state.payslips.length, 1);
+  assert.equal(r.state.transactions.some((t) => t.id === "tx-stray"), false);
+  assert.equal(r.state.entries.some((e) => e.transaction_id === "tx-stray"), false);
+  assert.deepEqual(validateState(r.state), []);
+  assert.equal(removeIncomeEntry(s, "tx-ps1").ok, false, "a payslip's pay is removed with the payslip");
+  assert.equal(removeIncomeEntry(s, "nope").ok, false);
+});
+
+test("deductions by month carry a total of every deduction line, including absences, and it matches the payslip's own total", () => {
+  const s = planPayslip(ledger(), base({ printed_gross: 1000000, printed_net: 795000, deposit: 795000,
+    deductions: [{ kind: "tax", amount: 70000 }, { kind: "sss", amount: 30000 }, { kind: "absences", amount: 105000 }] }), NOW).state;
+  const d = deductionsByMonth(s, "2026");
+  assert.equal(d.months[0].total, 205000);
+  assert.equal(d.ytd.total, 205000);
+  assert.equal(d.months[0].total, payslipTotals(linesOf(s, "ps1")).deductions);
+  assert.equal(d.months[0].government, 100000, "absences are not government money");
+  assert.equal(d.months[0].lost, 105000);
 });

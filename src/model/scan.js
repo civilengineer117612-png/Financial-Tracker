@@ -262,13 +262,13 @@ export function categoryFromHistory(state, payee) {
 const EARNING_LABELS = [["basic", /basic|monthly\s*(salary|rate)/], ["rice", /rice/], ["skills", /skill/], ["clothing", /cloth|uniform/], ["transport", /transport/],
   ["overtime", /over\s*-?time|\bot\b/], ["thirteenth", /13\s*th|thirteenth/], ["bonus", /bonus/]];
 const DEDUCTION_LABELS = [["loan", /\bloans?\b|advance/], ["tax", /with\w*ding|w\/\s*tax|\bwtax\b|\b[t1]ax\b(?!able)/], ["sss", /\b(?:sss|5ss|s5s|555)\b/], ["philhealth", /phil\s*-?health|\bphic\b|\bph[a-z]{1,5}ea/],
-  ["pagibig", /pag\s*-?\s*[il1]?\s*b[il1]g|pagibig|hdmf/], ["absences", /absen|1\/2\s*day|half\s*-?\s*day/], ["lates", /\blates?\b|undertime|tardi/]];
+  ["pagibig", /p[a-z]{1,2}\s*-?\s*[il1]?\s*b[il1]g|pagibig|hdmf/], ["absences", /a[bh]sen|1\/2\s*day|half\s*-?\s*day/], ["lates", /\blates?\b|undertime|tardi/]];
 const SKIP_LINE = /total\s*(earnings|deductions|pay)|taxable|net\s*taxable|ytd|year\s*-?\s*to\s*-?\s*date|balance|leave/;
 
 export function readPayslip(text, today) {
   const lines = String(text ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const notes = [], earnings = [], deductions = [];
-  let printed_gross = null, printed_net = null, total_salary = null;
+  let printed_gross = null, printed_net = null, total_salary = null, printed_deductions = null;
   const end = lines.findIndex((l) => /year\s*-?\s*to\s*-?\s*date|\bytd\b/i.test(l) && !amountsIn(l).length);
   const body = end >= 0 ? lines.slice(0, end) : lines;
   const seen = new Set();
@@ -278,6 +278,7 @@ export function readPayslip(text, today) {
     if (/\bgross\b/.test(low) && !/taxable/.test(low)) { printed_gross ??= first(); return; }
     if (/net\s*(pay|salary|income|amount)|take[- ]?home/.test(low)) { printed_net ??= first(); return; }
     if (/total\s*salary/.test(low)) { total_salary ??= first(); return; }
+    if (/total\s*deductions?/.test(low)) { printed_deductions ??= first(); return; }
     if (SKIP_LINE.test(low)) return;
     const ded = DEDUCTION_LABELS.find(([, re]) => re.test(low)), earn = EARNING_LABELS.find(([, re]) => re.test(low));
     const hit = ded ? ["deduction", ded[0]] : earn ? ["earning", earn[0]] : null;
@@ -289,6 +290,10 @@ export function readPayslip(text, today) {
   if (amountsIn(lines.join("\n")).length && lines.some((l) => amountsIn(l).length > 1)) notes.push("Where a line shows two figures I took the first (this pay period). Check them.");
   if (printed_gross === null) notes.push("I could not find the printed gross pay. Type it from the payslip.");
   if (printed_net === null) notes.push("I could not find the printed net pay. Type it from the payslip.");
+  const lineSum = deductions.reduce((n, l) => n + l.amount, 0);
+  if (printed_deductions !== null && deductions.length && lineSum !== printed_deductions) {
+    notes.push("The paper's total deductions is " + peso(printed_deductions) + " but the lines I read add to " + peso(lineSum) + ", so " + peso(Math.abs(printed_deductions - lineSum)) + (printed_deductions > lineSum ? " is missing" : " is too much") + ". Check the deduction lines against the paper.");
+  }
 
   // dates: the pay period (two dates on a line that says period), and the pay date
   let period_from = null, period_to = null, pay_date = null;
@@ -328,7 +333,7 @@ export function readPayslip(text, today) {
   const company = top.map(clean).find((l) => COMPANY_WORD.test(l) && letters(l) >= 5);
   const named = top.map(clean).find((l) => letters(l) >= 5 && letters(l) >= l.length * 0.6 && l.length <= 45);
   const employer = (labelled ? clean(labelled) : null) || company || named || null;
-  return { employer, period_from, period_to, pay_date, printed_gross, printed_net, earnings, deductions, notes };
+  return { employer, period_from, period_to, pay_date, printed_gross, printed_net, printed_deductions, earnings, deductions, notes };
 }
 
 // ---------- text from where the words sit on the page ----------
@@ -386,7 +391,12 @@ export function linesFromWords(words) {
 // boxes: [{text, th, x0, y0, x1, y1}].
 const BOX_AMOUNT = /^[+\u2212-]?\s*(?:₱|php|[#£P])?\s*(?:\d{1,3}(?:[,.]\d{3})*|\d+)[.,]\d{2}$/i;
 // A box that is only a figure may carry a stray mark in front ("：1.157.B4") and a letter for a digit: clean it so it reads as an amount.
-const tidyBox = (text) => { const t = text.trim().replace(/^[：:·•]+\s*/, ""); return /^[\d.,oOBSIl₱#£P\s]+$/.test(t) && /\d/.test(t) ? cleanDigits(t) : t; };
+// A figure whose thousands are marked with a space ("3 000.00") or a dash ("26-000-00") is still the figure 3,000.00 or 26,000.00.
+const tidyBox = (text) => {
+  const t = text.trim().replace(/^[：:·•]+\s*/, "");
+  if (!(/^[\d.,oOBSIl₱#£P\s-]+$/.test(t) && /\d/.test(t))) return t;
+  return cleanDigits(t).replace(/^(\D*\d{1,3})-(\d{3})-(\d{2})$/, "$1,$2.$3").replace(/(\d)\s(?=\d{3}[.,]\d{2}$)/g, "$1,");
+};
 export function linesFromBoxes(input) {
   let w = [];
   for (const x of input ?? []) {
@@ -415,8 +425,13 @@ export function linesFromBoxes(input) {
     if (Math.abs(r) < 0.9 * h) cands.push({ L, A, r: Math.abs(r), dx: A.x0 - L.x1 });
   }
   cands.sort((p, q) => p.r - q.r || p.dx - q.dx);
+  // A label may not skip over a figure on its own row: on a tilted page the figure of the OTHER column can sit on the same slanted line,
+  // so "Clothing Allowance" took the Pag-IBIG figure at the far side while its own stood between them.
+  const onRow = (L, A) => { const s = (tiltAt(L) + tiltAt(A)) / 2; return Math.abs((A.cy - L.cy) - s * (A.cx - L.cx)) < 0.9 * h; };
+  const skipped = (c) => amounts.some((B) => B !== c.A && B.x0 >= c.L.x1 - 0.5 * h && B.cx < c.A.cx && B.x1 <= c.A.x0 + 0.5 * h && onRow(c.L, B));
+  const direct = cands.filter((c) => !skipped(c));
   const pairOf = new Map(), usedA = new Set();
-  for (const c of cands) if (!pairOf.has(c.L) && !usedA.has(c.A)) { pairOf.set(c.L, c.A); usedA.add(c.A); }
+  for (const c of direct) if (!pairOf.has(c.L) && !usedA.has(c.A)) { pairOf.set(c.L, c.A); usedA.add(c.A); }
   const out = [];
   for (const b of w) {
     if (b.amount && usedA.has(b)) continue;

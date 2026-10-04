@@ -15,7 +15,9 @@ const FILES = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)));
+  // "reload" asks the server for every file: the browser's own saved copy (GitHub Pages lets it keep files for ten minutes) could hold the
+  // old page next to the new code, which showed new screens with old styling.
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: "reload" })))));
   self.skipWaiting();
 });
 
@@ -35,7 +37,7 @@ self.addEventListener("fetch", (e) => {
   const iconRequest = (ICON_HOSTS.test(u.hostname) && (u.pathname === "/faviconV2" || u.pathname === "/s2/favicons" || u.pathname.startsWith("/ip3/"))) || u.pathname === "/apple-touch-icon.png";   // a bank site's own icon
   if (u.origin !== location.origin && !iconRequest) return;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, u.origin === location.origin ? { cache: "no-cache" } : undefined)   // same site: always check with the server, never reuse a stale saved copy
       .then((res) => {
         if (res.ok || (iconRequest && res.type === "opaque")) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
         return res;

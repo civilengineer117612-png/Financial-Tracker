@@ -182,6 +182,7 @@ function renderScreen() {
     : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "cards" ? viewCards() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "buffer" ? viewBuffer() : ui.tab === "scan" ? viewScan() : ui.tab === "income" ? viewIncome() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
+  const scr0 = $("screen"), sameTab = ui.tab === lastTabSig, oldBar = scr0.querySelector(".modebar, .viewmark"), barWas = oldBar?.getBoundingClientRect().top, bodyWas = scr0.querySelector(".viewbody")?.offsetHeight ?? 0;
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
   // Changing screen fades the whole screen in; changing the view (category, budget...) or chart/list fades in ONLY what is under the view
   // buttons, so the top (month, total, buttons) stays perfectly still. Fade only, nothing slides.
@@ -189,6 +190,13 @@ function renderScreen() {
   const bar = scr.querySelector(".modebar, .viewmark");
   let body = null;
   if (bar) { body = document.createElement("div"); body.className = "viewbody"; while (bar.nextSibling) body.appendChild(bar.nextSibling); scr.appendChild(body); }
+  // Switching view or period on the same screen keeps the view buttons exactly where they were on the glass: the part below keeps at least its old
+  // height (so the page cannot shrink and jump), and any difference above the buttons is scrolled away.
+  if (sameTab && body && barWas !== undefined) {
+    body.style.minHeight = bodyWas + "px";
+    const dy = scr.querySelector(".modebar, .viewmark").getBoundingClientRect().top - barWas;
+    if (Math.abs(dy) > 0.5) window.scrollBy(0, dy);
+  }
   if (tabSig !== lastTabSig) { scr.classList.remove("swap"); void scr.offsetWidth; scr.classList.add("swap"); clearTimeout(swapTimer); swapTimer = setTimeout(() => scr.classList.remove("swap"), 220); }
   else if (body && viewSig !== lastViewSig) { body.classList.add("fade"); }
   lastTabSig = tabSig; lastViewSig = viewSig;
@@ -320,15 +328,15 @@ function viewIncome() {
   const per = period(), [from, to] = periodBounds(per), range = { from, to }, label = periodLabel(per);   // the same period as Spending: a month, a year or a range
   const ytdLabel = per.kind === "month" ? "This month" : per.kind === "year" ? (per.year === Number(today().slice(0, 4)) ? "Year to date" : "Whole year") : "Total";
   const y = M.incomeMonths(S(), range), rows = y.months.filter((m) => m.total !== 0);
-  const slips = slipsIn(range);
+  const slips = slipsIn(range), loose = M.incomeWithoutPayslip(S(), range);
   const step = periodStepper(per);
   const IVIEWS = [["overview", "Overview"], ["months", "Months"], ["deductions", "Deductions"], ["history", "Pay history"]], view = IVIEWS.some(([v]) => v === ui.incomeView) ? ui.incomeView : "overview";
   const earned = per.kind === "range" ? "earned from " + fullDate(per.from) + " to " + fullDate(per.to) : "earned in " + label;
   const head = `<h1>Income</h1>${step}<div class="hero">${peso(y.ytd.total)}</div><p class="sub">${esc(earned)}</p>
     <p><button class="primary compact" data-action="open-payslip-choice">Add income</button></p>
-    ${slips.length ? `<button class="choice" data-action="open-payslips"><span>Payslips</span><span class="bval">${slips.length} \u203A</span></button>` : ""}
+    <button class="choice" data-action="open-payslips"><span>Payslips</span><span class="bval">${slips.length}${loose.length ? " + " + loose.length + " without one" : ""} \u203A</span></button>
     <div class="seg" role="group" aria-label="What to show">${IVIEWS.map(([v, t]) => `<button data-action="income-view" data-view="${v}" aria-pressed="${view === v}">${t}</button>`).join("")}</div><div class="viewmark"></div>`;
-  if (!rows.length && !slips.length) return head + `<p class="note">Nothing recorded for ${esc(label)} yet. Add a payslip to see where your income comes from, your raises, and what went to government.</p>`;
+  if (!rows.length && !slips.length && !loose.length) return head + `<p class="note">Nothing recorded for ${esc(label)} yet. Add a payslip to see where your income comes from, your raises, and what went to government.</p>`;
   const bySrc = M.SOURCES.map(([id, label]) => ({ label, amount: y.ytd[id] })).filter((r) => r.amount !== 0);
   const other = (m) => m.interest + m.refunds + m.other, showOther = rows.some((m) => other(m) !== 0) || other(y.ytd) !== 0;   // the Other column appears only when there is something in it
   // A short list, one line per month with its total; tap a month to see where it came from (five columns did not fit a phone).
@@ -340,8 +348,11 @@ function viewIncome() {
   const raises = M.raiseHistory(S(), range);
   const raiseTable = raises.length ? `<h2>Basic pay over time</h2><table class="tbl"><tr><th>Payday</th><th class="n">Basic</th><th class="n">Change</th></tr>${raises.map((r) => `<tr><td>${esc(fullDate(r.date))}</td><td class="n">${peso(r.basic)}</td><td class="n">${r.change === null ? "" : r.change === 0 ? "No change" : (r.raised ? "▲ raised " : "▼ down ") + peso(Math.abs(r.change))}</td></tr>`).join("")}</table>` : "";
   const dd = M.deductionsByMonth(S(), range);
-  const dedTable = dd.months.length ? `<h2>Deductions</h2><table class="tbl"><tr><th>Month</th><th class="n">Tax</th><th class="n">SSS</th><th class="n">PhilHealth</th><th class="n">Pag-IBIG</th></tr>${dd.months.map((m) => `<tr><td>${esc(MONTH3[Number(m.month.slice(5)) - 1])}</td><td class="n">${peso(m.tax)}</td><td class="n">${peso(m.sss)}</td><td class="n">${peso(m.philhealth)}</td><td class="n">${peso(m.pagibig)}</td></tr>`).join("")}
-    <tr class="total"><td>${ytdLabel}</td><td class="n">${peso(dd.ytd.tax)}</td><td class="n">${peso(dd.ytd.sss)}</td><td class="n">${peso(dd.ytd.philhealth)}</td><td class="n">${peso(dd.ytd.pagibig)}</td></tr></table>
+  // One line per month with ALL its deductions added up; tap a month for each kind (only the kinds that have an amount).
+  const DEDNAME = Object.fromEntries(M.DEDUCTIONS.map(([k, t]) => [k, t]));
+  const dedParts = (m) => Object.keys(DEDNAME).map((k) => [DEDNAME[k], m[k]]).filter(([, v]) => v);
+  const dedTable = dd.months.length ? `<h2>Deductions</h2><div class="mlist">${dd.months.map((m) => `<details class="mrow"><summary><span class="mn">${esc(MONTH3[Number(m.month.slice(5)) - 1])}</span><b class="mv">${peso(m.total)}</b><span class="tchev" aria-hidden="true">\u203A</span></summary>${dedParts(m).map(([t, v]) => `<div class="mpart"><span>${esc(t)}</span><span>${peso(v)}</span></div>`).join("")}</details>`).join("")}
+    <div class="mrow mtotal"><span class="mn">Total deductions</span><b class="mv">${peso(dd.ytd.total)}</b></div></div>
     <p class="note">Went to government in this period: ${peso(dd.ytd.government)}. Lost to absences and lates: ${peso(dd.ytd.lost)}.${dd.ytd.loan ? " Loans: " + peso(dd.ytd.loan) + "." : ""}</p>` : "";
   const emps = M.employerHistory(S(), range);
   const empTable = emps.length ? `<h2>Employers</h2><table class="tbl"><tr><th>Employer</th><th class="n">From</th><th class="n">Latest</th></tr>${emps.map((e) => `<tr><td>${esc(e.employer)}<small> ${e.payslips} ${e.payslips === 1 ? "payslip" : "payslips"}</small></td><td class="n">${esc(fullDate(e.first))}</td><td class="n">${esc(fullDate(e.last))}</td></tr>`).join("")}</table>` : "";
@@ -349,7 +360,7 @@ function viewIncome() {
   const ivar = (v) => v === 0 ? "As planned" : (v > 0 ? "+" : "−") + peso(Math.abs(v)) + (v > 0 ? " more" : " less");
   const pv = plan ? [M.planIncome(S(), plan, today())].map((v) => `<h2>Plan against what arrived</h2><table class="tbl"><tr><th>Payday</th><th class="n">Plan</th><th class="n">Received</th><th class="n">Difference</th></tr><tr><td>${esc(v.label)}<small> ${esc(longDate(v.period.start))}</small></td><td class="n">${peso(v.planned)}</td><td class="n">${peso(v.actual)}</td><td class="n">${esc(ivar(v.variance))}</td></tr></table><p class="note">The plan is never edited; the difference is only shown.</p>`)[0] : "";
   const bodies = {
-    overview: `<h2>Where it came from, ${esc(label)}</h2>${bySrc.length ? hbars(bySrc) : `<p class="note">Nothing in this period.</p>`}${pv}`,
+    overview: `<h2>Where it came from, ${esc(label)}</h2>${bySrc.length ? hbars(bySrc) : `<p class="note">Nothing in this period.</p>`}${loose.length ? `<p class="note">${peso(loose.reduce((n, r) => n + r.amount, 0))} of this was added without a payslip (${loose.length} ${loose.length === 1 ? "entry" : "entries"}). <button class="link" data-action="open-payslips">See them</button></p>` : ""}${pv}`,
     months: `<h2>By month</h2>${monthTable}${paydays}`,
     deductions: dedTable || `<p class="note">No deductions in this period.</p>`,
     history: `${raiseTable}${empTable}` || `<p class="note">Nothing here for this period.</p>`,
@@ -369,7 +380,7 @@ function openPayslipFromPhoto(blob, text, queueId) {
   const employer = r.employer ? M.snapEmployer(r.employer, knownEmployers()) : d.employer;
   // One short line: everything was read from the photo and none of it is confirmed (a right employer does not make the figures right).
   // Only what needs action is added after it.
-  const f = { ...d, account_id: null, employer, text, notes: ["Read from the photo, the employer too. Check each figure against the paper.", ...r.notes.filter((n) => /could not/i.test(n)), ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."])] };
+  const f = { ...d, account_id: null, employer, text, notes: ["Read from the photo, the employer too. Check each figure against the paper.", ...r.notes.filter((n) => /could not|total deductions/i.test(n)), ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."])] };
   // A date the reader could not find is left EMPTY, not filled with today: a payslip must never land in the wrong month by default.
   f.period_from = r.period_from ?? ""; f.period_to = r.period_to ?? ""; f.pay_date = r.pay_date ?? "";
   if (!r.period_from && r.pay_date) f.notes = [...f.notes, "I could not find the pay period. Choose the dates."];
@@ -1522,7 +1533,8 @@ function renderSheet() {
     }
   } else if (sh.type === "payslips") {
     const [pf, pt] = periodBounds(period());
-    body = `<h3>Payslips, ${esc(periodLabel(period()))}</h3>${payslipRows({ from: pf, to: pt })}`;
+    const loose = M.incomeWithoutPayslip(S(), { from: pf, to: pt });
+    body = `<h3>Payslips, ${esc(periodLabel(period()))}</h3>${payslipRows({ from: pf, to: pt })}${loose.length ? `<h3>Added without a payslip</h3><p class="note">These count in your income but no payslip is behind them, for example a payslip photo saved as plain pay received. If one is a double, remove it.</p>${loose.map((r) => `<div class="row"><div>${esc(r.payee || "Pay received")}<small>${esc(fullDate(r.date))}${r.account_id ? " · into " + esc(accountName(r.account_id)) : ""}</small></div><div class="amt">${peso(r.amount)}</div></div>${ui.confirmDelInc === r.transaction_id ? `<p class="note">Remove this entry? ${peso(r.amount)} also comes out of ${esc(r.account_id ? accountName(r.account_id) : "the account")}. <button class="link" data-action="del-inc-yes" data-id="${esc(r.transaction_id)}">Yes, remove it</button></p>` : `<p class="note"><button class="link" data-action="del-inc" data-id="${esc(r.transaction_id)}">Remove this entry</button></p>`}`).join("")}` : ""}`;
   } else if (sh.type === "photo") {
     body = `<h3>Photo</h3><img class="shotfull" data-photo="${esc(sh.id)}" alt="The photo this entry was read from" hidden>`;
   } else if (sh.type === "icon") {
@@ -1995,6 +2007,15 @@ async function onClick(el) {
     }
     case "income-view": ui.incomeView = el.dataset.view; renderScreen(); break;
     case "del-slip": ui.confirmDelSlip = id; renderSheet(); break;
+    case "del-inc": ui.confirmDelInc = id; renderSheet(); break;
+    case "del-inc-yes": {
+      const r = M.removeIncomeEntry(S(), id);
+      if (!r.ok) { showToast(r.error); break; }
+      ui.confirmDelInc = null;
+      if (await commit(r.state)) for (const ph of r.photoIds) deletePhoto(ph).catch(() => {});
+      showToast("Entry removed.");
+      break;
+    }
     case "del-slip-yes": {
       const r = M.deletePayslip(S(), id);
       if (!r.ok) { showToast(r.error); break; }
@@ -2013,7 +2034,7 @@ async function onClick(el) {
     case "pick-kind": if (id === "payslip" && pendingPhoto && !ui.sheet.voice) { openPayslipFromPhoto(pendingPhoto.blob, form.text ?? "", ui.sheet.queueId ?? null); break; } form.kind = id; Object.assign(form, scanDefaults(id, form.guess, form.payee)); renderSheet(); break;
     case "save-scan": await saveScan(); break;
     case "view-shot": if (pendingPhoto) viewShot(pendingPhoto.url); break;
-    case "open-payslips": ui.confirmDelSlip = null; ui.sheet = { type: "payslips" }; renderSheet(); break;
+    case "open-payslips": ui.confirmDelSlip = null; ui.confirmDelInc = null; ui.sheet = { type: "payslips" }; renderSheet(); break;
     case "open-tx": ui.sheet = { type: "txdetail", id }; renderSheet(); break;
     case "open-photo": { const u = photoUrls.get(id) ?? (await getPhoto(id).then((b) => b && URL.createObjectURL(b))); if (u) { photoUrls.set(id, u); viewShot(u); } else showToast("The photo is not on this phone. Photos are not part of the backup file."); break; }
     case "pick-acct": form.account_id = id; renderSheet(); break;
