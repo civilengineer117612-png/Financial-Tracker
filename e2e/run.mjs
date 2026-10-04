@@ -44,7 +44,13 @@ async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BAS
 }
 const text = (page, sel = "body") => page.locator(sel).innerText();
 // Money, Budget and Setup live in the menu at the upper left; only Log and Verify are on the bottom bar.
-const menuGo = async (page, name) => { await page.click("#menuBtn"); await page.click(`#menu .item:has-text("${name}")`); };
+const menuGo = async (page, name) => {   // Spending and Income are one menu item, Money, with a switch inside
+  await page.click("#menuBtn");
+  const money = name === "Spending" || name === "Income";
+  await page.click(`#menu .item:has-text("${money ? "Money" : name}")`);
+  if (name === "Income") await page.click('#screen .moneyswitch button:has-text("Income")');
+  await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
+};
 // Saving is asynchronous (it writes two stores), so checks wait for the text to appear instead of racing it.
 const seen = async (page, sel, sub, ms = 4000) => { try { await page.waitForFunction(([q, t]) => document.querySelector(q)?.innerText.includes(t), [sel, sub], { timeout: ms }); return true; } catch { return false; } };
 const gone = async (page, sel, sub, ms = 4000) => { try { await page.waitForFunction(([q, t]) => !document.querySelector(q)?.innerText.includes(t), [sel, sub], { timeout: ms }); return true; } catch { return false; } };
@@ -462,17 +468,22 @@ await page.click('#nav button:has-text("Log")');
 check((await page.locator("#nav button").count()) === 2, "the bottom bar has just Log and Verify");
 const mb = await page.locator("#menuBtn").boundingBox();
 check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the menu button is at the upper left, big enough to tap");
-check((await page.locator("#menuBtn svg rect").count()) === 3, "it is the three-line icon");
+check((await page.locator("#menuBtn svg rect").count()) === 3 && (await page.locator("#menuBtn").evaluate((b) => getComputedStyle(b).borderTopWidth === "0px" && getComputedStyle(b).backgroundColor === "rgba(0, 0, 0, 0)")), "it is just three lines, without a box around it");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Spending,Income,Budget,Goals,Pay plan,Checks,Trips,Buffer,Scan,Check-in,Setup", "the menu lists Spending, Income, Budget, Goals, Pay plan, Checks, Trips, Buffer, Scan, Check-in and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Money,Budget,Goals,Pay plan,Checks,Trips,Buffer,Scan,Weekly review,Setup", "the menu lists Money (Spending and Income together), Budget, Goals, Pay plan, Checks, Trips, Buffer, Scan, Weekly review and Setup");
+check(await page.locator("#menu .drawer").evaluate((d) => d.scrollHeight <= d.clientHeight + 1), "everything fits without scrolling");
+check(await page.locator("#menu .drawer").evaluate((d) => getComputedStyle(d).borderRightWidth === "0px"), "there is no hard black line at the panel's edge");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
 await shot(page, "17-menu");
 await page.keyboard.press("Escape");
+await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
 check((await page.locator("#menu .drawer").count()) === 0, "Escape closes it");
 await page.click("#menuBtn"); await page.mouse.click(380, 700);
+await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
 check((await page.locator("#menu .drawer").count()) === 0, "tapping outside closes it");
 await page.click("#menuBtn"); await page.click('#menu .item:has-text("Budget")');
+await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
 check((await page.locator("#menu .drawer").count()) === 0 && (await text(page, "#top")).includes("Budget"), "choosing an item closes the menu and opens the screen");
 check((await page.locator("#nav [aria-current]").count()) === 0, "no bottom button is marked while a menu screen is open");
 
@@ -630,8 +641,8 @@ check((await text(page, "#screen")).includes("October 2026") && await page.locat
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- the weekly check-in ----
-await menuGo(page, "Check-in");
-check((await text(page, "#top")).includes("Check-in") && (await text(page, "#screen")).includes("0 of"), "the check-in lists every account, none counted yet");
+await menuGo(page, "Weekly review");
+check((await text(page, "#top")).includes("Weekly review") && (await text(page, "#screen")).includes("0 of"), "the weekly review lists every account, none counted yet");
 check(!(await text(page, "#screen")).includes("Weekly questions"), "the weekly questions wait until something is counted");
 const ck = await text(page, "#screen"), lastBackup = JSON.parse((await stored(page)).local).settings.last_backup_at;
 check(ck.includes("One reminder: back up after this check-in") === !lastBackup, "the check-in carries the backup reminder when a backup is due, and stays quiet right after one (last backup: " + (lastBackup ? "today" : "never") + ")");
@@ -657,11 +668,11 @@ const sv1 = ledgerNow.state.surveyResponses[0];
 check(ledgerNow.state.surveyResponses.length === 1 && sv1.q2_ease === 4 && sv1.q1_missed_count === 2 && sv1.q1_missed_amount === 5000, "the survey answers are saved, with the owner's confirmed figures for question 1");
 await menuGo(page, "Checks");
 check((await text(page, "#screen")).includes("1 of 4 weeks answered"), "the review waits for about 4 weeks and says how far along it is");
-await menuGo(page, "Check-in");
+await menuGo(page, "Weekly review");
 for (let wk = 1; wk <= 3; wk++) {   // three more weeks, so there are four answered weeks
   await page.clock.setFixedTime(new Date(T0.getTime() + wk * 7 * 86400000));
   await page.reload(); await page.waitForSelector("#nav button");
-  await menuGo(page, "Check-in");
+  await menuGo(page, "Weekly review");
   await page.click('.choice:has-text("Wallet")'); await page.fill("#f-amount", String(wk)); await page.click("#f-save"); await seen(page, "#toast", "Wallet:");
   await page.click('.choice:has-text("Four quick questions")');
   await page.click(`#sheet button[data-action="survey-ease"][data-id="${wk + 1}"]`); await page.fill("#f-annoy", "week " + wk + " note");

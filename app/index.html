@@ -70,6 +70,7 @@
   .lbhint { color: #ccc; text-align: center; margin: 8px; }
   button.link { background: none; border: 0; padding: 4px 0; min-height: 0; text-decoration: underline; }
   .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .moneyswitch { display: flex; gap: 6px; margin: 4px 0 10px; } .moneyswitch button { flex: 1; min-height: 44px; } .moneyswitch button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   .tile { border-radius: 16px; } .tile:active { transform: scale(.96); }
   .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 84px; gap: 2px; }
   .tile b { font-size: 17px; }
@@ -81,21 +82,27 @@
   .camicon.micbtn { margin-left: auto; padding: 0; border: 0; font-size: inherit; }
   .micbtn + .camicon { margin-left: 0; }
   .camicon { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 16px; background: var(--ink); color: var(--paper); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .12s ease; } .camicon:active { transform: scale(.94); }
-  .menubtn { width: 48px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+  .menubtn { width: 44px; height: 44px; min-height: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 12px; margin-left: -6px; }
+  .menubtn:active { background: var(--wash); }
   .menubtn svg { display: block; }
   #menu .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); }
-  #menu .drawer { position: fixed; top: 0; bottom: 0; left: 0; z-index: 21; width: min(80%, 320px); background: var(--paper); border-right: 2px solid var(--ink);
-                  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); overflow: auto;
+  #menu .drawer { position: fixed; top: 0; bottom: 0; left: 0; z-index: 21; width: min(80%, 320px); background: var(--paper); border-radius: 0 22px 22px 0; box-shadow: 10px 0 40px rgba(0,0,0,.14);
+                  padding: max(12px, env(safe-area-inset-top)) 16px max(12px, env(safe-area-inset-bottom)); overflow: auto;
                   display: flex; flex-direction: column; }
+  #menu .drawer.enter { animation: drawerin .26s cubic-bezier(.2,.8,.2,1); } #menu .scrim.enter { animation: scrimin .22s ease-out; }
+  #menu.leaving { pointer-events: none; } #menu.leaving .drawer { animation: drawerout .2s ease-in forwards; } #menu.leaving .scrim { animation: scrimout .2s ease-in forwards; }
+  @keyframes drawerin { from { transform: translateX(-100%); } to { transform: none; } } @keyframes drawerout { from { transform: none; } to { transform: translateX(-100%); } }
+  @keyframes scrimout { from { opacity: 1; } to { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #menu .drawer.enter, #menu .scrim.enter { animation: none; } }
   #menu .drawer .groups { flex: 1; }
   #menu .drawer .foot { border-top: 1px solid var(--line); padding-top: 8px; }
   h2.today { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
   #menu .drawer h2 { margin-top: 4px; }
-  #menu .drawer button.item { display: flex; align-items: center; gap: 18px; width: 100%; text-align: left; margin: 0; padding: 0 4px; font-size: 18px; min-height: 56px;
-                              border: 0; border-radius: 0; background: none; color: var(--ink); }
+  #menu .drawer button.item { display: flex; align-items: center; gap: 18px; width: 100%; text-align: left; margin: 0; padding: 0 4px; font-size: 18px; min-height: 48px;
+                              border: 0; border-radius: 12px; background: none; color: var(--ink); }
   #menu .drawer button.item[aria-current="page"] span { font-weight: 700; }
-  #menu .drawer hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
-  #menu .drawer .glabel { margin: 12px 4px 2px; font-size: 14px; color: var(--mid); }
+  #menu .drawer hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; }
+  #menu .drawer .glabel { margin: 10px 4px 0; font-size: 14px; color: var(--mid); }
   .tbl td.vu { color: var(--chart); } .tbl td.vo { color: var(--critical); }
   svg.trend { display: block; width: 100%; height: auto; margin-top: 8px; border-bottom: 1px solid var(--line); }
   svg .tl { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
