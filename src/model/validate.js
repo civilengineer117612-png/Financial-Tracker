@@ -7,7 +7,7 @@ const COLLECTIONS = {
   accounts: "Account", goals: "Goal", envelopes: "Envelope", transactions: "Transaction", entries: "Entry",
   categories: "Category", categoryMaps: "CategoryMap", rules: "Rule", templates: "Template", presets: "Preset",
   payeeRules: "PayeeRule", subscriptions: "Subscription", checkIns: "CheckIn", attachments: "Attachment",
-  tags: "Tag", foreignAmounts: "ForeignAmount", surveyResponses: "SurveyResponse", payslips: "Payslip", payslipLines: "PayslipLine",
+  tags: "Tag", foreignAmounts: "ForeignAmount", surveyResponses: "SurveyResponse", payslips: "Payslip", payslipLines: "PayslipLine", payslipRevisions: "PayslipRevision",
 };
 
 // Every record in every collection must be well-formed; unknown collections are refused.

@@ -67,6 +67,13 @@ export const SCHEMAS = {
   Payslip: {
     id, employer: name, period_from: date, period_to: date, pay_date: date, account_id: id, transaction_id: id,
     printed_gross: centavos, printed_net: centavos, deposit: centavos, net_words: optional(text),
+    printed_deductions: optional(centavos),   // ADDED: the total deductions printed on the paper, when it was entered
+    version: optional(count),   // ADDED: which rules saved it (income.js PAYSLIP_VERSION); a payslip without one was saved before the date and reading fixes
+  },
+  // The figures a payslip had before it was changed, with the day of the change. The payslip keeps its ids; this only remembers.
+  PayslipRevision: {
+    id, payslip_id: id, changed_on: date, employer: name, period_from: date, period_to: date, pay_date: date,
+    printed_gross: centavos, printed_net: centavos, deposit: centavos, printed_deductions: optional(centavos), lines: { type: "lineList" },
   },
   PayslipLine: { payslip_id: id, side: oneOf("earning", "deduction"), kind: oneOf("basic", "rice", "skills", "clothing", "transport", "overtime", "thirteenth", "bonus", "tax", "sss", "philhealth", "pagibig", "absences", "lates", "loan", "other"), amount: centavos, earned_month: optional({ type: "month" }) },
   ForeignAmount: { transaction_id: id, currency: name, foreign_amount: centavos, rate: { type: "rate" } },
@@ -88,6 +95,7 @@ const TYPE_CHECKS = {
   month: (v) => typeof v === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(v),
   day: (v) => Number.isInteger(v) && v >= 1 && v <= 31,
   rate: (v) => typeof v === "number" && Number.isFinite(v) && v > 0,
+  lineList: (v) => Array.isArray(v) && v.every((l) => typeof l === "object" && l !== null && validateShape("PayslipLine", { payslip_id: "x", ...l }).length === 0),
   idList: (v) => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string" && x.length > 0),
 };
 

@@ -7,7 +7,7 @@ import { phTimestamp } from "./util.js";
 
 export const LEDGER_VERSION = 1;
 const COLLECTIONS = ["accounts", "goals", "envelopes", "transactions", "entries", "categories", "categoryMaps", "rules",
-  "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines"];
+  "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"];
 
 export const emptyState = () => Object.fromEntries(COLLECTIONS.map((k) => [k, []]));
 

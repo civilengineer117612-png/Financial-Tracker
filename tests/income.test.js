@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, incomeMonths, slipDate, deletePayslip, updatePayslip, planAttachment, incomeWithoutPayslip, removeIncomeEntry, planPayReceived,
+import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, incomeMonths, slipDate, deletePayslip, updatePayslip, payslipNotes, missingPayPeriods, revisionsOf, PAYSLIP_VERSION, planAttachment, incomeWithoutPayslip, removeIncomeEntry, planPayReceived,
   ensureIncomeCategories, validateState, applyDrafts } from "../src/model/index.js";
 import { makeState, account } from "./fixtures.js";
 
@@ -62,7 +62,7 @@ test("bad input is refused with a reason; a payslip is never saved twice", () =>
 });
 test("no tax id, employee id or account number can be stored on a payslip", () => {
   const r = planPayslip(ledger(), base(), NOW);
-  assert.deepEqual(Object.keys(r.payslip).sort(), ["account_id", "deposit", "employer", "id", "pay_date", "period_from", "period_to", "printed_gross", "printed_net", "transaction_id"]);
+  assert.deepEqual(Object.keys(r.payslip).sort(), ["account_id", "deposit", "employer", "id", "pay_date", "period_from", "period_to", "printed_gross", "printed_net", "transaction_id", "version"]);
 });
 test("overtime on a payslip makes a draft: 60% to the Emergency Fund; none without overtime", () => {
   const s = planPayslip(ledger(), base({ printed_gross: 1150000, printed_net: 1030000, deposit: 1030000, earnings: [{ kind: "basic", amount: 900000 }, { kind: "rice", amount: 100000 }, { kind: "overtime", amount: 150000, earned_month: "2026-09" }] }), NOW).state;
@@ -293,4 +293,75 @@ test("the same payslip saved twice is refused with a message that says what to d
   assert.ok(next.ok, "a different period is a different payslip");
   const edit = updatePayslip(first.state, "ps1", base(), NOW);
   assert.ok(edit.ok, "changing a payslip is never a duplicate of itself");
+});
+
+// ---- Income round 4: notes on a saved payslip, missing periods, earlier figures ----
+const saved = (o = {}, id = "ps1") => planPayslip(ledger(), base({ id, transaction_id: "tx-" + id, ...o }), NOW).state;
+
+test("a payslip saved before the fix says so, once; saving it again removes the line", () => {
+  const s = saved(), old = { ...s, payslips: s.payslips.map((p) => { const { version, ...rest } = p; return rest; }) };
+  assert.deepEqual(payslipNotes(old, old.payslips[0]), ["Saved before the fix, may be wrong."]);
+  assert.deepEqual(payslipNotes(s, s.payslips[0]), []);
+  assert.equal(s.payslips[0].version, PAYSLIP_VERSION);
+  const again = updatePayslip(old, "ps1", base(), NOW);
+  assert.deepEqual(payslipNotes(again.state, again.state.payslips[0]), []);
+  assert.deepEqual(validateState(old), [], "old payslips without the field stay valid");
+});
+
+test("a pay date more than 7 days after the period end is named; 7 days or fewer is not", () => {
+  const note = (pay) => { const s = saved({ pay_date: pay }); return payslipNotes(s, s.payslips[0]); };
+  assert.deepEqual(note("2026-10-23"), ["Pay date is 8 days after period end."]);
+  assert.deepEqual(note("2026-10-22"), []);   // exactly 7
+  assert.deepEqual(note("2026-10-24"), ["Pay date is 9 days after period end."]);
+  assert.deepEqual(note("2026-10-15"), []);
+});
+
+test("the printed deductions total is kept and compared with the lines: match, differ, or nothing when not entered", () => {
+  assert.deepEqual(payslipNotes(saved(), saved().payslips[0]), []);
+  const ok = saved({ printed_deductions: 120000 });
+  assert.equal(ok.payslips[0].printed_deductions, 120000);
+  assert.deepEqual(payslipNotes(ok, ok.payslips[0]), ["Lines match paper."]);
+  const off = saved({ printed_deductions: 125000 });
+  assert.deepEqual(payslipNotes(off, off.payslips[0]), ["Lines differ from paper by ₱50.00."]);
+  const low = saved({ printed_deductions: 110000 });
+  assert.deepEqual(payslipNotes(low, low.payslips[0]), ["Lines differ from paper by ₱100.00."]);
+  assert.deepEqual(validateState(off), []);
+});
+
+test("pay periods with no payslip: twice-a-month pay only, from the first payslip, not the last week, inside the range", () => {
+  const mk = (...periods) => periods.reduce((st, [from, to], i) => planPayslip(st, base({ id: "p" + i, transaction_id: "t" + i, period_from: from, period_to: to, pay_date: to, deposit: 880000 + i }), NOW).state, ledger());
+  const s = mk(["2026-03-01", "2026-03-15"], ["2026-03-16", "2026-03-31"], ["2026-04-01", "2026-04-15"], ["2026-05-01", "2026-05-15"]);
+  assert.deepEqual(missingPayPeriods(s, null, "2026-06-10"), [{ from: "2026-04-16", to: "2026-04-30" }, { from: "2026-05-16", to: "2026-05-31" }]);
+  assert.deepEqual(missingPayPeriods(s, "2026", "2026-06-10").length, 2);
+  assert.deepEqual(missingPayPeriods(s, "2025", "2026-06-10"), []);
+  assert.deepEqual(missingPayPeriods(s, { from: "2026-04-01", to: "2026-04-30" }, "2026-06-10"), [{ from: "2026-04-16", to: "2026-04-30" }]);
+  assert.deepEqual(missingPayPeriods(s, null, "2026-05-20"), [{ from: "2026-04-16", to: "2026-04-30" }], "May 16-31 has not ended; nothing is asked for it");
+  assert.deepEqual(missingPayPeriods(s, null, "2026-05-31").length, 1, "just after a period ends it is not called missing yet");
+  assert.equal(missingPayPeriods(s, null, "2026-06-08").length, 2, "a week and a day after the period ended it is listed");
+  assert.equal(missingPayPeriods(s, null, "2026-06-07").length, 1, "one day sooner it is not");
+  const late = mk(["2026-03-16", "2026-03-31"], ["2026-04-01", "2026-04-15"], ["2026-04-16", "2026-04-30"]);
+  assert.deepEqual(missingPayPeriods(late, null, "2026-09-01").slice(0, 1), [{ from: "2026-05-01", to: "2026-05-15" }], "nothing is asked for the half-month before the first payslip");
+  const monthly = mk(["2026-03-01", "2026-03-31"], ["2026-05-01", "2026-05-31"]);
+  assert.deepEqual(missingPayPeriods(monthly, null, "2026-09-01"), [], "monthly pay is never reported as missing halves");
+  assert.deepEqual(missingPayPeriods(ledger(), null, "2026-09-01"), []);
+});
+
+test("changing a payslip keeps the old figures and the change date; ids stay; an unchanged save adds nothing", () => {
+  const s = saved();
+  const r = updatePayslip(s, "ps1", base({ deposit: 870000, printed_net: 870000, printed_gross: 990000, earnings: [{ kind: "basic", amount: 890000 }, { kind: "rice", amount: 100000 }] }), NOW);
+  assert.ok(r.ok, JSON.stringify(r.violations));
+  assert.equal(r.state.payslips[0].id, "ps1"); assert.equal(r.state.payslips[0].transaction_id, "tx-ps1");
+  const [rev] = revisionsOf(r.state, "ps1");
+  assert.equal(rev.changed_on, "2026-10-16");
+  assert.equal(rev.deposit, 880000); assert.equal(rev.printed_gross, 1000000);
+  assert.equal(rev.lines.find((l) => l.kind === "basic").amount, 900000);
+  assert.deepEqual(validateState(r.state), []);
+  const same = updatePayslip(r.state, "ps1", base({ deposit: 870000, printed_net: 870000, printed_gross: 990000, earnings: [{ kind: "basic", amount: 890000 }, { kind: "rice", amount: 100000 }] }), NOW);
+  assert.equal(revisionsOf(same.state, "ps1").length, 1, "same figures, no second entry");
+  const third = updatePayslip(r.state, "ps1", base(), NOW);
+  assert.deepEqual(revisionsOf(third.state, "ps1").map((x) => x.deposit), [870000, 880000], "newest first");
+  assert.equal(new Set(third.state.payslipRevisions.map((x) => x.id)).size, 2, "each earlier version has its own id");
+  assert.equal(updatePayslip(s, "ps1", base(), NOW).state.payslipRevisions, undefined, "no change at all adds no collection entry");
+  const gone = deletePayslip(r.state, "ps1");
+  assert.deepEqual(gone.state.payslipRevisions, [], "removing the payslip removes its history");
 });

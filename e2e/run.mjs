@@ -1208,6 +1208,10 @@ check((await text(page, "#p-flags")).includes("leaves out the overtime ₱1,500.
 await shot(page, "37-payslip");
 await page.fill("#p-gross", "11500"); await page.fill("#p-net", "10300"); await page.fill("#p-dep", "10300");
 check(!(await text(page, "#p-flags")).includes("▲"), "once the figures agree there is no flag");
+check(await page.locator("#p-match").isVisible() && (await text(page, "#p-match")).includes("Matches paper. Tap to open.") && !(await page.locator("#p-lines").isVisible()), "once the fields match the paper they fold into one line: Matches paper. Tap to open.");
+await page.click("#p-match button");
+check(await page.locator("#e_basic").isVisible() && !(await page.locator("#p-match").isVisible()), "tapping it opens the full fields as before");
+await page.fill("#p-ded", "1200");
 await page.click("#f-save");
 check(await seen(page, "#toast", "Payslip saved"), "the payslip is saved");
 check((await text(page, "#toast")).includes("Emergency Fund draft"), "overtime makes an Emergency Fund draft, and says so");
@@ -1256,12 +1260,15 @@ await menuGo(page, "Income");
 const heroBefore = await text(page, ".hero");
 await page.click('button.choice[data-action="open-payslips"]');
 await page.click('#sheet button[data-action="edit-slip"]');
+check(await page.locator("#p-match").isVisible() && !(await page.locator("#p-lines").isVisible()), "Change this payslip on a payslip that matches its paper opens with the fields folded");
 check((await text(page, "#sheet")).includes("Change this payslip") && await page.locator("#p-emp").inputValue() !== "" && await page.locator("#p-net").inputValue() !== "", "Change this payslip opens the payslip window already filled in");
 await page.fill("#p-emp", "Renamed Test Employer"); await page.click("#f-save");
 check(await seen(page, "#toast", "Payslip changed"), "saving the change says so");
 check((await text(page, ".hero")) === heroBefore && await page.locator('button.choice[data-action="open-payslips"] .bval:has-text("1")').count() === 1, "the Income total is the same and there is still one payslip");
 await page.click('button.choice[data-action="open-payslips"]');
 check((await text(page, "#sheet")).includes("Renamed Test Employer"), "the list shows the changed employer");
+check((await text(page, "#sheet")).includes("Lines match paper.") && !(await text(page, "#sheet")).includes("Saved before the fix") && !(await text(page, "#sheet")).includes("days after period end"), "the printed deductions total was kept: Lines match paper; a payslip saved now carries no old-figures line");
+check(await page.locator("#sheet details.earlier").count() === 1 && (await page.locator("#sheet details.earlier").textContent()).includes("Sample Employer Inc") && (await text(page, "#sheet")).includes("Earlier figures"), "the change kept the old figures under Earlier figures");
 await page.click('#sheet button:has-text("Close")');
 // the Months view is a short list: one line per month, tap a month for where it came from
 await page.click('button[data-action="income-view"][data-view="months"]');
@@ -1303,6 +1310,21 @@ await page.click('#sheet button[data-action="del-slip-yes"]');
 check(await seen(page, "#toast", "Payslip removed.") && (await text(page, "#sheet")).includes("No payslips in this period."), "removing takes the payslip out of the list");
 await page.click('#sheet button:has-text("Close")');
 check((await text(page, ".hero")).includes("₱0.00") && /^Payslips\s*0\b/.test(await text(page, 'button.choice[data-action="open-payslips"]')), "and its pay out of the Income total, with the Payslips row still in its place saying 0");
+// a late pay date and a pay period with no payslip: three invented payslips, Jul 16-31, Sep 1-15 (paid 15 days late) and Sep 16-30
+for (const [from, to, pay, amt] of [["2026-07-16", "2026-07-31", "2026-07-31", "5001"], ["2026-09-01", "2026-09-15", "2026-09-30", "5002"], ["2026-09-16", "2026-09-30", "2026-09-30", "5003"]]) {
+  await menuGo(page, "Income"); await addPayslipFlow(page); await page.click('#sheet button:has-text("Type a payslip")');
+  await page.fill("#p-emp", "Sample Employer Inc"); await page.fill("#p-from", from); await page.fill("#p-to", to); await page.fill("#p-date", pay);
+  await page.evaluate(() => document.querySelectorAll("#sheet details[data-keep]").forEach((d) => { d.open = true; }));
+  await page.fill("#e_basic", amt); await page.fill("#p-gross", amt); await page.fill("#p-net", amt); await page.fill("#p-dep", amt);
+  await page.click("#f-save"); await seen(page, "#toast", "Payslip saved");
+}
+await menuGo(page, "Income");
+await page.click(".ptitle"); await page.click('#sheet button[data-kind="year"]'); await page.click('#sheet button[data-action="period-year"][data-id="2026"]');
+await page.click('button[data-action="income-view"][data-view="history"]');
+check(/Aug 1\u201315(, 2026)?: no payslip\./.test(await text(page, "#screen")) && /Aug 16\u201331(, 2026)?: no payslip\./.test(await text(page, "#screen")) && !/Sep 1\u201315[^\n]*no payslip/.test(await text(page, "#screen")), "Pay history names each pay period with no payslip, and only those");
+await page.click('button.choice[data-action="open-payslips"]');
+check((await text(page, "#sheet")).includes("Pay date is 15 days after period end.") && (await text(page, "#sheet").then((t) => t.split("Pay date is").length)) === 2, "a pay date more than 7 days after the period end is named, once");
+await page.click('#sheet button:has-text("Close")');
 await page.click('#nav button:has-text("Verify")');
 check(!(await text(page, "#screen")).includes("Overtime to Emergency Fund"), "and the overtime drafts that waited for it out of Verify");
 await page.click('#nav button:has-text("Log")');
