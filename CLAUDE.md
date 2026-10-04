@@ -31,6 +31,7 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 - Keep building without asking. Ask only when an answer changes how the app behaves or needs the owner's own
   experience. Put questions in ONE copy-paste box, at most 4, each with an `ANSWER:` line, and no recommendation under
   a question. Keep replies short and in plain words; no jargon without a one-line explanation.
+- Screen-by-screen review: the owner reviews one screen at a time from a text summary (Home screen first, then the menu screens). Revise at most 5 items per round, then stop and report; the rest wait for the next round.
 - A major change: say so, or give a PDF. Calendar and other outward actions need an explicit yes.
 - The owner is a VISUAL person: charts and account pictures matter. Charts: one color for a single series, values at the
   bar tip, a list twin for every chart (see the dataviz skill's rules).
