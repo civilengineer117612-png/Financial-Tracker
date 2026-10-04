@@ -85,6 +85,7 @@
   .tiles.arranging .tile { touch-action: none; border-style: dashed; cursor: grab; transition: transform .18s ease; }
   .tiles.arranging .tile.dragging { transition: none; z-index: 5; position: relative; box-shadow: 0 8px 22px rgba(0,0,0,.18); background: var(--paper); }
   .tile.addtile { background: none; color: var(--mid); } .tile.addtile b { font-size: 26px; font-weight: 400; }
+  .tiles.two { grid-template-columns: repeat(2, 1fr); margin: 8px 0; } .tiles.two .tile { min-height: 72px; } .tiles.two .tile b { font-size: 17px; }
   .tile { border-radius: 12px; } .tile:active { transform: scale(.96); }
   .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 84px; gap: 2px; }
   .tile b { font-size: 15px; }

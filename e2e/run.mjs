@@ -44,7 +44,7 @@ async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BAS
 }
 const text = (page, sel = "body") => page.locator(sel).innerText();
 // Money, Budget and Setup live in the menu at the upper left; only Log and Verify are on the bottom bar.
-const addPayslipFlow = async (page) => { await page.click('button:has-text("Add income")'); await page.click('#sheet button[data-action="open-payslip-choice"]'); };   // Add income, then Payslip
+const addPayslipFlow = async (page) => { await page.click('button:has-text("Add income")'); };   // the Add income window offers the payslip ways straight away
 const menuGo = async (page, name) => {   // Spending and Income are one menu item, Cash flow, with a switch inside
   await page.click("#menuBtn");
   const money = name === "Spending" || name === "Income";
@@ -176,7 +176,7 @@ check((await page.locator("#sheet .chip").first().innerText()).includes("Test Ca
 await page.click('#sheet .chip:has-text("Test Cash")');
 await page.click('button:has-text("Add expense")');
 check(await page.locator("#f-save").isDisabled(), "save stays off until amount, category and account are chosen");
-check(await page.locator('#sheet .chip:has-text("Credit card")').count() === 1, "there is a Credit card spending category, for interest and fees");
+check(await page.locator('#sheet .chip:has-text("Credit card")').count() === 0, "there is no Credit card spending category: a card is just one of the accounts");
 await page.fill("#f-amount", "120.50");
 await page.click('#sheet .chip:has-text("Shopping")');
 check(await page.locator("#f-save").isEnabled(), "save turns on when complete");
@@ -493,8 +493,6 @@ await shot(page, "14-money-account");
 const accRows = await page.locator(".brow").allInnerTexts();
 check(accRows.length === 2 && accRows[0].includes("Bank") && accRows[0].includes("₱300.00") && accRows[1].includes("Wallet") && accRows[1].includes("₱95.00"), "by account: where each peso came out of");
 check((await page.locator(".brow img.ico").count()) === 2, "each account shows its own picture beside its name");
-await page.click('#screen .seg button:has-text("Cards")');
-check((await text(page, "#screen")).includes("No credit cards yet") && (await page.locator("#screen .modebar").count()) === 0, "Cards with no credit card says so and points to Setup");
 await page.click('#screen .seg button:has-text("Accounts")');
 const widths = await page.locator(".bfill").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
 check(widths[0] > widths[1] * 2 && widths[0] > 100, "bar lengths are in proportion (" + widths.join(", ") + ")");
@@ -537,7 +535,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3 && (await page.locator("#menuBtn").evaluate((b) => getComputedStyle(b).borderTopWidth === "0px" && getComputedStyle(b).backgroundColor === "rgba(0, 0, 0, 0)")), "it is just three lines, without a box around it");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Budget,Goals,Pay plan,Checks,Trips,Buffer,Scan,Weekly review,Setup", "the menu lists Cash flow (Spending and Income together), Budget, Goals, Pay plan, Checks, Trips, Buffer, Scan, Weekly review and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Cards,Budget,Goals,Pay plan,Checks,Trips,Buffer,Scan,Weekly review,Setup", "the menu lists Cash flow (Spending and Income together), Cards, Budget, Goals, Pay plan, Checks, Trips, Buffer, Scan, Weekly review and Setup");
 check(await page.locator("#menu .drawer").evaluate((d) => d.scrollHeight <= d.clientHeight + 1), "everything fits without scrolling");
 check(await page.locator("#menu .drawer").evaluate((d) => getComputedStyle(d).borderRightWidth === "0px"), "there is no hard black line at the panel's edge");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
@@ -555,7 +553,7 @@ check((await page.locator("#nav [aria-current]").count()) === 0, "no bottom butt
 
 // ---- setting budgets ----
 let budgetRows = await page.locator(".choice").allInnerTexts();
-check(budgetRows.length === 9 && budgetRows.some((r) => r.includes("Credit card")) && !budgetRows.some((r) => r.includes("Unlogged")) && budgetRows.every((r) => r.includes("No budget")), "every spending category can have a budget, except Unlogged; none set yet");
+check(budgetRows.length === 8 && !budgetRows.some((r) => r.includes("Unlogged")) && budgetRows.every((r) => r.includes("No budget")), "every spending category can have a budget, except Unlogged; none set yet");
 await shot(page, "18-budget");
 const setBudget = async (cat, amount, startLabel) => {
   await page.click(`.choice:has-text("${cat}")`);
@@ -594,7 +592,7 @@ await page.click('#screen .seg button:has-text("Category")');
 await shot(page, "19-money-graded");
 check((await page.locator("#screen .legend").count()) === 0 && (await page.locator("svg.donut").count()) === 1, "the category view has no budget legend");
 const names = (await page.locator("#screen .seg button").allInnerTexts()).join();
-check(names === "Category,Budget,Accounts,Cards,Trends", "the five views are Category, Budget, Accounts, Cards and Trends: " + names);
+check(names === "Category,Budget,Accounts,Trends", "the four views are Category, Budget, Accounts and Trends (cards are their own menu item): " + names);
 const sliceCount = await page.locator("svg.donut circle.slice").count();
 check((await page.locator(".legendlist .lrow").count()) === sliceCount && /₱[\d,.]+ · [\d.]+%/.test(await text(page, ".legendlist")), "its list shows each category with the peso amount and the percent");
 await shot(page, "32-donut");
@@ -1133,9 +1131,8 @@ const quick = q.state.transactions.find((t) => t.source === "photo" && t.status 
 check(quick && quick.edited_before_verify === false && q.state.attachments.some((a) => a.transaction_id === quick.id) && (q.settings.scan_queue ?? []).length === 0, "it is a photo draft with its photo, and the queue is empty again");
 const quickEntries = q.state.entries.filter((e) => e.transaction_id === quick.id), mari = q.state.accounts.find((a) => a.name === "MariBank \u00b7 Credit card");
 check(quickEntries.some((e) => e.account_id === mari.id && e.amount === -59250) && quickEntries.some((e) => e.category_id === "cat-essentials" && e.amount === 59250), "it chose MariBank, ₱592.50 and Essentials without being asked");
-await menuGo(page, "Spending");
-await page.click('#screen .seg button:has-text("Cards")');
-check((await text(page, "#screen")).toLowerCase().includes("credit cards") && (await text(page, "#screen")).includes("MariBank \u00b7 Credit card") && (await text(page, "#screen")).includes("you owe"), "Cards lists each credit card with what was spent, what was paid and what you owe");
+await menuGo(page, "Cards");
+check((await text(page, "#top")).includes("Cards") && (await text(page, "#screen")).includes("MariBank \u00b7 Credit card") && (await text(page, "#screen")).includes("you owe") && (await text(page, "#screen")).includes("MariBank") && (await text(page, "#screen")).includes("owed on cards"), "the Cards screen lists the credit card (what you owe) and the other accounts (what is in them)");
 await page.click('#nav button:has-text("Log")');
 await page.click('#nav button:has-text("Verify")');
 check(await page.waitForSelector("img.shot[data-photo]:not([hidden])", { timeout: 4000 }).then(() => true, () => false) && (await text(page, "#screen")).includes("Essentials"), "Verify shows the photo beside what was read");
@@ -1179,20 +1176,21 @@ const receiptPngForSlip = await page.evaluate(() => { const c = document.createE
 await menuGo(page, "Income");
 check((await text(page, "#screen")).includes("Nothing recorded"), "Income starts empty and says how to begin");
 await page.click('button:has-text("Add income")');
-check((await text(page, "#sheet")).includes("Payslip") && (await text(page, "#sheet")).includes("Other income") && !(await text(page, "#sheet")).includes("(interest, refund)") && await page.locator('#screen button:has-text("Add other income")').count() === 0, "one Add income button asks which: a payslip or other income");
+{ const t = await text(page, "#sheet");
+  check(t.includes("Add income") && t.includes("Type a payslip") && t.includes("Take a photo") && t.includes("Choose from photos or files") && t.includes("Other income") && !t.includes("(interest, refund)") && await page.locator('#screen button:has-text("Add other income")').count() === 0, "Add income opens one window: type a payslip, take or choose a photo, or other income; no step in between"); }
 await page.click('#sheet button:has-text("Cancel")');
 await addPayslipFlow(page);
 const choice = await text(page, "#sheet");
-check(choice.includes("Type it in") && choice.includes("Take a photo") && choice.includes("Choose from photos or files") && await page.locator('#sheet input[data-scan="payslip"][capture="environment"]').count() === 1, "Add a payslip offers two ways: type it in, or read it from a photo (camera, or photos and files)");
-await page.click('#sheet button:has-text("Type it in")');
-check(await page.locator("#p-emp").count() === 1, "'Type it in' opens the payslip form");
+check(choice.includes("Type a payslip") && choice.includes("Take a photo") && choice.includes("Choose from photos or files") && await page.locator('#sheet input[data-scan="payslip"][capture="environment"]').count() === 1, "Add a payslip offers two ways: type it in, or read it from a photo (camera, or photos and files)");
+await page.click('#sheet button:has-text("Type a payslip")');
+check(await page.locator("#p-emp").count() === 1, "'Type a payslip' opens the payslip form");
 await page.click('#sheet button:has-text("Cancel")');
 await addPayslipFlow(page);
 await page.setInputFiles('#sheet input[data-scan="payslip"]:not([capture])', { name: "any.png", mimeType: "image/png", buffer: Buffer.from(receiptPngForSlip, "base64") });
 check(await seen(page, "#sheet", "Add a payslip", 180000) && await page.locator("#sheet img.shot").count() === 1, "choosing a photo from there opens the payslip window with the photo, whatever the reader thought it was");
 check((await page.inputValue("#p-from")) === "" && (await page.inputValue("#p-to")) === "" && (await page.inputValue("#p-date")) === "" && await page.locator("#f-save").isDisabled(), "dates the reader could not find are left empty (never today), and saving waits until they are chosen");
 await page.click('#sheet button:has-text("Cancel")');
-await addPayslipFlow(page); await page.click('#sheet button:has-text("Type it in")');
+await addPayslipFlow(page); await page.click('#sheet button:has-text("Type a payslip")');
 check(await page.locator("#sheet").innerText().then((t) => /tax id|employee|account number/i.test(t) && /Do not type/.test(t)), "the payslip window tells you not to type any id or account number");
 await page.fill("#p-emp", "Sample Employer Inc");
 await page.fill("#p-from", "2026-09-16"); await page.fill("#p-to", "2026-09-30"); await page.fill("#p-date", "2026-10-02");

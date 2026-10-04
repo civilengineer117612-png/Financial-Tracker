@@ -31,7 +31,6 @@ const CLUES = {
 
 // What a store or a payee points to, by NAME of the category (the app finds the category with that name, if there is one).
 const CATEGORY_CLUES = [
-  ["Credit card", /finance charge|interest charge|late payment (?:fee|charge)|annual fee|credit card fee|overlimit/],
   ["Food", /jollibee|mcdo|mcdonald|kfc|chowking|starbucks|caf[eé]|coffee|restaurant|bakery|burger|pizza|lunch|dinner|breakfast|milk\s?tea|carinderia|grill|foodpanda|grabfood|7-?eleven|ministop|mang inasal/],
   ["Essentials", /grocery|groceries|supermarket|market|palengke|\bmart\b|pharmacy|botika|drugstore|mercury|watsons|hardware|puregold|savemore|landers|meralco|water|pldt|converge|electric/],
   ["Subscription", /netflix|spotify|youtube|icloud|google one|disney|chatgpt|claude/],

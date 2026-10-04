@@ -70,7 +70,7 @@ least 12 characters, never stored) holding every record and the app's settings; 
 asks for a second tap. Wrong passphrase, damaged or edited files are refused, and the file's own key-stretching
 setting is range-checked.
 
-**Menu:** the three lines at the upper left (no box around them) open a panel that slides in from the left and holds every screen without scrolling: Cash flow (Spending and Income: the title itself is the switch, tap "Spending" to go to Income and back), Budget, Goals, Pay plan, Checks, Trips (the paper-plane icon), Buffer, Scan, Weekly review and Setup. The bottom bar
+**Menu:** the three lines at the upper left (no box around them) open a panel that slides in from the left and holds every screen without scrolling: Cash flow (Spending and Income: the title itself is the switch, tap "Spending" to go to Income and back), Cards (all accounts on one page: credit cards with what you owe, and debit, savings, wallets and cash with their balance), Budget, Goals, Pay plan, Checks, Trips (the paper-plane icon), Buffer, Scan, Weekly review and Setup. The bottom bar
 holds only Log and Verify; photo and audio capture will join it later.
 
 **Spending tab (charts):** one big number (verified spending this month), then four views: By category (a donut with its list), Budget, By account (bars) and Trends (months and budget against actual); a small List / Chart switch at the top, and a tap on the chart or the list, flips between them. By category,

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spendingByCategory, spendingByRange, spendingByAccount, cardsSummary, ensureCardCategory, CARD_CATEGORY, defaultCategories, readScan, monthlySpending, dayTotal, addMonths, monthLabel, monthOf, setAccountIcon, validateShape } from "../src/model/index.js";
+import { spendingByCategory, spendingByRange, spendingByAccount, cardsSummary, accountsOverview, dropUnusedCardCategory, defaultCategories, monthlySpending, dayTotal, addMonths, monthLabel, monthOf, setAccountIcon, validateShape } from "../src/model/index.js";
 import { makeState, account, tx, entry, commit } from "./fixtures.js";
 
 const VERIFIED = { status: "verified", verified_at: "2026-04-01T08:00:00.000+08:00" };
@@ -217,12 +217,28 @@ test("a ledger without cards has an empty cards list", () => {
   assert.deepEqual(cardsSummary(s, { from: "2026-03-01", to: "2026-03-31" }), { cards: [], owe: 0 });
 });
 
-test("the Credit card spending category is added to older ledgers once, and interest or fees on a paper point to it", () => {
+test("the cards page lists the credit cards and the money you hold, each with its numbers", () => {
   const s = base();
-  const a = ensureCardCategory(s);
-  assert.equal(a.categories.filter((c) => c.id === CARD_CATEGORY.id).length, 1);
-  assert.deepEqual(a.categories.find((c) => c.id === "cat-creditcard"), { id: "cat-creditcard", name: "Credit card", kind: "expense" });
-  assert.equal(ensureCardCategory(a), a, "a second time changes nothing");
-  assert.ok(defaultCategories().some((c) => c.id === "cat-creditcard" && c.kind === "expense"));
-  assert.equal(readScan("Statement\nInterest charge 125.40\nTotal 125.40", "2026-03-31").categoryGuess, "Credit card");
+  s.accounts.find((a) => a.id === "card").opening_balance = 50000;
+  spend(s, "p1", "2026-03-05", "rent", 30000, "card");
+  spend(s, "p2", "2026-03-06", "rent", 7000, "cash");
+  const r = accountsOverview(s, { from: "2026-03-01", to: "2026-03-31" });
+  assert.deepEqual(r.cards.map((c) => [c.name, c.spent, c.owe]), [["Test Card", 30000, 80000]]);
+  const cash = r.money.find((m) => m.account_id === "cash");
+  assert.deepEqual([cash.balance, cash.spent], [100000 - 7000, 7000]);
+  assert.equal(r.owe, 80000);
+  assert.equal(r.held, r.money.reduce((n, m) => n + m.balance, 0));
+  assert.ok(!r.money.some((m) => m.account_id === "card"), "a card is not money you hold");
+  s.accounts.find((a) => a.id === "cash").archived = true;
+  assert.ok(!accountsOverview(s, { from: "2026-03-01", to: "2026-03-31" }).money.some((m) => m.account_id === "cash"), "archived accounts are left out");
+});
+
+test("a Credit card spending category from an earlier version is taken away again unless something was logged under it", () => {
+  const s = base();
+  s.categories.push({ id: "cat-creditcard", name: "Credit card", kind: "expense" });
+  assert.ok(!dropUnusedCardCategory(s).categories.some((c) => c.id === "cat-creditcard"));
+  assert.equal(dropUnusedCardCategory(dropUnusedCardCategory(s)).categories.length, s.categories.length - 1, "twice changes nothing more");
+  spend(s, "fee", "2026-03-10", "cat-creditcard", 12500, "card");
+  assert.ok(dropUnusedCardCategory(s).categories.some((c) => c.id === "cat-creditcard"), "kept when used");
+  assert.ok(!defaultCategories().some((c) => c.id === "cat-creditcard"), "not a default any more");
 });

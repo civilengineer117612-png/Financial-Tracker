@@ -88,6 +88,16 @@ export function cardsSummary(state, { from, to }) {
   return { cards, owe: cards.reduce((n, c) => n + c.owe, 0) };
 }
 
+// Every account on one page: credit cards (spent, paid, owed now) and the money you hold (debit, savings, wallets, cash: balance and what
+// was spent from it in the range). Archived accounts are left out.
+export function accountsOverview(state, { from, to }) {
+  const { cards, owe } = cardsSummary(state, { from, to });
+  const spent = new Map(spendingByAccount(state, { from, to }).rows.map((r) => [r.account_id, r.amount]));
+  const money = state.accounts.filter((a) => a.class === "asset" && !a.archived)
+    .map((a) => ({ account_id: a.id, name: a.name, balance: naturalBalance(a, state.entries), spent: spent.get(a.id) ?? 0 }));
+  return { cards, money, owe, held: money.reduce((n, m) => n + m.balance, 0) };
+}
+
 // Total spending for each of the last `months` months ending at `endMonth`, oldest first.
 export function monthlySpending(state, { endMonth, months = 6, categoryMaps = [], asOf }) {
   return Array.from({ length: months }, (_, i) => {

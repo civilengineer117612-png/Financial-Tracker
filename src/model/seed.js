@@ -13,11 +13,11 @@ export function ensureIncomeCategories(state) {
   return add.length ? { ...state, categories: [...state.categories, ...add] } : state;
 }
 
-// Interest, fees and other costs of a credit card are real spending; paying the card bill is NOT (the purchases were counted when they
-// were made), so a bill payment is a transfer to the card, never this category.
-export const CARD_CATEGORY = { id: "cat-creditcard", name: "Credit card", kind: "expense" };
-export function ensureCardCategory(state) {
-  return state.categories.some((c) => c.id === CARD_CATEGORY.id) ? state : { ...state, categories: [...state.categories, { ...CARD_CATEGORY }] };
+// An earlier version added a "Credit card" spending category. A card is just one of the accounts, so the category is taken away again,
+// unless something was already logged under it.
+export function dropUnusedCardCategory(state) {
+  if (!state.categories.some((c) => c.id === "cat-creditcard") || state.entries.some((e) => e.category_id === "cat-creditcard")) return state;
+  return { ...state, categories: state.categories.filter((c) => c.id !== "cat-creditcard") };
 }
 
 export function defaultCategories() {
@@ -25,7 +25,7 @@ export function defaultCategories() {
   return [
     e("cat-food", "Food"), e("cat-lakat", "Lakat/Date"), e("cat-family", "Family"), e("cat-shopping", "Shopping"),
     e("cat-essentials", "Essentials"), e("cat-upskill", "Upskill"), e("cat-subscription", "Subscription"),
-    e("cat-rent", "Rent"), e("cat-creditcard", "Credit card"), e("cat-unlogged", "Unlogged"),
+    e("cat-rent", "Rent"), e("cat-unlogged", "Unlogged"),
     ...INCOME_CATEGORIES,
   ];
 }
