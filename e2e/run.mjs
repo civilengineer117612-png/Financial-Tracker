@@ -1182,6 +1182,7 @@ await page.click('#sheet button:has-text("Cancel")');
 await addPayslipFlow(page);
 await page.setInputFiles('#sheet input[data-scan="payslip"]:not([capture])', { name: "any.png", mimeType: "image/png", buffer: Buffer.from(receiptPngForSlip, "base64") });
 check(await seen(page, "#sheet", "Add a payslip", 180000) && await page.locator("#sheet img.shot").count() === 1, "choosing a photo from there opens the payslip window with the photo, whatever the reader thought it was");
+check((await page.inputValue("#p-from")) === "" && (await page.inputValue("#p-to")) === "" && (await page.inputValue("#p-date")) === "" && await page.locator("#f-save").isDisabled(), "dates the reader could not find are left empty (never today), and saving waits until they are chosen");
 await page.click('#sheet button:has-text("Cancel")');
 await addPayslipFlow(page); await page.click('#sheet button:has-text("Type it in")');
 check(await page.locator("#sheet").innerText().then((t) => /tax id|employee|account number/i.test(t) && /Do not type/.test(t)), "the payslip window tells you not to type any id or account number");

@@ -366,9 +366,10 @@ function openPayslipFromPhoto(blob, text, queueId) {
   // One short line: everything was read from the photo and none of it is confirmed (a right employer does not make the figures right).
   // Only what needs action is added after it.
   const f = { ...d, account_id: null, employer, text, notes: ["Read from the photo, the employer too. Check each figure against the paper.", ...r.notes.filter((n) => /could not/i.test(n)), ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."])] };
-  if (r.period_from) { f.period_from = r.period_from; f.period_to = r.period_to; }
-  if (r.pay_date) f.pay_date = r.pay_date;
-  f.ot_month = M.addMonths(M.monthOf(f.pay_date), -1);
+  // A date the reader could not find is left EMPTY, not filled with today: a payslip must never land in the wrong month by default.
+  f.period_from = r.period_from ?? ""; f.period_to = r.period_to ?? ""; f.pay_date = r.pay_date ?? "";
+  if (!r.period_from && r.pay_date) f.notes = [...f.notes, "I could not find the pay period. Choose the dates."];
+  f.ot_month = f.pay_date ? M.addMonths(M.monthOf(f.pay_date), -1) : d.ot_month;
   for (const l of r.earnings) f["e_" + l.kind] = two(l.amount);
   for (const l of r.deductions) f["d_" + l.kind] = two(l.amount);
   if (r.printed_gross) f.gross = two(r.printed_gross);
