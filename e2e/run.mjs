@@ -25,10 +25,11 @@ const iconAsked = [];   // every address the app asked an icon service or bank s
 async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false } = {}) {
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
-  // A pretend phone speech service that, like many real ones, ends after a moment of quiet: round 1 hears "lunch 95", round 2 hears "at sample burger".
+  // A pretend phone speech service that, like the real ones, listens once and closes the microphone when you pause: the first try hears
+  // nothing, the second hears the sentence. It records the language it was asked for.
   if (fakeSpeech) await ctx.addInitScript(() => {
-    const said = ["lunch 95", "at sample burger using gcash"]; let round = 0;
-    window.SpeechRecognition = window.webkitSpeechRecognition = class { start() { const words = said[round++] ?? ""; setTimeout(() => { if (words) this.onresult?.({ results: [{ 0: { transcript: words }, isFinal: true, length: 1 }] }); }, 80); setTimeout(() => this.onend?.(), 260); } stop() { setTimeout(() => this.onend?.(), 20); } };
+    const said = ["", "lunch 95 at sample burger using gcash"]; let round = 0; window.__langs = [];
+    window.SpeechRecognition = window.webkitSpeechRecognition = class { start() { window.__langs.push(this.lang); const words = said[round++] ?? ""; setTimeout(() => { if (words) this.onresult?.({ results: [{ 0: { transcript: words, confidence: 0.9 }, isFinal: true, length: 1 }] }); }, 80); setTimeout(() => this.onend?.(), 260); } stop() { setTimeout(() => this.onend?.(), 20); } };
   });
   if (noSpeech) await ctx.addInitScript(() => { window.webkitSpeechRecognition = undefined; window.SpeechRecognition = undefined; });
   await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png|wikipedia\.org|wikimedia\.org/, (r) => { iconAsked.push(r.request().url()); iconServe(r); });
@@ -947,13 +948,23 @@ check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Wallet")')
 await page.click('#sheet .chip:has-text("Wallet")');
 await page.click("#f-save");
 check(await seen(page, "#screen", "as a draft with its photo"), "saving keeps it as a draft, with its photo");
+await page.click('#nav button:has-text("Log")');
+await page.click("button.rowbtn");
+check(await seen(page, "#sheet", "How it was entered") && (await text(page, "#sheet")).includes("Read from a photo"), "tapping an entry on the Log shows its details, and how it was entered");
+await page.click('#sheet button:has-text("See the photo")');
+await page.waitForFunction(() => document.querySelector(".lightbox img")?.complete);
+check(await page.locator(".lightbox img").isVisible(), "a photo entry offers See the photo, which opens the viewer");
+check(await page.locator(".lightbox button").count() === 1 && (await text(page, ".lightbox button")).trim() === "Close" && await page.locator(".lightbox .lbplus, .lightbox .lbminus, .lightbox .lbfit").count() === 0, "the viewer has no plus, minus or Fit buttons");
+await page.mouse.click(5, 300);
+check(await page.locator(".lightbox").count() === 0, "tapping the dark background closes the viewer");
+await page.click('#sheet button:has-text("Close")');
 await page.click('#nav button:has-text("Verify")');
 check(await page.waitForSelector("img.shot[data-photo]:not([hidden])", { timeout: 4000 }).then(() => true, () => false), "Verify shows the photo beside the entry");
 check((await text(page, "#screen")).includes("Read from the photo"), "and says it was read from a photo");
 await shot(page, "36-verify-photo");
 await page.click('button[aria-label="Open the photo full size"]');
 check(await page.waitForSelector(".lightbox img", { timeout: 4000 }).then(() => true, () => false), "tapping the photo opens it full size");
-await page.click(".lightbox .lbclose");
+await page.mouse.click(5, 300);
 await page.click('button:has-text("Edit")'); await page.fill("#f-amount", "140"); await page.click("#f-save");
 await seen(page, "#screen", "₱140.00");
 let scanned = JSON.parse((await stored(page)).local);
@@ -1166,11 +1177,15 @@ check(after >= before - 2, "choosing something at the bottom does not throw the 
 await page.click('#sheet button:has-text("Cancel")');
 check(await page.evaluate(() => !document.body.classList.contains("locked") && getComputedStyle(document.body).position !== "fixed"), "closing the window lets the page move again");
 await page.click('button[aria-label="Say an entry out loud"]');
+check(await page.locator("#v-mic svg").count() === 1, "the Tap and speak button carries the same microphone picture as the top bar");
+check(await page.locator('[data-action="voice-lang"]').count() === 0 && !(await text(page, "#sheet")).includes("Filipino\nEnglish"), "there is no English or Filipino choice");
 await page.click("#v-mic");
-check(await page.waitForFunction(() => document.getElementById("v-text")?.value === "lunch 95 at sample burger using gcash", null, { timeout: 5000 }).then(() => true, () => false), "listening carries on after the phone ends a round, and the words are joined");
-check((await text(page, "#sheet")).includes("Listening"), "and it still says it is listening");
+check(await page.waitForFunction(() => document.getElementById("v-msg")?.textContent.includes("did not catch anything"), null, { timeout: 5000 }).then(() => true, () => false), "when nothing is caught it says so, once, and does not keep reopening the microphone");
 await page.click("#v-mic");
-check(await page.waitForFunction(() => document.getElementById("v-mic")?.textContent.includes("Tap and speak"), null, { timeout: 3000 }).then(() => true, () => false), "tapping stop stops it");
+check(await page.waitForFunction(() => document.getElementById("v-text")?.value === "lunch 95 at sample burger using gcash", null, { timeout: 5000 }).then(() => true, () => false), "the next tap hears the sentence");
+const langs = await page.evaluate(() => window.__langs);
+check(langs.length === 2 && langs[0] !== langs[1], "the second try listens for the other language, by itself: " + langs.join());
+check(await page.waitForFunction(() => document.getElementById("v-mic")?.textContent.includes("Tap and speak"), null, { timeout: 3000 }).then(() => true, () => false), "and the button is ready again");
 check(await page.evaluate(() => { const s = document.querySelector("#sheet .sheet"); return s.scrollWidth <= s.clientWidth && document.documentElement.scrollWidth <= innerWidth; }), "neither the window nor the page is wider than the screen");
 await page.click("#f-save");
 check(await seen(page, "#toast", "Saved") && (await text(page, "#toast")).toLowerCase().includes("sample burger"), "the joined sentence is saved as one draft");
@@ -1197,15 +1212,11 @@ check(await page.locator("#sheet details[data-keep='e']").evaluate((d) => !d.ope
 await page.click('#sheet button[data-action="view-shot"]');
 await page.waitForFunction(() => document.querySelector(".lightbox img")?.complete);
 check(await page.locator(".lightbox img").isVisible(), "tapping the photo opens it full screen to compare with the figures");
-await page.click(".lightbox .lbplus"); await page.click(".lightbox .lbplus");
-check(Number(await page.locator(".lightbox img").getAttribute("data-scale")) > 2, "the + button zooms in");
-await page.click(".lightbox .lbminus"); const afterMinus = Number(await page.locator(".lightbox img").getAttribute("data-scale"));
-check(afterMinus > 1 && afterMinus < 2.6, "the minus button zooms out a step");
-await page.dblclick(".lightbox .lbstage"); await page.click(".lightbox .lbfit");
-check(Number(await page.locator(".lightbox img").getAttribute("data-scale")) === 1, "Fit brings the whole photo back");
 await page.dblclick(".lightbox .lbstage");
 check(Number(await page.locator(".lightbox img").getAttribute("data-scale")) >= 2.5, "a double-tap zooms in");
-await page.click(".lbclose");
+await page.dblclick(".lightbox .lbstage");
+check(Number(await page.locator(".lightbox img").getAttribute("data-scale")) === 1, "and a second double-tap brings the whole photo back");
+await page.mouse.click(5, 400);
 check(await page.locator(".lightbox").count() === 0 && await val("p-emp") === "Sample Employer Inc", "closing it returns to the window with everything as it was");
 const order = await page.evaluate(() => { const ids = ["p-tot-e", "p-tot-d", "p-emp", "p-from", "p-to", "p-date"].map((i) => document.getElementById(i).getBoundingClientRect().top); return ids.every((v, i) => i === 0 || v > ids[i - 1]); });
 check(order, "the order is totals, landed in, employer, then the dates");
