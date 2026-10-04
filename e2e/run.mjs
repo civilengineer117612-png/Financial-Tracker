@@ -954,7 +954,8 @@ check(await page.waitForSelector("img.shot[data-photo]:not([hidden])", { timeout
 check((await text(page, "#screen")).includes("Read from the photo"), "and says it was read from a photo");
 await shot(page, "36-verify-photo");
 await page.click('button[aria-label="Open the photo full size"]');
-check(await page.waitForSelector("#sheet img.shotfull:not([hidden])", { timeout: 4000 }).then(() => true, () => false), "tapping the photo opens it full size");
+check(await page.waitForSelector(".lightbox img", { timeout: 4000 }).then(() => true, () => false), "tapping the photo opens it full size");
+await page.click(".lightbox .lbclose");
 await page.click('#sheet button:has-text("Close")');
 await page.click('button:has-text("Edit")'); await page.fill("#f-amount", "140"); await page.click("#f-save");
 await seen(page, "#screen", "₱140.00");
@@ -1199,7 +1200,14 @@ check(await page.locator("#sheet details[data-keep='e']").evaluate((d) => !d.ope
 await page.click('#sheet button[data-action="view-shot"]');
 await page.waitForFunction(() => document.querySelector(".lightbox img")?.complete);
 check(await page.locator(".lightbox img").isVisible(), "tapping the photo opens it full screen to compare with the figures");
-await page.click(".lightbox img"); check(await page.locator(".lightbox img.zoomed").count() === 1, "tapping it again zooms in");
+await page.click(".lightbox .lbplus"); await page.click(".lightbox .lbplus");
+check(Number(await page.locator(".lightbox img").getAttribute("data-scale")) > 2, "the + button zooms in");
+await page.click(".lightbox .lbminus"); const afterMinus = Number(await page.locator(".lightbox img").getAttribute("data-scale"));
+check(afterMinus > 1 && afterMinus < 2.6, "the minus button zooms out a step");
+await page.dblclick(".lightbox .lbstage"); await page.click(".lightbox .lbfit");
+check(Number(await page.locator(".lightbox img").getAttribute("data-scale")) === 1, "Fit brings the whole photo back");
+await page.dblclick(".lightbox .lbstage");
+check(Number(await page.locator(".lightbox img").getAttribute("data-scale")) >= 2.5, "a double-tap zooms in");
 await page.click(".lbclose");
 check(await page.locator(".lightbox").count() === 0 && await val("p-emp") === "Sample Employer Inc", "closing it returns to the window with everything as it was");
 const order = await page.evaluate(() => { const ids = ["p-tot-e", "p-tot-d", "p-emp", "p-from", "p-to", "p-date"].map((i) => document.getElementById(i).getBoundingClientRect().top); return ids.every((v, i) => i === 0 || v > ids[i - 1]); });

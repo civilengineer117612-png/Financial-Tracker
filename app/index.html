@@ -52,10 +52,10 @@
   .shotbtn.enlarge { position: relative; } .shotbtn.enlarge::after { content: "Tap to enlarge"; position: absolute; right: 8px; bottom: 8px; background: var(--ink); color: var(--paper); font-size: 13px; padding: 4px 8px; border-radius: 6px; }
   .note.small { font-size: 13px; margin: 6px 0; }
   .lightbox { position: fixed; inset: 0; z-index: 100; background: #000; display: flex; flex-direction: column; }
-  .lbclose { align-self: flex-end; margin: 10px; background: var(--paper); font-size: 18px; min-height: 52px; min-width: 96px; }
-  .lbscroll { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; -webkit-overflow-scrolling: touch; }
-  .lbscroll img { width: 100%; max-height: 100%; object-fit: contain; }
-  .lbscroll img.zoomed { width: 250%; max-width: none; max-height: none; }
+  .lbbar { display: flex; gap: 8px; justify-content: flex-end; padding: 10px; }
+  .lbbar button { background: var(--paper); font-size: 20px; min-height: 52px; min-width: 56px; }
+  .lbstage { flex: 1; overflow: hidden; touch-action: none; display: flex; align-items: center; justify-content: center; }
+  .lbstage img { width: 100%; height: 100%; object-fit: contain; transform-origin: center; user-select: none; -webkit-user-select: none; }
   .lbhint { color: #ccc; text-align: center; margin: 8px; }
   button.link { background: none; border: 0; padding: 4px 0; min-height: 0; text-decoration: underline; }
   .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
