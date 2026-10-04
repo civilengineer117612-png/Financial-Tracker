@@ -108,6 +108,7 @@ const ICONS = {
   checks: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   trips: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
   income: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
+  edit: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
   mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/>',
   scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/>',
   buffer: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
@@ -1212,7 +1213,11 @@ function renderSheet() {
   let body = "";
   if (sh.type === "pay") {
     const p = S().presets.find((x) => x.id === sh.id);
-    body = `<h3>${esc(p.name)} ${peso(p.amount)}</h3><p class="note">Paid from</p>${chips(accountsFor(p.id), null, "pay")}`;
+    // The title can be changed for this one entry (name and amount) before choosing the account; the tile itself stays as it is.
+    const f = ui.form ?? {};
+    body = f.editing
+      ? `<h3>Change this entry</h3><label for="pay-name">Name</label><input id="pay-name" data-field="name" value="${esc(f.name ?? p.name)}" autocomplete="off"><label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off"><p class="note">Paid from</p>${chips(accountsFor(p.id), null, "pay")}`
+      : `<h3 class="paytitle"><span>${esc(f.name ?? p.name)} ${peso(M.parsePesos(f.amount ?? "").ok ? M.parsePesos(f.amount).centavos : p.amount)}</span><button class="editbtn" data-action="pay-edit" aria-label="Change the name or amount of this entry"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.edit}</svg></button></h3><p class="note">Paid from</p>${chips(accountsFor(p.id), null, "pay")}`;
   } else if (sh.type === "other") {
     body = `<h3>Add expense</h3>
       <label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
@@ -1827,11 +1832,14 @@ async function onClick(el) {
       if (r.ok) await commit(r.state, settings);
       break;
     }
-    case "open-preset": ui.sheet = { type: "pay", id }; renderSheet(); break;
+    case "open-preset": { const p = S().presets.find((x) => x.id === id); ui.sheet = { type: "pay", id }; ui.form = { name: p.name, amount: (p.amount / 100).toFixed(2), editing: false }; renderSheet(); break; }
+    case "pay-edit": ui.form.editing = true; renderSheet(); $("pay-name")?.focus(); break;
     case "pay": {
-      const p = S().presets.find((x) => x.id === ui.sheet.id);
+      const p = S().presets.find((x) => x.id === ui.sheet.id), f = ui.form ?? {}, amt = M.parsePesos(f.amount ?? "");
+      if (!amt.ok || amt.centavos <= 0) { showToast("Check the amount."); break; }
+      const name = (f.name ?? "").trim() || p.name;
       ui.sheet = null; renderSheet();
-      await logExpense({ transaction_id: newId("tx"), payee: p.name, category_id: p.category_id, amount: p.amount, account_id: id, source: "preset", preset_id: p.id }, p.name + " " + peso(p.amount));
+      await logExpense({ transaction_id: newId("tx"), payee: name, category_id: p.category_id, amount: amt.centavos, account_id: id, source: "preset", preset_id: p.id }, name + " " + peso(amt.centavos));
       break;
     }
     case "open-other": ui.sheet = { type: "other" }; ui.form = { amount: "", category_id: null, account_id: accountsFor(null)[0]?.id }; renderSheet(); break;
