@@ -196,7 +196,7 @@ function viewLog() {
   return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${photoNote}${dueNote}${backupNote}${tripNote}
     ${dayCard()}
     <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
-    <p><button class="primary" data-action="open-other" style="margin-top:12px">Add expense</button></p>
+    <p><button class="primary compact" data-action="open-other">Add expense</button></p>
     <h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
 }
 
