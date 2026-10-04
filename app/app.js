@@ -902,8 +902,8 @@ const periodWords = (p) => (p.kind === "range" ? "from " + fullDate(p.from) + " 
 const MONTH3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const pendingNote = (n) => (n > 0 ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">plus ${peso(n)} not verified yet</button></p>` : "");
 // One small switch at the top, the same on every view: chart or list.
-const modeBar = () => `<div class="modebar"><button data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}" aria-label="${ui.asList ? "Show as a chart" : "Show as a list"}">${ui.asList ? "Chart" : "List"}</button></div>`;
-const moneyViews = () => `<div class="seg" role="group" aria-label="What to show">${[["category", "By category"], ["budget", "Budget"], ["account", "By account"], ["month", "Trends"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
+const modeBar = () => ui.view === "cards" ? `<div class="viewmark"></div>` : `<div class="modebar"><button data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}" aria-label="${ui.asList ? "Show as a chart" : "Show as a list"}">${ui.asList ? "Chart" : "List"}</button></div>`;
+const moneyViews = () => `<div class="seg" role="group" aria-label="What to show">${[["category", "Category"], ["budget", "Budget"], ["account", "Accounts"], ["cards", "Cards"], ["month", "Trends"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
 
 // A chart you tap to flip: bars become a donut and the donut becomes bars. Nothing else happens on a tap.
 function flipChart(rows, total, { shape = "donut" } = {}) {
@@ -968,6 +968,15 @@ function viewMoney() {
   if (ui.view === "budget") {
     if (p.kind !== "month") return hero + `<p class="note">Budgets are set per month. Choose a month at the top.</p><p><button class="link" data-action="period-this-month">Show this month</button></p>`;
     return viewBudgets(hero, p.month, maps, asOf, nowM, label);
+  }
+
+  if (ui.view === "cards") {
+    // Each credit card: spent on it in this period, paid toward it, and what is owed on it now. Paying the bill is not spending.
+    const cs = M.cardsSummary(S(), { from, to });
+    if (!cs.cards.length) return hero + `<p class="note">No credit cards yet. Add one in Setup: choose the bank, then "Credit card" as the kind.</p><p><button class="link" data-action="tab" data-tab="setup">Add a credit card</button></p>`;
+    const rows = cs.cards.map((c) => { const a = S().accounts.find((x) => x.id === c.account_id);
+      return `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(c.name)}<small>spent ${peso(c.spent)} \u00b7 paid ${peso(c.paid)} ${esc(periodWords(p))}</small></div></div><div class="amt">${peso(c.owe)}<small>you owe</small></div></div>`; }).join("");
+    return hero + `<h2>Credit cards</h2>${rows}<p class="note">Paying a card bill is not spending: the purchases were counted when you made them. Interest and fees go under the Credit card category.</p>`;
   }
 
   if (ui.view === "account") {
@@ -2303,7 +2312,7 @@ async function start() {
     device = { status: "CORRUPT", allowEntry: false, message: "The saved data on this phone could not be read, so nothing is shown and nothing will be overwritten. Restore from your encrypted backup." };
   } else {
     ledger = boot.ledger;
-    ledger.state = M.ensureIncomeCategories(ledger.state);   // older ledgers gain Interest, Refund and Other income (saved with the next save)
+    ledger.state = M.ensureCardCategory(M.ensureIncomeCategories(ledger.state));   // older ledgers gain Interest, Refund and Other income (saved with the next save)
     if (boot.status === "NONE") ledger.state = { ...ledger.state, categories: M.defaultCategories(), presets: M.defaultPresets() };   // kept in memory until the first save
     // The two stores disagree on revision only (a save reached one and not the other): repair quietly from the newer.
     if (boot.status === "REPAIR" && local != null && idb != null && device.allowEntry) {

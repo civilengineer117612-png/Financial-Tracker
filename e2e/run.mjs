@@ -176,6 +176,7 @@ check((await page.locator("#sheet .chip").first().innerText()).includes("Test Ca
 await page.click('#sheet .chip:has-text("Test Cash")');
 await page.click('button:has-text("Add expense")');
 check(await page.locator("#f-save").isDisabled(), "save stays off until amount, category and account are chosen");
+check(await page.locator('#sheet .chip:has-text("Credit card")').count() === 1, "there is a Credit card spending category, for interest and fees");
 await page.fill("#f-amount", "120.50");
 await page.click('#sheet .chip:has-text("Shopping")');
 check(await page.locator("#f-save").isEnabled(), "save turns on when complete");
@@ -487,11 +488,14 @@ await page.click(".flip");
 check((await page.locator("svg.donut").count()) === 1, "and tapping the list brings the donut back");
 check((await text(page, "#screen .modebar")).trim() === "List", "a small switch at the top says List, and Chart when the list is showing");
 
-await page.click('#screen .seg button:has-text("By account")');
+await page.click('#screen .seg button:has-text("Accounts")');
 await shot(page, "14-money-account");
 const accRows = await page.locator(".brow").allInnerTexts();
 check(accRows.length === 2 && accRows[0].includes("Bank") && accRows[0].includes("₱300.00") && accRows[1].includes("Wallet") && accRows[1].includes("₱95.00"), "by account: where each peso came out of");
 check((await page.locator(".brow img.ico").count()) === 2, "each account shows its own picture beside its name");
+await page.click('#screen .seg button:has-text("Cards")');
+check((await text(page, "#screen")).toLowerCase().includes("credit cards") && (await text(page, "#screen")).includes("Test Card") && (await text(page, "#screen")).includes("you owe") && (await page.locator("#screen .modebar").count()) === 0, "Cards lists each credit card with what was spent, what was paid and what you owe");
+await page.click('#screen .seg button:has-text("Accounts")');
 const widths = await page.locator(".bfill").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
 check(widths[0] > widths[1] * 2 && widths[0] > 100, "bar lengths are in proportion (" + widths.join(", ") + ")");
 const thick = await page.locator(".bfill").first().evaluate((e) => e.getBoundingClientRect().height);
@@ -510,7 +514,7 @@ check((await text(page, ".caption")).includes("September 2026: ₱1,295.00 spent
 await page.click('#screen .modebar button');
 screen = await text(page, "#screen");
 check(screen.includes("September 2026") && screen.includes("₱1,295.00") && screen.includes("August 2026") && screen.includes("₱690.00"), "the list says the same as the columns");
-await page.click('#screen .seg button:has-text("By category")');
+await page.click('#screen .seg button:has-text("Category")');
 screen = await text(page, "#screen");
 check(/Shopping\s+₱300\.00\s+75\.9%/.test(screen) && /Food\s+₱95\.00\s+24\.1%/.test(screen) && /Total\s+₱395\.00/.test(screen), "the list view has every number the chart has, plus the total");
 await page.click('#screen .modebar button');
@@ -586,11 +590,11 @@ check(ledgerNow.state.rules.filter((r) => r.subject_id === "cat-shopping").map((
 // ---- the colours: light blue to dark blue, red only when over ----
 await menuGo(page, "Spending");
 for (let i = 0; i < 9; i++) if (await page.locator('button[aria-label="Later"]').isEnabled()) await page.click('button[aria-label="Later"]');
-await page.click('#screen .seg button:has-text("By category")');
+await page.click('#screen .seg button:has-text("Category")');
 await shot(page, "19-money-graded");
 check((await page.locator("#screen .legend").count()) === 0 && (await page.locator("svg.donut").count()) === 1, "the category view has no budget legend");
 const names = (await page.locator("#screen .seg button").allInnerTexts()).join();
-check(names === "By category,Budget,By account,Trends", "the four views are By category, Budget, By account and Trends: " + names);
+check(names === "Category,Budget,Accounts,Cards,Trends", "the five views are Category, Budget, Accounts, Cards and Trends: " + names);
 const sliceCount = await page.locator("svg.donut circle.slice").count();
 check((await page.locator(".legendlist .lrow").count()) === sliceCount && /₱[\d,.]+ · [\d.]+%/.test(await text(page, ".legendlist")), "its list shows each category with the peso amount and the percent");
 await shot(page, "32-donut");
@@ -601,12 +605,12 @@ check((await page.locator("svg.donut").count()) === 1, "and the switch brings th
 // switching views keeps the top still: only what is under the view buttons fades
 const topY = () => page.evaluate(() => [".hero", "#screen .seg", "#screen .stepper"].map((q) => Math.round(document.querySelector(q).getBoundingClientRect().top)).join());
 const topBefore = await topY();
-await page.click('#screen .seg button:has-text("By account")');
+await page.click('#screen .seg button:has-text("Accounts")');
 const topDuring = await topY();
 await page.waitForTimeout(40);
 const topLater = await topY();
 check(topBefore === topDuring && topDuring === topLater && await page.locator("#screen .viewbody").count() === 1, "switching views keeps the month, the total and the view buttons perfectly still (" + [topBefore, topDuring, topLater].join(" / ") + ")");
-await page.click('#screen .seg button:has-text("By category")');
+await page.click('#screen .seg button:has-text("Category")');
 // the title is the switch between Spending and Income
 check(await page.locator("#top .titleswitch").count() === 1 && (await text(page, "#top")).includes("Spending") && await page.locator("#screen .moneyswitch").count() === 0, "the title Spending is itself the switch; there are no two buttons under it");
 await page.click("#top .titleswitch");
@@ -624,7 +628,7 @@ await page.click('#sheet button[data-action="period-year"][data-id="2026"]');
 check((await text(page, ".ptitle")).includes("2026") && !(await text(page, ".ptitle")).includes("October") && (await text(page, "#screen")).includes("spent in 2026"), "choosing a year shows the whole year");
 await page.click('#screen .seg button:has-text("Trends")');
 check((await page.locator(".cols .col").count()) === 12, "and By month then shows its twelve months");
-await page.click('#screen .seg button:has-text("By category")');
+await page.click('#screen .seg button:has-text("Category")');
 await page.click('button[aria-label="Earlier"]');
 check((await text(page, ".ptitle")).includes("2025") && (await text(page, "#screen")).includes("Nothing verified in this period"), "the arrows step a whole year, and an empty one says so");
 await page.click('button[aria-label="Later"]');
@@ -658,7 +662,7 @@ check((await text(page, ".ptitle")).includes("Oct 1, 2026") && (await text(page,
 await page.click('#screen .seg button:has-text("Budget")');
 check((await text(page, "#screen")).includes("Budgets are set per month"), "Budgets with a range asks for a month");
 await page.click('button:has-text("Show this month")');
-await page.click('#screen .seg button:has-text("By category")');
+await page.click('#screen .seg button:has-text("Category")');
 
 await page.click('#screen .seg button:has-text("Budget")');
 await shot(page, "20-money-budgets");
