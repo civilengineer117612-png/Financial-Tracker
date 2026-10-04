@@ -315,7 +315,7 @@ export function readPayslip(text, today) {
   // A line that is a figure, a payslip label or a date is never the employer. The company's name is the top line that looks like one.
   const MONTH_RANGE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:\s*(?:-|–|to)\s*\d{1,2})?,?\s*\d{4}\b/gi;
   const NOT_EMPLOYER = new RegExp([...EARNING_LABELS, ...DEDUCTION_LABELS].map(([, re]) => re.source).join("|") + "|payslip|pay\\s*slip|period|earnings|deductions|net\\s*pay|amount|gross|signature|certified|accountant|employee|name:|total", "i");
-  const clean = (t) => t.replace(MONTH_RANGE, " ").replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, " ").replace(/\d{6,}/g, "").replace(/^(?:[^A-Za-z0-9]|\b[A-Za-z]\b)+\s*/, "").replace(/[\s:,;|-]+$/, "").replace(/\s{2,}/g, " ").trim();
+  const clean = (t) => t.replace(MONTH_RANGE, " ").replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, " ").replace(/\d{6,}/g, "").replace(/^(?:[^A-Za-z0-9]|\b[A-Za-z]\b)+\s*/, "").replace(/[\s:,;|-]+$/, "").replace(/,(?=\S)/g, ", ").replace(/\s{2,}/g, " ").trim();   // the reader drops the space after a comma
   const COMPANY_WORD = /\b(inc|corp|corporation|co|company|ltd|llc|enterprises?|services|group|hospital|school|bank|consultanc[a-z]*|engineering|construction|trading|industries|resources|solutions|technolog[a-z]*|manpower|realty|development|holdings|partners|associates|international|foundation|institute|university|college)\b\.?/i;
   const top = lines.slice(0, 12).filter((l) => !amountsIn(l).length && !NOT_EMPLOYER.test(l));
   const letters = (t) => (t.match(/[A-Za-z]/g) ?? []).length;

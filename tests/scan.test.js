@@ -329,3 +329,7 @@ test("linesFromBoxes reads 100:00 as an amount but leaves a clock time alone", (
   assert.match(out, /19:52/);
   assert.ok(!/Time 19\.52/.test(out));
 });
+
+test("an employer read without the space after its comma gets it back", () => {
+  assert.equal(readPayslip("PHIL SAMPLE,INC.\nPAYSLIP\nNet Pay 9,075.00", "2026-10-04").employer, "PHIL SAMPLE, INC.");
+});
