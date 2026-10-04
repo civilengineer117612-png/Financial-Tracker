@@ -289,10 +289,9 @@ const knownEmployers = () => [...new Set([...(S().payslips ?? []).map((p) => p.e
 function openPayslipFromPhoto(blob, text, queueId) {
   const r = M.readPayslip(text, today()), d = payslipDefaults(), two = (c) => (c / 100).toFixed(2);
   const employer = r.employer ? M.snapEmployer(r.employer, knownEmployers()) : d.employer;
-  // A right-looking employer must not make the rest look checked: say plainly that every figure was read from the photo and none is confirmed.
-  const trust = ["Everything here was read from the photo, the employer too. A right employer does not mean the figures are right: check each line against the paper."];
-  if (r.employer && employer !== r.employer) trust.push("The employer was read as \u201C" + r.employer + "\u201D and matched to your saved employer \u201C" + employer + "\u201D. Check it.");
-  const f = { ...d, account_id: null, employer, text, notes: [...trust, ...r.notes, ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."]), "What really arrived is filled in with the printed net pay. Change it if the account got a different amount."] };
+  // One short line: everything was read from the photo and none of it is confirmed (a right employer does not make the figures right).
+  // Only what needs action is added after it.
+  const f = { ...d, account_id: null, employer, text, notes: ["Read from the photo, the employer too. Check each figure against the paper.", ...r.notes.filter((n) => /could not/i.test(n)), ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."])] };
   if (r.period_from) { f.period_from = r.period_from; f.period_to = r.period_to; }
   if (r.pay_date) f.pay_date = r.pay_date;
   f.ot_month = M.addMonths(M.monthOf(f.pay_date), -1);
@@ -302,7 +301,7 @@ function openPayslipFromPhoto(blob, text, queueId) {
   if (r.printed_net) { f.net = two(r.printed_net); f.deposit = f.net; }
   if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.url);
   pendingPhoto = { blob, url: URL.createObjectURL(blob) };
-  ui.form = f; ui.sheet = { type: "payslip", scanBlob: blob, queueId }; renderSheet();
+  ui.pdet = {}; ui.form = f; ui.sheet = { type: "payslip", scanBlob: blob, queueId }; renderSheet();
 }
 
 // What the sheet holds, as the model wants it. `errors` names every typed amount that is not an amount.
@@ -1259,26 +1258,30 @@ function renderSheet() {
   } else if (sh.type === "payslip") {
     const f = ui.form, field = (prefix, [kind, label]) => `<label for="${prefix}${kind}">${esc(label)}</label><input id="${prefix}${kind}" data-field="${prefix}${kind}" inputmode="decimal" value="${esc(f[prefix + kind] ?? "")}" autocomplete="off" placeholder="0.00">`;
     const months = Array.from({ length: 7 }, (_, i) => M.addMonths(M.monthOf(today()), -i));
+    const open = (k) => (ui.pdet?.[k] ? " open" : "");
     body = `<h3>Add a payslip</h3>
-      ${sh.scanBlob ? `<img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your payslip photo">${(f.notes ?? []).map((n) => `<p class="note">${esc(n)}</p>`).join("")}` : ""}
-      <p class="note">Copy the figures off the payslip. Leave a line empty if it is not on the paper. Do not type any employee, tax or account number.</p>
-      <label for="p-emp">Employer</label><input id="p-emp" data-field="employer" value="${esc(f.employer ?? "")}" autocomplete="off">
-      ${knownEmployers().length ? `<div class="chips">${knownEmployers().map((n) => `<button class="chip" data-action="pick-employer" data-name="${esc(n)}" aria-pressed="${n === f.employer}">${esc(n)}</button>`).join("")}</div>` : ""}
+      ${sh.scanBlob ? `<img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your payslip photo" style="max-height:22vh;object-fit:contain">${(f.notes ?? []).map((n) => `<p class="note">${esc(n)}</p>`).join("")}` : ""}
+      <details data-keep="e"${open("e")}><summary><span>Total earnings</span><b id="p-tot-e" style="margin-left:auto"></b></summary>
+        ${M.EARNINGS.map((k) => field("e_", k)).join("")}
+        <label for="p-otm">Overtime was earned in</label><select id="p-otm" data-field="ot_month">${months.map((m) => `<option value="${m}"${f.ot_month === m ? " selected" : ""}>${esc(M.monthLabel(m))}</option>`).join("")}</select>
+      </details>
+      <details data-keep="d"${open("d")}><summary><span>Total deductions</span><b id="p-tot-d" style="margin-left:auto"></b></summary>
+        ${M.DEDUCTIONS.map((k) => field("d_", k)).join("")}
+      </details>
+      <label>Landed in</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
       <label for="p-from">Pay period from</label><input id="p-from" data-field="period_from" type="date" value="${esc(f.period_from)}">
       <label for="p-to">Pay period to</label><input id="p-to" data-field="period_to" type="date" value="${esc(f.period_to)}">
       <label for="p-date">Pay date</label><input id="p-date" data-field="pay_date" type="date" value="${esc(f.pay_date)}">
-      <label>Landed in</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
-      <h4>Earnings</h4>${M.EARNINGS.map((k) => field("e_", k)).join("")}
-      <label for="p-otm">Overtime was earned in</label><select id="p-otm" data-field="ot_month">${months.map((m) => `<option value="${m}"${f.ot_month === m ? " selected" : ""}>${esc(M.monthLabel(m))}</option>`).join("")}</select>
-      <h4>Deductions</h4>${M.DEDUCTIONS.map((k) => field("d_", k)).join("")}
-      <h4>As printed on the payslip</h4>
-      <label for="p-gross">Gross pay (₱)</label><input id="p-gross" data-field="gross" inputmode="decimal" value="${esc(f.gross ?? "")}" autocomplete="off">
-      <label for="p-net">Net pay (₱)</label><input id="p-net" data-field="net" inputmode="decimal" value="${esc(f.net ?? "")}" autocomplete="off">
-      <label for="p-dep">What really arrived in the account (₱)</label><input id="p-dep" data-field="deposit" inputmode="decimal" value="${esc(f.deposit ?? "")}" autocomplete="off">
-      <label for="p-words">Net pay in words, if written (optional)</label><input id="p-words" data-field="words" value="${esc(f.words ?? "")}" autocomplete="off" autocapitalize="off">
+      <label for="p-emp">Employer</label><input id="p-emp" data-field="employer" value="${esc(f.employer ?? "")}" autocomplete="off">
+      <details data-keep="t"${open("t")}><summary>As printed on the payslip</summary>
+        <label for="p-gross">Gross pay (\u20B1)</label><input id="p-gross" data-field="gross" inputmode="decimal" value="${esc(f.gross ?? "")}" autocomplete="off">
+        <label for="p-net">Net pay (\u20B1)</label><input id="p-net" data-field="net" inputmode="decimal" value="${esc(f.net ?? "")}" autocomplete="off">
+        <label for="p-dep">What really arrived in the account (\u20B1)</label><input id="p-dep" data-field="deposit" inputmode="decimal" value="${esc(f.deposit ?? "")}" autocomplete="off">
+        <label for="p-words">Net pay in words, if written (optional)</label><input id="p-words" data-field="words" value="${esc(f.words ?? "")}" autocomplete="off" autocapitalize="off">
+      </details>
       <div id="p-flags" role="status"></div>
+      <p class="note">Do not type any employee, tax or account number.</p>
       <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>Save payslip</button></p>
-      <p class="note">If something does not match it is shown, never changed. It is still saved.</p>
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
   } else if (sh.type === "scanpick") {
     body = `<h3>Scan</h3><p class="note">A receipt, a payment screen or a payslip. Take a photo now, or choose one you already have. If the app is sure of everything it saves a draft by itself; otherwise it asks.</p>${photoButtons("quick")}`;
@@ -1401,6 +1404,7 @@ function refreshSave() {
     if (out) {
       const lines = [...p.earnings.map((l) => ({ ...l, side: "earning" })), ...p.deductions.map((l) => ({ ...l, side: "deduction" }))];
       const t = M.payslipTotals(lines);
+      const te = $("p-tot-e"), td = $("p-tot-d"); if (te) te.textContent = peso(t.gross); if (td) td.textContent = peso(t.deductions);
       const flags = p.printed_gross && p.printed_net && p.deposit ? M.payslipChecks({ printed_gross: p.printed_gross, printed_net: p.printed_net, deposit: p.deposit, net_words: (f.words ?? "").trim() || undefined }, lines) : [];
       out.innerHTML = (lines.length ? `<p class="note">The lines add to gross ${peso(t.gross)}; minus deductions, net ${peso(t.net)}.</p>` : "") + (p.errors.length ? `<p class="note flag">\u25B2 Check the amount typed for: ${esc(p.errors.join(", "))}.</p>` : "") + flags.map(flagLine).join("");
     }
@@ -1736,10 +1740,9 @@ async function onClick(el) {
       if (await commit(S(), withQueue(scanQueue().filter((q) => q.id !== id)))) deletePhoto(id).catch(() => {});
       showToast("Photo thrown away."); break;
     }
-    case "pick-employer": form.employer = el.dataset.name; renderSheet(); break;
     case "open-scan-pick": ui.sheet = { type: "scanpick" }; renderSheet(); break;
     case "open-payslip-choice": ui.sheet = { type: "payslipchoice" }; renderSheet(); break;
-    case "open-payslip": ui.sheet = { type: "payslip" }; ui.form = payslipDefaults(); renderSheet(); break;
+    case "open-payslip": ui.pdet = {}; ui.sheet = { type: "payslip" }; ui.form = payslipDefaults(); renderSheet(); break;
     case "save-payslip": await savePayslip(); break;
     case "open-otfree": ui.sheet = { type: "otfree", id }; ui.form = { account_id: null }; renderSheet(); break;
     case "save-otfree": {
@@ -1969,6 +1972,8 @@ document.addEventListener("click", (e) => {
   if (el) onClick(el);
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ui.menu) { ui.menu = false; renderMenu(); } });
+// which fold-out parts of the payslip window are open, so choosing an account (which redraws the window) does not fold them shut
+document.addEventListener("toggle", (e) => { const k = e.target?.dataset?.keep; if (k) ui.pdet = { ...ui.pdet, [k]: e.target.open }; }, true);
 document.addEventListener("input", (e) => {
   const field = e.target.dataset?.field;
   if (!field) return;
