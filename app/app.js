@@ -366,9 +366,10 @@ function openPayslipFromPhoto(blob, text, queueId) {
   // One short line: everything was read from the photo and none of it is confirmed (a right employer does not make the figures right).
   // Only what needs action is added after it.
   const f = { ...d, account_id: null, employer, text, notes: ["Read from the photo, the employer too. Check each figure against the paper.", ...r.notes.filter((n) => /could not/i.test(n)), ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."])] };
-  if (r.period_from) { f.period_from = r.period_from; f.period_to = r.period_to; }
-  if (r.pay_date) f.pay_date = r.pay_date;
-  f.ot_month = M.addMonths(M.monthOf(f.pay_date), -1);
+  // A date the reader could not find is left EMPTY, not filled with today: a payslip must never land in the wrong month by default.
+  f.period_from = r.period_from ?? ""; f.period_to = r.period_to ?? ""; f.pay_date = r.pay_date ?? "";
+  if (!r.period_from && r.pay_date) f.notes = [...f.notes, "I could not find the pay period. Choose the dates."];
+  f.ot_month = f.pay_date ? M.addMonths(M.monthOf(f.pay_date), -1) : d.ot_month;
   for (const l of r.earnings) f["e_" + l.kind] = two(l.amount);
   for (const l of r.deductions) f["d_" + l.kind] = two(l.amount);
   if (r.printed_gross) f.gross = two(r.printed_gross);
@@ -515,8 +516,11 @@ function accountForScan(r) {
   if (!r.bankId) return { id: null, note: "I could not tell which account paid. Choose one." };
   const bank = M.bankById(r.bankId).name, hits = accountsFor(null).filter((a) => a.bank === r.bankId || (!a.bank && M.bankForName(a.name)?.id === r.bankId));
   if (!hits.length) return { id: null, note: "The paper names " + bank + " but you have no account for it. Choose one." };
-  const pick = hits.find((a) => a.class === (r.creditCard ? "liability" : "asset")) ?? hits[0];
-  return { id: pick.id, note: hits.length > 1 ? "The paper names " + bank + "; I chose " + pick.name + ". Check it." : "" };
+  // A credit card payment goes to that bank's credit card; anything else to its money account (savings, debit). With only the other kind
+  // on hand, nothing is chosen for you: paying a card bill from savings, or the reverse, would be wrong.
+  const want = r.creditCard ? "liability" : "asset", pick = hits.find((a) => a.class === want);
+  if (!pick) return { id: null, note: r.creditCard ? "This is a credit card payment at " + bank + ", but you have no credit card account for it. Add one in Setup, or choose an account." : "The paper names " + bank + " but only as a credit card. Choose the account that paid." };
+  return { id: pick.id, note: hits.filter((a) => a.class === want).length > 1 ? "The paper names " + bank + "; I chose " + pick.name + ". Check it." : "" };
 }
 
 // Reads a photo. A payslip is read again from where its words sit on the page (so two columns stay apart and a tilted photo is straightened),
@@ -808,7 +812,7 @@ async function dropOldPlaceholders() {
 }
 
 const bankPictureOf = (bankId) => M.bankPicture(S().accounts, bankId);
-const accountPreview = (f) => { const b = M.bankById(f.bank), sub = (f.sub ?? "").trim(); return sub ? b.name + " \u00b7 " + sub : b.name; };
+const accountPreview = (f) => { const b = M.bankById(f.bank), sub = (f.sub ?? "").trim(); return sub ? b.name + " \u00b7 " + sub : f.kind === "liability" ? b.name + " \u00b7 Credit card" : b.name; };
 
 function viewSetup() {
   const f = ui.accountForm;

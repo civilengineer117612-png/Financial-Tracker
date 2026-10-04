@@ -34,12 +34,12 @@ export function planAccount(state, input) {
     if (!bank) return fail("UNKNOWN_BANK", "that bank is not in the list");
     const sub = (input.sub ?? "").trim();
     if (sub.length > 40) return fail("BAD_NAME", "keep the part of the bank to 40 characters or less");
-    name = sub ? bank.name + " · " + sub : bank.name;
+    name = sub ? bank.name + " · " + sub : input.kind === "liability" ? bank.name + " · Credit card" : bank.name;   // a bank can hold a savings account and a credit card side by side
   } else {
     name = (input.name ?? "").trim();
     if (!name) return fail("BAD_NAME", "Give the account a name.");
   }
-  if (state.accounts.some((a) => a.name.toLowerCase() === name.toLowerCase())) return fail("DUPLICATE_NAME", "You already have an account with that name.");
+  if (state.accounts.some((a) => a.name.toLowerCase() === name.toLowerCase())) return fail("DUPLICATE_NAME", bank ? "You already have \u201C" + name + "\u201D. To add another account at " + bank.name + ", say which part it is (for example Savings or Payroll)." : "You already have an account with that name.");
   const sibling = bank ? state.accounts.find((a) => a.bank === bank.id && (a.icon || a.icon_url)) : null;
   const account = {
     id: input.id, name, class: input.kind, role: "", hidden_by_default: false, archived: false,

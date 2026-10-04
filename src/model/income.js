@@ -58,6 +58,8 @@ export function planPayslip(state, input, now = new Date()) {
   const account = state.accounts.find((a) => a.id === input.account_id);
   if (!account || account.class !== "asset") return fail("UNKNOWN_ACCOUNT", "choose the account the pay landed in");
   if ((state.payslips ?? []).some((p) => p.id === input.id)) return fail("DUPLICATE_ID", "that payslip is already saved");
+  // The same payslip scanned or typed twice would be counted twice: same period and same net pay means it is already here.
+  if ((state.payslips ?? []).some((p) => p.period_from === input.period_from && p.period_to === input.period_to && p.deposit === input.deposit)) return fail("DUPLICATE_PAYSLIP", "you already saved a payslip for " + input.period_from + " to " + input.period_to + " with the same net pay (" + peso(input.deposit) + ")");
   if (!(input.earnings ?? []).length) return fail("NO_EARNINGS", "add at least one earnings line");
   const cats = new Map(state.categories.map((c) => [c.id, c]));
   if (cats.get("cat-salary")?.kind !== "income" || cats.get("cat-overtime")?.kind !== "income") return fail("NO_CATEGORY", "the Salary and Overtime income categories are missing");

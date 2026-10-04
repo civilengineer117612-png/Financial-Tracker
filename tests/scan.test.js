@@ -355,3 +355,20 @@ test("linesFromBoxes cleans a stray mark and a B read for 8 so the amount pairs 
   assert.match(out, /Bill Amount 1\.157\.84/);
   assert.equal(readScan("Billing Invoice\nMeralco\nBill Amount 1.157.84\nDue date Oct 10, 2026", "2026-10-04").amount, 115784);
 });
+
+test("a bank screen with the value above its label and a cashback line: the transaction amount is the total, the date is the transaction time", () => {
+  const boxes = [box("PHP 834.67", 300, 20, 200), box("From", 20, 80, 80), box("SampleBank", 360, 80, 140), box("To", 20, 120, 40), box("SAMPLE STORE MALUGAY", 300, 120, 220),
+    box("Transaction Amount", 20, 220, 260), box("PHP 834.67", 400, 220, 120), box("Cashback", 20, 260, 140), box("+PHP 8.35", 400, 260, 120),
+    box("Transaction Type", 20, 340, 220), box("Credit Card Transaction", 300, 340, 220), box("Transaction Time", 20, 380, 220), box("02 0ct 2026. 21:16", 300, 380, 220), box("Posted Time", 20, 420, 160), box("04 0ct 2026. 01:00", 300, 420, 220)];
+  const text = linesFromBoxes(boxes);
+  assert.match(text, /Transaction Amount PHP 834\.67/);
+  assert.match(text, /Cashback \+PHP 8\.35/);
+  const r = readScan(text, "2026-10-04");
+  assert.equal(r.amount, 83467);
+  assert.equal(r.date, "2026-10-02");
+  assert.equal(r.creditCard, true);
+});
+
+test("a cashback or reward line is never taken as the amount", () => {
+  assert.equal(readScan("Transaction Details\nTransaction Amount\nCashback +PHP 8.35\nFrom MariBank\nPHP 834.67", "2026-10-04").amount, 83467);
+});
