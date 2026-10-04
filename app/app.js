@@ -288,7 +288,11 @@ const payslipDefaults = () => ({
 const knownEmployers = () => [...new Set([...(S().payslips ?? []).map((p) => p.employer), ledger.settings.last_employer].filter(Boolean))];
 function openPayslipFromPhoto(blob, text, queueId) {
   const r = M.readPayslip(text, today()), d = payslipDefaults(), two = (c) => (c / 100).toFixed(2);
-  const f = { ...d, account_id: null, employer: r.employer ? M.snapEmployer(r.employer, knownEmployers()) : d.employer, text, notes: [...r.notes, ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."]), "What really arrived is filled in with the printed net pay. Change it if the account got a different amount."] };
+  const employer = r.employer ? M.snapEmployer(r.employer, knownEmployers()) : d.employer;
+  // A right-looking employer must not make the rest look checked: say plainly that every figure was read from the photo and none is confirmed.
+  const trust = ["Everything here was read from the photo, the employer too. A right employer does not mean the figures are right: check each line against the paper."];
+  if (r.employer && employer !== r.employer) trust.push("The employer was read as \u201C" + r.employer + "\u201D and matched to your saved employer \u201C" + employer + "\u201D. Check it.");
+  const f = { ...d, account_id: null, employer, text, notes: [...trust, ...r.notes, ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."]), "What really arrived is filled in with the printed net pay. Change it if the account got a different amount."] };
   if (r.period_from) { f.period_from = r.period_from; f.period_to = r.period_to; }
   if (r.pay_date) f.pay_date = r.pay_date;
   f.ot_month = M.addMonths(M.monthOf(f.pay_date), -1);

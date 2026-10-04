@@ -1189,6 +1189,7 @@ await menuGo(page, "Scan");
 await page.setInputFiles("input[data-scan]:not([capture])", { name: "payslip.png", mimeType: "image/png", buffer: Buffer.from(slipPng, "base64") });
 check(await seen(page, "#sheet", "Add a payslip", 180000), "a payslip photo opens the payslip window, not a one-line pay entry");
 const val = (id) => page.inputValue("#" + id);
+check((await text(page, "#sheet")).includes("A right employer does not mean the figures are right"), "the payslip window says that a right employer does not mean the figures are right");
 check([await val("d_tax"), await val("d_sss"), await val("d_philhealth"), await val("d_pagibig")].join("|") === "700.00|300.00|100.00|100.00", "tax, SSS, PhilHealth and Pag-IBIG are read from their lines (" + [await val("d_tax"), await val("d_sss"), await val("d_philhealth"), await val("d_pagibig")].join("|") + ")");
 check([await val("e_basic"), await val("e_rice"), await val("e_overtime")].join("|") === "9000.00|1000.00|1500.00", "the earnings lines are read too, overtime included");
 check([await val("p-gross"), await val("p-net"), await val("p-date"), await val("p-emp")].join("|") === "11500.00|10300.00|2026-10-02|Sample Employer Inc", "and the printed gross and net, the pay date and the employer (" + [await val("p-gross"), await val("p-net"), await val("p-date"), await val("p-emp")].join("|") + ")");
