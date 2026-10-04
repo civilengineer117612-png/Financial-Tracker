@@ -22,7 +22,9 @@
   .sub { color: var(--mid); margin: 0 0 12px; }
   .note { color: var(--mid); }
   button { font: inherit; color: var(--ink); background: var(--wash); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-height: 48px; }
-  button:active { background: var(--line); }
+  button { transition: transform .12s ease, background-color .12s ease; }
+  button:active { background: var(--line); transform: scale(.98); }
+  button.rowbtn:active, .brow:active, .choice:active, .bankrow:active, #nav button:active, button.link:active { transform: none; }
   button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); width: 100%; font-size: 18px; min-height: 56px; }
   button.primary:active { background: var(--mid); }
   button:disabled { opacity: .4; }
@@ -59,15 +61,17 @@
   .lbhint { color: #ccc; text-align: center; margin: 8px; }
   button.link { background: none; border: 0; padding: 4px 0; min-height: 0; text-decoration: underline; }
   .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .tile { border-radius: 14px; } .tile:active { transform: scale(.96); }
   .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 84px; gap: 2px; }
   .tile b { font-size: 17px; }
   .tile span { color: var(--mid); }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   #top { display: flex; align-items: center; gap: 12px; margin: 0 0 6px; }
-  #top h1 { margin: 0; }
+  #top h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -.01em; }
+  .daycapbtn { background: none; border: 0; padding: 2px 8px; min-height: 0; color: var(--mid); font-size: 16px; }
   .camicon.micbtn { margin-left: auto; padding: 0; border: 0; font-size: inherit; }
   .micbtn + .camicon { margin-left: 0; }
-  .camicon { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 12px; background: var(--ink); color: var(--paper); cursor: pointer; }
+  .camicon { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 14px; background: var(--ink); color: var(--paper); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .12s ease; } .camicon:active { transform: scale(.94); }
   .menubtn { width: 48px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
   .menubtn svg { display: block; }
   #menu .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); }
@@ -205,6 +209,10 @@
   #scrim { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.45); }
   .sheet { z-index: 11; position: fixed; left: 0; right: 0; bottom: 0; max-height: 86vh; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; overflow-wrap: anywhere; background: var(--paper); border-top: 2px solid var(--ink);
            border-radius: 14px 14px 0 0; padding: 16px 16px calc(20px + env(safe-area-inset-bottom)); }
+  @keyframes sheetup { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes scrimin { from { opacity: 0; } to { opacity: 1; } }
+  .sheet.enter { animation: sheetup .22s ease-out; } #scrim.enter { animation: scrimin .2s ease-out; }
+  @media (prefers-reduced-motion: reduce) { .sheet.enter, #scrim.enter { animation: none; } button { transition: none; } }
   .sheet h3 { margin: 0 0 4px; font-size: 20px; }
   body.locked { position: fixed; left: 0; right: 0; width: 100%; overflow: hidden; }   /* the page stays still while a window is open */
   #toast { position: fixed; left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 5; }

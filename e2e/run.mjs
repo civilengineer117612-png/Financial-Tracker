@@ -107,7 +107,7 @@ await seen(page, "#screen", "₱95.00");
 await page.click('button.tile:has-text("Dinner")');
 check((await page.locator("#sheet .chip").first().innerText()).includes("Test Cash"), "the account used last is offered first");
 await page.click('#sheet .chip:has-text("Test Cash")');
-await page.click('button:has-text("Other amount")');
+await page.click('button:has-text("Add expense")');
 check(await page.locator("#f-save").isDisabled(), "save stays off until amount, category and account are chosen");
 await page.fill("#f-amount", "120.50");
 await page.click('#sheet .chip:has-text("Shopping")');
@@ -120,7 +120,7 @@ let led = JSON.parse((await stored(page)).local);
 check(led.state.transactions.some((t) => t.id.startsWith("rsv:")), "its reserve transfer was generated with it");
 check(!(await text(page, "#toast")).includes("short"), "no shortage note when the reserve covers the card");
 await page.fill("#f-amount", "").catch(() => {});
-await page.click('button:has-text("Other amount")');
+await page.click('button:has-text("Add expense")');
 await page.fill("#f-amount", "abc");
 check(await page.locator("#f-save").isDisabled(), "a non-number cannot be saved");
 await page.click('#sheet button:has-text("Cancel")');
@@ -384,7 +384,7 @@ await page.click('#sheet button:has-text("Cancel")');
 
 // log and verify across three months, through the real screens
 const logPreset = async (name, acct) => { await page.click('#nav button:has-text("Log")'); await page.click(`button.tile:has-text("${name}")`); await page.click(`#sheet .chip:has-text("${acct}")`); await seen(page, "#toast", "Saved " + name); };
-const logOther = async (amount, cat, acct) => { await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Other amount")'); await page.fill("#f-amount", amount); await page.click(`#sheet .chip:has-text("${cat}")`); await page.click(`#sheet .chip:has-text("${acct}")`); await page.click("#f-save"); await seen(page, "#toast", "Saved"); };
+const logOther = async (amount, cat, acct) => { await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", amount); await page.click(`#sheet .chip:has-text("${cat}")`); await page.click(`#sheet .chip:has-text("${acct}")`); await page.click("#f-save"); await seen(page, "#toast", "Saved"); };
 const verifyAll = async () => {
   await page.click('#nav button:has-text("Verify")');
   for (let guard = 0; guard < 20; guard++) {
@@ -603,7 +603,7 @@ check((await text(page, "#screen")).includes("No budgets for September 2026 yet"
 // spending with no budget is listed, not hidden
 await page.click('button[aria-label="Later"]');
 await page.click('#nav button:has-text("Log")');
-await page.click('button:has-text("Other amount")'); await page.fill("#f-amount", "80"); await page.click('#sheet .chip:has-text("Upskill")'); await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
+await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "80"); await page.click('#sheet .chip:has-text("Upskill")'); await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
 await page.click('#nav button:has-text("Verify")');
 await page.click('button:has-text("Correct")'); await seen(page, "#screen", "of");
 await verifyAll();
@@ -692,11 +692,12 @@ await shot(page, "33-calendar");
 await page.click('#sheet .cal button[data-id="2026-01-05"]');
 check((await page.locator("#sheet .cal").count()) === 0, "choosing a day closes it");
 check((await text(page, ".daytotal")).includes("₱0.00") && (await text(page, ".daycap")).includes("Jan"), "and the big number becomes that day's total, with the date under it");
-check((await text(page, ".datelink")).includes("Change date") && (await text(page, "#screen")).includes("Back to today"), "and the links become Change date and Back to today");
+check((await text(page, "#screen")).includes("Today") && !(await text(page, "#screen")).includes("Change date") && !(await text(page, "#screen")).includes("Back to today"), "and there is one short link, Today, instead of two wordy ones");
+check(await page.locator(".daycapbtn").count() === 1, "the date under the number can be tapped to choose another day");
 check((await text(page, "h2.today")).toLowerCase().includes("jan") && (await text(page, "#screen")).includes("Nothing logged that day"), "the list under the buttons follows the chosen day");
 await shot(page, "23-day-totals");
-await page.click('button:has-text("Back to today")');
-check((await text(page, ".daytotal")) === todayTotal && (await page.locator(".daycap").count()) === 0, "Back to today shows today's total again");
+await page.click('button[data-action="reset-day"]');
+check((await text(page, ".daytotal")) === todayTotal && (await page.locator(".daycap").count()) === 0, "Today shows today's total again");
 check((await text(page, "h2.today")).toLowerCase() === "today" && !(await text(page, "#screen")).includes("Nothing logged that day"), "and today's entries");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
@@ -726,7 +727,7 @@ await page.click('button:has-text("Tag new entries with this trip")');
 await seen(page, "#screen", "Tagging new entries");
 await page.click('#nav button:has-text("Log")');
 check((await text(page, "#screen")).includes("Tagging new entries: Test Trip"), "the Log screen says new entries are being tagged");
-await page.click('button:has-text("Other amount")'); await page.fill("#f-amount", "120"); await page.click('#sheet .chip:has-text("Upskill")'); await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
+await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "120"); await page.click('#sheet .chip:has-text("Upskill")'); await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.state.transactions.some((t) => t.tag_id === ledgerNow.state.tags[0].id && t.status === "draft"), "the new entry carries the trip tag with no extra taps");
 await menuGo(page, "Trips");
@@ -751,7 +752,7 @@ await page.click("#f-save"); await seen(page, "#toast", "Wallet split");
 const bt = await text(page, "#screen");
 check(bt.includes("₱600.00") && bt.includes("₱300.00"), "the buffer and the allowance are shown separately");
 await page.click('#nav button:has-text("Log")');
-await page.click('button:has-text("Other amount")'); await page.fill("#f-amount", "400"); await page.click('#sheet .chip:has-text("Upskill")'); await page.click('#sheet .chip:has-text("GCash")'); await page.click("#f-save");
+await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "400"); await page.click('#sheet .chip:has-text("Upskill")'); await page.click('#sheet .chip:has-text("GCash")'); await page.click("#f-save");
 check(await seen(page, "#toast", "₱100.00 came out of the overrun buffer"), "spending past the allowance says how much came out of the buffer");
 await menuGo(page, "Buffer");
 const bt2 = await text(page, "#screen");
@@ -1171,7 +1172,7 @@ console.log("Windows and speech");
 await addAccount(page, "Wallet", "asset", "1000"); await addAccount(page, "GCash", "asset", "500");
 await page.click('#nav button:has-text("Log")');
 await page.setViewportSize({ width: 360, height: 520 });   // a short screen, so a window has to scroll
-await page.click('button:has-text("Other amount")');
+await page.click('button:has-text("Add expense")');
 await page.fill("#f-amount", "50");
 await page.evaluate(() => { const s = document.querySelector("#sheet .sheet"); s.scrollTop = s.scrollHeight; });
 const before = await page.evaluate(() => document.querySelector("#sheet .sheet").scrollTop);

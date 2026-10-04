@@ -163,14 +163,16 @@ function renderScreen() {
 }
 
 // The big number on the Log screen is the total for the day being looked at: today, or the day picked with "Select date".
-// "Back to today" returns to today. The date box is the phone's own picker, hidden under the link so nothing crowds the screen.
+// "Today" returns to today. The date box is the phone's own picker, hidden under the link so nothing crowds the screen.
 function dayCard() {
   const picked = ui.dayPick && ui.dayPick !== today() ? ui.dayPick : null;
   const d = M.dayTotal(S(), picked ?? today());
   const words = (picked ? longDate(picked) : "Today") + " " + peso(d.total) + (d.drafts ? ", including " + d.drafts + " not yet verified" : "");
+  // One quiet link at a time: "Select date" on today; on another day the date itself (tap it to pick another) and a single "Today".
   return `<div class="daytotal" role="status" aria-label="${esc(words)}">${peso(d.total)}</div>
-    ${picked ? `<p class="center daycap">${esc(longDate(picked))}</p>` : ""}
-    <p class="center"><button class="link datelink" data-action="open-cal">${picked ? "Change date" : "Select date"}</button>${picked ? ` \u00b7 <button class="link" data-action="reset-day">Back to today</button>` : ""}</p>`;
+    ${picked ? `<p class="center daycap"><button class="daycapbtn datelink" data-action="open-cal" aria-label="${esc(longDate(picked))}, tap to choose another day">${esc(longDate(picked))}</button></p>
+    <p class="center"><button class="link" data-action="reset-day">Today</button></p>`
+    : `<p class="center"><button class="link datelink" data-action="open-cal">Select date</button></p>`}`;
 }
 
 function viewLog() {
@@ -194,7 +196,7 @@ function viewLog() {
   return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${photoNote}${dueNote}${backupNote}${tripNote}
     ${dayCard()}
     <div class="tiles">${S().presets.map((p) => `<button class="tile" data-action="open-preset" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><span>${peso(p.amount)}</span></button>`).join("")}</div>
-    <p><button class="primary" data-action="open-other" style="margin-top:12px">Other amount</button></p>
+    <p><button class="primary" data-action="open-other" style="margin-top:12px">Add expense</button></p>
     <h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
 }
 
@@ -1179,14 +1181,14 @@ function lockPage(on) {
 function renderSheet() {
   const sh = ui.sheet;
   if (!sh) { $("sheet").innerHTML = ""; lastSheetKey = null; lockPage(false); return; }
-  const key = [sh.type, sh.id ?? "", sh.queueId ?? ""].join(":"), keepAt = lastSheetKey === key ? document.querySelector("#sheet .sheet")?.scrollTop ?? 0 : 0;
+  const key = [sh.type, sh.id ?? "", sh.queueId ?? ""].join(":"), opening = lastSheetKey !== key, keepAt = lastSheetKey === key ? document.querySelector("#sheet .sheet")?.scrollTop ?? 0 : 0;
   lastSheetKey = key; lockPage(true);
   let body = "";
   if (sh.type === "pay") {
     const p = S().presets.find((x) => x.id === sh.id);
     body = `<h3>${esc(p.name)} ${peso(p.amount)}</h3><p class="note">Paid from</p>${chips(accountsFor(p.id), null, "pay")}`;
   } else if (sh.type === "other") {
-    body = `<h3>Other amount</h3>
+    body = `<h3>Add expense</h3>
       <label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}
       <label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
@@ -1438,7 +1440,7 @@ function renderSheet() {
       <p class="note">Anything entered on this phone since the backup was made will be gone.</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  $("sheet").innerHTML = `<div id="scrim" data-action="close-sheet"></div><div class="sheet" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" ? "Close" : "Cancel"}</button></p></div>`;
+  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" ? "Close" : "Cancel"}</button></p></div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); }
   refreshSave();
