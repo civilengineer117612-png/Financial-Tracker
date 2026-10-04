@@ -91,6 +91,18 @@ test("the photo reader is a set of files of this site, deployed with it, and nev
   assert.ok(!/cdn\.jsdelivr|unpkg|cdnjs/.test(ocr), "no CDN");
 });
 
+test("the stronger photo reader is also files of this site, tried first, with the plain reader as the fallback", () => {
+  const dir = "src/vendor/paddle/";
+  for (const f of ["ch_PP-OCRv4_det_infer.onnx", "ch_PP-OCRv4_rec_infer.onnx", "ppocr_keys_v1.txt", "ort.wasm.min.mjs", "ort-wasm-simd-threaded.mjs", "ort-wasm-simd-threaded.wasm", "LICENSE-onnxruntime.txt", "README.md"]) assert.ok(existsSync(new URL("../" + dir + f, import.meta.url)), "missing " + dir + f);
+  const paddle = read("app/paddle.js");
+  assert.ok(!/https?:\/\//.test(paddle.replace(/\/\/.*$/gm, "")), "paddle.js must not name any other site");
+  assert.match(paddle, /new URL\("\.\.\/src\/vendor\/paddle\/", import\.meta\.url\)/);
+  assert.ok(!/cdn\.jsdelivr|unpkg|cdnjs/.test(paddle), "no CDN");
+  assert.match(read("app/sw.js"), /"paddle\.js"/);
+  const ocr = read("app/ocr.js");
+  assert.ok(ocr.indexOf('import("./paddle.js")') > 0 && ocr.indexOf("readPlain(blob, progress)") > ocr.indexOf('import("./paddle.js")'), "paddle first, plain reader after");
+});
+
 test("windows cannot scroll sideways: the phone's date box is held inside the window", () => {
   const css = read("app/index.html");
   assert.match(css, /\.sheet \{[^}]*overflow-x: hidden/);

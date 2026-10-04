@@ -7,7 +7,7 @@ const hasSimd = () => { try { return WebAssembly.validate(new Uint8Array([0, 97,
 
 // Shrinks a photo so reading is quick and keeping it is cheap: the long side is at most `maxSide`, as a JPEG.
 // A phone photo carries its rotation inside the file, so it is applied here and the stored picture is the right way up.
-export async function preparePhoto(file, maxSide = 1600) {
+export async function preparePhoto(file, maxSide = 2400) {
   let bmp;
   try { bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }
   catch { bmp = await new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = () => reject(new Error("this file is not a picture it can open")); img.src = URL.createObjectURL(file); }); }
@@ -60,9 +60,19 @@ export async function evenedCopy(blob) {
   return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
 }
 
-// Resolves to {text, words}: the text found, and every word with its box (x0, y0, x1, y1) so the reading can use where words sit on the
-// page. progress(fraction 0..1, what) is called while it works.
+// Resolves to {text, words, boxes}: the text found, every word with its box (x0, y0, x1, y1) so the reading can use where words sit on the
+// page, and, when the stronger reader (app/paddle.js, about 30 MB the first time) ran, its line boxes. If that reader cannot run on this
+// phone the plain one (Tesseract) answers and boxes is null. progress(fraction 0..1, what) is called while it works.
 export async function readPage(blob, progress = () => {}) {
+  try {
+    const { readBoxes } = await import("./paddle.js");
+    const boxes = await readBoxes(blob, progress);
+    return { text: boxes.map((b) => b.text).join("\n"), words: [], boxes };
+  } catch (e) { console.warn("stronger reader unavailable, using the plain one:", e); }
+  return readPlain(blob, progress);
+}
+
+async function readPlain(blob, progress = () => {}) {
   onProgress = progress;
   await loadScript();
   worker ??= await window.Tesseract.createWorker("eng", 1, {
@@ -73,7 +83,7 @@ export async function readPage(blob, progress = () => {}) {
   });
   const { data } = await worker.recognize(blob, {}, { text: true, blocks: true });
   const words = (data.blocks ?? []).flatMap((b) => b.paragraphs.flatMap((p) => p.lines.flatMap((l) => l.words))).map((w) => ({ text: w.text, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 }));
-  return { text: data.text ?? "", words };
+  return { text: data.text ?? "", words, boxes: null };
 }
 
 // Just the text.

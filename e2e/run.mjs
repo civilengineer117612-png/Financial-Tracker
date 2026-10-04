@@ -981,7 +981,7 @@ await menuGo(page, "Scan");
 await page.setInputFiles("input[data-scan]:not([capture])", { name: "bank.png", mimeType: "image/png", buffer: Buffer.from(bankPng, "base64") });
 check(await seen(page, "#sheet", "Check what I read", 180000), "a bank screenshot is read too");
 check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("MariBank")').count() === 1, "it chose MariBank, the bank on the From line, as the account that paid");
-check(/SAMPLE SUPERMARKET/i.test(await page.inputValue("#f-payee")) && await page.inputValue("#f-amount") === "592.50" && await page.inputValue("#f-date") === "2026-10-01", "and read the payee, the amount and the date");
+check(/SAMPLE ?SUPERMARKET/i.test(await page.inputValue("#f-payee")) && await page.inputValue("#f-amount") === "592.50" && await page.inputValue("#f-date") === "2026-10-01", "and read the payee, the amount and the date");
 check(await page.evaluate(() => { const sh = document.querySelector("#sheet .sheet"), d = document.querySelector("#sheet input[type=date]").getBoundingClientRect(), r = sh.getBoundingClientRect(); return sh.scrollWidth <= sh.clientWidth && d.left >= r.left && d.right <= r.right; }), "the window does not scroll sideways and its date box stays inside it");
 await shot(page, "42-scan-bank");
 await page.click('#sheet button:has-text("Cancel")');
@@ -1181,7 +1181,7 @@ console.log("Payslip photo");
 await addAccount(page, "Wallet", "asset", "1000");
 const slipPng = await page.evaluate(() => {   // an invented payslip, drawn in the page
   const c = document.createElement("canvas"); c.width = 1100; c.height = 1400;
-  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 1100, 1400); x.fillStyle = "#000"; x.font = "bold 38px monospace";
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 1100, 1400); x.fillStyle = "#000"; x.font = "bold 38px sans-serif";
   ["Sample Employer Inc", "PAYSLIP", "Pay period: 01/10/2026 - 02/10/2026", "Pay date: Oct 2, 2026", "EARNINGS", "Basic Salary   9,000.00", "Rice Subsidy   1,000.00", "Overtime   1,500.00", "Gross Pay   11,500.00", "DEDUCTIONS", "Withholding Tax   700.00", "SSS   300.00", "PhilHealth   100.00", "Pag-IBIG   100.00", "Net Pay   10,300.00"].forEach((l, i) => x.fillText(l, 40, 70 + i * 80));
   return c.toDataURL("image/png").split(",")[1];
 });

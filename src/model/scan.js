@@ -38,12 +38,15 @@ const CATEGORY_CLUES = [
 ];
 
 // ---------- amounts ----------
-const cleanDigits = (s) => s.replace(/(?<=\d)[Oo](?=[\d/.,-])|(?<=[\d/.,-])[Oo](?=\d)/g, "0").replace(/(?<=\d)[Il](?=[\d/.,-])|(?<=[\d/.,-])[Il](?=\d)/g, "1");
+const cleanDigitsOnce = (s) => s.replace(/(?<=\d)[Oo]+(?=[\d/.,-])|(?<=[\d/.,-])[Oo]+(?=\d)/g, (r) => "0".repeat(r.length)).replace(/(?<=\d)[Il](?=[\d/.,-])|(?<=[\d/.,-])[Il](?=\d)/g, "1");
+const cleanDigits = (s) => { let t = s; for (let i = 0; i < 4; i++) { const n = cleanDigitsOnce(t); if (n === t) break; t = n; } return t; };   // "7oo.00" needs more than one pass
 const AMOUNT_RE = /(?:₱|php|\bp\b|#|£)?\s*(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})\b/gi;
 
 function amountsIn(line) {
   const out = [];
-  for (const m of cleanDigits(line).matchAll(AMOUNT_RE)) {
+  // "1.750.32" (dots as thousands) is 1,750.32; "0.00 x 114.18" is a count times a rate: only the rate is a figure
+  const plain = cleanDigits(line).replace(/(\d)\.(\d{3})\.(\d{2})\b/g, "$1,$2.$3").replace(/\d+(?:\.\d+)?\s*[x×]\s*(?=\d)/gi, "");
+  for (const m of plain.matchAll(AMOUNT_RE)) {
     const c = Number(m[1].replace(/,/g, "")) * 100 + Number(m[2]);
     if (Number.isSafeInteger(c) && c > 0) out.push(c);
   }
@@ -97,7 +100,7 @@ const addDaysIso = (s, n) => { const t = new Date(s + "T00:00:00Z"); t.setUTCDat
 
 // Every date written in the text, in reading order: {iso, seen, ambiguous}.
 function datesIn(text) {
-  const t = cleanDigits(text), found = [];
+  const t = cleanDigits(text).replace(/\b0ct/gi, "Oct").replace(/\b5ep/gi, "Sep"), found = [];   // a zero or a five read for the letter, same length so positions hold
   const push = (index, y, m, d, seen, ambiguous = false) => { if (isPhDate(iso(y, m, d))) found.push({ index, iso: iso(y, m, d), seen, ambiguous }); };
   for (const m of t.matchAll(/\b(20\d\d)[-/.](\d{1,2})[-/.](\d{1,2})\b/g)) push(m.index, +m[1], +m[2], +m[3], m[0]);
   const mon = "(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?";
@@ -160,7 +163,7 @@ function payeeFor(kind, lines) {
     }
     return null;
   };
-  if (kind === "gcash" || kind === "bank") return after(/(?:sent to|paid to|recipient|beneficiary|to:|^\s*to\b)(.*)/i);
+  if (kind === "gcash" || kind === "bank") { lines = lines.map((l) => l.replace(/^(\s*To)(?=[A-Z]{3})/, "$1 ")); return after(/(?:sent to|paid to|recipient|beneficiary|to:|^\s*to\b)(.*)/i); }   // the reader sometimes glues the word To to the name after it
   if (kind === "received") return after(/(?:received from|from:|sender)(.*)/i);
   if (kind === "rent") return after(/(?:received from|paid to|paid by|landlord|landlady)(.*)/i);
   if (kind === "payslip") return after(/(?:employer|company)(.*)/i);
@@ -254,14 +257,14 @@ export function categoryFromHistory(state, payee) {
 // "year to date" heading.
 const EARNING_LABELS = [["basic", /basic|monthly\s*(salary|rate)/], ["rice", /rice/], ["skills", /skill/], ["clothing", /cloth|uniform/], ["transport", /transport/],
   ["overtime", /over\s*-?time|\bot\b/], ["thirteenth", /13\s*th|thirteenth/], ["bonus", /bonus/]];
-const DEDUCTION_LABELS = [["loan", /\bloans?\b/], ["tax", /withholding|w\/\s*tax|\bwtax\b|\btax\b(?!able)/], ["sss", /\bsss\b/], ["philhealth", /phil\s*-?health|\bphic\b/],
-  ["pagibig", /pag\s*-?\s*[il1]?\s*big|pagibig|hdmf/], ["absences", /absen/], ["lates", /\blates?\b|undertime|tardi/]];
+const DEDUCTION_LABELS = [["loan", /\bloans?\b|advance/], ["tax", /with\w*ding|w\/\s*tax|\bwtax\b|\b[t1]ax\b(?!able)/], ["sss", /\b(?:sss|5ss|s5s|555)\b/], ["philhealth", /phil\s*-?health|\bphic\b|\bph[a-z]{1,5}ea/],
+  ["pagibig", /pag\s*-?\s*[il1]?\s*b[il1]g|pagibig|hdmf/], ["absences", /absen|1\/2\s*day|half\s*-?\s*day/], ["lates", /\blates?\b|undertime|tardi/]];
 const SKIP_LINE = /total\s*(earnings|deductions|pay)|taxable|net\s*taxable|ytd|year\s*-?\s*to\s*-?\s*date|balance|leave/;
 
 export function readPayslip(text, today) {
   const lines = String(text ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const notes = [], earnings = [], deductions = [];
-  let printed_gross = null, printed_net = null;
+  let printed_gross = null, printed_net = null, total_salary = null;
   const end = lines.findIndex((l) => /year\s*-?\s*to\s*-?\s*date|\bytd\b/i.test(l) && !amountsIn(l).length);
   const body = end >= 0 ? lines.slice(0, end) : lines;
   const seen = new Set();
@@ -270,6 +273,7 @@ export function readPayslip(text, today) {
     const first = () => { const a = amountsIn(line); if (a.length) return a[0]; const next = body[i + 1]; return next && !/[a-z]{3}/i.test(next.replace(/php|peso/gi, "")) ? (amountsIn(next)[0] ?? null) : null; };
     if (/\bgross\b/.test(low) && !/taxable/.test(low)) { printed_gross ??= first(); return; }
     if (/net\s*(pay|salary|income|amount)|take[- ]?home/.test(low)) { printed_net ??= first(); return; }
+    if (/total\s*salary/.test(low)) { total_salary ??= first(); return; }
     if (SKIP_LINE.test(low)) return;
     const ded = DEDUCTION_LABELS.find(([, re]) => re.test(low)), earn = EARNING_LABELS.find(([, re]) => re.test(low));
     const hit = ded ? ["deduction", ded[0]] : earn ? ["earning", earn[0]] : null;
@@ -277,6 +281,7 @@ export function readPayslip(text, today) {
     const amount = first();
     if (amount) { seen.add(hit.join(":")); (hit[0] === "earning" ? earnings : deductions).push({ kind: hit[1], amount }); }
   });
+  printed_gross ??= total_salary;
   if (amountsIn(lines.join("\n")).length && lines.some((l) => amountsIn(l).length > 1)) notes.push("Where a line shows two figures I took the first (this pay period). Check them.");
   if (printed_gross === null) notes.push("I could not find the printed gross pay. Type it from the payslip.");
   if (printed_net === null) notes.push("I could not find the printed net pay. Type it from the payslip.");
@@ -367,6 +372,51 @@ export function linesFromWords(words) {
   }
   return lines.join("\n");
 }
+
+// The stronger reader gives one box per printed line piece (text, its box, and the tilt of its own baseline: th). A label and its amount
+// are often far apart with a gap between, and on a tilted or curled page the amount sits higher or lower than its label. So: for each label,
+// the amount to its right whose height matches once the LOCAL tilt (the middle of the angles of the nearest wide boxes) is allowed for;
+// each amount is used once, the closest match first. Returns plain text, one "label amount" line per piece, top to bottom.
+// boxes: [{text, th, x0, y0, x1, y1}].
+const BOX_AMOUNT = /^[₱#£P]?\s*\d{1,3}(?:[,.]\d{3})*[.,]\d{2}$|^[₱#£P]?\s*\d+[.,]\d{2}$/;
+export function linesFromBoxes(input) {
+  let w = [];
+  for (const x of input ?? []) {
+    // "100:00" is an amount (no clock shows hour 100); "19:52" is a time and stays
+    const t = String(x.text ?? "").trim().replace(/^(\d{3,}|\d{1,3}(?:,\d{3})+|[3-9]\d|2[4-9]):(\d{2})$/, "$1.$2"); if (!t || ![x.x0, x.y0, x.x1, x.y1].every(Number.isFinite)) continue;
+    const m = /^(.*[A-Za-z:.].*?)\s+([₱#£P]?\s*\d{1,3}(?:[,.]\d{3})*[.,]\d{2})$/.exec(t);   // a label and its amount read as one box: split it
+    if (m && !BOX_AMOUNT.test(t)) {
+      const cut = x.x0 + (x.x1 - x.x0) * (m[1].length / t.length);
+      w.push({ ...x, t: m[1], x1: cut, th: x.th ?? 0 }, { ...x, t: m[2], x0: cut, th: x.th ?? 0 });
+    } else w.push({ ...x, t, th: x.th ?? 0 });
+  }
+  if (!w.length) return "";
+  for (const b of w) { b.cx = (b.x0 + b.x1) / 2; b.cy = (b.y0 + b.y1) / 2; b.h = b.y1 - b.y0; b.amount = BOX_AMOUNT.test(b.t); }
+  const h = median(w.map((b) => b.h)) || 10;
+  const wide = w.filter((b) => (b.x1 - b.x0) > 3 * h);
+  const globalTilt = median(wide.map((b) => b.th));
+  const tiltAt = (b) => {   // the tilt of the page where this box is: the middle of the angles of the wide boxes nearest to it
+    const near = (wide.length >= 5 ? wide : w).map((o) => ({ d: Math.hypot(o.cx - b.cx, o.cy - b.cy), th: o.th })).sort((p, q) => p.d - q.d).slice(0, 6);
+    return near.length ? median(near.map((o) => o.th)) : globalTilt;
+  };
+  const labels = w.filter((b) => !b.amount && /[A-Za-z]{2}/.test(b.t)), amounts = w.filter((b) => b.amount);
+  const cands = [];
+  for (const L of labels) for (const A of amounts) {
+    if (A.cx <= L.cx || A.x0 < L.x1 - 0.5 * h) continue;
+    const s = (tiltAt(L) + tiltAt(A)) / 2, r = (A.cy - L.cy) - s * (A.cx - L.cx);
+    if (Math.abs(r) < 0.9 * h) cands.push({ L, A, r: Math.abs(r), dx: A.x0 - L.x1 });
+  }
+  cands.sort((p, q) => p.r - q.r || p.dx - q.dx);
+  const pairOf = new Map(), usedA = new Set();
+  for (const c of cands) if (!pairOf.has(c.L) && !usedA.has(c.A)) { pairOf.set(c.L, c.A); usedA.add(c.A); }
+  const out = [];
+  for (const b of w) {
+    if (b.amount && usedA.has(b)) continue;
+    out.push({ y: b.cy - globalTilt * b.cx, x: b.x0, text: pairOf.has(b) ? b.t + " " + pairOf.get(b).t : b.t });
+  }
+  return out.sort((p, q) => p.y - q.y || p.x - q.x).map((o) => o.text).join("\n");
+}
+
 
 // An employer name read from a photo, matched to the employers already saved (so a garbled "L PHIL. JAC, INC. Apr 16-30" or "PHIL JAG INC"
 // becomes "PHIL. JAC, INC."). Letters and digits only, ignoring case; matched when one contains the other, or all but about a fifth of

@@ -14,7 +14,7 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 - Bank logos: names and website domains only (`src/model/banks.js`). The phone fetches the logos of ALL listed banks by
   itself (so no service learns which banks the owner uses) and keeps them in its settings; a screenshot chosen on the
   phone wins over them. Logos are never committed.
-- Photo scanner: the reader (Tesseract, Apache 2.0) is copied unchanged into `src/vendor/ocr` and served from our own site, so no
+- Photo scanner: the main reader is PaddleOCR (Apache 2.0) run by ONNX Runtime Web (MIT) from `src/vendor/paddle` (about 30 MB, downloaded once, `app/paddle.js`); `app/ocr.js` falls back to Tesseract if it cannot run. `linesFromBoxes` pairs labels with amounts. Handwriting stays unsupported. Same rule for both: the reader (Apache 2.0) is copied unchanged into `src/vendor/ocr` and served from our own site, so no
   photo ever leaves the phone; never load it from a CDN (a test enforces this). Picture files are kept only on the phone
   (IndexedDB `photos`), never in the ledger text or backup. Never commit a real receipt or payslip image: e2e draws an invented one.
 - `npm test` (also runs in CI). `node e2e/run.mjs` drives the app in an iPhone-like browser (serve the repo with
