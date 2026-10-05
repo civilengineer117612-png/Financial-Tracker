@@ -1223,6 +1223,8 @@ await page.click('button[aria-label="Earlier"]');
 check((await text(page, ".hero")).includes("₱10,300.00") && (await text(page, "#screen")).includes("earned in September 2026"), "it counts in September, the month of its pay period");
 const incText = await text(page, "#screen");
 check(/Gross\s*₱11,500\.00[\s\S]*Deductions\s*−₱1,200\.00[\s\S]*Net\s*₱10,300\.00/.test(incText) && !incText.includes("Basic salary") && (await page.locator("#screen .bars").count()) === 0, "the Overview is gross, deductions and net, with no bar graph");
+{ const ov = await page.evaluate(() => { const r = (el) => Math.round(el.getBoundingClientRect().right); return { rows: [...document.querySelectorAll("#screen .mlist .mline .mv")].map(r), net: r(document.querySelector("#screen .mtotal .mv")) }; });
+  check(ov.rows.length === 2 && ov.rows.every((x) => Math.abs(x - ov.net) <= 1), "on the Overview the gross and deductions amounts line up at the right with the net (" + JSON.stringify(ov) + ")"); }
 { const pt = await page.locator("#screen .ptitle").evaluateAll((els) => els.map((e) => [e.getAttribute("aria-label"), getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight].join("|")));
   check(pt.length === 1 && pt[0].startsWith("Choose the period: ") && pt[0].includes("|16px|7"), "the period bar is the same one Spending has: tap it to choose a month, a year or a range (" + pt.join(" ; ") + ")"); }
 check(!incText.includes("Year to date") && !(await page.locator("#screen table.tbl").count()), "the Overview shows only the important things: no tables");
@@ -1277,10 +1279,13 @@ check(await page.locator(".mlist details.mrow").count() >= 1 && await page.locat
 await page.locator(".mlist details.mrow summary").first().click();
 { const t = await page.locator(".mlist details.mrow").first().innerText();
   check(t.includes("Basic salary") && t.includes("Rice subsidy") && t.includes("Overtime") && t.includes("Deductions") && !t.includes("Base pay"), "tapping a month shows each kind of earning, rice subsidy and overtime apart, then the deductions (" + t.replace(/\n/g, " | ") + ")"); }
-{ const m = await text(page, ".mlist");
+{ const m = await text(page, ".mlist:has(details.mrow)");
   check(/Gross\s*₱11,500\.00[\s\S]*Deductions\s*−₱1,200\.00[\s\S]*Net, this month[\s\S]*₱10,300\.00/.test(m), "under the months: gross, the deductions, then net (" + m.replace(/\n/g, " | ").slice(-170) + ")");
   { const e = await text(page, "#screen");
-    const el = e.toLowerCase(); check(el.indexOf("where it came from") !== -1 && el.indexOf("where it came from") < el.indexOf("earnings by month") && e.includes("Rice subsidy") && e.includes("Basic salary") && (await page.locator("#screen .bars .brow").count()) >= 3, "the bar graph by kind is on the Earnings view, above the months"); }
+    const el = e.toLowerCase(); check(el.indexOf("where it came from") !== -1 && el.indexOf("where it came from") < el.indexOf("earnings by month") && e.includes("Rice subsidy") && e.includes("Basic salary") && (await page.locator("#screen .mlist .mline").count()) >= 3, "the kinds of earning are plain text rows on the Earnings view, above the months"); }
+  { const edges = await page.evaluate(() => { const r = (el) => el.getBoundingClientRect(); const rows = [...document.querySelectorAll("#screen .mlist .mline")]; const net = document.querySelector("#screen .mtotal .mv");
+      return { ys: rows.map((row) => Math.round(r(row.querySelector(".mv")).right)), net: Math.round(r(net).right), labelRight: Math.round(r(rows[0].querySelector(".mn")).right), valueLeft: Math.round(r(rows[0].querySelector(".mv")).left) }; });
+    check(edges.ys.every((x) => Math.abs(x - edges.net) <= 1) && edges.valueLeft > edges.labelRight + 20, "the amounts sit at the right, lined up with the Net amount (" + JSON.stringify(edges) + ")"); }
   const legend = await text(page, ".legend"), th = (await page.locator("#screen table.tbl th").allInnerTexts()).join(",");
   check(legend.includes("Regular pay") && !legend.includes("Base pay") && th.includes("Regular") && !th.includes("Base"), "the payday chart and table say Regular pay, not Base pay"); }
 await shot(page, "38-months");
