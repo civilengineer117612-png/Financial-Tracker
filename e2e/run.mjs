@@ -1052,8 +1052,10 @@ check(/BURGER/i.test(await page.inputValue("#f-payee")), "it found the store nam
 check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Food")').count() === 1, "and guessed the Food category from the store");
 await shot(page, "35-scan-result");
 check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Wallet")').count() === 0 && await page.locator("#f-save").isDisabled(), "when the paper does not name the account, none is chosen for you and saving waits");
+check((await text(page, "#scan-why")) === "Choose the account it was paid from to save.", "and the greyed Save to Verify says what it is waiting for");
 await page.fill("#f-date", "2026-10-03");   // dated today, so the entry shows in the Log list
 await page.click('#sheet .chip:has-text("Wallet")');
+check((await text(page, "#scan-why")) === "" && await page.locator("#f-save").isEnabled(), "once the account is chosen the line is gone and saving is on");
 await page.click("#f-save");
 check(await seen(page, "#screen", "as a draft with its photo"), "saving keeps it as a draft, with its photo");
 await page.click('#nav button:has-text("Log")');
