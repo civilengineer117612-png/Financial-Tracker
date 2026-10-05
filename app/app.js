@@ -315,10 +315,10 @@ const periodText = (p) => {
 };
 // "Earlier figures": what the payslip held before each change, newest first, with the day it was changed.
 function earlierFigures(p) {
-  const revs = M.revisionsOf(S(), p.id);
+  const revs = M.revisionChanges(S(), p.id);
   if (!revs.length) return "";
-  return `<details class="earlier"><summary>Earlier figures</summary>${revs.map((r) => { const t = M.payslipTotals(r.lines);
-    return `<p class="note small">Changed ${esc(fullDate(r.changed_on))}: ${esc(r.employer)} · ${esc(periodText(r))} · paid ${esc(fullDate(r.pay_date))} · gross ${peso(t.gross)} · deductions ${peso(t.deductions)} · net ${peso(r.deposit)}</p>`; }).join("")}</details>`;
+  return `<details class="earlier"><summary>Earlier figures</summary>${revs.map(({ revision: r, changes }) => { const t = M.payslipTotals(r.lines);
+    return `<p class="note small">Changed ${esc(fullDate(r.changed_on))}. It was: ${esc(r.employer)} · ${esc(periodText(r))} · paid ${esc(fullDate(r.pay_date))} · gross ${peso(t.gross)} · deductions ${peso(t.deductions)} · net ${peso(r.deposit)}</p>${changes.map((c) => `<p class="note small">– ${esc(c)}</p>`).join("")}`; }).join("")}</details>`;
 }
 // "Apr 16\u201330" for a pay period that has no payslip (the year only when it is not this year).
 const gapText = (g) => periodText({ period_from: g.from, period_to: g.to }).replace(new RegExp(", " + today().slice(0, 4) + "$"), "");
@@ -329,7 +329,7 @@ function payslipRows(range) {
     const lines = M.linesOf(S(), p.id), flags = M.payslipChecks(p, lines), t = M.payslipTotals(lines);
     const shot = M.attachmentsFor(S(), p.transaction_id)[0];
     const draft = S().transactions.some((x) => x.id === "ot-" + p.id), freeDone = S().transactions.some((x) => x.id === "otf-" + p.id);
-    return `<div class="row"><div>${esc(p.employer)}<small>${esc(periodText(p))} · paid ${esc(fullDate(p.pay_date))} · gross ${peso(t.gross)} · deductions ${peso(t.deductions)}</small></div><div class="amt">${peso(p.deposit)}</div></div>${shot ? `<p class="note"><button class="link" data-action="open-photo" data-id="${esc(shot.id)}">View the photo</button></p>` : ""}${flags.map(flagLine).join("")}${M.payslipNotes(S(), p).map((n) => `<p class="note small">${esc(n)}</p>`).join("")}${earlierFigures(p)}${t.overtime > 0 && !draft ? `<p class="note"><button class="link" data-action="ot-draft" data-id="${esc(p.id)}">Make the Emergency Fund draft for the overtime</button></p>` : ""}${t.overtime > 0 && !freeDone ? `<p class="note">The free ${peso(t.overtime - Math.round((t.overtime * M.OVERTIME_SHARE.num) / M.OVERTIME_SHARE.den))} of the overtime stays in the account the pay landed in. <button class="link" data-action="open-otfree" data-id="${esc(p.id)}">Move it somewhere else</button></p>` : ""}${ui.confirmDelSlip === p.id ? `<p class="note">Remove this payslip and the pay it recorded? <button class="link" data-action="del-slip-yes" data-id="${esc(p.id)}">Yes, remove it</button></p>` : `<p class="note"><button class="link" data-action="edit-slip" data-id="${esc(p.id)}">Change this payslip</button> · <button class="link" data-action="del-slip" data-id="${esc(p.id)}">Remove this payslip</button></p>`}`;
+    return `<div class="row"><div>${esc(p.employer)}<small>${esc(periodText(p))} · paid ${esc(fullDate(p.pay_date))} · gross ${peso(t.gross)} · deductions ${peso(t.deductions)}</small></div><div class="amt">${peso(p.deposit)}</div></div>${shot ? `<p class="note"><button class="link" data-action="open-photo" data-id="${esc(shot.id)}">View the photo</button></p>` : ""}${flags.map(flagLine).join("")}${M.payslipNotes(S(), p).map((n) => `<p class="note small">${esc(n)}${!(p.version >= M.PAYSLIP_VERSION) && n.startsWith("Saved before") ? ` <button class="link" data-action="check-slip" data-id="${esc(p.id)}">Mark as checked</button>` : ""}</p>`).join("")}${earlierFigures(p)}${t.overtime > 0 && !draft ? `<p class="note"><button class="link" data-action="ot-draft" data-id="${esc(p.id)}">Make the Emergency Fund draft for the overtime</button></p>` : ""}${t.overtime > 0 && !freeDone ? `<p class="note">The free ${peso(t.overtime - Math.round((t.overtime * M.OVERTIME_SHARE.num) / M.OVERTIME_SHARE.den))} of the overtime stays in the account the pay landed in. <button class="link" data-action="open-otfree" data-id="${esc(p.id)}">Move it somewhere else</button></p>` : ""}${ui.confirmDelSlip === p.id ? `<p class="note">Remove this payslip and the pay it recorded? <button class="link" data-action="del-slip-yes" data-id="${esc(p.id)}">Yes, remove it</button></p>` : `<p class="note"><button class="link" data-action="edit-slip" data-id="${esc(p.id)}">Change this payslip</button> · <button class="link" data-action="del-slip" data-id="${esc(p.id)}">Remove this payslip</button></p>`}`;
   }).join("")}`;
 }
 
@@ -1506,6 +1506,7 @@ function renderSheet() {
         <label for="p-words">Net pay in words, if written (optional)</label><input id="p-words" data-field="words" value="${esc(f.words ?? "")}" autocomplete="off" autocapitalize="off">
       </details>
       <div id="p-flags" role="status"></div>
+      <p id="p-fold" hidden><button class="link" data-action="fold-lines">Checked against the photo? Fold the fields.</button></p>
       <p class="note">Do not type any employee, tax or account number.</p>
       <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>${sh.editId ? "Save changes" : "Save payslip"}</button></p>
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
@@ -1655,10 +1656,15 @@ function refreshSave() {
       const t = M.payslipTotals(lines);
       const te = $("p-tot-e"), td = $("p-tot-d"); if (te) te.textContent = peso(t.gross); if (td) td.textContent = peso(t.deductions);
       const flags = p.printed_gross && p.printed_net && p.deposit ? M.payslipChecks({ printed_gross: p.printed_gross, printed_net: p.printed_net, deposit: p.deposit, net_words: (f.words ?? "").trim() || undefined }, lines) : [];
-      const matches = ready && lines.length && !flags.length && (!p.printed_deductions || p.printed_deductions === t.deductions) && !p.errors.length;
+      const matches = lines.length && p.printed_gross && p.printed_net && p.deposit && !flags.length && (!p.printed_deductions || p.printed_deductions === t.deductions) && !p.errors.length;
       const box = $("p-lines"), tap = $("p-match");
       if (box && tap) { const collapse = matches && !ui.linesOpen && !box.contains(document.activeElement); box.hidden = collapse; tap.hidden = !collapse; }
-      out.innerHTML = (lines.length ? `<p class="note">The lines add to gross ${peso(t.gross)}; minus deductions, net ${peso(t.net)}.</p>` : "") + (p.errors.length ? `<p class="note flag">\u25B2 Check the amount typed for: ${esc(p.errors.join(", "))}.</p>` : "") + flags.map(flagLine).join("");
+      const fold = $("p-fold"); if (fold) fold.hidden = !(matches && ui.linesOpen && ui.sheet.scanBlob);   // a photo's figures fold only when the owner says they were checked
+      const same = M.samePeriodPayslips(S(), { employer: f.employer, period_from: f.period_from, period_to: f.period_to }, ui.sheet.editId ?? null);
+      const sameNet = same.find((x) => x.deposit === p.deposit);
+      const repeat = !same.length ? "" : sameNet ? `<p class="note flag">▲ You already saved this payslip (same employer, same period, same net pay ${peso(sameNet.deposit)}). It cannot be saved twice. If it is a different payslip, change the dates or the net pay.</p>`
+        : `<p class="note">You already saved ${same.length === 1 ? "a payslip" : same.length + " payslips"} from ${esc(f.employer.trim())} for this period (net ${peso(same[0].deposit)}). Saving adds another one.</p>`;
+      out.innerHTML = repeat + (lines.length ? `<p class="note">The lines add to gross ${peso(t.gross)}; minus deductions, net ${peso(t.net)}.</p>` : "") + (p.errors.length ? `<p class="note flag">\u25B2 Check the amount typed for: ${esc(p.errors.join(", "))}.</p>` : "") + flags.map(flagLine).join("");
     }
   } else if (type === "voice") {
     btn.disabled = !(f.spoken ?? "").trim();
@@ -2024,6 +2030,8 @@ async function onClick(el) {
     case "open-scan-pick": ui.sheet = { type: "scanpick" }; renderSheet(); break;
     case "open-payslip-choice": ui.sheet = { type: "payslipchoice" }; renderSheet(); break;
     case "open-lines": ui.linesOpen = true; refreshSave(); break;
+    case "fold-lines": document.activeElement?.blur?.(); ui.linesOpen = false; refreshSave(); break;
+    case "check-slip": { const r = M.markPayslipChecked(S(), id); if (r.ok && await commit(r.state)) showToast("Marked as checked."); break; }
     case "open-payslip": ui.pdet = {}; ui.linesOpen = false; ui.sheet = { type: "payslip" }; ui.form = payslipDefaults(); renderSheet(); break;
     case "edit-slip": {
       const p = S().payslips.find((x) => x.id === id); if (!p) break;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, incomeMonths, slipDate, deletePayslip, updatePayslip, payslipNotes, missingPayPeriods, revisionsOf, PAYSLIP_VERSION, planAttachment, incomeWithoutPayslip, removeIncomeEntry, planPayReceived,
+import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, incomeMonths, slipDate, deletePayslip, updatePayslip, payslipNotes, missingPayPeriods, samePeriodPayslips, markPayslipChecked, revisionChanges, revisionsOf, PAYSLIP_VERSION, planAttachment, incomeWithoutPayslip, removeIncomeEntry, planPayReceived,
   ensureIncomeCategories, validateState, applyDrafts } from "../src/model/index.js";
 import { makeState, account } from "./fixtures.js";
 
@@ -364,4 +364,41 @@ test("changing a payslip keeps the old figures and the change date; ids stay; an
   assert.equal(updatePayslip(s, "ps1", base(), NOW).state.payslipRevisions, undefined, "no change at all adds no collection entry");
   const gone = deletePayslip(r.state, "ps1");
   assert.deepEqual(gone.state.payslipRevisions, [], "removing the payslip removes its history");
+});
+
+// ---- Income round 5: several employers, mark as checked, what changed ----
+test("same employer and same period (any net pay) is found for the warning; another employer, another period, or the payslip itself is not", () => {
+  const s = saved();
+  const q = (o) => samePeriodPayslips(s, base(o), o?.except ?? null).map((p) => p.id);
+  assert.deepEqual(q({ deposit: 870000 }), ["ps1"]);
+  assert.deepEqual(q({ employer: "sample employer inc" }), ["ps1"]);
+  assert.deepEqual(q({ employer: "Other Employer Co" }), []);
+  assert.deepEqual(q({ period_from: "2026-10-16", period_to: "2026-10-31" }), []);
+  assert.deepEqual(samePeriodPayslips(s, base(), "ps1"), []);
+});
+
+test("marking a payslip checked clears the old-figures line and changes nothing else", () => {
+  const s = saved(), old = { ...s, payslips: s.payslips.map(({ version, ...rest }) => rest) };
+  assert.equal(payslipNotes(old, old.payslips[0]).length, 1);
+  const r = markPayslipChecked(old, "ps1");
+  assert.ok(r.ok);
+  assert.deepEqual(payslipNotes(r.state, r.state.payslips[0]), []);
+  assert.deepEqual({ ...r.state.payslips[0], version: undefined }, { ...old.payslips[0], version: undefined });
+  assert.deepEqual(r.state.payslipLines, old.payslipLines);
+  assert.deepEqual(validateState(r.state), []);
+  assert.equal(markPayslipChecked(old, "nope").ok, false);
+});
+
+test("each change lists which lines changed: amounts, added and removed lines, dates and the employer; newest change first", () => {
+  const s = saved();
+  const one = updatePayslip(s, "ps1", base({ employer: "Renamed Co", pay_date: "2026-10-16", earnings: [{ kind: "basic", amount: 890000 }, { kind: "rice", amount: 100000 }, { kind: "skills", amount: 10000 }], printed_gross: 1000000,
+    deductions: [{ kind: "tax", amount: 70000 }, { kind: "sss", amount: 30000 }] , printed_net: 880000 }), NOW);
+  assert.ok(one.ok, JSON.stringify(one.violations));
+  const two = updatePayslip(one.state, "ps1", base({ earnings: [{ kind: "basic", amount: 900000 }, { kind: "rice", amount: 100000 }] }), NOW);
+  const list = revisionChanges(two.state, "ps1");
+  assert.equal(list.length, 2);
+  assert.deepEqual(list[0].changes.sort(), ["Basic salary ₱8,900.00 to ₱9,000.00", "Employer Renamed Co to Sample Employer Inc", "Pag-IBIG added ₱100.00", "PhilHealth added ₱100.00", "Pay date Oct 16, 2026 to Oct 15, 2026", "Skills allowance removed (was ₱100.00)"].sort());
+  assert.deepEqual(list[1].changes.sort(), ["Basic salary ₱9,000.00 to ₱8,900.00", "Employer Sample Employer Inc to Renamed Co", "Pag-IBIG removed (was ₱100.00)", "PhilHealth removed (was ₱100.00)", "Pay date Oct 15, 2026 to Oct 16, 2026", "Skills allowance added ₱100.00"].sort());
+  assert.deepEqual(revisionChanges(s, "ps1"), []);
+  assert.deepEqual(revisionChanges(s, "nope"), []);
 });

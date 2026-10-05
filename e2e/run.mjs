@@ -1441,6 +1441,10 @@ check(tv >= 22, "the totals are the largest figures in the window (" + tv + "px)
 check(await page.locator("#sheet .chip[data-action='pick-employer']").count() === 0, "no saved-employer suggestions are offered");
 const sheetBox = await page.locator("#sheet").boundingBox(), totBox = await page.locator("#p-tot-d").boundingBox();
 check(totBox && totBox.y + totBox.height < sheetBox.y + sheetBox.height, "the totals are on screen without scrolling");
+check(await page.locator("#p-fold").isVisible() && await page.locator("#p-lines").isVisible() && !(await page.locator("#p-match").isVisible()), "a photo's figures stay open, with a line to fold them once the owner has checked them against the photo");
+await page.click("#p-fold button");
+check(await page.locator("#p-match").isVisible() && !(await page.locator("#p-lines").isVisible()) && !(await page.locator("#p-fold").isVisible()), "tapping it folds them into Matches paper. Tap to open.");
+await page.click("#p-match button");
 check([await val("d_tax"), await val("d_sss"), await val("d_philhealth"), await val("d_pagibig")].join("|") === "700.00|300.00|100.00|100.00", "tax, SSS, PhilHealth and Pag-IBIG are read from their lines (" + [await val("d_tax"), await val("d_sss"), await val("d_philhealth"), await val("d_pagibig")].join("|") + ")");
 check([await val("e_basic"), await val("e_rice"), await val("e_overtime")].join("|") === "9000.00|1000.00|1500.00", "the earnings lines are read too, overtime included");
 check([await val("p-gross"), await val("p-net"), await val("p-date"), await val("p-emp")].join("|") === "11500.00|10300.00|2026-10-02|Sample Employer Inc", "and the printed gross and net, the pay date and the employer (" + [await val("p-gross"), await val("p-net"), await val("p-date"), await val("p-emp")].join("|") + ")");
@@ -1503,6 +1507,49 @@ console.log("Read now");
   await page.click('button[data-action="read-queue"]');
   check(await seen(page, "#screen", "Reading the photos", 4000), "tapping Read now while the app is already reading says it is still reading (it used to do nothing)");
   check(await seen(page, "#screen", "could not run", 30000), "and when that run gives up the reason is shown, with Read now to try again");
+  await ctx.close(); }
+
+// ===== 5l. several employers, old payslips, what changed =====
+console.log("Income round 5");
+{ ({ ctx, page, errors } = await open({ blockSw: true }));
+  await addAccount(page, "Test Cash", "asset", "500");
+  // a payslip saved under the OLD rules: the page is served an income.js that stamps version 1
+  await page.route(/\/src\/model\/income\.js/, async (route) => { const r = await route.fetch(); route.fulfill({ response: r, body: (await r.text()).replace("PAYSLIP_VERSION = 2", "PAYSLIP_VERSION = 1") }); });
+  await page.reload(); await page.waitForSelector("#nav button");
+  const typeSlip = async (employer, amt, then = "save") => {
+    await menuGo(page, "Income"); await addPayslipFlow(page); await page.click('#sheet button:has-text("Type a payslip")');
+    await page.fill("#p-emp", employer); await page.fill("#p-from", "2026-09-01"); await page.fill("#p-to", "2026-09-15"); await page.fill("#p-date", "2026-09-15");
+    await page.evaluate(() => document.querySelectorAll("#sheet details[data-keep]").forEach((d) => { d.open = true; }));
+    await page.fill("#e_basic", amt); await page.fill("#p-gross", amt); await page.fill("#p-net", amt); await page.fill("#p-dep", amt);
+    if (then === "save") { await page.click("#f-save"); await seen(page, "#toast", "Payslip saved"); }
+  };
+  await typeSlip("Sample Employer Inc", "5001");
+  await page.unroute(/\/src\/model\/income\.js/); await page.reload(); await page.waitForSelector("#nav button");
+  await menuGo(page, "Income"); await page.click(".ptitle"); await page.click('#sheet button[data-kind="year"]'); await page.click('#sheet button[data-action="period-year"][data-id="2026"]');
+  await page.click('button.choice[data-action="open-payslips"]');
+  check((await text(page, "#sheet")).includes("Saved before the fix, may be wrong.") && await page.locator('#sheet button[data-action="check-slip"]').count() === 1, "a payslip saved under the old rules says so and offers Mark as checked");
+  await page.click('#sheet button[data-action="check-slip"]');
+  check(await seen(page, "#toast", "Marked as checked") && !(await text(page, "#sheet")).includes("Saved before the fix"), "Mark as checked clears the line without retyping anything");
+  check((await text(page, "#sheet")).includes("₱5,001.00"), "and the figures are untouched");
+  await page.click('#sheet button:has-text("Close")');
+  // another payslip, same employer and period
+  await typeSlip("sample employer inc", "5002", "stay");
+  check((await text(page, "#p-flags")).includes("Saving adds another one") && !(await text(page, "#p-flags")).includes("cannot be saved twice"), "the same employer and period with another net pay gets a soft warning");
+  await page.fill("#p-dep", "5001"); await page.fill("#p-net", "5001"); await page.fill("#p-gross", "5001"); await page.fill("#e_basic", "5001");
+  check((await text(page, "#p-flags")).includes("cannot be saved twice"), "the same net pay too says it cannot be saved twice, before you try");
+  await page.fill("#p-emp", "Another Employer Co"); await page.fill("#p-dep", "5002"); await page.fill("#p-net", "5002"); await page.fill("#p-gross", "5002"); await page.fill("#e_basic", "5002");
+  check(!(await text(page, "#p-flags")).includes("already saved"), "another employer for the same period is a second income: no warning");
+  await page.click("#f-save"); await seen(page, "#toast", "Payslip saved");
+  // what a change altered
+  await page.click('button.choice[data-action="open-payslips"]');
+  await page.locator('#sheet button[data-action="edit-slip"]').first().click();
+  await page.click("#p-match button").catch(() => {});
+  await page.evaluate(() => document.querySelectorAll("#sheet details[data-keep]").forEach((d) => { d.open = true; }));
+  await page.fill("#e_basic", "4000"); await page.fill("#p-gross", "4000"); await page.fill("#p-net", "4000"); await page.fill("#p-dep", "4000");
+  await page.click("#f-save"); await seen(page, "#toast", "Payslip changed");
+  await page.click('button.choice[data-action="open-payslips"]');
+  const earlier = await page.locator("#sheet details.earlier").first().textContent();
+  check(/Basic salary ₱\d[\d,]*\.00 to ₱4,000\.00/.test(earlier) && /Received ₱\d[\d,]*\.00 to ₱4,000\.00/.test(earlier), "Earlier figures names which lines changed: Basic salary and Received, old to new (" + earlier.slice(-160) + ")");
   await ctx.close(); }
 
 // ===== 6. wrong phone, wrong place =====

@@ -20,6 +20,7 @@ const peso = (c) => "₱" + (c / 100).toLocaleString("en-US", { minimumFractionD
 const sum = (rows) => rows.reduce((n, r) => n + r.amount, 0);
 const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }], state: undefined });
 
+const sameEmployer = (a, b) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
 // Bump when a fix changes what a saved payslip should hold. A payslip saved under an older version may carry wrong figures until it is saved again.
 export const PAYSLIP_VERSION = 2;
 export const linesOf = (state, payslipId) => (state.payslipLines ?? []).filter((l) => l.payslip_id === payslipId);
@@ -313,4 +314,41 @@ export function deletePayslip(state, id) {
       ...(state.payslipRevisions ? { payslipRevisions: state.payslipRevisions.filter((x) => x.payslip_id !== id) } : {}),
       transactions: state.transactions.filter((t) => !gone.has(t.id)), entries: state.entries.filter((e) => !gone.has(e.transaction_id)), attachments: (state.attachments ?? []).filter((a) => !gone.has(a.transaction_id)) },
   };
+}
+
+// Payslips from the SAME employer for the SAME period as `input` (another employer's payslip for those days is a second source of income, not a repeat).
+// Used for a soft warning while the window is open: it never blocks saving. `exceptId` leaves out the payslip being changed.
+export const samePeriodPayslips = (state, input, exceptId = null) => (state.payslips ?? []).filter((p) => p.id !== exceptId && sameEmployer(p.employer, input.employer) && p.period_from === input.period_from && p.period_to === input.period_to);
+
+// The owner compared a payslip saved under older rules with the paper and it is right: it carries the current version without being retyped.
+export function markPayslipChecked(state, id) {
+  const p = (state.payslips ?? []).find((x) => x.id === id);
+  if (!p) return { ok: false, error: "That payslip is no longer there." };
+  return { ok: true, state: { ...state, payslips: state.payslips.map((x) => (x.id === id ? { ...x, version: PAYSLIP_VERSION } : x)) } };
+}
+
+// What each change altered, newest change first: [{revision, changes: ["Basic salary ₱9,000.00 to ₱8,900.00", ...]}]. A change is measured
+// from the figures a revision holds to the figures that followed it (the next revision, or the payslip as it is now).
+export function revisionChanges(state, payslipId) {
+  const p = (state.payslips ?? []).find((x) => x.id === payslipId);
+  if (!p) return [];
+  const revs = (state.payslipRevisions ?? []).filter((x) => x.payslip_id === payslipId), now = { ...p, lines: linesOf(state, payslipId) };
+  const day = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  const NAME = Object.fromEntries([...EARNINGS, ...DEDUCTIONS]);
+  const fields = [["employer", "Employer", (v) => v], ["period_from", "Period start", day], ["period_to", "Period end", day], ["pay_date", "Pay date", day],
+    ["printed_gross", "Printed gross", peso], ["printed_net", "Printed net", peso], ["printed_deductions", "Printed deductions total", peso], ["deposit", "Received", peso]];
+  const diff = (a, b) => {
+    const out = [];
+    for (const [k, label, show] of fields) if ((a[k] ?? null) !== (b[k] ?? null)) out.push(a[k] == null ? `${label} added ${show(b[k])}` : b[k] == null ? `${label} removed (was ${show(a[k])})` : `${label} ${show(a[k])} to ${show(b[k])}`);
+    const key = (l) => l.side + ":" + l.kind, A = new Map(a.lines.map((l) => [key(l), l])), B = new Map(b.lines.map((l) => [key(l), l]));
+    for (const [k, l] of A) {
+      const m = B.get(k), name = NAME[l.kind] ?? l.kind;
+      if (!m) out.push(`${name} removed (was ${peso(l.amount)})`);
+      else if (m.amount !== l.amount) out.push(`${name} ${peso(l.amount)} to ${peso(m.amount)}`);
+      else if ((m.earned_month ?? null) !== (l.earned_month ?? null)) out.push(`${name} counted in ${l.earned_month} to ${m.earned_month}`);
+    }
+    for (const [k, l] of B) if (!A.has(k)) out.push(`${NAME[l.kind] ?? l.kind} added ${peso(l.amount)}`);
+    return out;
+  };
+  return revs.map((r, i) => ({ revision: r, changes: diff(r, revs[i + 1] ?? now) })).reverse();
 }
