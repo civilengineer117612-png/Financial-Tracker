@@ -352,14 +352,13 @@ function viewIncome() {
   if (!rows.length && !slips.length && !loose.length) return head + `<p class="note">Nothing recorded for ${esc(label)} yet. Add a payslip to see where your income comes from, your raises, and what went to government.</p>`;
   // The same kinds as the Earnings view (basic salary, rice subsidy, each allowance, overtime), before the deductions came off.
   const bd = y.ytd.breakdown, bySrc = [...bd.lines.map((l) => ({ label: l.label, amount: l.amount })), { label: "Other income", amount: bd.other }, { label: "Not from the payslip lines", amount: bd.unmatched }].filter((r) => r.amount > 0);
-  const afterNote = bd.deductions ? `<p class="note">That is before deductions. ${peso(bd.deductions)} was taken off, so ${peso(y.ytd.total)} arrived.</p>` : "";
   // One line per month with what arrived; tap a month to see where it came from: each kind of earning (basic salary, rice subsidy, each allowance,
   // overtime), other income, the deductions, and anything the payslip lines do not explain, so the lines always add up to the month.
   const minus = (c) => "\u2212" + peso(c);
   const parts = (m) => { const b = m.breakdown; return [...b.lines.map((l) => [l.label, peso(l.amount)]), ...(b.other ? [["Other income", peso(b.other)]] : []), ...(b.deductions ? [["Deductions", minus(b.deductions)]] : []), ...(b.unmatched ? [["Not from the payslip lines", (b.unmatched < 0 ? "\u2212" : "") + peso(Math.abs(b.unmatched))]] : [])]; };
   const monthTable = `<div class="mlist">${rows.map((m) => `<details class="mrow"><summary><span class="mn">${esc(MONTH3[Number(m.month.slice(5)) - 1])}</span><b class="mv">${peso(m.total)}</b><span class="tchev" aria-hidden="true">\u203A</span></summary>${parts(m).map(([t, v]) => `<div class="mpart"><span>${esc(t)}</span><span>${v}</span></div>`).join("")}</details>`).join("")}
-    ${y.ytd.breakdown.deductions ? `<div class="mrow"><span class="mn">Earned before deductions</span><span class="mv">${peso(y.ytd.breakdown.earned)}</span></div><div class="mrow"><span class="mn">Deductions</span><span class="mv">${minus(y.ytd.breakdown.deductions)}</span></div>` : ""}
-    <div class="mrow mtotal"><span class="mn">${ytdLabel}</span><b class="mv">${peso(y.ytd.total)}</b></div></div>`;
+    ${y.ytd.breakdown.deductions ? `<div class="mrow"><span class="mn">Gross</span><span class="mv">${peso(y.ytd.breakdown.earned)}</span></div><div class="mrow"><span class="mn">Deductions</span><span class="mv">${minus(y.ytd.breakdown.deductions)}</span></div>` : ""}
+    <div class="mrow mtotal"><span class="mn">Net, ${esc(ytdLabel.toLowerCase())}</span><b class="mv">${peso(y.ytd.total)}</b></div></div>`;
   const pd = M.netPerPayday(S(), range);
   const paydays = pd.length ? `<h2>Net pay per payday</h2>${stackedPaydays(pd)}<table class="tbl"><tr><th>Payday</th><th class="n">Regular</th><th class="n">Overtime</th><th class="n">Net</th></tr>${pd.map((r) => `<tr><td>${esc(longDate(r.date))}<small> ${esc(r.employer)}</small></td><td class="n">${peso(r.base)}</td><td class="n">${peso(r.overtime)}</td><td class="n">${peso(r.net)}</td></tr>`).join("")}</table>` : "";
   const dd = M.deductionsByMonth(S(), range);
@@ -373,8 +372,8 @@ function viewIncome() {
   const ivar = (v) => v === 0 ? "As planned" : (v > 0 ? "+" : "−") + peso(Math.abs(v)) + (v > 0 ? " more" : " less");
   const pv = plan ? [M.planIncome(S(), plan, today())].map((v) => `<h2>Plan against what arrived</h2><table class="tbl"><tr><th>Payday</th><th class="n">Plan</th><th class="n">Received</th><th class="n">Difference</th></tr><tr><td>${esc(v.label)}<small> ${esc(longDate(v.period.start))}</small></td><td class="n">${peso(v.planned)}</td><td class="n">${peso(v.actual)}</td><td class="n">${esc(ivar(v.variance))}</td></tr></table><p class="note">The plan is never edited; the difference is only shown.</p>`)[0] : "";
   const bodies = {
-    overview: `<h2>Where it came from, ${esc(label)}</h2>${bySrc.length ? hbars(bySrc) + afterNote : `<p class="note">Nothing in this period.</p>`}${loose.length ? `<p class="note">${peso(loose.reduce((n, r) => n + r.amount, 0))} of this was added without a payslip (${loose.length} ${loose.length === 1 ? "entry" : "entries"}). <button class="link" data-action="open-payslips">See them</button></p>` : ""}${pv}`,
-    earnings: `<h2>Earnings by month</h2>${monthTable}${paydays}`,
+    overview: `<h2>Gross, deductions and net, ${esc(label)}</h2><div class="mlist"><div class="mrow"><span class="mn">Gross</span><span class="mv">${peso(bd.earned)}</span></div><div class="mrow"><span class="mn">Deductions</span><span class="mv">${bd.deductions ? "\u2212" : ""}${peso(bd.deductions)}</span></div><div class="mrow mtotal"><span class="mn">Net</span><b class="mv">${peso(y.ytd.total)}</b></div></div>${loose.length ? `<p class="note">${peso(loose.reduce((n, r) => n + r.amount, 0))} of this was added without a payslip (${loose.length} ${loose.length === 1 ? "entry" : "entries"}). <button class="link" data-action="open-payslips">See them</button></p>` : ""}${pv}`,
+    earnings: `${bySrc.length ? `<h2>Where it came from, ${esc(label)}</h2>${hbars(bySrc)}` : ""}<h2>Earnings by month</h2>${monthTable}${paydays}`,
     deductions: dedTable || `<p class="note">No deductions in this period.</p>`,
   };
   return `${head}${bodies[view]}`;
