@@ -157,7 +157,7 @@ export function incomeBreakdown(state, { from, to }) {
   }
   const lines = EARNINGS.filter(([k]) => earn.has(k)).map(([kind, label]) => ({ kind, label, amount: earn.get(kind) }));
   const other = sources.interest + sources.refunds + sources.other, earned = lines.reduce((n, l) => n + l.amount, 0);
-  return { lines, other, deductions, unmatched: sources.total - other - (earned - deductions), total: sources.total };
+  return { lines, other, deductions, unmatched: sources.total - other - (earned - deductions), total: sources.total, earned: sources.total + deductions };   // earned: everything earned before the deductions came off
 }
 // The months of any range (clamped at its ends), each by source, plus the total for the whole range.
 export function incomeMonths(state, { from, to }) {
