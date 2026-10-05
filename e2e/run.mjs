@@ -859,10 +859,10 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 await menuGo(page, "Setup");
 check((await page.locator("#screen .chips .chip").count()) === 0 && (await page.locator("#a-bank").count()) === 1 && (await page.locator("#a-name").count()) === 1, "Setup shows one 'Choose a bank' button instead of a wall of tiles, and still lets you type a name");
 await page.click("#a-bank");
-check((await page.locator("#sheet .bankrow").count()) === 13 && (await text(page, "#sheet")).includes("Coins.ph"), "it opens a list: eleven banks and wallets (Coins.ph included), Cash, and 'not in the list'");
+check((await page.locator("#sheet .bankrow").count()) === 14 && (await text(page, "#sheet")).includes("Coins.ph") && (await text(page, "#sheet")).includes("Beep"), "it opens a list: twelve banks and wallets (Coins.ph and Beep included), Cash, and 'not in the list'");
 check((await page.locator("#sheet .banklist").evaluate((e) => getComputedStyle(e).overflowY)) === "auto", "the list scrolls");
 const tiles = await page.locator("#sheet .bankrow > :first-child").evaluateAll((els) => els.map((e) => { const c = getComputedStyle(e.matches(".icowrap") ? e.querySelector(".mono") ?? e : e); const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)].join("x"); }));
-check(tiles.length === 13 && new Set(tiles.filter((_, i) => i < 12)).size === 1, "every bank picture is the same size, in the same framed tile: " + [...new Set(tiles)].join());
+check(tiles.length === 14 && new Set(tiles.filter((_, i) => i < 13)).size === 1, "every bank picture is the same size, in the same framed tile: " + [...new Set(tiles)].join());
 const framed = await page.locator("#sheet .bankrow img.ico").evaluateAll((els) => els.every((e) => getComputedStyle(e).borderTopWidth === "1px" && getComputedStyle(e).objectFit === "contain"));
 check(framed, "every logo sits inside a white frame, shrunk to fit, never cropped");
 await shot(page, "30-banks");
@@ -1549,6 +1549,33 @@ console.log("Income round 5");
   await page.click('button.choice[data-action="open-payslips"]');
   const earlier = await page.locator("#sheet details.earlier").first().textContent();
   check(/Basic salary ₱\d[\d,]*\.00 to ₱4,000\.00/.test(earlier) && /Received ₱\d[\d,]*\.00 to ₱4,000\.00/.test(earlier), "Earlier figures names which lines changed: Basic salary and Received, old to new (" + earlier.slice(-160) + ")");
+  await ctx.close(); }
+
+// ===== 5m. the date at the top of Log, and Cash first =====
+console.log("Log date and Cash first");
+{ ({ ctx, page, errors } = await open({ blockSw: true }));
+  await addAccount(page, "Test Debit", "asset", "1000"); await addAccount(page, "Cash", "asset", "500");
+  await page.click('#nav button:has-text("Log")');
+  check(await page.locator("button.topdate").count() === 1 && (await text(page, "button.topdate")).includes("Oct 3"), "the date under the Log title is a tappable link");
+  await page.click("button.topdate");
+  check((await page.locator("#sheet .cal").count()) === 1, "tapping it opens the calendar");
+  await page.click('#sheet .cal button[data-id="2026-10-01"]');
+  check((await text(page, "#screen")).includes("New entries go on this day."), "choosing an earlier day says new entries go on that day");
+  await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "33"); await page.click('#sheet .chip:has-text("Food")'); await page.click('#sheet .chip:has-text("Test Debit")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
+  check((await text(page, "h2.today")).toLowerCase().includes("oct 1") && (await text(page, "#screen")).includes("₱33.00"), "the new entry shows under the day chosen");
+  const led = JSON.parse((await stored(page)).local);
+  check(led.state.transactions.length === 1 && led.state.transactions[0].date === "2026-10-01", "and it is dated that day in the ledger");
+  await page.click('button[data-action="reset-day"]');
+  check(!(await text(page, "#screen")).includes("₱33.00"), "it is not in today's list");
+  await page.click('button:has-text("Add expense")');
+  const paidFrom = await page.locator("#sheet .chips").nth(1).locator(".chip").allInnerTexts();
+  check(/Cash/.test(paidFrom[0] ?? "") && paidFrom.length === 2, "Cash is the first account choice even though Test Debit was used last (" + paidFrom.join(" | ") + ")");
+  await page.fill("#f-amount", "20"); await page.click('#sheet .chip:has-text("Food")'); await page.click('#sheet .chip:has-text("Cash")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
+  const led2 = JSON.parse((await stored(page)).local);
+  check(led2.state.transactions.filter((t) => t.date === "2026-10-03").length === 1, "after Today, new entries go on today again");
+  await menuGo(page, "Cards");
+  const cards = await text(page, "#screen");
+  check(cards.indexOf("Cash") !== -1 && cards.indexOf("Cash") < cards.indexOf("Test Debit"), "on the Cards screen Cash is listed first");
   await ctx.close(); }
 
 // ===== 6. wrong phone, wrong place =====

@@ -6,9 +6,9 @@ import { makeState } from "./fixtures.js";
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
 const input = (o) => ({ id: "a1", kind: "asset", opening: 0, date: "2026-10-05", ...o });
 
-test("the picker offers eleven banks and wallets, unique, with plain names and no logos", () => {
-  assert.equal(BANKS.length, 11);
-  assert.equal(new Set(BANKS.map((b) => b.id)).size, 11);
+test("the picker offers twelve banks and wallets, unique, with plain names and no logos", () => {
+  assert.equal(BANKS.length, 12);
+  assert.equal(new Set(BANKS.map((b) => b.id)).size, 12);
   assert.ok(BANKS.some((b) => b.name === "Coins.ph"));
   assert.ok(["GCash", "GoTyme", "MariBank"].every((n) => BANKS.some((b) => b.name === n)), "includes the owner's own");
   assert.ok(BANKS.every((b) => !("icon" in b) && !("logo" in b)));
@@ -157,4 +157,12 @@ test("a second plain account at the same bank says how to tell them apart", () =
   assert.equal(again.ok, false);
   assert.match(again.violations[0].message, /say which part it is/);
   assert.equal(planAccount(a.state, { id: "a3", bank: "metrobank", sub: "Payroll", kind: "asset", date: "2026-01-01" }).account.name, "Metrobank \u00b7 Payroll");
+});
+
+test("the Beep transport card is in the picker and makes a plain money account named Beep", () => {
+  assert.equal(bankById("beep")?.name, "Beep");
+  const r = planAccount(makeState(), input({ id: "beep1", bank: "beep" }));
+  assert.ok(r.ok, JSON.stringify(r.violations));
+  assert.equal(r.account.name, "Beep"); assert.equal(r.account.class, "asset"); assert.equal(r.account.bank, "beep");
+  assert.equal(bankForName("Beep").id, "beep");
 });
