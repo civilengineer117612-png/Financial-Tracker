@@ -38,6 +38,12 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 - Tone is firm, never harsh: nothing blocks logging, red appears only on budget charts when a category is strictly over its budget (owner's choice), always with a shape and words, facts are stated once. Verification is one entry at
   a time with no "all correct" button; entries can be verified the day they are logged.
 
+## Friend trial: upgrade safety and Help (owner's rules; friends now use the app)
+- Changing the SHAPE of saved data = a data migration. Raise `LEDGER_VERSION` and add the step to `MIGRATIONS` in `src/model/migrate.js`, add a hand-written backup of the old version to `tests/migrate.test.js`, and mutation-check. A migration NEVER deletes or renames a field: add new fields and stop using the old ones (a test enforces it).
+- Before a migration runs, the app keeps a copy of the data (the last 2 pre-upgrade copies; Setup shows "Restore the copy from before the last update"). After it, the self-check runs (every transaction's entries sum to zero, the card reserve check computes, totals unchanged). If any step fails the old data stays or the copy is put back, with a plain message. Never leave half-converted data. Restoring a backup keeps the backup's own data version, so it is upgraded (with a copy) on the next start.
+- Setup shows the app version and update date (the deploy stamps `src/model/version.js`) and the data format.
+- HELP: the Help screen (menu, above Setup) reads `src/model/help.js`: the five quick notes (word for word), a getting-started list, and one short topic per screen. When a screen or feature is added or changed, update that file in the same PR (a test fails if a menu screen has no topic). Keep it short, plain, and in our look.
+
 ## One thing at a time (owner's rule)
 One open item at a time: finish the current review round and its PR before starting anything else. A new problem that shows up mid-review
 (a bug, an idea) is NOT worked on at once: put it in a short "Waiting" list, tell the owner it was noted (one line), and raise it when

@@ -34,6 +34,8 @@ jobs:
           cp -r src/vendor _site/src/vendor
           # A new version stamp per deploy makes every phone install the fresh offline worker.
           sed -i "s/__VERSION__/${GITHUB_SHA::12}/" _site/app/sw.js
+          # The version and date Setup shows ("Version abc1234, updated Oct 5, 2026").
+          sed -i "s/__BUILD__/${GITHUB_SHA::7}/; s/__BUILT_ON__/$(TZ=Asia/Manila date +%F)/" _site/src/model/version.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
