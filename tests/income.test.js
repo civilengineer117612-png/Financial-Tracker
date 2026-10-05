@@ -411,7 +411,8 @@ test("income breakdown names each kind of earning, the deductions and what arriv
   assert.equal(b.deductions, 120000); assert.equal(b.other, 0); assert.equal(b.unmatched, 0); assert.equal(b.total, 980000);
   const sum = (x) => x.lines.reduce((n, l) => n + l.amount, 0) + x.other - x.deductions + x.unmatched;
   assert.equal(sum(b), b.total);
-  assert.deepEqual(incomeBreakdown(s, { from: "2026-11-01", to: "2026-11-30" }), { lines: [], other: 0, deductions: 0, unmatched: 0, total: 0 });
+  assert.equal(b.earned, 1100000, "earned before deductions is what arrived plus the deductions"); assert.equal(b.earned - b.deductions, b.total);
+  assert.deepEqual(incomeBreakdown(s, { from: "2026-11-01", to: "2026-11-30" }), { lines: [], other: 0, deductions: 0, unmatched: 0, total: 0, earned: 0 });
 });
 
 test("income breakdown: pay added without a payslip shows as not from the payslip lines; interest is other income; both still add up", () => {

@@ -1222,7 +1222,7 @@ check((await text(page, ".hero")).includes("₱0.00") && (await text(page, "#scr
 await page.click('button[aria-label="Earlier"]');
 check((await text(page, ".hero")).includes("₱10,300.00") && (await text(page, "#screen")).includes("earned in September 2026"), "it counts in September, the month of its pay period");
 const incText = await text(page, "#screen");
-check(incText.includes("Overtime") && incText.includes("Base pay"), "Income shows the pay and the overtime");
+check(incText.includes("Overtime") && incText.includes("Basic salary") && incText.includes("Rice subsidy") && !incText.includes("Base pay") && incText.includes("before deductions"), "Income shows each kind of earning, rice subsidy and overtime apart, and says it is before deductions");
 { const pt = await page.locator("#screen .ptitle").evaluateAll((els) => els.map((e) => [e.getAttribute("aria-label"), getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight].join("|")));
   check(pt.length === 1 && pt[0].startsWith("Choose the period: ") && pt[0].includes("|16px|7"), "the period bar is the same one Spending has: tap it to choose a month, a year or a range (" + pt.join(" ; ") + ")"); }
 check(!incText.includes("Year to date") && !(await page.locator("#screen table.tbl").count()), "the Overview shows only the important things: no tables");
@@ -1277,6 +1277,10 @@ check(await page.locator(".mlist details.mrow").count() >= 1 && await page.locat
 await page.locator(".mlist details.mrow summary").first().click();
 { const t = await page.locator(".mlist details.mrow").first().innerText();
   check(t.includes("Basic salary") && t.includes("Rice subsidy") && t.includes("Overtime") && t.includes("Deductions") && !t.includes("Base pay"), "tapping a month shows each kind of earning, rice subsidy and overtime apart, then the deductions (" + t.replace(/\n/g, " | ") + ")"); }
+{ const m = await text(page, ".mlist");
+  check(m.includes("Earned before deductions") && m.includes("₱11,500.00") && /Earned before deductions\s*₱11,500\.00[\s\S]*Deductions\s*−₱1,200\.00[\s\S]*This month[\s\S]*₱10,300\.00/.test(m), "under the months: earned before deductions, the deductions, then what arrived (" + m.replace(/\n/g, " | ").slice(-170) + ")");
+  const legend = await text(page, ".legend"), th = (await page.locator("#screen table.tbl th").allInnerTexts()).join(",");
+  check(legend.includes("Regular pay") && !legend.includes("Base pay") && th.includes("Regular") && !th.includes("Base"), "the payday chart and table say Regular pay, not Base pay"); }
 await shot(page, "38-months");
 await page.click('button[data-action="income-view"][data-view="overview"]');
 // income added without a payslip (a payslip photo once saved as plain pay received) is listed and can be removed
