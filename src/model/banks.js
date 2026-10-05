@@ -15,6 +15,7 @@ export const BANKS = [
   { id: "metrobank", name: "Metrobank", domain: "metrobank.com.ph" }, { id: "unionbank", name: "UnionBank", domain: "unionbankph.com", alt: ["unionbank.com.ph"] },
   { id: "landbank", name: "Landbank", domain: "landbank.com" }, { id: "securitybank", name: "Security Bank", domain: "securitybank.com", noLookup: true, wiki: ["Security Bank Corporation", "Security Bank Philippines"] },
   { id: "coinsph", name: "Coins.ph", domain: "coins.ph" },
+  { id: "beep", name: "Beep", domain: "beep.com.ph" },   // the stored-value transport card
 ];
 export const CASH = { id: "cash", name: "Cash" };
 export const bankById = (id) => [...BANKS, CASH].find((b) => b.id === id) ?? null;

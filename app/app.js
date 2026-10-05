@@ -51,6 +51,8 @@ function iconOf(a, size = 28) {
 const withIcon = (a, size) => iconOf(a, size) + `<span>${esc(a.name)}</span>`;
 
 // Accounts for a payment, the one you used last first (for this preset, then in general).
+const isCash = (a) => a.bank === "cash" || /^cash\b/i.test(a.name);
+const cashFirst = (list) => [...list.filter(isCash), ...list.filter((a) => !isCash(a))];   // Cash sits at the top of every account list
 function accountsFor(presetId) {
   const { last_account_by_preset: byPreset = {}, last_account_id: last } = ledger.settings;
   const rank = (a) => (a.id === byPreset[presetId] ? 0 : a.id === last ? 1 : 2);
@@ -212,6 +214,7 @@ function dayCard() {
   // One quiet link at a time: "Select date" on today; on another day the date itself (tap it to pick another) and a single "Today".
   return `<div class="daytotal" role="status" aria-label="${esc(words)}">${peso(d.total)}</div>
     ${picked ? `<p class="center daycap"><button class="daycapbtn datelink" data-action="open-cal" aria-label="${esc(longDate(picked))}, tap to choose another day">${esc(longDate(picked))}</button></p>
+    <p class="note center small">New entries go on this day.</p>
     <p class="center"><button class="link" data-action="reset-day">Today</button></p>`
     : `<p class="center"><button class="link datelink" data-action="open-cal">Select date</button></p>`}`;
 }
@@ -234,7 +237,7 @@ function viewLog() {
   const photoNote = (ui.scan?.busy ? `<p class="note" id="scan-msg" role="status">${esc(ui.scan.msg)}</p>` : ui.scan?.error ? `<p class="note" role="alert">${esc(ui.scan.error)}</p>` : "")
     + (needLook ? `<p class="note"><button class="link" data-action="open-queue">${needLook} photo${needLook === 1 ? " needs" : "s need"} a look</button></p>` : "")
     + (waitingPhotos && !ui.scan?.busy ? `<p class="note">${waitingPhotos} photo${waitingPhotos === 1 ? " is" : "s are"} kept, waiting to be read. <button class="link" data-action="read-queue">Read now</button></p>` : "");
-  return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${photoNote}${dueNote}${backupNote}${tripNote}
+  return `<h1>Log</h1><p class="sub"><button class="link topdate" data-action="open-cal" aria-label="Choose another day: look at it, or add entries you did not log then">${esc(longDate(today()))}</button></p>${photoNote}${dueNote}${backupNote}${tripNote}
     ${dayCard()}
     ${tilesHtml()}
     <p><button class="primary compact" data-action="open-other">Add expense</button></p>
@@ -970,7 +973,7 @@ function viewCards() {
   const acct = (id) => S().accounts.find((a) => a.id === id);
   const row = (a, main, small) => `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}<small>${small}</small></div></div><div class="amt">${main}</div></div>`;
   const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), `${peso(c.owe)}<small>you owe</small>`, `spent ${peso(c.spent)} \u00b7 paid ${peso(c.paid)}`)).join("") : `<p class="note">No credit cards yet. Add one in Setup: choose the bank, then "Credit card" as the kind.</p>`;
-  const money = o.money.length ? o.money.map((m) => row(acct(m.account_id), `${peso(m.balance)}<small>in it</small>`, `spent ${peso(m.spent)}`)).join("") : `<p class="note">No accounts yet.</p>`;
+  const money = o.money.length ? [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))).map((m) => row(acct(m.account_id), `${peso(m.balance)}<small>in it</small>`, `spent ${peso(m.spent)}`)).join("") : `<p class="note">No accounts yet.</p>`;
   return `<h1>Cards</h1>${periodStepper(p)}
     <div class="tiles two"><div class="tile"><b>${peso(o.held)}</b><span>in your accounts</span></div><div class="tile"><b>${peso(o.owe)}</b><span>owed on cards</span></div></div>
     <h2>Credit cards</h2>${cards}
@@ -1303,6 +1306,7 @@ function backupAgeText() {
 
 // ---------- sheets ----------
 function chips(items, selectedId, action) {
+  if (action === "pick-acct") items = cashFirst(items);
   return `<div class="chips">${items.map((i) => `<button class="chip" data-action="${action}" data-id="${esc(i.id)}" aria-pressed="${i.id === selectedId}">${i.class ? withIcon(i, 24) : esc(i.name)}</button>`).join("")}</div>`;
 }
 
@@ -1718,6 +1722,8 @@ const bufferNote = (violations) => {
   return "";
 };
 
+// New entries go on today, or on the earlier day picked at the top of the Log screen (to log what was not logged then).
+const logDay = () => (ui.dayPick && ui.dayPick < today() ? ui.dayPick : today());
 async function logExpense(input, label) {
   const tag_id = S().tags.some((t) => t.id === ledger.settings.active_tag_id) ? ledger.settings.active_tag_id : undefined;
   const g = gcashOf();
@@ -1725,13 +1731,13 @@ async function logExpense(input, label) {
   const swapLines = (d) => (input.lines ? { transaction: d.transaction, entries: M.splitCategoryEntry(d.entries, d.transaction.id, input.lines) } : d);   // a split keeps every other rule of the purchase
   if (g && input.account_id === g.account_id) {
     // Spending from the buffer's account takes from the allowance first, then the buffer (spec 6.4).
-    const p = M.planGcashSpend(S(), { transaction_id: input.transaction_id, date: input.date ?? today(), payee: input.payee ?? "", category_id: input.category_id, amount: input.amount,
+    const p = M.planGcashSpend(S(), { transaction_id: input.transaction_id, date: input.date ?? logDay(), payee: input.payee ?? "", category_id: input.category_id, amount: input.amount,
       gcash_account_id: g.account_id, allowance_envelope_id: g.allowance_id, buffer_envelope_id: g.buffer_id }, new Date());
     if (!p.ok) { showToast("Could not save: " + p.violations[0].message); return false; }
     drafts = [swapLines({ transaction: { ...p.transaction, source: input.source ?? "manual", ...(input.source === "photo" ? { edited_before_verify: false } : {}), ...(input.payee ? { payee: input.payee } : {}), ...(tag_id ? { tag_id } : {}) }, entries: p.entries })];
     note = bufferNote(p.violations);
   } else {
-    const args = { ...input, tag_id, date: input.date ?? today(), reserve_source_id: ledger.settings.reserve_source_id };
+    const args = { ...input, tag_id, date: input.date ?? logDay(), reserve_source_id: ledger.settings.reserve_source_id };
     const plan = input.lines ? M.planSplitExpense(S(), args, new Date()) : M.planExpense(S(), args, new Date());
     if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); return false; }
     drafts = plan.drafts;
