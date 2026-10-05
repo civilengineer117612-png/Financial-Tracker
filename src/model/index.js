@@ -4,6 +4,9 @@ import { validateShape } from "./schema.js";
 import { checkEntriesBalance, checkReferences, checkReserve, checkDuplicate, checkRulesAppendOnly } from "./invariants.js";
 
 export { SCHEMAS, validateShape } from "./schema.js";
+export { COLLECTION_NAMES, MIGRATIONS, selfCheck, fingerprint, upgradeLedger, rotateCopies, restorableCopy } from "./migrate.js";
+export { QUICK_NOTES, TOPICS as HELP_TOPICS, checklist } from "./help.js";
+export { APP_BUILD, APP_BUILT_ON, isDevBuild } from "./version.js";
 export { naturalBalance, cardOutstanding, reserveShortfalls } from "./balances.js";
 export { countsTowardBudget, splitByBudgetStatus } from "./invariants.js";
 export { phTimestamp, isPhDate, isPhTimestamp, isCentavos } from "./util.js";

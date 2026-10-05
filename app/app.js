@@ -1,7 +1,7 @@
 // The screens. All money rules live in ../src/model; this file only draws and handles taps.
 // Plain and firm, never harsh: facts are stated once, nothing is red, nothing blocks logging.
 import * as M from "../src/model/index.js";
-import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto, useTrialStorage, clearTrialStorage } from "./store.js";
+import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto, useTrialStorage, clearTrialStorage, readCopies, writeCopies } from "./store.js";
 import { preparePhoto, readPage, evenedCopy } from "./ocr.js";
 import { speechSupported, listen, firstLanguage, other } from "./voice.js";
 
@@ -116,6 +116,7 @@ const ICONS = {
   scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/>',
   buffer: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
   checkin: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/>',
   setup: '<path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/>',
 };
 const MENU = [["Overview", [["money", "Cash flow"], ["cards", "Cards"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Capture", [["scan", "Scan"]]], ["Weekly", [["checkin", "Weekly review"]]]];   // Setup is pinned at the bottom
@@ -155,12 +156,13 @@ function renderMenu() {
   const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
   el.innerHTML = `<div class="scrim${opening ? " enter" : ""}" data-action="close-menu"></div><aside class="drawer${opening ? " enter" : ""}" role="dialog" aria-label="Menu">
     <div class="groups">${MENU.map(([group, items]) => `<p class="glabel">${group}</p>${items.map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
-    <div class="foot"><p class="note">${backup}</p>${item("setup", "Setup")}</div></aside>`;
+    <div class="foot"><p class="note">${backup}</p>${item("help", "Help")}${item("setup", "Setup")}</div></aside>`;
 }
 
 function renderBanner() {
   const bars = [];
   if (ui.error) bars.push(`<div class="bar" role="alert">${esc(ui.error)}</div>`);
+  if (ui.upgrade?.failed) bars.push(`<div class="bar" role="alert">${esc(ui.upgrade.failed)}</div>`);
   const showDevice = device.status === "TRIAL" || (device.status !== "OK" && !(device.status === "EMPTY" && S().accounts.length > 0));
   if (showDevice) {
     const repair = device.status === "PARTIAL_LOSS" && boot.ledger ? `<p><button data-action="repair">Copy the surviving data into the empty store</button></p>` : "";
@@ -181,7 +183,7 @@ function renderScreen() {
   if (ui.tab !== "log") ui.arrange = false;
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
-    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "money" ? viewMoney() : ui.tab === "cards" ? viewCards() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "buffer" ? viewBuffer() : ui.tab === "scan" ? viewScan() : ui.tab === "income" ? viewIncome() : viewLog();
+    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "help" ? viewHelp() : ui.tab === "money" ? viewMoney() : ui.tab === "cards" ? viewCards() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "buffer" ? viewBuffer() : ui.tab === "scan" ? viewScan() : ui.tab === "income" ? viewIncome() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   const scr0 = $("screen"), sameTab = ui.tab === lastTabSig, oldBar = scr0.querySelector(".modebar, .viewmark"), barWas = oldBar?.getBoundingClientRect().top, bodyWas = scr0.querySelector(".viewbody")?.offsetHeight ?? 0;
@@ -222,7 +224,8 @@ function dayCard() {
 function viewLog() {
   if (activeAccounts().length === 0) {
     return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p><p class="note">Add the accounts you pay from first.</p>
-      <button class="primary" data-action="tab" data-tab="setup">Add accounts</button>`;
+      <button class="primary" data-action="tab" data-tab="setup">Add accounts</button>
+      <p class="note">New here? <button class="link" data-action="tab" data-tab="help">Read the quick notes first</button>.</p>`;
   }
   const due = dueDrafts().length;
   const shown = ui.dayPick && ui.dayPick !== today() ? ui.dayPick : today();   // the list follows the day chosen with "Select date"
@@ -355,9 +358,10 @@ function viewIncome() {
   // One line per month with what arrived; tap a month to see where it came from: each kind of earning (basic salary, rice subsidy, each allowance,
   // overtime), other income, the deductions, and anything the payslip lines do not explain, so the lines always add up to the month.
   const minus = (c) => "\u2212" + peso(c);
+  const mline = (label, value) => `<div class="mrow mline"><span class="mn">${esc(label)}</span><span class="mv">${value}</span></div>`;   // a plain line: the name at the left, the amount at the right
   const parts = (m) => { const b = m.breakdown; return [...b.lines.map((l) => [l.label, peso(l.amount)]), ...(b.other ? [["Other income", peso(b.other)]] : []), ...(b.deductions ? [["Deductions", minus(b.deductions)]] : []), ...(b.unmatched ? [["Not from the payslip lines", (b.unmatched < 0 ? "\u2212" : "") + peso(Math.abs(b.unmatched))]] : [])]; };
   const monthTable = `<div class="mlist">${rows.map((m) => `<details class="mrow"><summary><span class="mn">${esc(MONTH3[Number(m.month.slice(5)) - 1])}</span><b class="mv">${peso(m.total)}</b><span class="tchev" aria-hidden="true">\u203A</span></summary>${parts(m).map(([t, v]) => `<div class="mpart"><span>${esc(t)}</span><span>${v}</span></div>`).join("")}</details>`).join("")}
-    ${y.ytd.breakdown.deductions ? `<div class="mrow"><span class="mn">Gross</span><span class="mv">${peso(y.ytd.breakdown.earned)}</span></div><div class="mrow"><span class="mn">Deductions</span><span class="mv">${minus(y.ytd.breakdown.deductions)}</span></div>` : ""}
+    ${y.ytd.breakdown.deductions ? mline("Gross", peso(y.ytd.breakdown.earned)) + mline("Deductions", minus(y.ytd.breakdown.deductions)) : ""}
     <div class="mrow mtotal"><span class="mn">Net, ${esc(ytdLabel.toLowerCase())}</span><b class="mv">${peso(y.ytd.total)}</b></div></div>`;
   const pd = M.netPerPayday(S(), range);
   const paydays = pd.length ? `<h2>Net pay per payday</h2>${stackedPaydays(pd)}<table class="tbl"><tr><th>Payday</th><th class="n">Regular</th><th class="n">Overtime</th><th class="n">Net</th></tr>${pd.map((r) => `<tr><td>${esc(longDate(r.date))}<small> ${esc(r.employer)}</small></td><td class="n">${peso(r.base)}</td><td class="n">${peso(r.overtime)}</td><td class="n">${peso(r.net)}</td></tr>`).join("")}</table>` : "";
@@ -372,8 +376,8 @@ function viewIncome() {
   const ivar = (v) => v === 0 ? "As planned" : (v > 0 ? "+" : "−") + peso(Math.abs(v)) + (v > 0 ? " more" : " less");
   const pv = plan ? [M.planIncome(S(), plan, today())].map((v) => `<h2>Plan against what arrived</h2><table class="tbl"><tr><th>Payday</th><th class="n">Plan</th><th class="n">Received</th><th class="n">Difference</th></tr><tr><td>${esc(v.label)}<small> ${esc(longDate(v.period.start))}</small></td><td class="n">${peso(v.planned)}</td><td class="n">${peso(v.actual)}</td><td class="n">${esc(ivar(v.variance))}</td></tr></table><p class="note">The plan is never edited; the difference is only shown.</p>`)[0] : "";
   const bodies = {
-    overview: `<h2>Gross, deductions and net, ${esc(label)}</h2><div class="mlist"><div class="mrow"><span class="mn">Gross</span><span class="mv">${peso(bd.earned)}</span></div><div class="mrow"><span class="mn">Deductions</span><span class="mv">${bd.deductions ? "\u2212" : ""}${peso(bd.deductions)}</span></div><div class="mrow mtotal"><span class="mn">Net</span><b class="mv">${peso(y.ytd.total)}</b></div></div>${loose.length ? `<p class="note">${peso(loose.reduce((n, r) => n + r.amount, 0))} of this was added without a payslip (${loose.length} ${loose.length === 1 ? "entry" : "entries"}). <button class="link" data-action="open-payslips">See them</button></p>` : ""}${pv}`,
-    earnings: `${bySrc.length ? `<h2>Where it came from, ${esc(label)}</h2>${hbars(bySrc)}` : ""}<h2>Earnings by month</h2>${monthTable}${paydays}`,
+    overview: `<h2>Gross, deductions and net, ${esc(label)}</h2><div class="mlist">${mline("Gross", peso(bd.earned))}${mline("Deductions", (bd.deductions ? "\u2212" : "") + peso(bd.deductions))}<div class="mrow mtotal"><span class="mn">Net</span><b class="mv">${peso(y.ytd.total)}</b></div></div>${loose.length ? `<p class="note">${peso(loose.reduce((n, r) => n + r.amount, 0))} of this was added without a payslip (${loose.length} ${loose.length === 1 ? "entry" : "entries"}). <button class="link" data-action="open-payslips">See them</button></p>` : ""}${pv}`,
+    earnings: `${bySrc.length ? `<h2>Where it came from, ${esc(label)}</h2><div class="mlist">${bySrc.map((r) => mline(r.label, peso(r.amount))).join("")}</div>` : ""}<h2>Earnings by month</h2>${monthTable}${paydays}`,
     deductions: dedTable || `<p class="note">No deductions in this period.</p>`,
   };
   return `${head}${bodies[view]}`;
@@ -858,6 +862,20 @@ async function dropOldPlaceholders() {
 const bankPictureOf = (bankId) => M.bankPicture(S().accounts, bankId);
 const accountPreview = (f) => { const b = M.bankById(f.bank), sub = (f.sub ?? "").trim(); return sub ? b.name + " \u00b7 " + sub : f.kind === "liability" ? b.name + " \u00b7 Credit card" : b.name; };
 
+// ---------- Help: how the app works, in a minute ----------
+// The words live in src/model/help.js (kept true by a test that wants a topic for every screen in the menu). The notes come first, word for word;
+// then three getting-started steps that tick themselves from your own data; then one line-or-two topic per screen, each with a button that goes there.
+function viewHelp() {
+  const steps = M.checklist(S(), ledger.settings);
+  return `<h1>Help</h1><p class="sub">How this app works, in a minute.</p>
+    <div class="card"><h2>Quick notes</h2><ol class="notes">${M.QUICK_NOTES.map((n) => `<li>${esc(n)}</li>`).join("")}</ol></div>
+    <h2>Getting started</h2>
+    <div class="mlist">${steps.map((st) => `<div class="mrow mline"><span class="mn">${st.done ? "\u2713" : "\u25CB"} ${esc(st.text)}</span><span class="mv">${st.done ? "Done" : `<button class="link" data-action="tab" data-tab="${st.tab}">${esc(st.button)}</button>`}</span></div>`).join("")}</div>
+    <h2>Each screen</h2>
+    <div class="mlist">${M.HELP_TOPICS.map((t) => `<details class="mrow"><summary><span class="mn">${esc(t.label)}</span><span class="tchev" aria-hidden="true">\u203A</span></summary>${t.lines.map((l) => `<div class="mpart"><span>${esc(l)}</span></div>`).join("")}<div class="mpart"><button class="link" data-action="tab" data-tab="${t.tab}">Open ${esc(t.label)}</button></div></details>`).join("")}</div>
+    <p class="note">This guide is kept up to date as the app changes.</p>`;
+}
+
 function viewSetup() {
   const f = ui.accountForm;
   const cards = S().accounts.filter((a) => a.class === "liability" && !a.archived);
@@ -888,6 +906,9 @@ function viewSetup() {
     <p class="note">${backupAgeText()}</p>
     <p><button class="primary" data-action="open-backup">Back up now</button></p>
     <p><button data-action="open-restore" style="width:100%">Restore from a backup</button></p>
+    <h2>This app</h2>
+    <p class="note">${M.isDevBuild() ? "Version: a development copy." : "Version " + esc(M.APP_BUILD) + ", updated " + esc(fullDate(M.APP_BUILT_ON)) + "."} Your data format: ${ledger.v}.</p>
+    ${(ui.copies ?? []).map((c, i) => `<p><button data-action="restore-copy" data-id="${i}" style="width:100%">${ui.confirmCopy === i ? "Tap again to restore. Entries made since then will be lost." : i === 0 ? "Restore the copy from before the last update" : "Restore the copy from before the update before that"}</button></p><p class="note small">Saved ${esc(fullDate(c.at.slice(0, 10)))}, before your data was updated from format ${c.from_version}.</p>`).join("")}
     ${reserveExists ? `<h2>Card reserve</h2><label for="r-src">Reserve transfers come out of</label><select id="r-src" data-action-change="set-reserve-source"><option value="">Choose an account</option>${hosts.map((a) => `<option value="${esc(a.id)}"${ledger.settings.reserve_source_id === a.id ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select>` : ""}`;
 }
 
@@ -2145,6 +2166,13 @@ async function onClick(el) {
       if (r.ok && await commit(r.state)) for (const a of photos) deletePhoto(a.id).catch(() => {});
       break;
     }
+    case "restore-copy": {
+      const i = Number(id), c = (ui.copies ?? [])[i]; if (!c) break;
+      if (ui.confirmCopy !== i) { ui.confirmCopy = i; renderScreen(); break; }
+      ui.confirmCopy = null;
+      await writeBoth(JSON.stringify(M.restorableCopy(c, ledger.rev)));
+      location.reload(); break;   // the app starts again, upgrades the copy (keeping a copy of it first) and carries on
+    }
     case "open-backup": ui.sheet = { type: "backup" }; ui.form = {}; renderSheet(); break;
     case "open-restore": ui.sheet = { type: "restore" }; ui.form = {}; renderSheet(); break;
     case "make-backup": await makeBackup(); break;
@@ -2405,6 +2433,25 @@ window.addEventListener("error", (e) => showFault(e.message));
 window.addEventListener("unhandledrejection", (e) => showFault(String(e.reason?.message ?? e.reason)));
 
 // ---------- start ----------
+// Data saved by an older version of the app (model/migrate.js): keep a copy first; convert; check; save; read it back and check again. If anything is
+// wrong the copy goes back and the old data carries on. Returns {ledger, ok} or {ledger, failed: "a plain message"}.
+async function upgradeSaved(original) {
+  const text = JSON.stringify(original);
+  const copies = M.rotateCopies(await readCopies(), text, { at: M.phTimestamp(), from_version: original.v, build: M.APP_BUILD });
+  const kept = await writeCopies(copies);
+  ui.copies = copies;
+  if (!kept.local && !kept.idb) return { ledger: original, failed: "Your data was not updated, because a safety copy could not be saved first. Your data is exactly as it was." };
+  const r = M.upgradeLedger(original);
+  if (!r.ok) return { ledger: original, failed: "Your data was not updated: " + r.error + " Nothing was changed; your data is exactly as it was. Please send me a screenshot of this." };
+  await writeBoth(JSON.stringify(r.ledger));
+  const back = await readBoth(), again = M.chooseLedger(back.local ?? null, back.idb ?? null);
+  const sound = again.status === "OK" && again.ledger.v === M.LEDGER_VERSION && M.selfCheck(again.ledger).length === 0 && M.fingerprint(again.ledger) === M.fingerprint(original);
+  if (sound) return { ledger: r.ledger, ok: true };
+  const restored = M.restorableCopy(copies[0], r.ledger.rev);
+  await writeBoth(JSON.stringify(restored));
+  return { ledger: restored, failed: "The update of your data did not check out, so it was undone and the copy from before was put back. Your data is exactly as it was. Please send me a screenshot of this." };
+}
+
 async function start() {
   const platform = M.detectPlatform(navigator.userAgent);
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
@@ -2418,6 +2465,10 @@ async function start() {
     device = { status: "CORRUPT", allowEntry: false, message: "The saved data on this phone could not be read, so nothing is shown and nothing will be overwritten. Restore from your encrypted backup." };
   } else {
     ledger = boot.ledger;
+    if (ledger.v < M.LEDGER_VERSION && device.allowEntry) {
+      const u = await upgradeSaved(ledger);
+      ledger = u.ledger; ui.upgrade = u.ok ? { done: true } : { failed: u.failed }; boot = { ...boot, status: "OK" };   // both stores were just written
+    }
     ledger.state = M.dropUnusedCardCategory(M.ensureIncomeCategories(ledger.state));   // older ledgers gain Interest, Refund and Other income (saved with the next save)
     if (boot.status === "NONE") ledger.state = { ...ledger.state, categories: M.defaultCategories(), presets: M.defaultPresets() };   // kept in memory until the first save
     // The two stores disagree on revision only (a save reached one and not the other): repair quietly from the newer.
@@ -2426,7 +2477,9 @@ async function start() {
     }
   }
   if (!device.allowEntry) ui.tab = "log";
+  if (!ui.copies) ui.copies = await readCopies();
   renderAll();
+  if (ui.upgrade?.done) showToast("Your data was updated to the newest format. A copy of the old data is kept in Setup.");
   if (device.allowEntry && boot.status === "OK") {
     // Grey placeholder pictures saved by earlier versions are dropped at once, so a letter tile shows instead of a wrong one;
     // then the listed banks' logos are loaded in the background, so they are there from the start. (On a brand-new phone

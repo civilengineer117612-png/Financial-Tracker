@@ -228,7 +228,10 @@ test("chooseLedger: two unusable stores are reported, never replaced with an emp
   assert.equal(c.problems.length, 2);
 });
 test("parseLedger rejects wrong versions, bad revisions and invalid records", () => {
-  assert.equal(parseLedger(text({ ...ledger(1), v: 2 })).ok, false);
+  assert.equal(parseLedger(text({ ...ledger(1), v: 99 })).ok, false, "a version newer than this app knows");
+  assert.equal(parseLedger(text({ ...ledger(1), v: 0 })).ok, false);
+  assert.equal(parseLedger(text({ ...ledger(1), v: 1.5 })).ok, false);
+  assert.equal(parseLedger(text({ ...ledger(1), v: "2" })).ok, false);
   assert.equal(parseLedger(text({ ...ledger(1), rev: -1 })).ok, false);
   assert.equal(parseLedger(text({ ...ledger(1), rev: 1.5 })).ok, false);
   assert.equal(parseLedger(text({ ...ledger(1), settings: null })).ok, false);

@@ -22,7 +22,7 @@ const browser = await chromium.launch();
 // Every request for a bank logo goes through this, so the network is faked: by default nothing answers.
 let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
-async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false } = {}) {
+async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = null, routes = [] } = {}) {
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
   // A pretend phone speech service that, like the real ones, listens once and closes the microphone when you pause: the first try hears
@@ -31,6 +31,8 @@ async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BAS
     const said = ["", "lunch 95 at sample burger using gcash"]; let round = 0; window.__langs = [];
     window.SpeechRecognition = window.webkitSpeechRecognition = class { start() { window.__langs.push(this.lang); const words = said[round++] ?? ""; setTimeout(() => { if (words) this.onresult?.({ results: [{ 0: { transcript: words, confidence: 0.9 }, isFinal: true, length: 1 }] }); }, 80); setTimeout(() => this.onend?.(), 260); } stop() { setTimeout(() => this.onend?.(), 20); } };
   });
+  // `seed`: data already on the phone before the app first runs (written only if nothing is there yet, so a reload keeps what the app saved). `routes`: [pattern, (body) => body] changes a file the page loads.
+  for (const [pattern, change] of routes) await ctx.route(pattern, async (route) => { const r = await route.fetch(); route.fulfill({ response: r, body: change(await r.text()) }); });
   if (noSpeech) await ctx.addInitScript(() => { window.webkitSpeechRecognition = undefined; window.SpeechRecognition = undefined; });
   await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png|wikipedia\.org|wikimedia\.org/, (r) => { iconAsked.push(r.request().url()); iconServe(r); });
   const page = await ctx.newPage();
@@ -40,6 +42,13 @@ async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BAS
   await page.clock.setFixedTime(T0);
   await page.goto(url);
   await page.waitForSelector("#nav button");
+  if (seed) {   // data already on the phone before this start: written to BOTH stores as the app writes them, then the app starts again
+    await page.evaluate(async (text) => {
+      localStorage.setItem("financialTracker.ledger", text);
+      await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => { const tx = r.result.transaction("kv", "readwrite"); tx.objectStore("kv").put(text, "ledger"); tx.oncomplete = () => { r.result.close(); res(); }; tx.onerror = () => rej(tx.error); }; r.onerror = () => rej(r.error); });
+    }, JSON.stringify(seed));
+    await page.reload(); await page.waitForSelector("#nav button");
+  }
   return { ctx, page, errors };
 }
 const text = (page, sel = "body") => page.locator(sel).innerText();
@@ -541,7 +550,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3 && (await page.locator("#menuBtn").evaluate((b) => getComputedStyle(b).borderTopWidth === "0px" && getComputedStyle(b).backgroundColor === "rgba(0, 0, 0, 0)")), "it is just three lines, without a box around it");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Cards,Budget,Goals,Pay plan,Checks,Trips,Buffer,Scan,Weekly review,Setup", "the menu lists Cash flow (Spending and Income together), Cards, Budget, Goals, Pay plan, Checks, Trips, Buffer, Scan, Weekly review and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Cards,Budget,Goals,Pay plan,Checks,Trips,Buffer,Scan,Weekly review,Help,Setup", "the menu lists Cash flow (Spending and Income together), Cards, Budget, Goals, Pay plan, Checks, Trips, Buffer, Scan, Weekly review, Help and Setup");
 check(await page.locator("#menu .drawer").evaluate((d) => d.scrollHeight <= d.clientHeight + 1), "everything fits without scrolling");
 check(await page.locator("#menu .drawer").evaluate((d) => getComputedStyle(d).borderRightWidth === "0px"), "there is no hard black line at the panel's edge");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
@@ -1223,6 +1232,8 @@ await page.click('button[aria-label="Earlier"]');
 check((await text(page, ".hero")).includes("₱10,300.00") && (await text(page, "#screen")).includes("earned in September 2026"), "it counts in September, the month of its pay period");
 const incText = await text(page, "#screen");
 check(/Gross\s*₱11,500\.00[\s\S]*Deductions\s*−₱1,200\.00[\s\S]*Net\s*₱10,300\.00/.test(incText) && !incText.includes("Basic salary") && (await page.locator("#screen .bars").count()) === 0, "the Overview is gross, deductions and net, with no bar graph");
+{ const ov = await page.evaluate(() => { const r = (el) => Math.round(el.getBoundingClientRect().right); return { rows: [...document.querySelectorAll("#screen .mlist .mline .mv")].map(r), net: r(document.querySelector("#screen .mtotal .mv")) }; });
+  check(ov.rows.length === 2 && ov.rows.every((x) => Math.abs(x - ov.net) <= 1), "on the Overview the gross and deductions amounts line up at the right with the net (" + JSON.stringify(ov) + ")"); }
 { const pt = await page.locator("#screen .ptitle").evaluateAll((els) => els.map((e) => [e.getAttribute("aria-label"), getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight].join("|")));
   check(pt.length === 1 && pt[0].startsWith("Choose the period: ") && pt[0].includes("|16px|7"), "the period bar is the same one Spending has: tap it to choose a month, a year or a range (" + pt.join(" ; ") + ")"); }
 check(!incText.includes("Year to date") && !(await page.locator("#screen table.tbl").count()), "the Overview shows only the important things: no tables");
@@ -1277,10 +1288,13 @@ check(await page.locator(".mlist details.mrow").count() >= 1 && await page.locat
 await page.locator(".mlist details.mrow summary").first().click();
 { const t = await page.locator(".mlist details.mrow").first().innerText();
   check(t.includes("Basic salary") && t.includes("Rice subsidy") && t.includes("Overtime") && t.includes("Deductions") && !t.includes("Base pay"), "tapping a month shows each kind of earning, rice subsidy and overtime apart, then the deductions (" + t.replace(/\n/g, " | ") + ")"); }
-{ const m = await text(page, ".mlist");
+{ const m = await text(page, ".mlist:has(details.mrow)");
   check(/Gross\s*₱11,500\.00[\s\S]*Deductions\s*−₱1,200\.00[\s\S]*Net, this month[\s\S]*₱10,300\.00/.test(m), "under the months: gross, the deductions, then net (" + m.replace(/\n/g, " | ").slice(-170) + ")");
   { const e = await text(page, "#screen");
-    const el = e.toLowerCase(); check(el.indexOf("where it came from") !== -1 && el.indexOf("where it came from") < el.indexOf("earnings by month") && e.includes("Rice subsidy") && e.includes("Basic salary") && (await page.locator("#screen .bars .brow").count()) >= 3, "the bar graph by kind is on the Earnings view, above the months"); }
+    const el = e.toLowerCase(); check(el.indexOf("where it came from") !== -1 && el.indexOf("where it came from") < el.indexOf("earnings by month") && e.includes("Rice subsidy") && e.includes("Basic salary") && (await page.locator("#screen .mlist .mline").count()) >= 3, "the kinds of earning are plain text rows on the Earnings view, above the months"); }
+  { const edges = await page.evaluate(() => { const r = (el) => el.getBoundingClientRect(); const rows = [...document.querySelectorAll("#screen .mlist .mline")]; const net = document.querySelector("#screen .mtotal .mv");
+      return { ys: rows.map((row) => Math.round(r(row.querySelector(".mv")).right)), net: Math.round(r(net).right), labelRight: Math.round(r(rows[0].querySelector(".mn")).right), valueLeft: Math.round(r(rows[0].querySelector(".mv")).left) }; });
+    check(edges.ys.every((x) => Math.abs(x - edges.net) <= 1) && edges.valueLeft > edges.labelRight + 20, "the amounts sit at the right, lined up with the Net amount (" + JSON.stringify(edges) + ")"); }
   const legend = await text(page, ".legend"), th = (await page.locator("#screen table.tbl th").allInnerTexts()).join(",");
   check(legend.includes("Regular pay") && !legend.includes("Base pay") && th.includes("Regular") && !th.includes("Base"), "the payday chart and table say Regular pay, not Base pay"); }
 await shot(page, "38-months");
@@ -1582,6 +1596,72 @@ console.log("Log date and Cash first");
   await menuGo(page, "Cards");
   const cards = await text(page, "#screen");
   check(cards.indexOf("Cash") !== -1 && cards.indexOf("Cash") < cards.indexOf("Test Debit"), "on the Cards screen Cash is listed first");
+  await ctx.close(); }
+
+// ===== 5n. help, and upgrading old data safely =====
+console.log("Help and upgrade safety");
+{ ({ ctx, page, errors } = await open({ blockSw: true }));
+  await page.click("#menuBtn");
+  const menuText = await text(page, "#menu");
+  check(menuText.includes("Help") && menuText.indexOf("Help") < menuText.indexOf("Setup"), "the menu has Help, just above Setup");
+  await page.click('#menu button[data-tab="help"]');
+  const h = await text(page, "#screen");
+  check(/Quick notes/i.test(h) && h.includes("It's still being built, so don't rely on it fully yet.") && h.includes("Your data lives only on your phone. No one else can see it or recover it.") && h.includes("Setup, then Backup") && h.includes("If you forget it, the backup can't be opened.") && h.includes("use it from the Home Screen icon, not a Safari tab") && h.includes("Never send your backup file."), "Help starts with the five quick notes, in full");
+  check(h.includes("Add the accounts you pay from") && h.includes("Make a backup") && (await page.locator('#screen .mline button[data-tab="setup"]').count()) >= 1, "then three getting-started steps, with a button to each");
+  await addAccount(page, "Wallet", "asset", "100"); await page.click("#menuBtn"); await page.click('#menu button[data-tab="help"]');
+  check(/✓ Add the accounts you pay from\s*Done/.test(await text(page, "#screen")) && /○ Log your first expense/.test(await text(page, "#screen")), "a finished step shows a tick and Done; an unfinished one shows an empty circle");
+  await page.locator("#screen details.mrow summary", { hasText: "Verify" }).click();
+  check((await text(page, "#screen")).includes("Look at one entry at a time"), "tapping a screen's name opens its two or three lines");
+  await page.locator("#screen details.mrow[open] button", { hasText: "Open Verify" }).click();
+  check(await page.locator("h1, #top").first().isVisible() && (await text(page, "#screen")).toLowerCase().includes("nothing to verify"), "and its button goes to that screen");
+  await ctx.close(); }
+
+const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: {}, state: {
+  accounts: [{ id: "w", name: "Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" }],
+  goals: [], envelopes: [], categories: [{ id: "cat-food", name: "Food", kind: "expense" }], categoryMaps: [], rules: [], templates: [], presets: [], payeeRules: [], subscriptions: [], checkIns: [], attachments: [], tags: [], foreignAmounts: [], surveyResponses: [],
+  transactions: [{ id: "t1", date: "2026-10-01", payee: "Sample Shop", memo: "", status: "verified", source: "manual", created_at: "2026-10-01T09:00:00.000+08:00", verified_at: "2026-10-01T09:00:00.000+08:00" }],
+  entries: [{ transaction_id: "t1", category_id: "cat-food", amount: 9500 }, { transaction_id: "t1", account_id: "w", amount: -9500 }] } };
+{ ({ ctx, page, errors } = await open({ blockSw: true, seed: V1 }));
+  check(await seen(page, "#toast", "updated to the newest format"), "old data (the first data version) is updated when the app starts, and the app says so");
+  let led = JSON.parse((await stored(page)).local), idb = JSON.parse((await stored(page)).idb);
+  check(led.v === 2 && idb.v === 2 && led.state.transactions.length === 1 && led.state.entries.length === 2 && Array.isArray(led.state.payslipRevisions) && led.state.accounts[0].opening_balance === 100000, "both stores hold the new format with every record kept");
+  check(JSON.stringify(led.state.transactions[0]) === JSON.stringify(V1.state.transactions[0]), "and no field of a record changed");
+  { const kept = await page.evaluate(async () => {
+      const local = JSON.parse(localStorage.getItem("financialTracker.preupgrade") ?? "[]");
+      const idbCopies = await new Promise((res) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => { const g = r.result.transaction("safety").objectStore("safety").get("copies"); g.onsuccess = () => { r.result.close(); res(g.result ?? []); }; g.onerror = () => res([]); }; r.onerror = () => res([]); });
+      return { local, idb: idbCopies };
+    });
+    const same = (list) => list.length === 1 && JSON.parse(list[0].text).v === 1 && JSON.stringify(JSON.parse(list[0].text).state) === JSON.stringify(V1.state) && list[0].from_version === 1;
+    check(same(kept.local) && same(kept.idb), "the data as it was before the update is kept in both stores"); }
+  await menuGo(page, "Setup");
+  const su = await text(page, "#screen");
+  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 2") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
+  await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "40"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
+  check(JSON.parse((await stored(page)).local).state.transactions.length === 2, "an expense is added after the update");
+  await menuGo(page, "Setup");
+  await page.click('button[data-action="restore-copy"][data-id="0"]');
+  check((await text(page, "#screen")).includes("Tap again to restore"), "restoring asks once more, and says what is lost");
+  await Promise.all([page.waitForNavigation(), page.click('button[data-action="restore-copy"][data-id="0"]')]);
+  await page.waitForSelector("#nav button"); await seen(page, "#toast", "updated to the newest format");
+  led = JSON.parse((await stored(page)).local);
+  check(led.state.transactions.length === 1 && led.v === 2, "the copy is back (the later expense is gone) and it is updated again");
+  await menuGo(page, "Setup");
+  check((await page.locator('button[data-action="restore-copy"]').count()) === 1, "restoring does not pile up copies of the same data");
+  await ctx.close(); }
+
+// the update fails part way: nothing changes, the app keeps going on the old data and says so in plain words
+{ ({ ctx, page, errors } = await open({ blockSw: true, seed: V1, routes: [[/\/src\/model\/migrate\.js/, (b) => b.replace("const step = migrations[v];", "const step = () => { throw new Error('boom'); };")]] }));
+  check((await text(page, "#banner")).includes("Your data was not updated") && (await text(page, "#banner")).includes("exactly as it was"), "a failed update says so in plain words and that the data is exactly as it was");
+  const after = JSON.parse((await stored(page)).local);
+  check(after.v === 1 && after.rev === 3 && JSON.stringify(after.state) === JSON.stringify(V1.state), "nothing on the phone changed");
+  check(await page.locator('button:has-text("Add expense")').count() === 1 && (await text(page, "#screen")).includes("Sample Shop") === false, "and the app still works on the old data");
+  await ctx.close(); }
+
+// the saved data does not check out when read back: the copy is put back
+{ ({ ctx, page, errors } = await open({ blockSw: true, seed: V1, routes: [[/\/app\/app\.js/, (b) => b.replace("await writeBoth(JSON.stringify(r.ledger));", "await writeBoth(JSON.stringify({ ...r.ledger, state: { ...r.ledger.state, entries: [] } }));")]] }));
+  check((await text(page, "#banner")).includes("did not check out") && (await text(page, "#banner")).includes("copy from before was put back"), "if the saved result does not check out, the update is undone and the message says so");
+  const after = JSON.parse((await stored(page)).local), idb2 = JSON.parse((await stored(page)).idb);
+  check(after.v === 1 && idb2.v === 1 && after.state.entries.length === 2 && JSON.stringify(after.state.transactions) === JSON.stringify(V1.state.transactions), "both stores hold the data as it was, with every entry");
   await ctx.close(); }
 
 // ===== 6. wrong phone, wrong place =====

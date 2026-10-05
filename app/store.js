@@ -2,10 +2,11 @@
 // so losing or failing one of them is noticed and repaired from the other (model/persist.js).
 // A value of undefined means "that store could not be read at all".
 let LS_KEY = "financialTracker.ledger", DB_NAME = "financialTracker";
-const STORE = "kv", KEY = "ledger", PHOTOS = "photos";
+const STORE = "kv", KEY = "ledger", PHOTOS = "photos", SAFETY = "safety";
+let COPIES_KEY = "financialTracker.preupgrade";   // the copies kept from before an upgrade (see model/migrate.js)
 
 // A trial copy keeps everything under other names, so it can never touch (or be mistaken for) a real ledger.
-export function useTrialStorage() { LS_KEY = "financialTracker.trial.ledger"; DB_NAME = "financialTracker-trial"; }
+export function useTrialStorage() { LS_KEY = "financialTracker.trial.ledger"; COPIES_KEY = "financialTracker.trial.preupgrade"; DB_NAME = "financialTracker-trial"; }
 export async function clearTrialStorage() {
   if (!DB_NAME.endsWith("-trial")) return;   // only ever the trial copy
   try { localStorage.removeItem(LS_KEY); } catch { /* nothing to remove */ }
@@ -14,8 +15,8 @@ export async function clearTrialStorage() {
 
 function openDb() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 2);   // version 2 adds the store for photos of receipts; the ledger store is untouched
-    req.onupgradeneeded = () => { for (const name of [STORE, PHOTOS]) if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name); };
+    const req = indexedDB.open(DB_NAME, 3);   // version 2 added the store for photos of receipts, version 3 the one for copies from before an upgrade; the ledger store is untouched
+    req.onupgradeneeded = () => { for (const name of [STORE, PHOTOS, SAFETY]) if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name); };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -80,3 +81,30 @@ async function photoTx(mode, run) {
 export const putPhoto = (id, blob) => photoTx("readwrite", (st) => st.put(blob, id));
 export const getPhoto = (id) => photoTx("readonly", (st) => st.get(id));
 export const deletePhoto = (id) => photoTx("readwrite", (st) => st.delete(id));
+
+// The copies of the data kept from before an upgrade (at most two, see model/migrate.js rotateCopies): the same list is written to localStorage and
+// IndexedDB, and read back from whichever holds more.
+async function idbCopies(mode, run) {
+  const db = await openDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(SAFETY, mode), r = run(tx.objectStore(SAFETY));
+      tx.oncomplete = () => resolve(r?.result ?? null);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally { db.close(); }
+}
+export async function readCopies() {
+  let a = [], b = [];
+  try { a = JSON.parse(localStorage.getItem(COPIES_KEY) ?? "[]"); } catch { a = []; }
+  try { b = (await idbCopies("readonly", (st) => st.get("copies"))) ?? []; } catch { b = []; }
+  const ok = (x) => (Array.isArray(x) ? x.filter((c) => c && typeof c.text === "string") : []);
+  return ok(b).length >= ok(a).length ? ok(b) : ok(a);
+}
+export async function writeCopies(copies) {
+  const result = { local: false, idb: false };
+  try { localStorage.setItem(COPIES_KEY, JSON.stringify(copies)); result.local = true; } catch { /* reported below */ }
+  try { await idbCopies("readwrite", (st) => st.put(copies, "copies")); result.idb = true; } catch { /* reported below */ }
+  return result;
+}

@@ -4,12 +4,11 @@
 // Pure logic only; the app does the actual reading and writing.
 import { validateState } from "./validate.js";
 import { phTimestamp } from "./util.js";
+import { LEDGER_VERSION, COLLECTION_NAMES } from "./migrate.js";
 
-export const LEDGER_VERSION = 1;
-const COLLECTIONS = ["accounts", "goals", "envelopes", "transactions", "entries", "categories", "categoryMaps", "rules",
-  "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"];
+export { LEDGER_VERSION };
 
-export const emptyState = () => Object.fromEntries(COLLECTIONS.map((k) => [k, []]));
+export const emptyState = () => Object.fromEntries(COLLECTION_NAMES.map((k) => [k, []]));
 
 // settings hold app choices that are not ledger records (e.g. which account hosts the reserve).
 export const emptyLedger = () => ({ v: LEDGER_VERSION, rev: 0, saved_at: null, state: emptyState(), settings: {} });
@@ -22,12 +21,13 @@ export function nextLedger(ledger, state, settings, now = new Date()) {
 export function parseLedger(text) {
   let raw;
   try { raw = JSON.parse(text); } catch { return { ok: false, error: "not valid JSON" }; }
-  if (!raw || raw.v !== LEDGER_VERSION) return { ok: false, error: "unsupported version" };
+  // An older data version is accepted as it is (`older: true`); the app converts it with upgradeLedger (migrate.js) after keeping a copy.
+  if (!raw || !Number.isInteger(raw.v) || raw.v < 1 || raw.v > LEDGER_VERSION) return { ok: false, error: "unsupported version" };
   if (!Number.isSafeInteger(raw.rev) || raw.rev < 0) return { ok: false, error: "bad revision" };
   if (typeof raw.settings !== "object" || raw.settings === null) return { ok: false, error: "bad settings" };
   const problems = validateState(raw.state);
   if (problems.length) return { ok: false, error: problems[0].message };
-  return { ok: true, ledger: raw };
+  return { ok: true, ledger: raw, ...(raw.v < LEDGER_VERSION ? { older: true } : {}) };
 }
 
 // localText / idbText: the stored text, or null when that store holds nothing.
@@ -49,7 +49,7 @@ export function chooseLedger(localText, idbText) {
 // Restoring a backup REPLACES what is on the phone. The result is stamped newer than both the
 // current ledger and the backup, so if the two stores ever disagree afterwards the restore wins.
 export function restoreLedger(current, restored, now = new Date()) {
-  return { v: LEDGER_VERSION, rev: Math.max(current.rev, restored.rev) + 1, saved_at: phTimestamp(now), state: restored.state, settings: restored.settings };
+  return { v: restored.v, rev: Math.max(current.rev, restored.rev) + 1, saved_at: phTimestamp(now), state: restored.state, settings: restored.settings };   // keeps ITS data version: an older backup is upgraded (with a copy kept) when the app restarts
 }
 
 // What a person needs to see before agreeing to replace one ledger with another.
