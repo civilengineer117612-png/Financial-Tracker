@@ -18,6 +18,8 @@ export const BANKS = [
   { id: "beep", name: "Beep", domain: "beep.com.ph" },   // the stored-value transport card
 ];
 export const CASH = { id: "cash", name: "Cash" };
+// The order the bank picker shows: Cash first, then every bank and wallet from A to Z (not counting capitals).
+export const pickerBanks = () => [CASH, ...[...BANKS].sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }))];
 export const bankById = (id) => [...BANKS, CASH].find((b) => b.id === id) ?? null;
 
 // The bank a typed account name obviously means ("gotyme", "GoTyme Savings"), or null. Used to offer logos for accounts
