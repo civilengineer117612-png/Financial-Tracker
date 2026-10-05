@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, incomeMonths, slipDate, deletePayslip, updatePayslip, payslipNotes, missingPayPeriods, samePeriodPayslips, markPayslipChecked, revisionChanges, revisionsOf, PAYSLIP_VERSION, planAttachment, incomeWithoutPayslip, removeIncomeEntry, planPayReceived,
+import { planPayslip, payslipChecks, payslipTotals, linesOf, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, incomeMonths, slipDate, deletePayslip, updatePayslip, payslipNotes, incomeBreakdown, missingPayPeriods, samePeriodPayslips, markPayslipChecked, revisionChanges, revisionsOf, PAYSLIP_VERSION, planAttachment, incomeWithoutPayslip, removeIncomeEntry, planPayReceived,
   ensureIncomeCategories, validateState, applyDrafts } from "../src/model/index.js";
 import { makeState, account } from "./fixtures.js";
 
@@ -401,4 +401,31 @@ test("each change lists which lines changed: amounts, added and removed lines, d
   assert.deepEqual(list[1].changes.sort(), ["Basic salary ₱9,000.00 to ₱8,900.00", "Employer Sample Employer Inc to Renamed Co", "Pag-IBIG removed (was ₱100.00)", "PhilHealth removed (was ₱100.00)", "Pay date Oct 15, 2026 to Oct 16, 2026", "Skills allowance added ₱100.00"].sort());
   assert.deepEqual(revisionChanges(s, "ps1"), []);
   assert.deepEqual(revisionChanges(s, "nope"), []);
+});
+
+// ---- Income round 6: earnings by kind ----
+test("income breakdown names each kind of earning, the deductions and what arrived, and always adds up to the total", () => {
+  const s = saved({ printed_gross: 1100000, printed_net: 980000, deposit: 980000, earnings: [{ kind: "basic", amount: 900000 }, { kind: "rice", amount: 100000 }, { kind: "skills", amount: 100000 }] });
+  const b = incomeBreakdown(s, { from: "2026-10-01", to: "2026-10-31" });
+  assert.deepEqual(b.lines.map((l) => [l.kind, l.label, l.amount]), [["basic", "Basic salary", 900000], ["rice", "Rice subsidy", 100000], ["skills", "Skills allowance", 100000]]);
+  assert.equal(b.deductions, 120000); assert.equal(b.other, 0); assert.equal(b.unmatched, 0); assert.equal(b.total, 980000);
+  const sum = (x) => x.lines.reduce((n, l) => n + l.amount, 0) + x.other - x.deductions + x.unmatched;
+  assert.equal(sum(b), b.total);
+  assert.deepEqual(incomeBreakdown(s, { from: "2026-11-01", to: "2026-11-30" }), { lines: [], other: 0, deductions: 0, unmatched: 0, total: 0 });
+});
+
+test("income breakdown: pay added without a payslip shows as not from the payslip lines; interest is other income; both still add up", () => {
+  let s = saved();
+  const loose = planPayReceived(s, { transaction_id: "tx-loose", date: "2026-10-20", account_id: "chk", amount: 50000, payee: "Sample", category_id: "cat-salary" }, NOW);
+  assert.ok(loose.ok, JSON.stringify(loose.violations)); s = loose.state;
+  const int = planPayReceived(s, { transaction_id: "tx-int", date: "2026-10-21", account_id: "chk", amount: 700, payee: "Bank", category_id: "cat-interest" }, NOW);
+  assert.ok(int.ok, JSON.stringify(int.violations)); s = int.state;
+  s = { ...s, categories: [...s.categories, { id: "cat-gift", name: "Gift", kind: "income" }] };
+  const gift = planPayReceived(s, { transaction_id: "tx-gift", date: "2026-10-22", account_id: "chk", amount: 300, payee: "Friend", category_id: "cat-gift" }, NOW);
+  assert.ok(gift.ok, JSON.stringify(gift.violations)); s = gift.state;
+  const b = incomeBreakdown(s, { from: "2026-10-01", to: "2026-10-31" });
+  assert.equal(b.other, 1000, "interest and a gift (a category that is not pay) are other income"); assert.equal(b.unmatched, 50000);
+  assert.equal(b.lines.reduce((n, l) => n + l.amount, 0) + b.other - b.deductions + b.unmatched, b.total);
+  const m = incomeMonths(s, { from: "2026-10-01", to: "2026-10-31" });
+  assert.deepEqual(m.months[0].breakdown, b); assert.deepEqual(m.ytd.breakdown, b);
 });

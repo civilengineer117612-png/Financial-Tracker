@@ -144,14 +144,29 @@ export function incomeBySource(state, { from, to }) {
   }
   return { ...out, total: Object.values(out).reduce((a, b) => a + b, 0) };
 }
+// Where a range's income came from, line by line: each kind of earning on the payslips (basic salary, rice subsidy, each allowance,
+// overtime...), income that is not pay (interest, refunds, other), the deductions, and what is left over. `unmatched` is whatever the
+// received total holds that the payslip lines do not explain (pay added without a payslip, or a payslip whose lines do not add up), so the
+// lines always reconcile with `total`: lines + other - deductions + unmatched = total.
+export function incomeBreakdown(state, { from, to }) {
+  const sources = incomeBySource(state, { from, to }), earn = new Map();
+  let deductions = 0;
+  for (const p of state.payslips ?? []) {
+    if (slipDate(p) < from || slipDate(p) > to) continue;
+    for (const l of linesOf(state, p.id)) { if (l.side === "earning") earn.set(l.kind, (earn.get(l.kind) ?? 0) + l.amount); else deductions += l.amount; }
+  }
+  const lines = EARNINGS.filter(([k]) => earn.has(k)).map(([kind, label]) => ({ kind, label, amount: earn.get(kind) }));
+  const other = sources.interest + sources.refunds + sources.other, earned = lines.reduce((n, l) => n + l.amount, 0);
+  return { lines, other, deductions, unmatched: sources.total - other - (earned - deductions), total: sources.total };
+}
 // The months of any range (clamped at its ends), each by source, plus the total for the whole range.
 export function incomeMonths(state, { from, to }) {
   const months = [];
   for (let m = monthOf(from); m <= monthOf(to); m = monthOf(new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5)), 1)).toISOString().slice(0, 10))) {
     const a = m + "-01" > from ? m + "-01" : from, b = m + "-31" < to ? m + "-31" : to;
-    months.push({ month: m, ...incomeBySource(state, { from: a, to: b }) });
+    months.push({ month: m, ...incomeBySource(state, { from: a, to: b }), breakdown: incomeBreakdown(state, { from: a, to: b }) });
   }
-  return { months, ytd: incomeBySource(state, { from, to }) };
+  return { months, ytd: { ...incomeBySource(state, { from, to }), breakdown: incomeBreakdown(state, { from, to }) } };
 }
 // Twelve months of one year, plus the year to date.
 export function incomeByMonth(state, year) {

@@ -325,7 +325,8 @@ const gapText = (g) => periodText({ period_from: g.from, period_to: g.to }).repl
 function payslipRows(range) {
   const slips = slipsIn(range);
   if (!slips.length) return `<p class="note">No payslips in this period.</p>`;
-  return `${slips.map((p) => {
+  const gaps = M.missingPayPeriods(S(), range, today()).map((g) => `<p class="note small">${esc(gapText(g))}: no payslip.</p>`).join("");
+  return `${gaps}${slips.map((p) => {
     const lines = M.linesOf(S(), p.id), flags = M.payslipChecks(p, lines), t = M.payslipTotals(lines);
     const shot = M.attachmentsFor(S(), p.transaction_id)[0];
     const draft = S().transactions.some((x) => x.id === "ot-" + p.id), freeDone = S().transactions.some((x) => x.id === "otf-" + p.id);
@@ -339,7 +340,7 @@ function viewIncome() {
   const y = M.incomeMonths(S(), range), rows = y.months.filter((m) => m.total !== 0);
   const slips = slipsIn(range), loose = M.incomeWithoutPayslip(S(), range);
   const step = periodStepper(per);
-  const IVIEWS = [["overview", "Overview"], ["months", "Months"], ["deductions", "Deductions"], ["history", "Pay history"]], view = IVIEWS.some(([v]) => v === ui.incomeView) ? ui.incomeView : "overview";
+  const IVIEWS = [["overview", "Overview"], ["earnings", "Earnings"], ["deductions", "Deductions"]], view = IVIEWS.some(([v]) => v === ui.incomeView) ? ui.incomeView : "overview";
   const earned = per.kind === "range" ? "earned from " + fullDate(per.from) + " to " + fullDate(per.to) : "earned in " + label;
   const head = `<h1>Income</h1>${step}<div class="hero">${peso(y.ytd.total)}</div><p class="sub">${esc(earned)}</p>
     <p><button class="primary compact" data-action="open-payslip-choice">Add income</button></p>
@@ -347,15 +348,14 @@ function viewIncome() {
     <div class="seg" role="group" aria-label="What to show">${IVIEWS.map(([v, t]) => `<button data-action="income-view" data-view="${v}" aria-pressed="${view === v}">${t}</button>`).join("")}</div><div class="viewmark"></div>`;
   if (!rows.length && !slips.length && !loose.length) return head + `<p class="note">Nothing recorded for ${esc(label)} yet. Add a payslip to see where your income comes from, your raises, and what went to government.</p>`;
   const bySrc = M.SOURCES.map(([id, label]) => ({ label, amount: y.ytd[id] })).filter((r) => r.amount !== 0);
-  const other = (m) => m.interest + m.refunds + m.other, showOther = rows.some((m) => other(m) !== 0) || other(y.ytd) !== 0;   // the Other column appears only when there is something in it
-  // A short list, one line per month with its total; tap a month to see where it came from (five columns did not fit a phone).
-  const parts = (m) => [["Base pay", m.base], ["Overtime", m.overtime], ...(showOther ? [["Other", other(m)]] : [])].filter(([, v]) => v !== 0);
-  const monthTable = `<div class="mlist">${rows.map((m) => `<details class="mrow"><summary><span class="mn">${esc(MONTH3[Number(m.month.slice(5)) - 1])}</span><b class="mv">${peso(m.total)}</b><span class="tchev" aria-hidden="true">\u203A</span></summary>${parts(m).map(([t, v]) => `<div class="mpart"><span>${t}</span><span>${peso(v)}</span></div>`).join("")}</details>`).join("")}
+  // One line per month with what arrived; tap a month to see where it came from: each kind of earning (basic salary, rice subsidy, each allowance,
+  // overtime), other income, the deductions, and anything the payslip lines do not explain, so the lines always add up to the month.
+  const minus = (c) => "\u2212" + peso(c);
+  const parts = (m) => { const b = m.breakdown; return [...b.lines.map((l) => [l.label, peso(l.amount)]), ...(b.other ? [["Other income", peso(b.other)]] : []), ...(b.deductions ? [["Deductions", minus(b.deductions)]] : []), ...(b.unmatched ? [["Not from the payslip lines", (b.unmatched < 0 ? "\u2212" : "") + peso(Math.abs(b.unmatched))]] : [])]; };
+  const monthTable = `<div class="mlist">${rows.map((m) => `<details class="mrow"><summary><span class="mn">${esc(MONTH3[Number(m.month.slice(5)) - 1])}</span><b class="mv">${peso(m.total)}</b><span class="tchev" aria-hidden="true">\u203A</span></summary>${parts(m).map(([t, v]) => `<div class="mpart"><span>${esc(t)}</span><span>${v}</span></div>`).join("")}</details>`).join("")}
     <div class="mrow mtotal"><span class="mn">${ytdLabel}</span><b class="mv">${peso(y.ytd.total)}</b></div></div>`;
   const pd = M.netPerPayday(S(), range);
   const paydays = pd.length ? `<h2>Net pay per payday</h2>${stackedPaydays(pd)}<table class="tbl"><tr><th>Payday</th><th class="n">Base</th><th class="n">Overtime</th><th class="n">Net</th></tr>${pd.map((r) => `<tr><td>${esc(longDate(r.date))}<small> ${esc(r.employer)}</small></td><td class="n">${peso(r.base)}</td><td class="n">${peso(r.overtime)}</td><td class="n">${peso(r.net)}</td></tr>`).join("")}</table>` : "";
-  const raises = M.raiseHistory(S(), range);
-  const raiseTable = raises.length ? `<h2>Basic pay over time</h2><table class="tbl"><tr><th>Payday</th><th class="n">Basic</th><th class="n">Change</th></tr>${raises.map((r) => `<tr><td>${esc(fullDate(r.date))}</td><td class="n">${peso(r.basic)}</td><td class="n">${r.change === null ? "" : r.change === 0 ? "No change" : (r.raised ? "▲ raised " : "▼ down ") + peso(Math.abs(r.change))}</td></tr>`).join("")}</table>` : "";
   const dd = M.deductionsByMonth(S(), range);
   // One line per month with ALL its deductions added up; tap a month for each kind (only the kinds that have an amount).
   const DEDNAME = Object.fromEntries(M.DEDUCTIONS.map(([k, t]) => [k, t]));
@@ -363,16 +363,13 @@ function viewIncome() {
   const dedTable = dd.months.length ? `<h2>Deductions</h2><div class="mlist">${dd.months.map((m) => `<details class="mrow"><summary><span class="mn">${esc(MONTH3[Number(m.month.slice(5)) - 1])}</span><b class="mv">${peso(m.total)}</b><span class="tchev" aria-hidden="true">\u203A</span></summary>${dedParts(m).map(([t, v]) => `<div class="mpart"><span>${esc(t)}</span><span>${peso(v)}</span></div>`).join("")}</details>`).join("")}
     <div class="mrow mtotal"><span class="mn">Total deductions</span><b class="mv">${peso(dd.ytd.total)}</b></div></div>
     <p class="note">Went to government in this period: ${peso(dd.ytd.government)}. Lost to absences and lates: ${peso(dd.ytd.lost)}.${dd.ytd.loan ? " Loans: " + peso(dd.ytd.loan) + "." : ""}</p>` : "";
-  const emps = M.employerHistory(S(), range);
-  const empTable = emps.length ? `<h2>Employers</h2><table class="tbl"><tr><th>Employer</th><th class="n">From</th><th class="n">Latest</th></tr>${emps.map((e) => `<tr><td>${esc(e.employer)}<small> ${e.payslips} ${e.payslips === 1 ? "payslip" : "payslips"}</small></td><td class="n">${esc(fullDate(e.first))}</td><td class="n">${esc(fullDate(e.last))}</td></tr>`).join("")}</table>` : "";
   const plan = from <= today() && today() <= to ? planOf() : null;   // the plan in force speaks only of the present
   const ivar = (v) => v === 0 ? "As planned" : (v > 0 ? "+" : "−") + peso(Math.abs(v)) + (v > 0 ? " more" : " less");
   const pv = plan ? [M.planIncome(S(), plan, today())].map((v) => `<h2>Plan against what arrived</h2><table class="tbl"><tr><th>Payday</th><th class="n">Plan</th><th class="n">Received</th><th class="n">Difference</th></tr><tr><td>${esc(v.label)}<small> ${esc(longDate(v.period.start))}</small></td><td class="n">${peso(v.planned)}</td><td class="n">${peso(v.actual)}</td><td class="n">${esc(ivar(v.variance))}</td></tr></table><p class="note">The plan is never edited; the difference is only shown.</p>`)[0] : "";
   const bodies = {
     overview: `<h2>Where it came from, ${esc(label)}</h2>${bySrc.length ? hbars(bySrc) : `<p class="note">Nothing in this period.</p>`}${loose.length ? `<p class="note">${peso(loose.reduce((n, r) => n + r.amount, 0))} of this was added without a payslip (${loose.length} ${loose.length === 1 ? "entry" : "entries"}). <button class="link" data-action="open-payslips">See them</button></p>` : ""}${pv}`,
-    months: `<h2>By month</h2>${monthTable}${paydays}`,
+    earnings: `<h2>Earnings by month</h2>${monthTable}${paydays}`,
     deductions: dedTable || `<p class="note">No deductions in this period.</p>`,
-    history: `${raiseTable}${empTable}${M.missingPayPeriods(S(), range, today()).map((g) => `<p class="note small">${esc(gapText(g))}: no payslip.</p>`).join("")}` || `<p class="note">Nothing here for this period.</p>`,
   };
   return `${head}${bodies[view]}`;
 }
