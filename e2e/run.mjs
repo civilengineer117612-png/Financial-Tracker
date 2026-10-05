@@ -1228,10 +1228,9 @@ check(incText.includes("Overtime") && incText.includes("Base pay"), "Income show
 check(!incText.includes("Year to date") && !(await page.locator("#screen table.tbl").count()), "the Overview shows only the important things: no tables");
 await page.click('#screen .seg button:has-text("Deductions")');
 check((await text(page, "#screen")).includes("Went to government in this period: ₱1,200.00"), "Deductions: they add up");
-await page.click('#screen .seg button:has-text("Months")');
-check(await page.locator(".btrack.stack .bfill.ot").count() === 1 && !(await page.locator("#screen table.tbl th").allInnerTexts()).includes("Other"), "Months: the payday bar stacks base and overtime, and there is no Other column when nothing is in it");
-await page.click('#screen .seg button:has-text("Pay history")');
-check((await text(page, "#screen")).toLowerCase().includes("employers") && (await text(page, "#screen")).includes("Sample Employer Inc"), "Pay history: the employers");
+await page.click('#screen .seg button:has-text("Earnings")');
+check(await page.locator(".btrack.stack .bfill.ot").count() === 1 && !(await page.locator("#screen table.tbl th").allInnerTexts()).includes("Other"), "Earnings: the payday bar stacks base and overtime, and there is no Other column when nothing is in it");
+check(await page.locator('#screen .seg button:has-text("Pay history")').count() === 0 && await page.locator('#screen .seg button:has-text("Months")').count() === 0 && await page.locator('#screen .seg button').count() === 3, "the views are Overview, Earnings and Deductions: no Months, no Pay history");
 await page.click('#screen .seg button:has-text("Overview")');
 await shot(page, "38-income");
 await page.click('button[aria-label="Earlier"]');
@@ -1272,11 +1271,12 @@ check((await text(page, "#sheet")).includes("Renamed Test Employer"), "the list 
 check((await text(page, "#sheet")).includes("Lines match paper.") && !(await text(page, "#sheet")).includes("Saved before the fix") && !(await text(page, "#sheet")).includes("days after period end"), "the printed deductions total was kept: Lines match paper; a payslip saved now carries no old-figures line");
 check(await page.locator("#sheet details.earlier").count() === 1 && (await page.locator("#sheet details.earlier").textContent()).includes("Sample Employer Inc") && (await text(page, "#sheet")).includes("Earlier figures"), "the change kept the old figures under Earlier figures");
 await page.click('#sheet button:has-text("Close")');
-// the Months view is a short list: one line per month, tap a month for where it came from
-await page.click('button[data-action="income-view"][data-view="months"]');
-check(await page.locator(".mlist details.mrow").count() >= 1 && await page.locator(".mlist .mtotal").count() === 1 && await page.locator("#screen table.tbl th:text-is('Month')").count() === 0, "Months is a short list with a total line, not a five-column table");
+// the Earnings view is a short list: one line per month, tap a month for where it came from
+await page.click('button[data-action="income-view"][data-view="earnings"]');
+check(await page.locator(".mlist details.mrow").count() >= 1 && await page.locator(".mlist .mtotal").count() === 1 && await page.locator("#screen table.tbl th:text-is('Month')").count() === 0, "Earnings is a short list with a total line, not a five-column table");
 await page.locator(".mlist details.mrow summary").first().click();
-check((await text(page, ".mlist")).includes("Base pay"), "tapping a month shows where it came from");
+{ const t = await page.locator(".mlist details.mrow").first().innerText();
+  check(t.includes("Basic salary") && t.includes("Rice subsidy") && t.includes("Overtime") && t.includes("Deductions") && !t.includes("Base pay"), "tapping a month shows each kind of earning, rice subsidy and overtime apart, then the deductions (" + t.replace(/\n/g, " | ") + ")"); }
 await shot(page, "38-months");
 await page.click('button[data-action="income-view"][data-view="overview"]');
 // income added without a payslip (a payslip photo once saved as plain pay received) is listed and can be removed
@@ -1294,10 +1294,10 @@ await page.click('#sheet button:has-text("Close")');
 // the view buttons stay exactly where they are when the view or the month changes (with or without payslips in the month)
 const segTop = () => page.evaluate(() => Math.round(document.querySelector("#screen .seg").getBoundingClientRect().top));
 const vp = page.viewportSize(); await page.setViewportSize({ width: vp.width, height: 560 });   // short enough that the Months list scrolls, so a shorter view could make the page jump
-await page.click('#screen .seg button:has-text("Months")'); await page.evaluate(() => window.scrollTo(0, 120));
+await page.click('#screen .seg button:has-text("Earnings")'); await page.evaluate(() => window.scrollTo(0, 120));
 const t0 = await segTop();
 await page.click('#screen .seg button:has-text("Deductions")'); const t1 = await segTop();
-await page.click('#screen .seg button:has-text("Months")'); const t2 = await segTop();
+await page.click('#screen .seg button:has-text("Earnings")'); const t2 = await segTop();
 await page.evaluate(() => document.querySelector('button[aria-label="Earlier"]').click()); const t3 = await segTop();
 await page.evaluate(() => document.querySelector('button[aria-label="Later"]').click()); const t4 = await segTop();
 check([t1, t2, t3, t4].every((t) => t === t0), "the view buttons do not move when the view or the month changes (" + [t0, t1, t2, t3, t4].join(", ") + ")");
@@ -1322,9 +1322,8 @@ for (const [from, to, pay, amt] of [["2026-07-16", "2026-07-31", "2026-07-31", "
 }
 await menuGo(page, "Income");
 await page.click(".ptitle"); await page.click('#sheet button[data-kind="year"]'); await page.click('#sheet button[data-action="period-year"][data-id="2026"]');
-await page.click('button[data-action="income-view"][data-view="history"]');
-check(/Aug 1\u201315(, 2026)?: no payslip\./.test(await text(page, "#screen")) && /Aug 16\u201331(, 2026)?: no payslip\./.test(await text(page, "#screen")) && !/Sep 1\u201315[^\n]*no payslip/.test(await text(page, "#screen")), "Pay history names each pay period with no payslip, and only those");
 await page.click('button.choice[data-action="open-payslips"]');
+check(/Aug 1\u201315(, 2026)?: no payslip\./.test(await text(page, "#sheet")) && /Aug 16\u201331(, 2026)?: no payslip\./.test(await text(page, "#sheet")) && !/Sep 1\u201315[^\n]*no payslip/.test(await text(page, "#sheet")), "the Payslips window names each pay period with no payslip, and only those");
 check((await text(page, "#sheet")).includes("Pay date is 15 days after period end.") && (await text(page, "#sheet").then((t) => t.split("Pay date is").length)) === 2, "a pay date more than 7 days after the period end is named, once");
 await page.click('#sheet button:has-text("Close")');
 await page.click('#nav button:has-text("Verify")');
