@@ -1596,6 +1596,9 @@ console.log("Log date and Cash first");
   await menuGo(page, "Cards");
   const cards = await text(page, "#screen");
   check(cards.indexOf("Cash") !== -1 && cards.indexOf("Cash") < cards.indexOf("Test Debit"), "on the Cards screen Cash is listed first");
+  await menuGo(page, "Setup");
+  const setupRows = await page.locator("#screen .row .who").allInnerTexts();
+  check(setupRows.length === 2 && /Cash/.test(setupRows[0]) && /Test Debit/.test(setupRows[1]), "on Setup, Cash is the first account in the list (" + setupRows.join(" | ").replace(/\n/g, " ") + ")");
   await ctx.close(); }
 
 // ===== 5n. help, and upgrading old data safely =====
