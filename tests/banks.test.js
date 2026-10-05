@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BANKS, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, bankPicture, dropPlaceholderAddresses, setAccountIcon, validateShape } from "../src/model/index.js";
+import { BANKS, pickerBanks, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, bankPicture, dropPlaceholderAddresses, setAccountIcon, validateShape } from "../src/model/index.js";
 import { makeState } from "./fixtures.js";
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
@@ -165,4 +165,13 @@ test("the Beep transport card is in the picker and makes a plain money account n
   assert.ok(r.ok, JSON.stringify(r.violations));
   assert.equal(r.account.name, "Beep"); assert.equal(r.account.class, "asset"); assert.equal(r.account.bank, "beep");
   assert.equal(bankForName("Beep").id, "beep");
+});
+
+test("the picker lists Cash first, then every bank and wallet from A to Z", () => {
+  const names = pickerBanks().map((b) => b.name);
+  assert.equal(names[0], "Cash");
+  assert.deepEqual(names.slice(1), [...BANKS.map((b) => b.name)].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())));
+  assert.deepEqual(names.slice(0, 4), ["Cash", "BDO", "Beep", "BPI"], "BDO comes before Beep, and Beep before BPI");
+  assert.equal(names.length, BANKS.length + 1);
+  assert.equal(new Set(names).size, names.length, "nobody listed twice");
 });
