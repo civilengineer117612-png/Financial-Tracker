@@ -1,6 +1,6 @@
 // End-to-end check of the app in an iPhone-like Home Screen browser. Run by hand:
 //   python3 -m http.server 8124 &   node e2e/run.mjs
-// It is not part of `npm test` (CI would need a browser); the unit tests cover the logic.
+// It is not part of `npm test`; CI runs it as its own job, "e2e", in the Tests workflow (.github/workflows/test.yml).
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
 import { readFileSync, mkdtempSync, writeFileSync } from "node:fs";

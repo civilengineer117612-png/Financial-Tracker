@@ -17,7 +17,7 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 - Photo scanner: the main reader is PaddleOCR (Apache 2.0) run by ONNX Runtime Web (MIT) from `src/vendor/paddle` (about 30 MB, downloaded once, `app/paddle.js`); `app/ocr.js` falls back to Tesseract if it cannot run. `linesFromBoxes` pairs labels with amounts. Handwriting stays unsupported. Same rule for both: the reader (Apache 2.0) is copied unchanged into `src/vendor/ocr` and served from our own site, so no
   photo ever leaves the phone; never load it from a CDN (a test enforces this). Picture files are kept only on the phone
   (IndexedDB `photos`), never in the ledger text or backup. Never commit a real receipt or payslip image: e2e draws an invented one.
-- `npm test` (also runs in CI). `node e2e/run.mjs` drives the app in an iPhone-like browser (serve the repo with
+- `npm test` (also runs in CI). `node e2e/run.mjs` (also runs in CI, as the "e2e" job) drives the app in an iPhone-like browser (serve the repo with
   `python3 -m http.server 8124` first). A new file under `src/model/` must also be added to the list in `app/sw.js`;
   a test enforces it.
 - After writing a check, break the code on purpose and confirm the check fails (mutation check).

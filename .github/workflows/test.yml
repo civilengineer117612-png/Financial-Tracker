@@ -13,3 +13,40 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # e2e/run.mjs loads Playwright from the global npm folder and starts its own Chromium.
+      - name: Install Playwright and Chromium
+        run: |
+          npm install -g playwright
+          npx playwright install --with-deps chromium
+      - name: Serve the repository
+        run: |
+          python3 -m http.server 8124 >/dev/null 2>&1 &
+          for i in $(seq 1 20); do curl -fs http://localhost:8124/app/index.html >/dev/null && exit 0; sleep 1; done
+          echo "the local server did not start"; exit 1
+      - name: Run the full e2e suite
+        shell: bash
+        run: |
+          node e2e/run.mjs 2>&1 | tee e2e.log
+      - name: Pass count
+        if: always()
+        shell: bash
+        run: |
+          passed=$(grep -c '^  ok ' e2e.log || true)
+          failed=$(grep -c '^  FAIL ' e2e.log || true)
+          echo "e2e: ${passed} checks passed, ${failed} failed"
+          echo "### e2e: ${passed} checks passed, ${failed} failed" >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-log
+          path: e2e.log
