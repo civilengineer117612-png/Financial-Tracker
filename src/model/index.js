@@ -72,3 +72,4 @@ export { KINDS, kindById, wordsToCentavos, readScan, readPayslip, linesFromWords
 export { EARNINGS, DEDUCTIONS, GOVERNMENT, LOST, SOURCES, OVERTIME_SHARE, linesOf, payslipTotals, payslipChecks, planPayslip, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeMonths, slipDate, deletePayslip, updatePayslip, incomeWithoutPayslip, removeIncomeEntry, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, PAYSLIP_VERSION, revisionsOf, payslipNotes, missingPayPeriods, samePeriodPayslips, markPayslipChecked, revisionChanges, incomeBreakdown } from "./income.js";
 export { homeSummary } from "./summary.js";
 export { parseSpoken } from "./speech.js";
+export { BUCKETS, BUCKET_LABELS, BUCKET_BY_ROLE, INVESTED_LABEL, DEFAULT_TARGETS, TARGET_SOURCE, resolveTargets, parseTargets, bucketOf, bucketMap, unsorted, guessBucket, withBucket, starterFromTargets, bucketRows } from "./buckets.js";

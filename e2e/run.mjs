@@ -1931,7 +1931,7 @@ console.log("Friend fixes 1");
   await menuGo(page, "Setup");
   const cats = await text(page, "#screen");
   check(["Food", "Essentials", "Transport", "Rent", "Subscription", "Shopping", "Health", "Fun", "Other"].every((c) => cats.includes(c)) && !/Lakat|Family|Upskill/.test(cats), "the starter categories are plain, none carries the owner's names");
-  await page.click('button[data-action="add-cat"]'); await page.fill("#c-name", "Pets"); await page.click("#f-save"); await seen(page, "#screen", "Pets");
+  await page.click('button[data-action="add-cat"]'); await page.fill("#c-name", "Pets"); await page.click('#c-bucket button[data-bucket="later"]'); await page.click("#f-save"); await seen(page, "#screen", "Pets");
   await page.locator('.row:has-text("Fun") button[data-action="rename-cat"]').click(); await page.fill("#c-name", "Games"); await page.click("#f-save"); await seen(page, "#screen", "Games");
   const cs = JSON.parse((await stored(page)).local).state.categories;
   check(cs.some((c) => c.name === "Pets") && cs.find((c) => c.id === "cat-fun")?.name === "Games" && cs.find((c) => c.id === "cat-food")?.role === "food", "a category can be added and renamed; the id and the role stay");
@@ -2013,6 +2013,52 @@ console.log("Role notice");
   await page.click('button[data-action="cat-role"][data-id="cat-fun"]');
   await page.selectOption("#r_cat-fun", "shopping");
   check(await seen(page, "body", "already has the role"), "a role already held by another category is refused in plain words");
+  await ctx.close(); }
+
+// ===== 5q. buckets: needs, wants, savings =====
+console.log("Buckets");
+{ const cats = OWNER_STYLE.state.categories.concat([owner("cat-util", "Utilities", "utilities"), owner("cat-fun", "Fun", "fun")]);
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 2500000, roles_notice_seen: "2026-10-01T08:00:00.000+08:00" }, state: { ...OWNER_STYLE.state, categories: cats } } }));
+  await menuGo(page, "Budget");
+  check(await seen(page, "#screen", "BUCKETS"), "the new Budget shows a Buckets block");
+  let t = await text(page, "#screen");
+  check(t.includes("Warren and Tyagi") && t.includes("not advice") && /Target 50\.0%/.test(t) && /Target 30\.0%/.test(t) && /Target 20\.0%/.test(t), "it names the rule of thumb and shows the 50/30/20 targets");
+  check(await page.locator('#screen .row[data-bucket="need"]').count() === 1 && await page.locator('#screen .row[data-bucket="want"]').count() === 1 && await page.locator('#screen .row[data-bucket="savings"]').count() === 1, "one row each for Needs, Wants and Savings");
+  check(t.includes("Need or want?") && t.includes("Family"), "a category with no role is asked \"Need or want?\"");
+  check(!(await page.locator('#screen button[data-action="pick-bucket"][data-id="cat-family"]').first().innerText()).includes("suggested"), "no guess is shown for Family");
+  await page.click('button[data-action="pick-bucket"][data-id="cat-family"][data-bucket="need"]');
+  await page.waitForFunction(() => !document.querySelector('#screen button[data-action="pick-bucket"][data-id="cat-family"]'));
+  check(true, "after one tap it is not asked again");
+  let led = JSON.parse((await stored(page)).local);
+  check(led.settings.bucket_overrides?.["cat-family"] === "need" && led.v === LEDGER_V, "the answer is kept in the settings, with the data version unchanged");
+  await page.click('button[data-action="open-targets"]');
+  await page.fill("#t-need", "60"); await page.fill("#t-want", "20"); await page.fill("#t-savings", "20");
+  check(await page.locator("#f-save").isEnabled(), "targets that add to 100 can be saved");
+  await page.fill("#t-want", "30");
+  check(!(await page.locator("#f-save").isEnabled()) && (await text(page, "#t-msg")).includes("add up to 100"), "targets that do not add to 100 are refused in plain words");
+  await page.fill("#t-want", "20"); await page.click("#f-save");
+  check(await seen(page, "#screen", "Target 60.0%"), "the new targets show");
+  led = JSON.parse((await stored(page)).local);
+  check(JSON.stringify(led.settings.bucket_targets) === JSON.stringify({ need: 6000, want: 2000, savings: 2000 }), "and are kept");
+  await page.click('button[data-action="clear-targets"]');
+  check(await seen(page, "#screen", "Target 50.0%"), "Use 50/30/20 again brings the rule of thumb back");
+  await menuGo(page, "Setup");
+  await page.click('button[data-action="add-cat"]'); await page.fill("#c-name", "Coffee");
+  check(!(await page.locator("#f-save").isEnabled()), "a new category cannot be saved until Need or want is tapped");
+  check(/want \(suggested\)/i.test(await text(page, "#c-bucket")) && !/need \(suggested\)/i.test(await text(page, "#c-bucket")), "the name gives a hint on Want only");
+  check(!(await page.locator('#c-bucket [aria-pressed="true"]').count()), "and the hint is not chosen for you");
+  await page.click('#c-bucket button[data-bucket="want"]');
+  check(await page.locator("#f-save").isEnabled(), "after a tap it can be saved");
+  await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.categories.some((c) => c.name === "Coffee"));
+  led = JSON.parse((await stored(page)).local); const cof = led.state.categories.find((c) => c.name === "Coffee");
+  check(led.settings.bucket_overrides?.[cof.id] === "want", "the answer is remembered for the new category");
+  await page.click('button[data-action="cat-role"][data-id="cat-util"]');
+  check((await text(page, "#sheet")).includes("Automatic: Needs"), "Setup shows the automatic bucket from the role, and can change it");
+  await page.selectOption("#b_cat-util", "want");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.bucket_overrides?.["cat-util"] === "want");
+  check(true, "choosing another bucket saves it at once");
+  check(errors.length === 0, "no script errors in the buckets flow");
   await ctx.close(); }
 
 // ===== 6. wrong phone, wrong place =====
