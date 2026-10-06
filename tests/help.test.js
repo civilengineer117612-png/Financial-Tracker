@@ -87,6 +87,16 @@ test("Stage C: the Pay plan menu entry is hidden only when the new Budget is on;
   assert.ok(MENU_GROUPS.some(([, ids]) => ids.includes("plan")), "the entry is still part of the menu list, so Help keeps its topic");
   assert.match(app, /items\.filter\(\(\[id\]\) => !hidden\.has\(id\)\)/); assert.match(app, /const hidden = M\.menuHidden\(ledger\.settings\)/);
   assert.match(app, /data-tab="\$\{ledger\.settings\.try_new_budget \? "budget" : "plan"\}"/, "Setup points at Budget when the new Budget is on");
-  assert.match(app, /ledger\.settings\.try_new_budget \? "Menu, Budget, By payday" : "Menu, Pay plan"/, "Goals names where to load a plan");
   assert.ok(app.includes('ui.tab === "plan" ? viewPlan()'), "the old Pay plan screen is still routed for one more release");
+});
+
+test("there is no way to load a plan file in the app: no button anywhere, and no By payday or Setup section when there is no plan", () => {
+  assert.ok(!/data-action="open-plan"/.test(app), "no Load a plan / Load a newer plan button is drawn");
+  assert.ok(!/Load a plan|Load a newer plan|Load a pay plan \(Menu/.test(app.replace(/<h3>Load a pay plan<\/h3>/, "")), "no words offer it");
+  const view = app.slice(app.indexOf("function byPaydaySection()"), app.indexOf("function viewBudgetOld()"));
+  assert.match(view, /if \(!plan\) return "";/, "By payday is not shown without a plan");
+  assert.match(app, /\$\{planOf\(\) \? `<h2>Pay plan<\/h2>/, "Setup's Pay plan section only appears when a plan exists");
+  assert.match(app, /This version has no way to load a plan yet\./, "the emergency fund hint no longer tells you to load one");
+  const plan = app.slice(app.indexOf("function viewPlan()"), app.indexOf("function planBody("));
+  assert.ok(!/<button/.test(plan), "the empty Pay plan screen has no button");
 });
