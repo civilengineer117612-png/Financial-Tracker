@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { QUICK_NOTES, TOPICS, checklist } from "../src/model/help.js";
+import { QUICK_NOTES, FIRST_RUN_NOTICE, TOPICS, checklist } from "../src/model/help.js";
 
 const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
 
@@ -35,4 +35,21 @@ test("the getting-started steps tick themselves from the data", () => {
   const some = checklist({ accounts: [{ id: "a" }], transactions: [{ id: "t" }] }, { last_backup_at: "2026-10-05T09:00:00.000+08:00" });
   assert.deepEqual(some.map((s) => s.done), [true, true, true]);
   assert.deepEqual(checklist({ accounts: [{ id: "a" }], transactions: [] }, {}).map((s) => s.done), [true, false, false]);
+});
+
+test("the first-run notice says the five plain things: data stays here, nothing recovers a lost phone or passphrase, back up now, iPhone Home Screen, Android site data", () => {
+  const all = FIRST_RUN_NOTICE.lines.join(" ");
+  assert.equal(FIRST_RUN_NOTICE.lines.length, 5);
+  assert.match(FIRST_RUN_NOTICE.lines[0], /stays on this phone/);
+  assert.match(FIRST_RUN_NOTICE.lines[1], /lost phone/); assert.match(FIRST_RUN_NOTICE.lines[1], /forgotten backup passphrase/); assert.match(FIRST_RUN_NOTICE.lines[1], /cannot be recovered/);
+  assert.match(FIRST_RUN_NOTICE.lines[2], /backup now/);
+  assert.match(FIRST_RUN_NOTICE.lines[3], /^iPhone: add this app to the Home Screen first/);
+  assert.match(FIRST_RUN_NOTICE.lines[4], /^Android: clearing the browser's site data erases the ledger/);
+  assert.ok(all.length < 520, "short enough to read at a glance");
+});
+
+test("Help words never name an owner-specific goal or category, and the goals topic speaks of roles", () => {
+  const words = TOPICS.flatMap((t) => t.lines).join(" ") + QUICK_NOTES.join(" ") + FIRST_RUN_NOTICE.lines.join(" ");
+  for (const owner of ["Mole", "Lakat", "Upskill", "Family"]) assert.ok(!words.includes(owner), owner);
+  assert.match(TOPICS.find((t) => t.tab === "goals").lines.join(" "), /Choose which goal is your emergency fund/);
 });

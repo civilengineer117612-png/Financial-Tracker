@@ -62,25 +62,53 @@ export function splitSweep(buffer, moleBalance, moleTarget) {
 // input: {transaction_id, date, gcash_account_id, buffer_envelope_id,
 //         mole_account_id, emergency_account_id, mole_target}
 export function planMonthEndSweep(state, input, now = new Date()) {
-  const buffer = envelopeBalance(state.entries, input.buffer_envelope_id);
   const mole = state.accounts.find((a) => a.id === input.mole_account_id);
   if (!mole || !state.accounts.some((a) => a.id === input.emergency_account_id)) {
     return { ok: false, violations: [{ code: "UNKNOWN_ACCOUNT", severity: "error", message: "mole or emergency account not found" }], transaction: null, entries: [] };
   }
+  return planSweep(state, { transaction_id: input.transaction_id, date: input.date, gcash_account_id: input.gcash_account_id, buffer_envelope_id: input.buffer_envelope_id,
+    order: [{ account_id: input.mole_account_id, target: input.mole_target }, { account_id: input.emergency_account_id }] }, now);
+}
+
+// The same sweep for any ORDERED list of accounts (the owner's sweep order setting): what is left in the buffer goes to the first account
+// until its balance reaches its target, then to the next, and so on; the LAST account takes whatever remains (it has no cap).
+// input: {transaction_id, date, gcash_account_id, buffer_envelope_id, order: [{account_id, target?}]}  (targets in centavos; none counts as 0)
+export function planSweep(state, input, now = new Date()) {
+  const buffer = envelopeBalance(state.entries, input.buffer_envelope_id), order = input.order ?? [];
+  if (!order.length || order.some((o) => !state.accounts.some((a) => a.id === o.account_id))) {
+    return { ok: false, violations: [{ code: "UNKNOWN_ACCOUNT", severity: "error", message: "a goal in the sweep order was not found" }], transaction: null, entries: [] };
+  }
   if (buffer <= 0) return { ok: true, violations: [], transaction: null, entries: [] };
 
-  const { toMole, toEmergency } = splitSweep(buffer, naturalBalance(mole, state.entries), input.mole_target);
+  let left = buffer;
+  const parts = order.map((o, i) => {
+    const amount = i === order.length - 1 ? left : Math.min(left, Math.max(0, (o.target ?? 0) - naturalBalance(state.accounts.find((a) => a.id === o.account_id), state.entries)));
+    left -= amount;
+    return [o.account_id, amount];
+  });
   const transaction = {
     id: input.transaction_id, date: input.date, payee: "Month-end buffer sweep", memo: "",
     status: "draft", source: "template", created_at: phTimestamp(now),
   };
-  const dest = (account_id, amount) => ({ transaction_id: transaction.id, account_id, amount });
   const entries = [
-    ...(toMole > 0 ? [dest(input.mole_account_id, toMole)] : []),
-    ...(toEmergency > 0 ? [dest(input.emergency_account_id, toEmergency)] : []),
+    ...parts.filter(([, amount]) => amount > 0).map(([account_id, amount]) => ({ transaction_id: transaction.id, account_id, amount })),
     { transaction_id: transaction.id, account_id: input.gcash_account_id, envelope_id: input.buffer_envelope_id, amount: -buffer },
   ];
   return { ...checkTransactionSave(state, { transaction, entries }), transaction, entries };
+}
+
+// The owner's sweep order setting ([{goal_id, target?}], first to last) as the accounts planSweep wants: each goal's account, capped at the entry's own
+// target or else the goal's target (none counts as 0). Null when the setting is empty or names a goal that no longer exists.
+export function sweepOrderAccounts(state, sweepOrder) {
+  const order = Array.isArray(sweepOrder) ? sweepOrder : [];
+  if (!order.length) return null;
+  const out = [];
+  for (const o of order) {
+    const goal = (state.goals ?? []).find((g) => g.id === o.goal_id);
+    if (!goal) return null;
+    out.push({ account_id: goal.account_id, target: o.target ?? goal.target ?? 0 });
+  }
+  return out;
 }
 
 // Repeated draws on one category signal an under-budgeted line (spec 6.4). A category

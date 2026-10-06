@@ -1,4 +1,4 @@
-// First-run defaults: category names and the three meal presets named in the spec.
+// First-run defaults: plain category names and no quick tiles.
 // No accounts and no balances: those are typed on the device and never leave it.
 
 // Where income comes from, for the Income screen: base pay, overtime, interest, refunds, anything else.
@@ -20,22 +20,48 @@ export function dropUnusedCardCategory(state) {
   return { ...state, categories: state.categories.filter((c) => c.id !== "cat-creditcard") };
 }
 
+// What a NEW install starts with: plain categories anyone can use, and no quick tiles (nobody's names or amounts). Four carry a ROLE so the scanner
+// and the voice guess can find them whatever they are renamed to. Existing ledgers are never touched (migrate.js gave them roles by name, once).
 export function defaultCategories() {
-  const e = (id, name) => ({ id, name, kind: "expense" });
+  const e = (id, name, role) => ({ id, name, kind: "expense", ...(role ? { role } : {}) });
   return [
-    e("cat-food", "Food"), e("cat-lakat", "Lakat/Date"), e("cat-family", "Family"), e("cat-shopping", "Shopping"),
-    e("cat-essentials", "Essentials"), e("cat-upskill", "Upskill"), e("cat-subscription", "Subscription"),
-    e("cat-rent", "Rent"), e("cat-unlogged", "Unlogged"),
+    e("cat-food", "Food", "food"), e("cat-essentials", "Essentials", "essentials"), e("cat-transport", "Transport"), e("cat-rent", "Rent", "rent"),
+    e("cat-subscription", "Subscription", "subscription"), e("cat-shopping", "Shopping"), e("cat-health", "Health"), e("cat-fun", "Fun"), e("cat-other", "Other"),
+    e("cat-unlogged", "Unlogged"),
     ...INCOME_CATEGORIES,
   ];
 }
 
 export function defaultPresets() {
-  return [
-    { id: "pre-breakfast", name: "Breakfast", amount: 2000, category_id: "cat-food" },
-    { id: "pre-lunch", name: "Lunch", amount: 9500, category_id: "cat-food" },
-    { id: "pre-dinner", name: "Dinner", amount: 9500, category_id: "cat-food" },
-  ];
+  return [];   // quick tiles are the owner's own: add them on the Log screen (the "+")
 }
 
 export const UNLOGGED_CATEGORY_ID = "cat-unlogged";
+
+// Spending categories the owner can add and rename (Setup). A rename keeps the id, so every entry, budget and role stays attached. Unlogged and the
+// income categories are the app's own and are left alone. Names are unique ignoring capitals, 1 to 40 characters.
+const catFail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }] });
+const checkName = (state, name, exceptId) => {
+  const n = String(name ?? "").trim();
+  if (!n) return catFail("BAD_NAME", "Give the category a name.");
+  if (n.length > 40) return catFail("BAD_NAME", "Keep the name to 40 characters or less.");
+  if (state.categories.some((c) => c.id !== exceptId && c.name.trim().toLowerCase() === n.toLowerCase())) return catFail("DUPLICATE_NAME", "You already have a category with that name.");
+  return { ok: true, name: n };
+};
+export function addCategory(state, { id, name }) {
+  const v = checkName(state, name, null);
+  if (!v.ok) return v;
+  if (state.categories.some((c) => c.id === id)) return catFail("DUPLICATE_ID", "that category already exists");
+  return { ok: true, violations: [], category: { id, name: v.name, kind: "expense" }, state: { ...state, categories: [...state.categories, { id, name: v.name, kind: "expense" }] } };
+}
+export function renameCategory(state, id, name) {
+  const c = state.categories.find((x) => x.id === id);
+  if (!c) return catFail("UNKNOWN_CATEGORY", "no category " + id);
+  if (c.kind !== "expense" || id === UNLOGGED_CATEGORY_ID) return catFail("FIXED_CATEGORY", "That category is part of the app and keeps its name.");
+  const v = checkName(state, name, id);
+  if (!v.ok) return v;
+  return { ok: true, violations: [], state: { ...state, categories: state.categories.map((x) => (x.id === id ? { ...x, name: v.name } : x)) } };
+}
+
+// The spending category that holds a role (food, essentials, subscription, rent), or null. Nothing finds a category by its NAME.
+export const categoryByRole = (categories, role) => (categories ?? []).find((c) => c.kind === "expense" && c.role === role) ?? null;

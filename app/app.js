@@ -501,8 +501,8 @@ async function savePayslip() {
   }
   const hasOvertime = r.lines.some((l) => l.kind === "overtime");
   if (hasOvertime) {
-    const emerg = S().goals.find((x) => /emergency/i.test(x.name));
-    if (!emerg) note = " Add a goal named Emergency Fund to get the overtime draft.";
+    const emerg = M.goalByRole(S(), "emergency");
+    if (!emerg) note = " Choose which goal is your emergency fund (Menu, Goals) to get the overtime draft.";
     else if (!next.transactions.some((t) => t.id === "ot-" + id)) { const d = M.overtimeDraft(next, id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date()); if (d?.ok && d.transaction) { next = M.applyDrafts(next, [d]); note = " The Emergency Fund draft is waiting in Verify."; } }
   }
   ui.sheet = null; renderSheet();
@@ -534,13 +534,13 @@ function viewScan() {
 }
 
 const incomeCategories = () => S().categories.filter((c) => c.kind === "income");
-function scanDefaults(kind, guess, payee) {
+function scanDefaults(kind, guess, payee, named = null) {   // guess: a category ROLE; named: a category the owner spoke by name
   if (M.kindById(kind).direction === "in") {
     const inc = incomeCategories();
     return { category_id: (kind === "payslip" ? inc.find((c) => c.id === "cat-salary") : null)?.id ?? inc[0]?.id ?? null };
   }
   const learned = M.categoryFromHistory(S(), payee);   // what you used last time for the same name wins over a guess from words
-  return { category_id: expenseCategories().find((c) => c.id === learned)?.id ?? expenseCategories().find((c) => guess && c.name.toLowerCase() === guess.toLowerCase())?.id ?? null };
+  return { category_id: expenseCategories().find((c) => c.id === learned)?.id ?? expenseCategories().find((c) => named && c.name.toLowerCase() === String(named).toLowerCase())?.id ?? M.categoryByRole(expenseCategories(), guess)?.id ?? null };
 }
 
 // The account the paper names: the bank on its From line, matched to the owner's own accounts. A credit card screen prefers a card
@@ -595,7 +595,7 @@ function openScanSheet(blob, text, failed, queueId, spoken = null) {
   if (blob) pendingPhoto = { blob, url: URL.createObjectURL(blob) };
   const notes = failed ? ["The reader could not run (" + failed + "). Fill in the fields yourself; the photo is kept."] : r.readAnything ? [...r.notes, ...(acct.note ? [acct.note] : [])] : ["I could not read any words on the photo. Fill in the fields yourself; the photo is kept."];
   ui.form = { kind: r.kind, guess: r.categoryGuess, amount: r.amount ? (r.amount / 100).toFixed(2) : "", date: r.date ?? today(), payee: r.payee ?? "", notes, text,
-    account_id: acct.id, ...scanDefaults(r.kind, r.categoryGuess, r.payee) };
+    account_id: acct.id, ...scanDefaults(r.kind, r.categoryGuess, r.payee, r.categoryName) };
   ui.sheet = { type: "scan", queueId, voice: spoken !== null }; renderSheet();
 }
 
@@ -634,13 +634,13 @@ async function useSpoken() {
   voiceListener?.stop();
   const heard = (ui.form.spoken ?? "").trim();
   const r = M.parseSpoken(heard, { today: today(), categories: S().categories });
-  const acct = accountForScan(r), cat = scanDefaults("receipt", r.categoryName, r.payee).category_id;
+  const acct = accountForScan(r), cat = scanDefaults("receipt", r.categoryRole, r.payee, r.categoryName).category_id;
   if (r.direction === "out" && r.amount && acct.id && cat) {
     ui.sheet = null; renderSheet();
     await logExpense({ transaction_id: newId("tx"), date: r.date, payee: r.payee ?? "", memo: heard, category_id: cat, amount: r.amount, account_id: acct.id, source: "voice" }, (r.payee || categoryName(cat)) + " " + peso(r.amount));
     return;
   }
-  openScanSheet(null, heard, null, null, { ...r, kind: r.direction === "in" ? "received" : "receipt", categoryGuess: r.categoryName, creditCard: false, readAnything: true, notes: r.notes });
+  openScanSheet(null, heard, null, null, { ...r, kind: r.direction === "in" ? "received" : "receipt", categoryGuess: r.categoryRole, categoryName: r.categoryName, creditCard: false, readAnything: true, notes: r.notes });
 }
 
 // ---------- quick capture: the scanner button on the Log screen ----------
@@ -740,7 +740,7 @@ function hydratePhotos() {
       let url = photoUrls.get(id);
       if (!url) {
         const blob = await getPhoto(id);
-        if (!blob) { const p = document.createElement("p"); p.className = "note"; p.textContent = "The photo is not on this phone. Photos are not part of the backup file."; (img.closest("button") ?? img).replaceWith(p); return; }
+        if (!blob) { const p = document.createElement("p"); p.className = "note"; p.textContent = "Picture not on this phone. Pictures are not part of the backup file."; (img.closest("button") ?? img).replaceWith(p); return; }
         url = URL.createObjectURL(blob); photoUrls.set(id, url);
       }
       img.src = url; img.hidden = false;
@@ -869,6 +869,7 @@ function viewHelp() {
   const steps = M.checklist(S(), ledger.settings);
   return `<h1>Help</h1><p class="sub">How this app works, in a minute.</p>
     <div class="card"><h2>Quick notes</h2><ol class="notes">${M.QUICK_NOTES.map((n) => `<li>${esc(n)}</li>`).join("")}</ol></div>
+    <p><button class="link" data-action="open-notice">Read the first-run notice again</button></p>
     <h2>Getting started</h2>
     <div class="mlist">${steps.map((st) => `<div class="mrow mline"><span class="mn">${st.done ? "\u2713" : "\u25CB"} ${esc(st.text)}</span><span class="mv">${st.done ? "Done" : `<button class="link" data-action="tab" data-tab="${st.tab}">${esc(st.button)}</button>`}</span></div>`).join("")}</div>
     <h2>Each screen</h2>
@@ -900,6 +901,9 @@ function viewSetup() {
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}
+    <h2>Categories</h2>
+    ${expenseCategories().map((c) => `<div class="row"><div>${esc(c.name)}</div><div class="amt"><button class="link" data-action="rename-cat" data-id="${esc(c.id)}">Rename</button></div></div>`).join("")}
+    <p><button data-action="add-cat" style="width:100%">Add a category</button></p>
     <h2>Pay plan</h2>
     <p class="note">${planOf() ? "A plan is in effect." : "No plan in effect."} <button class="link" data-action="${planOf() ? "tab" : "open-plan"}" data-tab="plan">${planOf() ? "Open it" : "Load a plan"}</button></p>
     <h2>Backup</h2>
@@ -1144,6 +1148,7 @@ function viewBuffer() {
   const empty = sum.allowance <= 0;
   const draws = sum.draws.length ? `<table class="tbl"><tr><th>Category</th><th class="n">Drawn</th></tr>${sum.draws.map((d) => `<tr><td>${esc(d.name)}</td><td class="n">${d.amount === 0 && d.pending ? peso(d.pending) + "<small> not verified</small>" : peso(d.amount) + (d.pending ? `<small> + ${peso(d.pending)} not verified</small>` : "")}</td></tr>`).join("")}
       <tr class="total"><td>Total drawn</td><td class="n">${peso(sum.drawn)}</td></tr></table>` : `<p class="note">Nothing has been drawn from the buffer this month.</p>`;
+  const sweepNames = (ledger.settings.sweep_order ?? []).map((o) => S().goals.find((x) => x.id === o.goal_id)?.name).filter(Boolean);
   const flagged = M.underBudgetedCategories(S(), g.buffer_id, 2).map((c) => categoryName(c.category_id));
   return `<h1>Buffer</h1><p class="sub">Inside ${esc(acct.name)}</p>
     <div class="card"><dl><dt>Buffer left</dt><dd class="big">${peso(sum.buffer)}</dd>${monthly != null ? `<dt>Plan per month</dt><dd>${peso(monthly)}</dd>` : ""}<dt>Allowance left</dt><dd>${peso(sum.allowance)}</dd></dl></div>
@@ -1152,7 +1157,8 @@ function viewBuffer() {
     ${flagged.length ? `<p class="note">${esc(flagged.join(", "))} drew the buffer in more than one month. That line may be under-budgeted: set a new budget from next month.</p>` : ""}
     <p><button class="primary" data-action="open-bufund" style="margin-top:8px">Add to the buffer</button></p>
     <p><button data-action="sweep-buffer" style="width:100%">Sweep what is left (month end)</button></p>
-    <p class="note">The sweep moves the leftover to Mole Removal until it reaches its target, then to the Emergency Fund. It is saved as a draft for you to verify.</p>`;
+    <p class="note">${sweepNames.length ? "The sweep fills " + esc(sweepNames.join(", then ")) + ": each one up to its target, and the last one takes the rest." : "Choose which goals the leftover goes to, in order."} It is saved as a draft for you to verify.</p>
+    <p><button class="link" data-action="open-sweep">Choose where the leftover goes</button></p>`;
 }
 
 // ---------- trips ----------
@@ -1252,7 +1258,7 @@ function viewGoals() {
     let p = M.goalProgress(S(), g);
     if (!p) return "";
     // The Emergency Fund's target is worked out from the plan in force, never kept as a typed number.
-    const isEf = /emergency/i.test(g.name), ef = isEf && planOf() ? M.emergencyFundStatus(S(), planOf(), g) : null;
+    const isEf = g.role === "emergency", ef = isEf && planOf() ? M.emergencyFundStatus(S(), planOf(), g) : null;
     if (isEf) p = { ...p, target: null, remaining: null, percent: null, reached: false };
     const hidden = g.hidden_by_default && !ui.reveal;
     const line = planOf()?.lines.find((l) => l.kind === "goal" && l.name.toLowerCase() === g.name.toLowerCase());
@@ -1272,7 +1278,8 @@ function viewGoals() {
          ${p.target != null ? `<div class="meter goal" role="img" aria-label="${p.percent}% of the goal"><span class="fill" style="width:${p.percent}%"></span></div>
          <div class="status">${p.reached ? "Goal reached" : p.percent + "% \u00b7 " + peso(p.remaining) + " to go"}${eta ? " \u00b7 about " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : ""}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div>` : `<div class="status">No target, just a place to build up.</div>`}`;
     return `<div class="bcard"><div class="btop"><span class="bname who">${iconOf(S().accounts.find((a) => a.id === g.account_id) ?? { name: g.name }, 24)}<span>${esc(g.name)}</span></span></div>${body}
-      <p><button data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button></p></div>`;
+      <p><button data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button></p>
+      <p class="note"><button class="link" data-action="goal-role" data-id="${esc(g.id)}">${g.role === "emergency" ? "This is your emergency fund (tap to undo)" : "Make this my emergency fund"}</button></p></div>`;
   }).join("");
   return `<h1>Goals</h1><p class="sub">Savings you are building. Hidden by default so they do not tempt you.</p>${toggle}${cards || `<p class="note">No goals yet.</p>`}
     <p><button class="primary" data-action="open-goal" style="margin-top:8px">Add a goal</button></p>`;
@@ -1461,6 +1468,7 @@ function renderSheet() {
       <label for="f-amount">Target (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <label for="g-date">Finish by (optional)</label><input id="g-date" type="date" data-field="deadline" value="${esc(ui.form.deadline ?? "")}">
       <label>Where the money sits</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <label>What it is for (optional)</label><div class="chips"><button class="chip" data-action="pick-goal-role" aria-pressed="${ui.form.role === "emergency"}">My emergency fund</button></div>
       <p><button class="primary" id="f-save" data-action="save-goal" style="margin-top:14px" disabled>Save goal</button></p>`;
   } else if (sh.type === "deposit") {
     const g = S().goals.find((x) => x.id === sh.id);
@@ -1611,9 +1619,27 @@ function renderSheet() {
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="make-backup" disabled>Create backup file</button></p>
       <p class="note">Next you choose where to keep the file, for example Save to Files. It is encrypted, so it is safe in iCloud Drive or on a flash drive.</p>`;
+  } else if (sh.type === "cat") {
+    body = `<h3>${sh.id ? "Rename this category" : "Add a category"}</h3>
+      <label for="c-name">Name</label><input id="c-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off" enterkeyhint="done">
+      <p class="note">${sh.id ? "Its entries, budget and everything else stay with it." : "For spending. You can rename it later."}</p>
+      <p><button class="primary" id="f-save" data-action="save-cat" style="margin-top:14px" disabled>Save</button></p>`;
+  } else if (sh.type === "sweeporder") {
+    const f = ui.form, goals = S().goals, picked = f.order ?? [];
+    body = `<h3>Where the leftover goes</h3>
+      <p class="note">At month end, what is left in the buffer fills your goals in the order you tap them. Each one except the last is filled up to its target; the last one takes the rest.</p>
+      ${goals.length ? `<div class="chips">${goals.map((g) => `<button class="chip" data-action="pick-sweep" data-id="${esc(g.id)}" aria-pressed="${picked.includes(g.id)}">${picked.includes(g.id) ? picked.indexOf(g.id) + 1 + " \u00b7 " : ""}${esc(g.name)}</button>`).join("")}</div>`
+        : `<p class="note">Add goals first (Menu, Goals).</p>`}
+      ${picked.slice(0, -1).map((id) => { const g = goals.find((x) => x.id === id); return `<label for="t_${esc(id)}">Fill ${esc(g.name)} up to (\u20B1). Empty: its own target${g.target != null ? ", " + peso(g.target) : ", none"}</label><input id="t_${esc(id)}" data-field="t_${esc(id)}" inputmode="decimal" value="${esc(f["t_" + id] ?? "")}" autocomplete="off">`; }).join("")}
+      <p class="note" id="sweep-msg" role="status"></p>
+      <p><button class="primary" id="f-save" data-action="save-sweep" style="margin-top:14px" disabled>Save</button></p>`;
+  } else if (sh.type === "notice") {
+    body = `<h3>${esc(M.FIRST_RUN_NOTICE.title)}</h3><ol class="notes">${M.FIRST_RUN_NOTICE.lines.map((n) => `<li>${esc(n)}</li>`).join("")}</ol>
+      <p><button class="primary" data-action="close-sheet">I understand</button></p>`;
   } else if (sh.type === "restore" && !ui.form.restored) {
     body = `<h3>Restore from a backup</h3>
       <p class="note">This replaces everything on this phone with the backup.</p>
+      <p class="note">Pictures of receipts and payslips are not in a backup. Entries come back without their pictures.</p>
       <label for="r-file">Backup file</label><input id="r-file" data-field="file" type="file" accept=".json,application/json">
       <label for="r-pass">Passphrase</label><input id="r-pass" data-field="pass" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
       <p id="f-msg" role="alert" class="note"></p>
@@ -1624,7 +1650,7 @@ function renderSheet() {
     const line = (x) => `${count(x.accounts, "account", "accounts")}, ${x.transactions ? count(x.transactions, "entry", "entries") : "no entries"}${x.latest_date ? ", latest " + longDate(x.latest_date) : ""}`;
     body = `<h3>Replace this phone's data?</h3>
       <div class="card" style="border:0;padding:0"><dl><dt>The backup</dt><dd>${esc(line(b))}${b.saved_at ? "<br>saved " + esc(longDate(b.saved_at.slice(0, 10))) : ""}</dd><dt>This phone</dt><dd>${esc(line(now))}</dd></dl></div>
-      <p class="note">Anything entered on this phone since the backup was made will be gone.</p>
+      <p class="note">Anything entered on this phone since the backup was made will be gone. Pictures are not in the backup: an entry with a picture will show "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
   $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" ? "Close" : "Cancel"}</button></p></div>`;
@@ -1700,6 +1726,12 @@ function refreshSave() {
     btn.disabled = !(a.ok && a.centavos > 0 && M.isPhDate(f.date) && f.category_id && f.account_id && splitOk);
     const why = $("scan-why");   // a greyed button must say what it is waiting for
     if (why) why.textContent = !(a.ok && a.centavos > 0) ? "Enter the amount to save." : !M.isPhDate(f.date) ? "Choose the date to save." : !f.category_id ? "Choose a category to save." : !f.account_id ? "Choose the account it " + (M.kindById(f.kind).direction === "in" ? "arrived in" : "was paid from") + " to save." : !splitOk ? "Finish the split to save." : "";
+  } else if (type === "cat") {
+    btn.disabled = !(f.name ?? "").trim();
+  } else if (type === "sweeporder") {
+    const bad = (f.order ?? []).slice(0, -1).some((id) => { const raw = (f["t_" + id] ?? "").trim(); if (!raw) return false; const a = M.parsePesos(raw); return !a.ok || a.centavos < 0; });
+    const msg = $("sweep-msg"); if (msg) msg.textContent = bad ? "Enter a target like 20000, or leave it empty." : "";
+    btn.disabled = !(f.order ?? []).length || bad;
   } else if (type === "income") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && f.account_id && f.date);
@@ -1867,11 +1899,18 @@ async function onClick(el) {
     case "save-goal": {
       const f = ui.form, target = f.amount ? M.parsePesos(f.amount) : null;
       if (target && !target.ok) { showToast("Enter the target like 20000"); break; }
-      const plan = M.planGoal(S(), { id: newId("goal"), account_id: f.account_id, name: f.name, target: target ? target.centavos : null, deadline: f.deadline || undefined });
+      const plan = M.planGoal(S(), { id: newId("goal"), account_id: f.account_id, name: f.name, target: target ? target.centavos : null, deadline: f.deadline || undefined, role: f.role });
       if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
       ui.sheet = null; renderSheet();
       await commit(plan.state);
       showToast("Goal added: " + plan.goal.name);
+      break;
+    }
+    case "pick-goal-role": form.role = form.role === "emergency" ? undefined : "emergency"; renderSheet(); break;
+    case "goal-role": {
+      const g = S().goals.find((x) => x.id === id); if (!g) break;
+      const r = M.setGoalRole(S(), id, g.role === "emergency" ? null : "emergency");
+      if (r.ok && await commit(r.state)) showToast(g.role === "emergency" ? "No goal is marked as your emergency fund now." : g.name + " is your emergency fund.");
       break;
     }
     case "open-deposit": ui.sheet = { type: "deposit", id }; ui.form = { amount: "", account_id: accountsFor(null).find((a) => a.id !== S().goals.find((g) => g.id === id)?.account_id)?.id ?? null }; renderSheet(); break;
@@ -1912,10 +1951,39 @@ async function onClick(el) {
       showToast(peso(amount.centavos) + " added to the buffer");
       break;
     }
+    case "add-cat": ui.sheet = { type: "cat", id: null }; ui.form = { name: "" }; renderSheet(); break;
+    case "rename-cat": ui.sheet = { type: "cat", id }; ui.form = { name: S().categories.find((c) => c.id === id)?.name ?? "" }; renderSheet(); break;
+    case "save-cat": {
+      const r = ui.sheet.id ? M.renameCategory(S(), ui.sheet.id, ui.form.name) : M.addCategory(S(), { id: newId("cat"), name: ui.form.name });
+      if (!r.ok) { showToast(r.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      await commit(r.state);
+      break;
+    }
+    case "open-notice": ui.sheet = { type: "notice" }; renderSheet(); break;
+    case "open-sweep": {
+      const known = (ledger.settings.sweep_order ?? []).filter((o) => S().goals.some((g) => g.id === o.goal_id));
+      ui.sheet = { type: "sweeporder" };
+      ui.form = { order: known.map((o) => o.goal_id), ...Object.fromEntries(known.filter((o) => o.target != null).map((o) => ["t_" + o.goal_id, (o.target / 100).toFixed(2)])) };
+      renderSheet(); break;
+    }
+    case "pick-sweep": form.order = form.order.includes(id) ? form.order.filter((x) => x !== id) : [...form.order, id]; renderSheet(); break;
+    case "save-sweep": {
+      const f = ui.form, order = [];
+      for (const [i, gid] of f.order.entries()) {
+        const raw = i < f.order.length - 1 ? (f["t_" + gid] ?? "").trim() : "", a = raw ? M.parsePesos(raw) : null;
+        if (a && (!a.ok || a.centavos < 0)) { showToast("Enter the target like 20000"); return; }
+        order.push({ goal_id: gid, ...(a ? { target: a.centavos } : {}) });
+      }
+      ui.sheet = null; renderSheet();
+      await commit(S(), { ...ledger.settings, sweep_order: order });
+      showToast("Saved: " + order.map((o) => S().goals.find((g) => g.id === o.goal_id).name).join(", then "));
+      break;
+    }
     case "sweep-buffer": {
-      const g = gcashOf(), mole = S().goals.find((x) => /mole/i.test(x.name)), emerg = S().goals.find((x) => /emergency/i.test(x.name));
-      if (!mole || !emerg) { showToast("Add goals named Mole Removal and Emergency Fund first (Menu, Goals)."); break; }
-      const plan = M.planMonthEndSweep(S(), { transaction_id: newId("tx"), date: today(), gcash_account_id: g.account_id, buffer_envelope_id: g.buffer_id, mole_account_id: mole.account_id, emergency_account_id: emerg.account_id, mole_target: mole.target ?? 0 }, new Date());
+      const g = gcashOf(), order = M.sweepOrderAccounts(S(), ledger.settings.sweep_order);
+      if (!order) { showToast("Choose where the leftover goes first (Buffer, Choose where the leftover goes)."); break; }
+      const plan = M.planSweep(S(), { transaction_id: newId("tx"), date: today(), gcash_account_id: g.account_id, buffer_envelope_id: g.buffer_id, order }, new Date());
       if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
       if (!plan.transaction) { showToast("Nothing left in the buffer to sweep."); break; }
       await commit(M.applyDrafts(S(), [{ transaction: plan.transaction, entries: plan.entries }]));
@@ -2094,8 +2162,8 @@ async function onClick(el) {
       break;
     }
     case "ot-draft": {
-      const emerg = S().goals.find((x) => /emergency/i.test(x.name));
-      if (!emerg) { showToast("Add a goal named Emergency Fund first (Menu, Goals)."); break; }
+      const emerg = M.goalByRole(S(), "emergency");
+      if (!emerg) { showToast("Choose which goal is your emergency fund first (Menu, Goals)."); break; }
       const d = M.overtimeDraft(S(), id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date());
       if (!d?.ok || !d.transaction) { showToast("Could not make the draft."); break; }
       await commit(M.applyDrafts(S(), [d])); showToast("The Emergency Fund draft is waiting in Verify."); break;
@@ -2105,7 +2173,7 @@ async function onClick(el) {
     case "view-shot": if (pendingPhoto) viewShot(pendingPhoto.url); break;
     case "open-payslips": ui.confirmDelSlip = null; ui.confirmDelInc = null; ui.sheet = { type: "payslips" }; renderSheet(); break;
     case "open-tx": ui.sheet = { type: "txdetail", id }; renderSheet(); break;
-    case "open-photo": { const u = photoUrls.get(id) ?? (await getPhoto(id).then((b) => b && URL.createObjectURL(b))); if (u) { photoUrls.set(id, u); viewShot(u); } else showToast("The photo is not on this phone. Photos are not part of the backup file."); break; }
+    case "open-photo": { const u = photoUrls.get(id) ?? (await getPhoto(id).then((b) => b && URL.createObjectURL(b))); if (u) { photoUrls.set(id, u); viewShot(u); } else showToast("Picture not on this phone. Pictures are not part of the backup file."); break; }
     case "pick-acct": form.account_id = id; renderSheet(); break;
     case "close-sheet": voiceListener?.stop(); ui.sheet = null; renderSheet(); break;
     case "save-other": {
@@ -2480,6 +2548,8 @@ async function start() {
   if (!ui.copies) ui.copies = await readCopies();
   renderAll();
   if (ui.upgrade?.done) showToast("Your data was updated to the newest format. A copy of the old data is kept in Setup.");
+  // A brand-new install shows the notice once: the moment is remembered in the settings, which are saved with the first save. Help shows it again on request.
+  if (device.allowEntry && boot.status === "NONE" && !ledger.settings.notice_seen_at) { ledger.settings = { ...ledger.settings, notice_seen_at: M.phTimestamp() }; ui.sheet = { type: "notice" }; renderSheet(); }
   if (device.allowEntry && boot.status === "OK") {
     // Grey placeholder pictures saved by earlier versions are dropped at once, so a letter tile shows instead of a wrong one;
     // then the listed banks' logos are loaded in the background, so they are there from the start. (On a brand-new phone

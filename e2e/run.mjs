@@ -15,6 +15,16 @@ const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebK
 const ANDROID = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36";
 const T0 = new Date("2026-10-03T03:00:00Z");   // 11:00 on Oct 3 in Manila
 
+// What most tests start from: a ledger in the owner's own style (the categories and the three meal tiles the app used to start everyone with), so the
+// long flows below keep their wording. A brand-new install is now neutral: tests of that open with styled: false.
+const owner = (id, name, role) => ({ id, name, kind: "expense", ...(role ? { role } : {}) });
+const OWNER_STYLE = { v: 3, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings: { notice_seen_at: "2026-10-01T08:00:00.000+08:00" }, state: {
+  ...Object.fromEntries(["accounts", "goals", "envelopes", "transactions", "entries", "categoryMaps", "rules", "templates", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"].map((k) => [k, []])),
+  categories: [owner("cat-food", "Food", "food"), owner("cat-lakat", "Lakat/Date"), owner("cat-family", "Family"), owner("cat-shopping", "Shopping"), owner("cat-essentials", "Essentials", "essentials"), owner("cat-upskill", "Upskill"),
+    owner("cat-subscription", "Subscription", "subscription"), owner("cat-rent", "Rent", "rent"), owner("cat-unlogged", "Unlogged"),
+    { id: "cat-salary", name: "Salary", kind: "income" }, { id: "cat-overtime", name: "Overtime", kind: "income" }, { id: "cat-interest", name: "Interest", kind: "income" }, { id: "cat-refund", name: "Refund", kind: "income" }, { id: "cat-other-income", name: "Other income", kind: "income" }],
+  presets: [{ id: "pre-breakfast", name: "Breakfast", amount: 2000, category_id: "cat-food" }, { id: "pre-lunch", name: "Lunch", amount: 9500, category_id: "cat-food" }, { id: "pre-dinner", name: "Dinner", amount: 9500, category_id: "cat-food" }] } };
+
 let failures = 0;
 const check = (cond, label) => { console.log((cond ? "  ok   " : "  FAIL ") + label); if (!cond) failures++; };
 const browser = await chromium.launch();
@@ -22,7 +32,9 @@ const browser = await chromium.launch();
 // Every request for a bank logo goes through this, so the network is faked: by default nothing answers.
 let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
-async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = null, routes = [] } = {}) {
+const dismissNotice = async (page) => { try { await page.waitForSelector('#sheet button:has-text("I understand")', { timeout: 2500 }); await page.click('#sheet button:has-text("I understand")'); } catch { /* an old ledger shows no notice */ } };
+async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true } = {}) {
+  if (seed === undefined) seed = styled ? OWNER_STYLE : null;
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
   // A pretend phone speech service that, like the real ones, listens once and closes the microphone when you pause: the first try hears
@@ -42,11 +54,13 @@ async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BAS
   await page.clock.setFixedTime(T0);
   await page.goto(url);
   await page.waitForSelector("#nav button");
+  // A brand-new install shows the first-run notice once; every test but the one about the notice closes it first.
+  if (!keepNotice && !seed) await dismissNotice(page);
   if (seed) {   // data already on the phone before this start: written to BOTH stores as the app writes them, then the app starts again
-    await page.evaluate(async (text) => {
-      localStorage.setItem("financialTracker.ledger", text);
-      await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => { const tx = r.result.transaction("kv", "readwrite"); tx.objectStore("kv").put(text, "ledger"); tx.oncomplete = () => { r.result.close(); res(); }; tx.onerror = () => rej(tx.error); }; r.onerror = () => rej(r.error); });
-    }, JSON.stringify(seed));
+    await page.evaluate(async ([text, lsKey, dbName]) => {
+      localStorage.setItem(lsKey, text);
+      await new Promise((res, rej) => { const r = indexedDB.open(dbName, 3); r.onsuccess = () => { const tx = r.result.transaction("kv", "readwrite"); tx.objectStore("kv").put(text, "ledger"); tx.oncomplete = () => { r.result.close(); res(); }; tx.onerror = () => rej(tx.error); }; r.onerror = () => rej(r.error); });
+    }, [JSON.stringify(seed), url.includes("trial") ? "financialTracker.trial.ledger" : "financialTracker.ledger", url.includes("trial") ? "financialTracker-trial" : "financialTracker"]);
     await page.reload(); await page.waitForSelector("#nav button");
   }
   return { ctx, page, errors };
@@ -83,10 +97,13 @@ async function addAccount(page, name, kind, opening, covers) {
 
 // ===== 1. first run, setup =====
 console.log("First run and setup");
-let { ctx, page, errors } = await open();
+let { ctx, page, errors } = await open({ styled: false });
 check((await text(page, "#banner")).includes("No data on this device"), "first run explains the empty state");
 check((await text(page)).includes("Add the accounts you pay from first"), "log asks for accounts first");
 await shot(page, "01-first-run");
+await ctx.close();
+// the long flows start from the owner's own style (see OWNER_STYLE): a fresh start in that style
+({ ctx, page, errors } = await open());
 await addAccount(page, "Test Cash", "asset", "500");
 await addAccount(page, "Test Debit", "asset", "1000");
 await addAccount(page, "Test Card", "liability", "0");
@@ -367,7 +384,7 @@ check(!(await text(page, "#screen")).includes("No backup yet"), "the Log page st
 
 // wipe everything, as if iOS had cleared the storage
 await page.evaluate(async () => { localStorage.clear(); await new Promise((res) => { const r = indexedDB.deleteDatabase("financialTracker"); r.onsuccess = r.onerror = r.onblocked = () => res(); }); });
-await page.reload(); await page.waitForSelector("#nav button");
+await page.reload(); await page.waitForSelector("#nav button"); await dismissNotice(page);
 check((await text(page, "#banner")).includes("No data on this device"), "the empty phone says so");
 await menuGo(page, "Setup");
 await page.click('button:has-text("Restore from a backup")');
@@ -1017,7 +1034,7 @@ ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.settings.plans.length === 1 && ledgerNow.settings.plans[0].lines[0].first === 300000, "the plan is kept in the phone's settings as a dated list, in centavos");
 await menuGo(page, "Goals");
 check((await text(page, "#screen")).includes("at your plan's ₱2,000.00 a month"), "a goal shows how long the plan takes");
-await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.fill("#f-amount", "999"); await page.click("#sheet .chip >> nth=0"); await page.click("#f-save");
+await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.click('#sheet .chip:has-text("My emergency fund")'); await page.fill("#f-amount", "999"); await page.click("#sheet .chip >> nth=0"); await page.click("#f-save");
 await seen(page, "#screen", "Emergency Fund");
 if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
 const efText = await text(page, "#screen");
@@ -1188,7 +1205,7 @@ console.log("Income");
 await addAccount(page, "Wallet", "asset", "1000");
 await addAccount(page, "Savings", "asset", "0");
 await menuGo(page, "Goals");
-await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.click('#sheet .chip:has-text("Savings")'); await page.click("#f-save");
+await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.click('#sheet .chip:has-text("My emergency fund")'); await page.click('#sheet .chip:has-text("Savings")'); await page.click("#f-save");
 await seen(page, "#screen", "Emergency Fund");
 const receiptPngForSlip = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = 600; c.height = 300; const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 600, 300); x.fillStyle = "#000"; x.font = "bold 36px sans-serif"; x.fillText("Net Pay   1,000.00", 30, 120); return c.toDataURL("image/png").split(",")[1]; });
 await menuGo(page, "Income");
@@ -1624,7 +1641,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
 { ({ ctx, page, errors } = await open({ blockSw: true, seed: V1 }));
   check(await seen(page, "#toast", "updated to the newest format"), "old data (the first data version) is updated when the app starts, and the app says so");
   let led = JSON.parse((await stored(page)).local), idb = JSON.parse((await stored(page)).idb);
-  check(led.v === 2 && idb.v === 2 && led.state.transactions.length === 1 && led.state.entries.length === 2 && Array.isArray(led.state.payslipRevisions) && led.state.accounts[0].opening_balance === 100000, "both stores hold the new format with every record kept");
+  check(led.v === 3 && idb.v === 3 && led.state.transactions.length === 1 && led.state.entries.length === 2 && Array.isArray(led.state.payslipRevisions) && led.state.accounts[0].opening_balance === 100000, "both stores hold the new format with every record kept");
   check(JSON.stringify(led.state.transactions[0]) === JSON.stringify(V1.state.transactions[0]), "and no field of a record changed");
   { const kept = await page.evaluate(async () => {
       const local = JSON.parse(localStorage.getItem("financialTracker.preupgrade") ?? "[]");
@@ -1635,7 +1652,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
     check(same(kept.local) && same(kept.idb), "the data as it was before the update is kept in both stores"); }
   await menuGo(page, "Setup");
   const su = await text(page, "#screen");
-  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 2") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
+  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 3") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
   await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "40"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
   check(JSON.parse((await stored(page)).local).state.transactions.length === 2, "an expense is added after the update");
   await menuGo(page, "Setup");
@@ -1644,7 +1661,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
   await Promise.all([page.waitForNavigation(), page.click('button[data-action="restore-copy"][data-id="0"]')]);
   await page.waitForSelector("#nav button"); await seen(page, "#toast", "updated to the newest format");
   led = JSON.parse((await stored(page)).local);
-  check(led.state.transactions.length === 1 && led.v === 2, "the copy is back (the later expense is gone) and it is updated again");
+  check(led.state.transactions.length === 1 && led.v === 3, "the copy is back (the later expense is gone) and it is updated again");
   await menuGo(page, "Setup");
   check((await page.locator('button[data-action="restore-copy"]').count()) === 1, "restoring does not pile up copies of the same data");
   await ctx.close(); }
@@ -1662,6 +1679,86 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
   check((await text(page, "#banner")).includes("did not check out") && (await text(page, "#banner")).includes("copy from before was put back"), "if the saved result does not check out, the update is undone and the message says so");
   const after = JSON.parse((await stored(page)).local), idb2 = JSON.parse((await stored(page)).idb);
   check(after.v === 1 && idb2.v === 1 && after.state.entries.length === 2 && JSON.stringify(after.state.transactions) === JSON.stringify(V1.state.transactions), "both stores hold the data as it was, with every entry");
+  await ctx.close(); }
+
+// ===== 5o. friend fixes, round 1 =====
+console.log("Friend fixes 1");
+{ // a brand-new install: the notice once, plain starter categories, no tiles, editable categories
+  ({ ctx, page, errors } = await open({ blockSw: true, styled: false, keepNotice: true }));
+  await page.waitForSelector('#sheet button:has-text("I understand")');
+  const n = await text(page, "#sheet");
+  check(n.includes("Before you start") && n.includes("Your data stays on this phone") && n.includes("cannot be recovered") && n.includes("Make a backup now") && n.includes("iPhone: add this app to the Home Screen first") && n.includes("Android: clearing the browser's site data erases the ledger"), "a brand-new install shows the first-run notice with all five points");
+  await page.click('#sheet button:has-text("I understand")');
+  check(await page.locator("#sheet .sheet").count() === 0, "I understand closes it");
+  await addAccount(page, "Cash", "asset", "100");
+  await page.reload(); await page.waitForSelector("#nav button"); await page.waitForTimeout(1500);
+  check(await page.locator('#sheet button:has-text("I understand")').count() === 0, "after the first save it is not shown again");
+  await page.click('#nav button:has-text("Log")');
+  check((await text(page, "#screen")).includes("No quick tiles") && !/Breakfast|Lunch|Dinner/.test(await text(page, "#screen")), "a new install has no quick tiles: nobody's names or amounts");
+  await menuGo(page, "Setup");
+  const cats = await text(page, "#screen");
+  check(["Food", "Essentials", "Transport", "Rent", "Subscription", "Shopping", "Health", "Fun", "Other"].every((c) => cats.includes(c)) && !/Lakat|Family|Upskill/.test(cats), "the starter categories are plain, none carries the owner's names");
+  await page.click('button[data-action="add-cat"]'); await page.fill("#c-name", "Pets"); await page.click("#f-save"); await seen(page, "#screen", "Pets");
+  await page.locator('.row:has-text("Fun") button[data-action="rename-cat"]').click(); await page.fill("#c-name", "Games"); await page.click("#f-save"); await seen(page, "#screen", "Games");
+  const cs = JSON.parse((await stored(page)).local).state.categories;
+  check(cs.some((c) => c.name === "Pets") && cs.find((c) => c.id === "cat-fun")?.name === "Games" && cs.find((c) => c.id === "cat-food")?.role === "food", "a category can be added and renamed; the id and the role stay");
+  await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")');
+  check((await text(page, "#sheet")).includes("Pets") && (await text(page, "#sheet")).includes("Games") && !(await text(page, "#sheet")).includes("Fun"), "the new and renamed categories are offered when logging");
+  await page.click('#sheet button:has-text("Cancel")').catch(() => {});
+  await menuGo(page, "Help");
+  await page.click('button[data-action="open-notice"]');
+  check((await text(page, "#sheet")).includes("Before you start") && (await text(page, "#sheet")).includes("Your data stays on this phone"), "Help reads the notice again whenever it is wanted");
+  await page.click('#sheet button:has-text("I understand")');
+  await ctx.close(); }
+
+const FIX = { v: 3, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings: { notice_seen_at: "2026-10-01T08:00:00.000+08:00", gcash: { account_id: "wal", allowance_id: "env-a", buffer_id: "env-b" } }, state: {
+  ...OWNER_STYLE.state,
+  accounts: ["chk:Checking:asset:100000", "wal:Wallet:asset:0", "pa:Pocket A:asset:0", "pb:Pocket B:asset:0"].map((x) => { const [id, name, cls, ob] = x.split(":"); return { id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: Number(ob), opening_date: "2026-09-01" }; }),
+  goals: [{ id: "g-a", account_id: "pa", name: "Alpha", hidden_by_default: true }, { id: "g-b", account_id: "pb", name: "Beta", hidden_by_default: true }, { id: "g-c", account_id: "pb", name: "Emergency Fund", hidden_by_default: true }],
+  envelopes: [{ id: "env-a", account_id: "wal", name: "Allowance", purpose: "everyday" }, { id: "env-b", account_id: "wal", name: "Buffer", purpose: "overruns" }],
+  transactions: [
+    { id: "tf", date: "2026-10-01", payee: "Fund", memo: "", status: "verified", source: "manual", created_at: "2026-10-01T09:00:00.000+08:00", verified_at: "2026-10-01T09:00:00.000+08:00" },
+    { id: "tp", date: "2026-10-03", payee: "Sample Shop", memo: "", status: "draft", source: "photo", edited_before_verify: false, created_at: "2026-10-03T09:00:00.000+08:00" }],
+  entries: [{ transaction_id: "tf", account_id: "wal", envelope_id: "env-b", amount: 30000 }, { transaction_id: "tf", account_id: "chk", amount: -30000 },
+    { transaction_id: "tp", category_id: "cat-food", amount: 5000 }, { transaction_id: "tp", account_id: "chk", amount: -5000 }],
+  attachments: [{ id: "photo-gone", transaction_id: "tp", type: "photo", file: "photo-gone", file_timestamp: "2026-10-03T09:00:00.000+08:00" }] } };
+{ ({ ctx, page, errors } = await open({ blockSw: true, seed: FIX }));
+  // a picture the backup never held
+  await page.click('#nav button:has-text("Verify")');
+  check(await seen(page, "#screen", "Picture not on this phone"), "an entry whose picture is missing says \"picture not on this phone\"");
+  await menuGo(page, "Setup"); await page.click('button:has-text("Restore from a backup")');
+  check((await text(page, "#sheet")).includes("Pictures of receipts and payslips are not in a backup"), "Restore says plainly that pictures are not in the backup");
+  await page.click('#sheet button:has-text("Cancel")').catch(() => {});
+  // goals by role: nothing is found by name
+  await menuGo(page, "Goals"); await page.click('button[data-action="toggle-reveal"]');
+  check(await page.locator('button[data-action="goal-role"]:has-text("Make this my emergency fund")').count() === 3 && !(await text(page, "#screen")).includes("Load a pay plan"), "no goal is the emergency fund until you choose: a goal that is only NAMED Emergency Fund is not treated as one");
+  await page.locator('button[data-action="goal-role"]').first().click(); await seen(page, "#toast", "is your emergency fund");
+  await page.locator('button[data-action="goal-role"]').nth(1).click(); await seen(page, "#toast", "is your emergency fund");
+  check(await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1 && JSON.parse((await stored(page)).local).state.goals.filter((g) => g.role === "emergency").length === 1, "the role moves: one goal at most is the emergency fund");
+  await page.locator('button[data-action="goal-role"]').nth(2).click(); await seen(page, "#screen", "Load a pay plan");
+  check((await text(page, "#screen")).includes("Load a pay plan") && await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1, "choosing the goal makes it the emergency fund: its status card appears");
+  await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').click(); await seen(page, "#screen", "Make this my emergency fund");
+  // overtime with no emergency fund chosen: the message says to choose, never a name
+  await menuGo(page, "Income"); await addPayslipFlow(page); await page.click('#sheet button:has-text("Type a payslip")');
+  await page.fill("#p-emp", "Sample Employer Inc"); await page.fill("#p-from", "2026-09-16"); await page.fill("#p-to", "2026-09-30"); await page.fill("#p-date", "2026-10-02");
+  await page.evaluate(() => document.querySelectorAll("#sheet details[data-keep]").forEach((d) => { d.open = true; }));
+  await page.fill("#e_basic", "9000"); await page.fill("#e_overtime", "1500"); await page.fill("#p-gross", "10500"); await page.fill("#p-net", "10500"); await page.fill("#p-dep", "10500");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "Choose which goal is your emergency fund") && !(await text(page, "#toast")).includes("goal named"), "an overtime payslip with no emergency fund chosen says to choose one, with no fixed name");
+  // the sweep order
+  await menuGo(page, "Buffer");
+  check((await text(page, "#screen")).includes("Choose which goals the leftover goes to, in order."), "the Buffer says plainly that the sweep order is not chosen yet");
+  await page.click('button[data-action="sweep-buffer"]');
+  check(await seen(page, "#toast", "Choose where the leftover goes first"), "sweeping before choosing says to choose where it goes");
+  await page.click('button[data-action="open-sweep"]');
+  await page.click('#sheet button[data-action="pick-sweep"]:has-text("Alpha")'); await page.click('#sheet button[data-action="pick-sweep"]:has-text("Beta")');
+  check((await text(page, "#sheet")).includes("1 \u00b7 Alpha") && (await text(page, "#sheet")).includes("2 \u00b7 Beta") && await page.locator("#t_g-a").count() === 1 && await page.locator("#t_g-b").count() === 0, "the goals are numbered in the order tapped; only the first has a target box");
+  await page.fill("#t_g-a", "100"); await page.click("#f-save");
+  check(await seen(page, "#screen", "The sweep fills Alpha, then Beta"), "the order is saved and shown");
+  await page.click('button[data-action="sweep-buffer"]');
+  check(await seen(page, "#toast", "Sweep saved as a draft"), "the sweep follows the saved order");
+  const sw = JSON.parse((await stored(page)).local).state, swTx = sw.transactions.find((t) => t.payee === "Month-end buffer sweep");
+  check(JSON.stringify(sw.entries.filter((e) => e.transaction_id === swTx.id).map((e) => [e.account_id, e.amount])) === JSON.stringify([["pa", 10000], ["pb", 20000], ["wal", -30000]]), "Alpha is filled to its 100.00 target and Beta takes the other 200.00");
   await ctx.close(); }
 
 // ===== 6. wrong phone, wrong place =====
@@ -1695,7 +1792,7 @@ await ctx.close();
 ({ ctx, page, errors } = await open({ ua: ANDROID, standalone: false, blockSw: true }));
 check((await text(page, "#banner")).includes("not the finance phone") && (await text(page, "#screen")).includes("Entry is switched off"), "the same Android phone without ?trial is still switched off");
 await ctx.close();
-({ ctx, page, errors } = await open({ blockSw: true, url: BASE + "?trial" }));
+({ ctx, page, errors } = await open({ blockSw: true, styled: false, url: BASE + "?trial" }));
 check(!(await text(page, "#banner")).includes("Trial copy"), "the iPhone Home Screen app ignores ?trial, so the real ledger cannot be swapped for a trial");
 check((await page.evaluate(() => Object.keys(localStorage))).every((k) => k !== "financialTracker.trial.ledger"), "and writes nothing under the trial names");
 await ctx.close();

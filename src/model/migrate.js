@@ -10,7 +10,7 @@ import { phTimestamp } from "./util.js";
 
 // Version 2 is the first with named migrations. To change the data's shape: raise this number, add the step from the old number to MIGRATIONS,
 // add a backup fixture of the old version to tests/migrate.test.js, and add the new collection to COLLECTION_NAMES.
-export const LEDGER_VERSION = 2;
+export const LEDGER_VERSION = 3;
 export const COLLECTION_NAMES = ["accounts", "goals", "envelopes", "transactions", "entries", "categories", "categoryMaps", "rules",
   "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"];
 
@@ -18,6 +18,20 @@ export const COLLECTION_NAMES = ["accounts", "goals", "envelopes", "transactions
 export const MIGRATIONS = {
   // 1 to 2: ledgers saved before payslips, earlier figures and the like lack some collections. Every missing one is added, empty.
   1: (ledger) => ({ ...ledger, state: { ...Object.fromEntries(COLLECTION_NAMES.map((k) => [k, []])), ...ledger.state } }),
+  // 2 to 3: roles instead of name matching. Each is given ONCE, from what the old code looked for by name, so the data behaves exactly as before.
+  //  - A category named Food, Essentials, Subscription or Rent (any capitals) gets that role, so the scanner's guess no longer depends on the name.
+  //  - The FIRST goal whose name has "emergency" in it gets the role "emergency" (the old code took the first match).
+  //  - A goal with "mole" and one with "emergency" in the name (the old month-end sweep) become the sweep order [that goal, the emergency goal]; the
+  //    first one's own target caps it, as before. With either missing there was no sweep before, so none is set.
+  2: (ledger) => {
+    const state = ledger.state, settings = ledger.settings ?? {};
+    const ROLE_OF = { food: "food", essentials: "essentials", subscription: "subscription", rent: "rent" };
+    const categories = (state.categories ?? []).map((c) => (c.role === undefined && c.kind === "expense" && ROLE_OF[String(c.name).trim().toLowerCase()] ? { ...c, role: ROLE_OF[String(c.name).trim().toLowerCase()] } : c));
+    const goalsIn = state.goals ?? [], emergency = goalsIn.find((g) => /emergency/i.test(g.name)), mole = goalsIn.find((g) => /mole/i.test(g.name));
+    const goals = goalsIn.map((g) => (g === emergency && g.role === undefined ? { ...g, role: "emergency" } : g));
+    const sweep = settings.sweep_order === undefined && emergency && mole && mole !== emergency ? { sweep_order: [{ goal_id: mole.id }, { goal_id: emergency.id }] } : {};
+    return { ...ledger, state: { ...state, categories, goals }, settings: { ...settings, ...sweep } };
+  },
 };
 
 const clone = (x) => JSON.parse(JSON.stringify(x));

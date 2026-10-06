@@ -29,12 +29,12 @@ const CLUES = {
   receipt: [[/official receipt|\bor\s*no|\bvat\b|sub-?\s?total|cashier|\bchange\b|tendered/, 1], [/\btotal\b/, 1], [/thank you|\bitem|\bqty\b|\btin\b/, 1]],
 };
 
-// What a store or a payee points to, by NAME of the category (the app finds the category with that name, if there is one).
+// What a store or a payee points to, by ROLE of the category (the app finds the category that holds that role, if there is one; its name can be anything).
 const CATEGORY_CLUES = [
-  ["Food", /jollibee|mcdo|mcdonald|kfc|chowking|starbucks|caf[eé]|coffee|restaurant|bakery|burger|pizza|lunch|dinner|breakfast|milk\s?tea|carinderia|grill|foodpanda|grabfood|7-?eleven|ministop|mang inasal/],
-  ["Essentials", /grocery|groceries|supermarket|market|palengke|\bmart\b|pharmacy|botika|drugstore|mercury|watsons|hardware|puregold|savemore|landers|meralco|water|pldt|converge|electric/],
-  ["Subscription", /netflix|spotify|youtube|icloud|google one|disney|chatgpt|claude/],
-  ["Rent", /\brent(al)?\b/],
+  ["food", /jollibee|mcdo|mcdonald|kfc|chowking|starbucks|caf[eé]|coffee|restaurant|bakery|burger|pizza|lunch|dinner|breakfast|milk\s?tea|carinderia|grill|foodpanda|grabfood|7-?eleven|ministop|mang inasal/],
+  ["essentials", /grocery|groceries|supermarket|market|palengke|\bmart\b|pharmacy|botika|drugstore|mercury|watsons|hardware|puregold|savemore|landers|meralco|water|pldt|converge|electric/],
+  ["subscription", /netflix|spotify|youtube|icloud|google one|disney|chatgpt|claude/],
+  ["rent", /\brent(al)?\b/],
 ];
 
 // ---------- amounts ----------
@@ -231,7 +231,7 @@ export function readScan(text, today) {
     else { date = d.iso; if (d.ambiguous) notes.push("I read " + d.seen + " as month first. Check the date."); }
   } else notes.push("I could not find a date, so today is used.");
 
-  const category = kind === "rent" ? "Rent" : (CATEGORY_CLUES.find(([, re]) => re.test(lower))?.[0] ?? null);
+  const category = kind === "rent" ? "rent" : (CATEGORY_CLUES.find(([, re]) => re.test(lower))?.[0] ?? null);
   return { kind, bankId: bankFor(lines), creditCard: /credit\s*card/.test(lower), kindLabel: kindById(kind).label, direction: kindById(kind).direction, amount, date, dateSeen: seen, payee: payeeFor(kind, lines), categoryGuess: category, notes, readAnything: lines.length > 0 };
 }
 

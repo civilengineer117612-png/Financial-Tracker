@@ -10,6 +10,18 @@ export const QUICK_NOTES = [
   "If something looks wrong, send me a screenshot. Never send your backup file.",
 ];
 
+// Shown once on a brand-new install, and from Help whenever it is wanted. Plain words, nothing to decide.
+export const FIRST_RUN_NOTICE = {
+  title: "Before you start",
+  lines: [
+    "Your data stays on this phone. Nobody else can see it.",
+    "A lost phone or a forgotten backup passphrase cannot be recovered. Nobody can help, not even me.",
+    "Make a backup now: Setup, then Back up now.",
+    "iPhone: add this app to the Home Screen first, and open it from the icon.",
+    "Android: clearing the browser's site data erases the ledger. Keep a backup.",
+  ],
+};
+
 // tab: the screen's id in the app (app.js), so "Open" can go there. `label` is the name on the menu or the bottom bar.
 export const TOPICS = [
   { tab: "log", label: "Log", lines: ["Record what you spend. Tap a quick tile, or Add expense.", "It waits as a draft until you verify it.", "Tap the date at the top to add something you forgot on an earlier day. Hold a tile to move or change it."] },
@@ -18,14 +30,14 @@ export const TOPICS = [
   { tab: "income", label: "Income", lines: ["Add income: type a payslip, photograph it, or add other income.", "Overview shows gross, deductions and net. Earnings shows each kind of pay. Payslips lists them, and a payslip can be changed later."] },
   { tab: "cards", label: "Cards", lines: ["What is in each account, and what you owe on each credit card."] },
   { tab: "budget", label: "Budget", lines: ["Set how much to spend on each kind of thing each month.", "A new budget never rewrites the past. See how you are doing in Cash flow, Budget."] },
-  { tab: "goals", label: "Goals", lines: ["Savings you are building, with a target and a balance. Balances are hidden until you choose to show them."] },
+  { tab: "goals", label: "Goals", lines: ["Savings you are building, with a target and a balance. Balances are hidden until you choose to show them.", "Choose which goal is your emergency fund: overtime drafts and the Emergency Fund target use that goal, whatever it is called."] },
   { tab: "plan", label: "Pay plan", lines: ["What to set aside from each payday. Load a plan once; the app compares it with the pay you actually receive."] },
   { tab: "checks", label: "Checks", lines: ["Is your card reserve covering what you owe, and how often did you count your accounts?"] },
   { tab: "trips", label: "Trips", lines: ["Spending for a trip, kept apart from everyday spending. Turn a trip on and new entries are tagged to it."] },
-  { tab: "buffer", label: "Buffer", lines: ["Money set aside inside one account for overruns, apart from your everyday allowance."] },
+  { tab: "buffer", label: "Buffer", lines: ["Money set aside inside one account for overruns, apart from your everyday allowance.", "At month end, choose which goals the leftover goes to, in order. Each is filled up to its target; the last takes the rest."] },
   { tab: "scan", label: "Scan", lines: ["Photograph a receipt, a payslip or a payment screen. The phone reads it; nothing is sent anywhere.", "You check the guess, and the entry waits in Verify with the photo beside it."] },
   { tab: "checkin", label: "Weekly review", lines: ["Once a week, count each account for real and type the balance. The app shows the difference from what it expects."] },
-  { tab: "setup", label: "Setup", lines: ["Add accounts, back up and restore your data, and see which version of the app you have."] },
+  { tab: "setup", label: "Setup", lines: ["Add accounts, rename or add spending categories, back up and restore your data, and see which version of the app you have.", "Pictures of receipts are not in a backup, so restored entries show \"picture not on this phone\"."] },
 ];
 
 // Getting started: each step is done or not, worked out from your own data. `done` says what to look for; `tab` is where the step happens.

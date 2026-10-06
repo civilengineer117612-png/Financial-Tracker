@@ -39,8 +39,8 @@ const text = (l) => JSON.stringify(l);
 // every field of `a` is still in `b` with the same value (b may have more)
 const holds = (a, b) => (typeof a !== "object" || a === null ? a === b : typeof b === "object" && b !== null && Object.keys(a).every((k) => holds(a[k], b[k])));
 
-test("the current data version is 2 and the first version's data is still accepted as older", () => {
-  assert.equal(LEDGER_VERSION, 2);
+test("the current data version is 3 and the first version's data is still accepted as older", () => {
+  assert.equal(LEDGER_VERSION, 3);
   for (const make of Object.values(FIXTURES)) { const p = parseLedger(text(make())); assert.equal(p.ok, true); assert.equal(p.older, true); }
   const cur = upgradeLedger(v1Early()).ledger;
   assert.equal(parseLedger(text(cur)).older, undefined);
@@ -87,9 +87,10 @@ test("chooseLedger passes an older ledger through unchanged for the app to upgra
 
 test("an update that stops part way, has no step, or meets unknown data leaves the data alone and says why in plain words", () => {
   const before = v1Early(), snapshot = JSON.stringify(before);
-  const boom = upgradeLedger(before, { migrations: { 1: () => { throw new Error("x"); } } });
+  const boom = upgradeLedger(before, { migrations: { ...MIGRATIONS, 1: () => { throw new Error("x"); } } });
   assert.equal(boom.ok, false); assert.match(boom.error, /stopped part way/);
   assert.match(upgradeLedger(before, { migrations: {} }).error, /no way to update data from version 1/);
+  assert.match(upgradeLedger(before, { migrations: { 1: MIGRATIONS[1] } }).error, /no way to update data from version 2/, "a missing later step is also refused");
   assert.equal(upgradeLedger({ ...before, v: 0 }).ok, false);
   assert.equal(upgradeLedger({ ...before, v: LEDGER_VERSION + 1 }).ok, false);
   assert.equal(upgradeLedger({ ...before, v: "1" }).ok, false);
@@ -98,15 +99,15 @@ test("an update that stops part way, has no step, or meets unknown data leaves t
 
 test("an update that changes a total, or leaves an entry that does not add up, is refused", () => {
   const before = v1Early();
-  const lose = upgradeLedger(before, { migrations: { 1: (l) => ({ ...l, state: { ...l.state, entries: l.state.entries.filter((e) => e.transaction_id !== "t1") } }) } });
+  const lose = upgradeLedger(before, { migrations: { ...MIGRATIONS, 1: (l) => ({ ...l, state: { ...l.state, entries: l.state.entries.filter((e) => e.transaction_id !== "t1") } }) } });
   assert.equal(lose.ok, false);
-  const skew = upgradeLedger(before, { migrations: { 1: (l) => ({ ...l, state: { ...l.state, entries: l.state.entries.map((e) => (e.transaction_id === "t1" && e.account_id ? { ...e, amount: -9400 } : e)) } }) } });
+  const skew = upgradeLedger(before, { migrations: { ...MIGRATIONS, 1: (l) => ({ ...l, state: { ...l.state, entries: l.state.entries.map((e) => (e.transaction_id === "t1" && e.account_id ? { ...e, amount: -9400 } : e)) } }) } });
   assert.equal(skew.ok, false); assert.match(skew.error, /not add up|problem after|totals/);
-  const skewCat = upgradeLedger(before, { migrations: { 1: (l) => ({ ...l, state: { ...l.state, entries: l.state.entries.map((e) => (e.transaction_id === "t1" && e.category_id ? { ...e, amount: 9400 } : e)) } }) } });
+  const skewCat = upgradeLedger(before, { migrations: { ...MIGRATIONS, 1: (l) => ({ ...l, state: { ...l.state, entries: l.state.entries.map((e) => (e.transaction_id === "t1" && e.category_id ? { ...e, amount: 9400 } : e)) } }) } });
   assert.equal(skewCat.ok, false); assert.match(skewCat.error, /problem after the update: 1 entry does not add up/, "only the self-check can see this one: no account balance moved");
-  const coins = upgradeLedger(before, { migrations: { 1: (l) => ({ ...l, state: { ...l.state, accounts: l.state.accounts.map((a) => (a.id === "chk" ? { ...a, opening_balance: a.opening_balance + 1 } : a)) } }) } });
+  const coins = upgradeLedger(before, { migrations: { ...MIGRATIONS, 1: (l) => ({ ...l, state: { ...l.state, accounts: l.state.accounts.map((a) => (a.id === "chk" ? { ...a, opening_balance: a.opening_balance + 1 } : a)) } }) } });
   assert.equal(coins.ok, false); assert.match(coins.error, /totals were not the same/, "an account holding a centavo more is a changed total");
-  const junk = upgradeLedger(before, { migrations: { 1: (l) => ({ ...l, state: { ...l.state, accounts: [{ id: "x" }] } }) } });
+  const junk = upgradeLedger(before, { migrations: { ...MIGRATIONS, 1: (l) => ({ ...l, state: { ...l.state, accounts: [{ id: "x" }] } }) } });
   assert.equal(junk.ok, false);
 });
 
