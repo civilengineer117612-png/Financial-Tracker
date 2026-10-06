@@ -5,7 +5,7 @@
 // Nothing is stored here: planCheckIn returns what WOULD be saved, already checked
 // by the same save-time rules as any other transaction.
 import { validateShape } from "./schema.js";
-import { naturalBalance, cardOutstanding } from "./balances.js";
+import { naturalBalance, cardOutstanding, countedEntries } from "./balances.js";
 import { checkTransactionSave } from "./index.js";
 import { phTimestamp } from "./util.js";
 
@@ -28,7 +28,7 @@ export function planCheckIn(state, input, now = new Date()) {
     return fail("UNKNOWN_CATEGORY", "no category " + input.unlogged_category_id);
   }
 
-  const ledger = ledgerBalanceFor(account, state.entries);
+  const ledger = ledgerBalanceFor(account, countedEntries(state));
   const difference = input.counted_balance - ledger;   // + means you hold more than the ledger says
   const checkIn = {
     id: input.id, date: input.date, account_id: account.id,

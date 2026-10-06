@@ -20,7 +20,7 @@
 import { reportingCategory } from "./rules.js";
 import { isPhDate, phTimestamp } from "./util.js";
 import { checkTransactionSave } from "./index.js";
-import { naturalBalance } from "./balances.js";
+import { naturalBalance, countedEntries } from "./balances.js";
 import { categoriesOfKind } from "./seed.js";
 import { budgetFor } from "./budget.js";
 
@@ -93,7 +93,7 @@ export function emergencyFundStatus(state, plan, goal) {
   if (!found.length) return null;
   const monthlyBasis = found.reduce((n, l) => n + l.first + l.second, 0), target = months * monthlyBasis;
   const account = state.accounts.find((a) => a.id === goal.account_id);
-  const balance = account ? naturalBalance(account, state.entries) : 0;
+  const balance = account ? naturalBalance(account, countedEntries(state)) : 0;
   const line = plan.lines.find((l) => l.kind === "goal" && key(l.name) === key(goal.name)) ?? plan.lines.find((l) => l.kind === "goal" && /emergency/i.test(l.name));
   const monthly = line ? line.first + line.second : 0, remaining = Math.max(0, target - balance);
   return { target, months, basis: found.map((l) => l.name), missing: basis.filter((n) => !plan.lines.some((l) => key(l.name) === key(n))), monthlyBasis,
@@ -108,7 +108,7 @@ export function emergencyFundFromBudgets(state, goal, { month }) {
   const budgets = DEFAULT_EF.roles.flatMap((r) => categoriesOfKind(state.categories, r)).map((c) => ({ name: c.name, amount: budgetFor(state.rules ?? [], c.id, month) ?? 0 })).filter((b) => b.amount > 0);
   if (!budgets.length) return null;
   const months = DEFAULT_EF.months, monthlyBasis = budgets.reduce((n, b) => n + b.amount, 0), target = months * monthlyBasis;
-  const account = state.accounts.find((a) => a.id === goal.account_id), balance = account ? naturalBalance(account, state.entries) : 0, remaining = Math.max(0, target - balance);
+  const account = state.accounts.find((a) => a.id === goal.account_id), balance = account ? naturalBalance(account, countedEntries(state)) : 0, remaining = Math.max(0, target - balance);
   return { source: "budgets", target, months, basis: budgets.map((b) => b.name), missing: [], monthlyBasis, balance, remaining, percent: target ? Math.min(100, Math.floor((balance * 100) / target)) : 0,
     reached: balance >= target, monthly: 0, monthsToTarget: remaining === 0 ? 0 : null };
 }

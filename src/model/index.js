@@ -13,7 +13,7 @@ export { budgetMonthFor, planBudgetRows, planBudgetMismatches, planWithBudgets }
 export { toNearest50, fitToIncome, savingsExplained, NO_INCOME_PROMPT, netsByKind, baseIncome, shares, tenths, showTenths, incomeChanged, savedRows, suggestBudgets, budgetChangesFromDraft } from "./budgetview.js";
 export { SUGGEST_DEFAULTS, resolveSettings } from "./suggest-settings.js";
 export { APP_BUILD, APP_BUILT_ON, isDevBuild } from "./version.js";
-export { naturalBalance, cardOutstanding, reserveShortfalls } from "./balances.js";
+export { naturalBalance, cardOutstanding, reserveShortfalls, countedEntries, earlyEntryChanges } from "./balances.js";
 export { paceAhead } from "./budget.js";
 export { countsTowardBudget, splitByBudgetStatus } from "./invariants.js";
 export { phTimestamp, isPhDate, isPhTimestamp, isCentavos } from "./util.js";

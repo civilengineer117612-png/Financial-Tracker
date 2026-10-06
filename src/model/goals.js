@@ -1,6 +1,6 @@
 // Spec 6: goals, the Emergency Fund target, the overtime rule, hidden-by-default goals.
 // No peso figures here; targets and shares are inputs.
-import { naturalBalance } from "./balances.js";
+import { naturalBalance, countedEntries } from "./balances.js";
 import { checkTransactionSave } from "./index.js";
 import { phTimestamp } from "./util.js";
 import { validateShape } from "./schema.js";
@@ -10,7 +10,7 @@ export function goalProgress(state, goal) {
   // A goal with no account yet holds nothing: its balance is zero. A goal that names an account the ledger does not have is not shown at all.
   const account = goal.account_id ? state.accounts.find((a) => a.id === goal.account_id) : null;
   if (goal.account_id && !account) return null;
-  const balance = account ? naturalBalance(account, state.entries) : 0;
+  const balance = account ? naturalBalance(account, countedEntries(state)) : 0;
   const { target } = goal;
   return {
     goal_id: goal.id, balance, target: target ?? null,

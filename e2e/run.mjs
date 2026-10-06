@@ -36,7 +36,7 @@ const iconAsked = [];   // every address the app asked an icon service or bank s
 const dismissNotice = async (page) => { try { await page.waitForSelector('#sheet button:has-text("I understand")', { timeout: 2500 }); await page.click('#sheet button:has-text("I understand")'); } catch { /* an old ledger shows no notice */ } };
 async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false } = {}) {
   if (seed === undefined) seed = styled ? OWNER_STYLE : null;
-  if (seed && !whatsNew) seed = { ...seed, settings: { ...(seed.settings ?? {}), whatsnew_seen: seed.settings?.whatsnew_seen ?? CHANGES[0].id } };   // the What's new pop-up is tested on its own
+  if (seed && !whatsNew) seed = { ...seed, settings: { ...(seed.settings ?? {}), whatsnew_seen: seed.settings?.whatsnew_seen ?? CHANGES[0].id, start_rule_seen: seed.settings?.start_rule_seen ?? "2026-10-01T08:00:00.000+08:00" } };   // the What's new pop-up is tested on its own
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
   // A pretend phone speech service that, like the real ones, listens once and closes the microphone when you pause: the first try hears
@@ -2156,6 +2156,25 @@ console.log("What's new and how-tos");
   await page.click('button[data-action="open-howto"][data-id="scan"]');
   check(await seen(page, "#sheet", "Scan a receipt"), "a how-to can be played from Help too");
   check(errors.length === 0, "no script errors with the pop-up and the clips");
+  await ctx.close(); }
+
+// ===== 5t. spending dated before an account was added is history only =====
+console.log("Start date of an account");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-10-03" };
+  const TS = "2026-10-03T09:00:00.000+08:00";
+  const spend = (id, date, amount) => [{ id, date, payee: "Lunch", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS }, [{ transaction_id: id, category_id: "cat-food", amount }, { transaction_id: id, account_id: "w", amount: -amount }]];
+  const rows = [spend("old", "2026-10-01", 20000), spend("same", "2026-10-03", 3000)];
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: rows.map((r) => r[0]), entries: rows.flatMap((r) => r[1]) } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed, whatsNew: true }));
+  check(await seen(page, "#sheet", "Balances that changed"), "after the update, the one-time note lists the accounts whose balance changed");
+  check((await text(page, "#wn-balances")).includes("Test Wallet +\u20B1200.00"), "with the account and by how much");
+  await page.click('#sheet button:has-text("Got it")');
+  await menuGo(page, "Setup");
+  check(await seen(page, "#screen", "\u20B1970.00"), "the balance is what was in it when added, less only spending from that day on");
+  check((await text(page, "#a-open-note")).includes("history only"), "adding an account says earlier spending is history only");
+  await page.reload(); await page.waitForSelector("#nav button"); await page.waitForTimeout(600);
+  check(!(await text(page, "#sheet")).includes("Balances that changed"), "the note is not shown again");
+  check(errors.length === 0, "no script errors around the start date");
   await ctx.close(); }
 
 // ===== 6. wrong phone, wrong place =====
