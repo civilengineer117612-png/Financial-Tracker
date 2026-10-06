@@ -44,7 +44,7 @@ test("defaults form a valid ledger and contain no accounts or balances", () => {
   const names = defaultCategories().map((c) => c.name).join("|");
   for (const owner of ["Lakat", "Family", "Upskill", "Breakfast", "Dinner"]) assert.ok(!names.includes(owner), owner + " is not a default");
   const roles = Object.fromEntries(defaultCategories().filter((c) => c.role).map((c) => [c.role, c.id]));
-  assert.deepEqual(roles, { food: "cat-food", essentials: "cat-essentials", rent: "cat-rent", subscription: "cat-subscription", transport: "cat-transport", health: "cat-health", shopping: "cat-shopping", fun: "cat-fun" }, "the roles the scanner and the starter budget look for are all there");
+  assert.deepEqual(roles, { food: "cat-food", essentials: "cat-essentials", rent: "cat-rent", subscription: "cat-subscription", transport: "cat-transport", health: "cat-health", shopping: "cat-shopping", fun: "cat-fun", other: "cat-other" }, "the roles the scanner and the starter budget look for are all there");
 });
 
 // ---------- planExpense ----------

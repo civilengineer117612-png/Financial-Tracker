@@ -49,7 +49,7 @@ test("the new Budget is behind a switch that is off by default, and off it is ex
 });
 
 test("the summary: Spending and Saved are plainly rounded to a tenth of a percent, Unallocated is in pesos (centavos), and nothing forces the shares to add to 100.0%", () => {
-  assert.deepEqual(shares(2500000, 1000000, 500000), { spending: 400, saved: 200, unallocated: 1000000 });
+  assert.deepEqual(shares(2500000, 1000000, 500000), { spending: 400, saved: 200, buffer: 0, unallocated: 1000000 });
   assert.equal(showTenths(400), "40.0%");
   assert.equal(tenths(1000000, 2500000), 400); assert.equal(tenths(1, 3), 333); assert.equal(tenths(2, 3), 667, "rounded to the nearest tenth");
   // 79.96% and 19.96% are shown as 80.0% and 20.0%, the unallocated 0.08% is a few pesos: the three are not made to add up
@@ -200,7 +200,7 @@ test("Saved rows are never red: the block carries no critical shape or colour, a
 test("the new screen adds only the amount and the share to a row, one totals line per block, one overall line and one extra figure", () => {
   const view = app.slice(app.indexOf("function viewBudgetNew()"), app.indexOf("function viewBudgetOld()"));
   for (const id of ["bud-income", "bud-shares", "bud-spent", "bud-spend-total", "bud-saved-total"]) assert.ok(view.includes(`id="${id}"`), id);
-  assert.match(view, /Spending \$\{M\.showTenths\(sh\.spending\)\}, Saved \$\{M\.showTenths\(sh\.saved\)\}, \$\{sh\.unallocated < 0 \? "Over income by " \+ peso\(-sh\.unallocated\) : "Unallocated " \+ peso\(sh\.unallocated\)\}/);
+  assert.match(view, /Spending \$\{M\.showTenths\(sh\.spending\)\}, Saved \$\{M\.showTenths\(sh\.saved\)\}, \$\{bufferTotal \? "Buffer " \+ M\.showTenths\(sh\.buffer\) \+ ", " : ""\}\$\{sh\.unallocated < 0 \? "Over income by " \+ peso\(-sh\.unallocated\) : "Unallocated " \+ peso\(sh\.unallocated\)\}/);
   assert.match(view, /Spent so far: \$\{M\.showTenths/);
   assert.ok(view.indexOf("<h2>Spending</h2>") < view.indexOf("<h2>Saved and set aside</h2>"), "Spending first, then Saved and set aside");
 });

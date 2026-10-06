@@ -1712,11 +1712,11 @@ console.log("The new Budget");
     check(sugs.length >= 3 && sugs.every((v) => Math.round(v * 100) % 5000 === 0) && (await text(page, "#sheet")).includes("rounded to the nearest ₱50"), "every suggestion is rounded to the nearest ₱50: " + sugs.join(", ")); }
   await page.click('button:has-text("Use all suggestions")');
   await page.fill("#y_cat-food", "4000");
-  await page.click('button:has-text("Confirm")');
+  await page.click('#sheet button:has-text("Confirm")');
   check(await page.locator('#sheet button[data-action="set-start-sug"][aria-pressed="true"]').innerText() === "Next month", "the start defaults to next month");
   check((await text(page, "#sheet")).includes("Food") && (await text(page, "#sheet")).includes("₱5,000.00 → ₱4,000.00"), "the changes are listed before anything is saved");
   const ruleCount = JSON.parse((await stored(page)).local).state.rules.length;
-  await page.click('button:has-text("Back")'); await page.click('button:has-text("Confirm")');
+  await page.click('button:has-text("Back")'); await page.click('#sheet button:has-text("Confirm")');
   check(JSON.parse((await stored(page)).local).state.rules.length === ruleCount, "nothing was saved yet");
   await page.click("#sheet button[data-action=save-sug]"); await seen(page, "#toast", "saved");
   check((await text(page, "#screen")).includes("Suggested, not saved"), "with the rent typed, the Budget screen shows the suggested savings too");
@@ -1931,7 +1931,7 @@ console.log("Friend fixes 1");
   await menuGo(page, "Setup");
   const cats = await text(page, "#screen");
   check(["Food", "Essentials", "Transport", "Rent", "Subscription", "Shopping", "Health", "Fun", "Other"].every((c) => cats.includes(c)) && !/Lakat|Family|Upskill/.test(cats), "the starter categories are plain, none carries the owner's names");
-  await page.click('button[data-action="add-cat"]'); await page.fill("#c-name", "Pets"); await page.click('#c-bucket button[data-bucket="later"]'); await page.click("#f-save"); await seen(page, "#screen", "Pets");
+  await page.click('button[data-action="add-cat"]'); await page.fill("#c-name", "Pets"); await page.click("#c-type-later"); await page.click("#f-save"); await seen(page, "#screen", "Pets");
   await page.locator('.row:has-text("Fun") button[data-action="rename-cat"]').click(); await page.fill("#c-name", "Games"); await page.click("#f-save"); await seen(page, "#screen", "Games");
   const cs = JSON.parse((await stored(page)).local).state.categories;
   check(cs.some((c) => c.name === "Pets") && cs.find((c) => c.id === "cat-fun")?.name === "Games" && cs.find((c) => c.id === "cat-food")?.role === "food", "a category can be added and renamed; the id and the role stay");
@@ -1994,43 +1994,57 @@ const FIX = { v: 3, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings:
   check(JSON.stringify(sw.entries.filter((e) => e.transaction_id === swTx.id).map((e) => [e.account_id, e.amount])) === JSON.stringify([["pa", 10000], ["pb", 20000], ["wal", -30000]]), "Alpha is filled to its 100.00 target and Beta takes the other 200.00");
   await ctx.close(); }
 
-// ===== 5p. roles given by exact name are shown once, and can be changed =====
-console.log("Role notice");
+// ===== 5p. Types given by exact name are shown once, and can be changed =====
+console.log("Type notice");
 { const cats = OWNER_STYLE.state.categories.map((c) => c.id === "cat-shopping" ? { ...c, role: "shopping" } : c).concat([owner("cat-fun", "Fun", "fun")]);
   ({ ctx, page, errors } = await open({ blockSw: true, keepNotice: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, categories: cats } } }));
-  check(await seen(page, "#sheet", "Roles your categories were given"), "an upgraded ledger shows the role notice");
+  check(await seen(page, "#sheet", "Types your categories were given"), "an upgraded ledger shows the Type notice");
   let t = await text(page, "#sheet");
-  check((await page.locator("#sheet label").allInnerTexts()).join("|") === "Shopping|Fun", "the notice lists the categories that got a role by name, and no others");
+  check((await page.locator("#sheet label").allInnerTexts()).join("|") === "Shopping|Fun", "the notice lists the categories that got a Type by name, and no others");
   await page.selectOption("#r_cat-fun", "");
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.categories.find((c) => c.id === "cat-fun").role === undefined);
-  check(true, "choosing No role saves it at once");
+  check(true, "choosing No Type saves it at once");
   await page.click('#sheet button:has-text("I understand")');
   await page.reload(); await page.waitForSelector("#nav button");
-  check(!(await text(page, "#sheet")).includes("Roles your categories were given"), "it is not shown again");
+  check(!(await text(page, "#sheet")).includes("Types your categories were given"), "it is not shown again");
   const led = JSON.parse((await stored(page)).local);
-  check(led.settings.roles_notice_seen && led.state.categories.find((c) => c.id === "cat-shopping").role === "shopping" && led.state.categories.find((c) => c.id === "cat-fun").role === undefined, "the change stayed and the other role is untouched");
+  check(led.settings.roles_notice_seen && led.state.categories.find((c) => c.id === "cat-shopping").role === "shopping" && led.state.categories.find((c) => c.id === "cat-fun").role === undefined, "the change stayed and the other Type is untouched");
   await menuGo(page, "Setup");
   await page.click('button[data-action="cat-role"][data-id="cat-fun"]');
   await page.selectOption("#r_cat-fun", "shopping");
-  check(await seen(page, "body", "already has the role"), "a role already held by another category is refused in plain words");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.categories.find((c) => c.id === "cat-fun").role === "shopping");
+  const two = JSON.parse((await stored(page)).local).state.categories.filter((c) => c.role === "shopping").map((c) => c.id).sort();
+  check(two.join() === "cat-fun,cat-shopping" && !(await text(page, "body")).includes("already has"), "two categories can share a Type: nothing is refused");
   await ctx.close(); }
 
-// ===== 5q. buckets: needs, wants, savings =====
+// ===== 5q. Types and buckets: needs, wants, savings =====
 console.log("Buckets");
-{ const cats = OWNER_STYLE.state.categories.concat([owner("cat-util", "Utilities", "utilities"), owner("cat-fun", "Fun", "fun")]);
-  ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 2500000, roles_notice_seen: "2026-10-01T08:00:00.000+08:00" }, state: { ...OWNER_STYLE.state, categories: cats } } }));
+{ const cats = OWNER_STYLE.state.categories.concat([owner("cat-util", "Utilities", "utilities"), owner("cat-fun", "Fun", "fun"), owner("cat-coffee", "Coffee"), owner("cat-pets", "Pets"), owner("cat-misc", "Misc support", "family")]);
+  const rule = (id, cat, amount) => ({ id, kind: "budget", subject_id: cat, amount, effective_from: "2026-10-01", created_at: "2026-10-01T08:00:00.000+08:00" });
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 2500000, roles_notice_seen: "2026-10-01T08:00:00.000+08:00" },
+    state: { ...OWNER_STYLE.state, categories: cats, rules: [rule("r1", "cat-food", 500000), rule("r2", "cat-coffee", 100000), rule("r3", "cat-pets", 40000), rule("r4", "cat-misc", 60000)] } } }));
   await menuGo(page, "Budget");
   check(await seen(page, "#screen", "BUCKETS"), "the new Budget shows a Buckets block");
   let t = await text(page, "#screen");
   check(t.includes("Warren and Tyagi") && t.includes("not advice") && /Target 50\.0%/.test(t) && /Target 30\.0%/.test(t) && /Target 20\.0%/.test(t), "it names the rule of thumb and shows the 50/30/20 targets");
-  check(await page.locator('#screen .row[data-bucket="need"]').count() === 1 && await page.locator('#screen .row[data-bucket="want"]').count() === 1 && await page.locator('#screen .row[data-bucket="savings"]').count() === 1, "one row each for Needs, Wants and Savings");
-  check(t.includes("Need or want?") && t.includes("Family"), "a category with no role is asked \"Need or want?\"");
-  check(!(await page.locator('#screen button[data-action="pick-bucket"][data-id="cat-family"]').first().innerText()).includes("suggested"), "no guess is shown for Family");
-  await page.click('button[data-action="pick-bucket"][data-id="cat-family"][data-bucket="need"]');
-  await page.waitForFunction(() => !document.querySelector('#screen button[data-action="pick-bucket"][data-id="cat-family"]'));
-  check(true, "after one tap it is not asked again");
+  check(await page.locator('#screen .row[data-bucket="need"]').count() === 1 && await page.locator('#screen .row[data-bucket="want"]').count() === 1 && await page.locator('#screen .row[data-bucket="savings"]').count() === 1 && await page.locator('#screen .row[data-bucket="other"]').count() === 1, "one row each for Needs, Wants and Savings, and Other as its own line");
+  const wantsText = (await page.locator('#screen .row[data-bucket="want"]').innerText()).replace(/\s+/g, " ");
+  check(/1,000\.00/.test(wantsText), "Coffee, which is only a guess (Dining out), is counted in Wants");
+  const otherText = (await page.locator('#screen .row[data-bucket="other"]').innerText()).replace(/\s+/g, " ");
+  check(/1,000\.00/.test(otherText), "Pets (no guess) and the untyped Family-type category are counted in Other");
+  const warn = (await text(page, "#bud-unconfirmed")).replace(/\s+/g, " ");
+  check(/Includes .* from \d+ unconfirmed categories - confirm them/.test(warn), "one line says how much is unconfirmed and links to the rows (" + warn + ")");
+  check(t.includes("Confirm the Type") && /Coffee[\s\S]*Dining out \(guess\)/.test(t) && /Pets[\s\S]*Type not set/.test(t), "the rows to confirm show the guess, or that the Type is not set");
+  await page.click('button[data-action="goto-confirm"]');
+  await page.click('button[data-action="confirm-type"][data-id="cat-coffee"]');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.categories.find((c) => c.id === "cat-coffee").role === "dining");
   let led = JSON.parse((await stored(page)).local);
-  check(led.settings.bucket_overrides?.["cat-family"] === "need" && led.v === LEDGER_V, "the answer is kept in the settings, with the data version unchanged");
+  check(led.state.categories.find((c) => c.id === "cat-coffee").role === "dining" && led.v === LEDGER_V, "one tap confirms the guess and stores it as the Type, the data version unchanged");
+  check(await page.locator('#screen button[data-action="confirm-type"][data-id="cat-coffee"]').count() === 0, "a confirmed category leaves the list");
+  check(t.includes("Need or want?") && t.includes("Misc support"), "a category of the Type Family or Other is asked Need or want, once");
+  await page.click('button[data-action="pick-bucket"][data-id="cat-misc"][data-bucket="need"]');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.bucket_overrides?.["cat-misc"] === "need");
+  check(true, "the answer is kept in the settings");
   await page.click('button[data-action="open-targets"]');
   await page.fill("#t-need", "60"); await page.fill("#t-want", "20"); await page.fill("#t-savings", "20");
   check(await page.locator("#f-save").isEnabled(), "targets that add to 100 can be saved");
@@ -2038,27 +2052,69 @@ console.log("Buckets");
   check(!(await page.locator("#f-save").isEnabled()) && (await text(page, "#t-msg")).includes("add up to 100"), "targets that do not add to 100 are refused in plain words");
   await page.fill("#t-want", "20"); await page.click("#f-save");
   check(await seen(page, "#screen", "Target 60.0%"), "the new targets show");
-  led = JSON.parse((await stored(page)).local);
-  check(JSON.stringify(led.settings.bucket_targets) === JSON.stringify({ need: 6000, want: 2000, savings: 2000 }), "and are kept");
   await page.click('button[data-action="clear-targets"]');
   check(await seen(page, "#screen", "Target 50.0%"), "Use 50/30/20 again brings the rule of thumb back");
   await menuGo(page, "Setup");
-  await page.click('button[data-action="add-cat"]'); await page.fill("#c-name", "Coffee");
-  check(!(await page.locator("#f-save").isEnabled()), "a new category cannot be saved until Need or want is tapped");
-  check(/want \(suggested\)/i.test(await text(page, "#c-bucket")) && !/need \(suggested\)/i.test(await text(page, "#c-bucket")), "the name gives a hint on Want only");
-  check(!(await page.locator('#c-bucket [aria-pressed="true"]').count()), "and the hint is not chosen for you");
-  await page.click('#c-bucket button[data-bucket="want"]');
-  check(await page.locator("#f-save").isEnabled(), "after a tap it can be saved");
+  const setupText = await text(page, "#screen");
+  check(/Pets \u00b7 Type not set \u00b7 Other/.test(setupText) && /Coffee \u00b7 Dining out \u00b7 Wants/.test(setupText) && /Utilities \u00b7 Utilities \u00b7 Needs/.test(setupText), "Setup rows read Name, Type, Bucket");
+  await page.click('button[data-action="add-cat"]'); await page.fill("#c-name", "Milk tea");
+  check(!(await page.locator("#f-save").isEnabled()), "a new category cannot be saved until a Type is chosen");
+  check(/dining out \(guess\)/i.test(await text(page, "#c-guesswrap")), "the name gives a guess, in the words Use Dining out (guess)");
+  check(!(await page.locator('#c-guess[aria-pressed="true"]').count()), "and the guess is not chosen for you");
+  await page.click("#c-guess");
+  check(await page.locator("#f-save").isEnabled(), "after one tap it can be saved");
   await page.click("#f-save");
-  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.categories.some((c) => c.name === "Coffee"));
-  led = JSON.parse((await stored(page)).local); const cof = led.state.categories.find((c) => c.name === "Coffee");
-  check(led.settings.bucket_overrides?.[cof.id] === "want", "the answer is remembered for the new category");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.categories.some((c) => c.name === "Milk tea"));
+  led = JSON.parse((await stored(page)).local); const mt = led.state.categories.find((c) => c.name === "Milk tea");
+  check(mt.role === "dining", "the confirmed Type is stored on the new category");
   await page.click('button[data-action="cat-role"][data-id="cat-util"]');
-  check((await text(page, "#sheet")).includes("Automatic: Needs"), "Setup shows the automatic bucket from the role, and can change it");
+  check((await text(page, "#sheet")).includes("Follows the Type: Needs"), "the Type window shows the bucket that follows from the Type, and can change it");
   await page.selectOption("#b_cat-util", "want");
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.bucket_overrides?.["cat-util"] === "want");
   check(true, "choosing another bucket saves it at once");
   check(errors.length === 0, "no script errors in the buckets flow");
+  await ctx.close(); }
+
+// ===== 5r. savings as goals =====
+console.log("Savings as goals");
+{ const acct = (id, name) => ({ id, name, class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-09-01" });
+  const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 2500000, starter_rent: 0, roles_notice_seen: "2026-10-01T08:00:00.000+08:00" },
+    state: { ...OWNER_STYLE.state, accounts: [acct("p1", "Pocket One"), acct("p2", "Pocket Two")], goals: [{ id: "ga", account_id: "p1", name: "Alpha", hidden_by_default: true }, { id: "gb", account_id: "p2", name: "Beta", hidden_by_default: true }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Budget");
+  check(await seen(page, "#screen", "Alpha") && (await text(page, "#screen")).includes("Beta"), "Saved and set aside lists each goal");
+  let t = await text(page, "#screen");
+  check(/overrun buffer/i.test(t) && /not savings/i.test(t), "the overrun buffer is its own line and says it is not savings");
+  check(await page.locator('#bud-buffer-line').count() === 1 && !(await text(page, "#bud-saved-total")).includes("buffer"), "the Saved total does not include the buffer");
+  const amountOf = async (name) => { const row = page.locator('#screen .row', { hasText: name }).filter({ has: page.locator('button[data-action="open-goal-monthly"]') }).first(); return (await row.innerText()).replace(/\s+/g, " "); };
+  const before = await amountOf("Alpha");
+  await page.click('.row:has-text("Alpha") button[data-action="open-goal-monthly"]');
+  await page.fill("#f-amount", "1234.50"); await page.click("#f-save");
+  check(await seen(page, "#screen", "The amount you typed") && /1,234\.50/.test(await amountOf("Alpha")), "a typed monthly amount for a goal is shown exactly and marked as typed");
+  let led = JSON.parse((await stored(page)).local);
+  check(led.settings.goal_monthly?.ga === 123450 && led.v === LEDGER_V, "it is kept in the settings, the data version unchanged");
+  await page.click('.row:has-text("Alpha") button[data-action="open-goal-monthly"]');
+  await page.click('button[data-action="clear-goal-monthly"]');
+  await page.waitForFunction(() => !JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.goal_monthly?.ga);
+  check((await amountOf("Alpha")) === before, "Use the suggestion again brings the suggested amount back");
+  await page.click('button[data-action="open-savings"]');
+  check((await text(page, "#sheet")).includes("savings category") && await page.locator('#sheet button[data-action="pick-goal-role"]').count() === 1, "Add a savings category opens the goal window");
+  await page.fill("#g-name", "Cushion"); await page.click("#f-save");
+  check(await seen(page, "#screen", "Cushion"), "the new savings category appears in Saved and set aside");
+  led = JSON.parse((await stored(page)).local);
+  const cush = led.state.goals.find((x) => x.name === "Cushion");
+  check(cush && cush.account_id === undefined && cush.target === undefined, "it is a goal with no account yet and no target");
+  await page.click('button[data-action="open-shares"]');
+  const ids = await page.locator('#sheet input[data-field^="s_"]').count();
+  check(ids === 3, "the percentages window lists the three goals that share what is left");
+  await page.fill('input[data-field="s_ga"]', "50"); await page.fill('input[data-field="s_gb"]', "30");
+  check(!(await page.locator("#f-save").isEnabled()), "percentages that do not add to 100 are refused");
+  await page.fill(`input[data-field="s_${cush.id}"]`, "20");
+  check(await page.locator("#f-save").isEnabled(), "percentages that add to 100 can be saved");
+  await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.goal_shares?.ga === 5000);
+  check(true, "and are kept");
+  check(errors.length === 0, "no script errors in the savings flow");
   await ctx.close(); }
 
 // ===== 6. wrong phone, wrong place =====
