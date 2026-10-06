@@ -1244,12 +1244,20 @@ function viewChecks() {
 const plansOf = () => ledger.settings.plans ?? [];
 const planOf = () => M.planInEffect(plansOf(), today());
 const paydayText = (d) => (d === "last" ? "the last day of the month" : "the " + d + ord(d));
+const paydaysLine = (plan) => (plan.paydays.length === 1
+  ? `Payday on ${paydayText(plan.paydays[0].day)}. In effect since ${longDate(plan.effective_from)}.`
+  : `Paydays on ${paydayText(plan.paydays[0].day)} and ${paydayText(plan.paydays[1].day)}. In effect since ${longDate(plan.effective_from)}.`);
 function viewPlan() {
   const plan = planOf(), all = plansOf();
   if (!plan) return `<h1>Pay plan</h1><p class="note">${all.length ? "Your plan starts " + esc(longDate([...all].sort((x, y) => (x.effective_from < y.effective_from ? -1 : 1))[0].effective_from)) + "." : "Your plan for each payday: how much goes to rent, daily spending and savings. You can skip it. Budget works without it."}</p>
     <p><button class="primary" data-action="open-plan">Load a plan</button></p>`;
-  const t = M.planTotals(plan), [p1, p2] = plan.paydays;
-  const lines = plan.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="n">${peso(l.first)}</td><td class="n">${peso(l.second)}</td><td class="n">${peso(l.first + l.second)}</td></tr>`).join("");
+  return `<h1>Pay plan</h1><p class="sub">This divides each payday. Budget sets your limit per category for the month.</p><p class="sub">${esc(paydaysLine(plan))}</p>
+    ${planBody(plan, all)}`;
+}
+// The plan's tables: lines by payday, income against what arrived, this cutoff. Shared by the Pay plan screen and the Budget's "By payday" section.
+function planBody(plan, all) {
+  const t = M.planTotals(plan), two = plan.paydays.length === 2, [p1, p2] = plan.paydays;
+  const lines = plan.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="n">${peso(l.first)}</td>${two ? `<td class="n">${peso(l.second)}</td>` : ""}<td class="n">${peso(l.first + l.second)}</td></tr>`).join("");
   const prog = M.planProgress(S(), plan, today(), { categoryMaps: S().categoryMaps });
   const mine = prog.rows.filter((r) => r.kind === "expense" && r.matched);
   const unmatched = prog.rows.filter((r) => r.kind === "expense" && !r.matched);
@@ -1260,9 +1268,8 @@ function viewPlan() {
   const ivar = (v) => v === 0 ? "As planned" : (v > 0 ? "+" : "\u2212") + peso(Math.abs(v)) + (v > 0 ? " more" : " less");
   const incomeRows = [M.planIncome(S(), plan, day(prog.period.start, -1)), M.planIncome(S(), plan, today())].map((v) =>
     `<tr><td>${esc(v.label)}<small> ${esc(longDate(v.period.start))}</small></td><td class="n">${peso(v.planned)}</td><td class="n">${peso(v.actual)}</td><td class="n">${esc(ivar(v.variance))}</td></tr>`).join("");
-  return `<h1>Pay plan</h1><p class="sub">This divides each payday. Budget sets your limit per category for the month.</p><p class="sub">Paydays on ${esc(paydayText(p1.day))} and ${esc(paydayText(p2.day))}. In effect since ${esc(longDate(plan.effective_from))}.</p>
-    <table class="tbl"><tr><th>Line</th><th class="n">${esc(p1.label)}</th><th class="n">${esc(p2.label)}</th><th class="n">Monthly</th></tr>${lines}
-      <tr class="total"><td>Total (= income)</td><td class="n">${peso(t.first)}</td><td class="n">${peso(t.second)}</td><td class="n">${peso(t.month)}</td></tr></table>
+  return `<table class="tbl"><tr><th>Line</th><th class="n">${esc(p1.label)}</th>${two ? `<th class="n">${esc(p2.label)}</th>` : ""}<th class="n">Monthly</th></tr>${lines}
+      <tr class="total"><td>Total (= income)</td><td class="n">${peso(t.first)}</td>${two ? `<td class="n">${peso(t.second)}</td>` : ""}<td class="n">${peso(t.month)}</td></tr></table>
     <h2>Income</h2><table class="tbl"><tr><th>Payday</th><th class="n">Plan</th><th class="n">Received</th><th class="n">Difference</th></tr>${incomeRows}</table>
     <p class="note">The plan holds planning income. Real pay, from your payslip, is recorded below and the gap is only shown here, never changed in the plan.</p>
     <p><button data-action="open-income" style="width:100%">Record pay received</button></p>
@@ -1377,6 +1384,7 @@ function viewBudgetNew() {
   return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${head}
     <h2>Spending</h2>${spendRows}<p class="note" id="bud-spend-total">Total budgeted: ${peso(spendTotal)}${pct(spendTotal)}</p>
     <h2>Saved and set aside</h2>${savedHtml}<p class="note" id="bud-saved-total">Total: ${peso(savedTotal)}${pct(savedTotal)}</p>${sum}
+    ${byPaydaySection()}
     <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
 }
 
@@ -1401,6 +1409,27 @@ async function savePinsFromForm() {
   const pins = { ...(ledger.settings.budget_pins ?? {}), ...d.typed };
   for (const id of Object.keys(f.used ?? {})) delete pins[id];
   if (JSON.stringify(pins) !== JSON.stringify(ledger.settings.budget_pins ?? {})) await commit(S(), { ...ledger.settings, budget_pins: pins }, { quiet: true });
+}
+
+// "By payday": the pay plan, inside Budget. The plan and the budgets it implies are written by ONE save (M.planWithBudgets), and this says whether they agree.
+function byPaydaySection() {
+  const plan = planOf(), all = plansOf(), month = M.monthOf(today()), next = M.addMonths(month, 1);
+  if (!plan) return `<h2 id="by-payday">By payday</h2><p class="note">Your plan for each payday: how much goes to rent, daily spending and savings. You can skip it. Budget works without it.</p>
+    <p><button data-action="open-plan" style="width:100%">Load a plan</button></p>`;
+  const now = M.planBudgetMismatches(S(), ledger.settings, month), then = M.planBudgetMismatches(S(), ledger.settings, next);
+  const miss = now.unmatched.length ? ` No budget for ${esc(now.unmatched.join(", "))}: no spending category has that name.` : "";
+  const agree = !now.plan ? "" : then.mismatches.length === 0 ? (now.mismatches.length === 0 ? `<p class="note" id="plan-agree">Your plan and your budgets agree for ${esc(M.monthLabel(month))}.${miss}</p>`
+      : `<p class="note" id="plan-agree">Your budgets will match your plan from ${esc(M.monthLabel(next))}.${miss}</p>`)
+    : `<p class="note" id="plan-differ"><b>Your budgets differ from your plan:</b> ${esc(then.mismatches.map((m) => `${m.name} budget ${m.budget === null ? "none" : peso(m.budget)}, plan ${peso(m.planned)}`).join("; "))}.${miss}</p>
+      <p><button data-action="sync-plan-budgets" style="width:100%">Make the budgets match the plan, from ${esc(M.monthLabel(next))}</button></p>`;
+  return `<h2 id="by-payday">By payday</h2><p class="sub">This divides each payday. Budget sets your limit per category for the month.</p><p class="sub">${esc(paydaysLine(plan))}</p>${agree}
+    ${planBody(plan, all)}`;
+}
+
+// With the new Budget on, saving a plan also sets the budgets it implies (one save). This says which, before anything is saved.
+function planBudgetPreview(plan) {
+  const { rows, unmatched } = M.planBudgetRows(S(), plan), from = M.budgetMonthFor(plan.effective_from);
+  return `<p class="note">Saving also sets these budgets from ${esc(M.monthLabel(from))}: ${rows.length ? esc(rows.map((r) => `${r.name} ${peso(r.amount)}`).join(", ")) : "none"}.${unmatched.length ? ` No budget for ${esc(unmatched.join(", "))}: no spending category has that name.` : ""}</p>`;
 }
 
 function viewBudgetOld() {
@@ -1881,7 +1910,7 @@ function refreshSave() {
     const r = (f.text ?? "").trim() ? M.parsePlan(f.text) : null, out = $("p-prev");
     btn.disabled = !r?.ok;
     if (out) out.innerHTML = !r ? "" : r.ok
-      ? `<p class="note"><b>Looks good:</b> starts ${esc(longDate(r.plan.effective_from))}, paydays on ${esc(paydayText(r.plan.paydays[0].day))} and ${esc(paydayText(r.plan.paydays[1].day))}, ${r.plan.lines.length} lines, ${peso(M.planTotals(r.plan).month)} a month.</p>`
+      ? `<p class="note"><b>Looks good:</b> starts ${esc(longDate(r.plan.effective_from))}, ${r.plan.paydays.length === 1 ? "payday on " + esc(paydayText(r.plan.paydays[0].day)) : "paydays on " + esc(paydayText(r.plan.paydays[0].day)) + " and " + esc(paydayText(r.plan.paydays[1].day))}, ${r.plan.lines.length} lines, ${peso(M.planTotals(r.plan).month)} a month.</p>${ledger.settings.try_new_budget ? planBudgetPreview(r.plan) : ""}`
       : `<p role="alert" class="note"><b>${esc(r.error)}</b></p>`;
   } else if (type === "goal") {
     const a = f.amount ? M.parsePesos(f.amount) : { ok: true };
@@ -1988,6 +2017,15 @@ async function onClick(el) {
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
     case "open-month": ui.period = { kind: "month", month: id }; ui.view = "budget"; ui.sel = null; ui.asList = false; renderScreen(); break;
     case "pick-bar": ui.sel = ui.sel === id ? null : id; renderScreen(); break;
+    case "sync-plan-budgets": {
+      const month = M.addMonths(M.monthOf(today()), 1), plan = M.planInEffect(plansOf(), month + "-01");
+      if (!plan) break;
+      const w = M.planWithBudgets(S(), ledger.settings, { plan, newId: () => newId("rule"), start: month, addPlanRow: false });
+      if (!w.ok) { showToast("Could not save: " + w.message); break; }
+      await commit(w.state, w.settings);
+      showToast((w.changes.length === 1 ? "1 budget" : w.changes.length + " budgets") + " set from " + M.monthLabel(month) + ".");
+      break;
+    }
     case "toggle-new-budget": await commit(S(), { ...ledger.settings, try_new_budget: !ledger.settings.try_new_budget }); break;
     case "open-income-base": { const cur = ledger.settings.income_base_pin; ui.sheet = { type: "budget-income" }; ui.form = { amount: cur ? (cur / 100).toFixed(2) : "" }; renderSheet(); break; }
     case "save-income-base": { const a = M.parsePesos(ui.form.amount); if (!a.ok || a.centavos <= 0) break; ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, income_base_pin: a.centavos }); showToast("Income figure set"); break; }
@@ -2213,6 +2251,14 @@ async function onClick(el) {
     case "save-plan": {
       const r = M.parsePlan(ui.form.text ?? "");
       if (!r.ok) { showToast(r.error); break; }
+      if (ledger.settings.try_new_budget) {   // the new Budget: the plan row and its budgets are written together, or not at all
+        const w = M.planWithBudgets(S(), ledger.settings, { plan: r.plan, newId: () => newId("rule") });
+        if (!w.ok) { showToast(w.message); break; }
+        ui.sheet = null; renderSheet();
+        await commit(w.state, w.settings);
+        showToast(w.changes.length ? "Plan loaded. " + (w.changes.length === 1 ? "1 budget" : w.changes.length + " budgets") + " set from " + M.monthLabel(w.month) + "." : "Plan loaded. The budgets already match.");
+        break;
+      }
       const added = M.addPlan(plansOf(), r.plan);
       if (!added.ok) { showToast(added.error); break; }
       ui.sheet = null; renderSheet();

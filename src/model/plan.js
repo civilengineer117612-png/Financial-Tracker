@@ -38,12 +38,13 @@ export function parsePlan(text) {
   if (!mult) return fail("The file must declare its unit as \"PHP_whole_pesos\" or \"PHP_centavos\". An amount without a unit is never guessed.");
   if (typeof raw.effective_from !== "string" || !isPhDate(raw.effective_from)) return fail("The plan needs an effective_from date like 2026-10-15.");
 
-  if (!Array.isArray(raw.paydays) || raw.paydays.length !== 2) return fail("A plan needs exactly two paydays.");
-  const [a, b] = raw.paydays;
+  // One payday (monthly pay) or two. A one-payday plan puts everything in "first"; "second" is left out or zero.
+  if (!Array.isArray(raw.paydays) || (raw.paydays.length !== 2 && raw.paydays.length !== 1)) return fail("A plan needs one payday (monthly pay) or two paydays.");
+  const single = raw.paydays.length === 1, [a, b] = raw.paydays;
   if (!Number.isInteger(a?.day) || a.day < 1 || a.day > 28) return fail("The 1st payday day must be a whole number from 1 to 28.");
-  if (!(b?.day === "last" || (Number.isInteger(b?.day) && b.day > a.day && b.day <= 28))) return fail("The 2nd payday day must be \"last\" (the last day of the month) or a day from " + (a.day + 1) + " to 28.");
-  if (!whole(a.expected_income) || !whole(b.expected_income)) return fail("Each payday needs an expected_income in whole " + (mult === 100 ? "pesos" : "centavos") + ".");
-  const paydays = [a, b].map((p, i) => ({ label: typeof p.label === "string" && p.label.trim() ? p.label.trim().slice(0, 40) : i === 0 ? "1st payday" : "2nd payday", day: p.day, income: p.expected_income * mult }));
+  if (!single && !(b?.day === "last" || (Number.isInteger(b?.day) && b.day > a.day && b.day <= 28))) return fail("The 2nd payday day must be \"last\" (the last day of the month) or a day from " + (a.day + 1) + " to 28.");
+  if (!whole(a.expected_income) || (!single && !whole(b.expected_income))) return fail("Each payday needs an expected_income in whole " + (mult === 100 ? "pesos" : "centavos") + ".");
+  const paydays = raw.paydays.map((p, i) => ({ label: typeof p.label === "string" && p.label.trim() ? p.label.trim().slice(0, 40) : i === 0 ? "1st payday" : "2nd payday", day: p.day, income: p.expected_income * mult }));
 
   if (!Array.isArray(raw.lines) || raw.lines.length === 0 || raw.lines.length > 60) return fail("A plan needs between 1 and 60 lines.");
   const lines = [], names = new Set();
@@ -54,12 +55,13 @@ export function parsePlan(text) {
     names.add(key(name));
     const kind = l.kind ?? "expense";
     if (!KINDS.includes(kind)) return fail("Line \"" + name + "\" has an unknown kind.");
-    if (!whole(l.first) || !whole(l.second)) return fail("Line \"" + name + "\" needs whole " + (mult === 100 ? "peso" : "centavo") + " amounts of zero or more.");
-    lines.push({ name, kind, first: l.first * mult, second: l.second * mult });
+    if (single && l.second !== undefined && l.second !== 0) return fail("Line \"" + name + "\" has a second amount, but the plan has one payday.");
+    if (!whole(l.first) || !whole(single ? 0 : l.second)) return fail("Line \"" + name + "\" needs whole " + (mult === 100 ? "peso" : "centavo") + " amounts of zero or more.");
+    lines.push({ name, kind, first: l.first * mult, second: single ? 0 : l.second * mult });
   }
 
   // Each payday's lines must sum to that payday's income, to the centavo.
-  for (const [i, field] of [[0, "first"], [1, "second"]]) {
+  for (const [i, field] of [[0, "first"], [1, "second"]].slice(0, paydays.length)) {
     const sum = lines.reduce((n, l) => n + l[field], 0), income = paydays[i].income;
     if (sum !== income) return fail("The lines for the " + paydays[i].label + " add up to " + sum / mult + " but its expected income is " + income / mult + " (" + (sum > income ? "over by " : "short by ") + Math.abs(sum - income) / mult + ").");
   }
@@ -133,6 +135,10 @@ const dayBefore = (iso) => new Date(Date.parse(iso) - 86400000).toISOString().sl
 // The cutoff a date falls in: from one payday up to the day before the next. index 1 starts on the first payday.
 export function cutoffFor(plan, date) {
   const [y, m, d] = date.split("-").map(Number);
+  if (plan.paydays.length === 1) {   // monthly pay: the cutoff is the whole stretch from one payday to the day before the next
+    const p = plan.paydays[0].day, nx = m === 12 ? [y + 1, 1] : [y, m + 1], pv = m === 1 ? [y - 1, 12] : [y, m - 1];
+    return d >= dayIn(p, y, m) ? { index: 1, start: at(y, m, p), end: dayBefore(at(nx[0], nx[1], p)) } : { index: 1, start: at(pv[0], pv[1], p), end: dayBefore(at(y, m, p)) };
+  }
   const [p1, p2] = plan.paydays.map((p) => p.day);
   const nextY = m === 12 ? y + 1 : y, nextM = m === 12 ? 1 : m + 1, prevY = m === 1 ? y - 1 : y, prevM = m === 1 ? 12 : m - 1;
   if (d >= dayIn(p2, y, m)) return { index: 2, start: at(y, m, p2), end: dayBefore(at(nextY, nextM, p1)) };

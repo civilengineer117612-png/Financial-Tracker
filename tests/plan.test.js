@@ -55,7 +55,7 @@ test("a plan is dated, and the 2nd payday can be the last day of the month", () 
 test("a bad plan file is refused in plain words, never thrown", () => {
   const bad = [
     ["not json", "{", /could not be read/], ["schema", file((o) => { o.schema_version = 2; }), /schema_version 1/],
-    ["one payday", file((o) => { o.paydays.pop(); }), /two paydays/], ["2nd before 1st", file((o) => { o.paydays[1].day = 10; }), /2nd payday day/],
+    ["one payday but two-payday amounts", file((o) => { o.paydays.pop(); }), /second amount, but the plan has one payday/], ["three paydays", file((o) => { o.paydays.push({ day: "last", expected_income: 1 }); }), /one payday \(monthly pay\) or two/], ["2nd before 1st", file((o) => { o.paydays[1].day = 10; }), /2nd payday day/],
     ["no income", file((o) => { delete o.paydays[0].expected_income; }), /expected_income/], ["no lines", file((o) => { o.lines = []; }), /1 and 60/],
     ["duplicate line", file((o) => { o.lines[1].name = "FOOD"; }), /twice/],
     ["negative", file((o) => { o.lines[1].first = -1; }), /whole peso/], ["bad kind", file((o) => { o.lines[1].kind = "x"; }), /unknown kind/],
