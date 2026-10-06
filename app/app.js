@@ -1653,9 +1653,12 @@ function renderSheet() {
       ${a.icon || a.icon_url || bankLogo(a.bank ?? M.bankForName(a.name)?.id) ? `<p><button data-action="clear-icon" style="width:100%">Remove the picture</button></p>` : ""}`;
   } else if (sh.type === "backup") {
     body = `<h3>Back up now</h3>
-      <p class="note">Choose a passphrase of at least ${M.MIN_PASSPHRASE} characters. Write it down in two places, away from this phone. Without it nobody can open the backup, not even me.</p>
-      <label for="b-pass">Passphrase</label><input id="b-pass" data-field="pass" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(ui.form.pass ?? "")}">
-      <label for="b-pass2">Passphrase again</label><input id="b-pass2" data-field="pass2" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(ui.form.pass2 ?? "")}">
+      <p class="note">Choose a passphrase of at least ${M.MIN_PASSPHRASE} characters. Without it nobody can open the backup, not even me. Your phone may offer to make a strong one and keep it in Passwords: accept that. Or tap "Make one for me" and save it yourself. This app never keeps your passphrase.</p>
+      <input class="sr" type="text" name="username" autocomplete="username" value="Finance backup" readonly tabindex="-1" aria-hidden="true">
+      <label for="b-pass">Passphrase</label><input id="b-pass" data-field="pass" name="password" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" value="${esc(ui.form.pass ?? "")}">
+      <label for="b-pass2">Passphrase again</label><input id="b-pass2" data-field="pass2" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" value="${esc(ui.form.pass2 ?? "")}">
+      <p><button data-action="make-passphrase" style="width:100%">Make one for me</button></p>
+      ${ui.form.made ? `<p class="note">Your passphrase. Save it now in Passwords (Add Password, name it Finance backup), or write it on paper:</p><p class="passbox" id="b-made">${esc(ui.form.made)}</p><p><button data-action="copy-passphrase" style="width:100%">Copy it</button></p>` : ""}
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="make-backup" disabled>Create backup file</button></p>
       <p class="note">Next you choose where to keep the file, for example Save to Files. It is encrypted, so it is safe in iCloud Drive or on a flash drive.</p>`;
@@ -1681,7 +1684,8 @@ function renderSheet() {
       <p class="note">This replaces everything on this phone with the backup.</p>
       <p class="note">Pictures of receipts and payslips are not in a backup. Entries come back without their pictures.</p>
       <label for="r-file">Backup file</label><input id="r-file" data-field="file" type="file" accept=".json,application/json">
-      <label for="r-pass">Passphrase</label><input id="r-pass" data-field="pass" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <input class="sr" type="text" name="username" autocomplete="username" value="Finance backup" readonly tabindex="-1" aria-hidden="true">
+      <label for="r-pass">Passphrase</label><input id="r-pass" data-field="pass" name="password" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false">
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="open-backup-file" disabled>Open backup</button></p>`;
   } else if (sh.type === "restore") {
@@ -2306,6 +2310,12 @@ async function onClick(el) {
     case "open-backup": ui.sheet = { type: "backup" }; ui.form = {}; renderSheet(); break;
     case "open-restore": ui.sheet = { type: "restore" }; ui.form = {}; renderSheet(); break;
     case "make-backup": await makeBackup(); break;
+    case "make-passphrase": { const made = M.makePassphrase(); ui.form = { ...ui.form, pass: made, pass2: made, made }; renderSheet(); break; }   // shown on screen, kept nowhere
+    case "copy-passphrase": {
+      try { await navigator.clipboard.writeText(ui.form.made); showToast("Copied. Paste it into Passwords or a note you trust."); }
+      catch { showToast("Could not copy. Select the passphrase and copy it by hand."); }
+      break;
+    }
     case "open-backup-file": await openBackupFile(); break;
     case "restore-now": await restoreNow(); break;
     case "add-account": await addAccount(); break;

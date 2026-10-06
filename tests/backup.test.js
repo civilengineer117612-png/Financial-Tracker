@@ -60,3 +60,37 @@ test("a backup that decrypts fine but holds invalid data is refused on restore",
   const backup = { v: 1, kdf: "PBKDF2-SHA256", iterations: 600000, salt: b64(salt), iv: b64(iv), data: b64(data) };
   await assert.rejects(decryptBackup(backup, PASS), /data is invalid/);
 });
+
+// ----- a passphrase the app can suggest (the phone's own Passwords does the saving; the app keeps nothing) -----
+import { makePassphrase, PASSPHRASE_CHARS, MIN_PASSPHRASE } from "../src/model/index.js";
+import { readFileSync } from "node:fs";
+const appJs = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
+
+test("a suggested passphrase is 20 easy-to-read characters in four groups, long enough for a backup, and different each time", () => {
+  const p = makePassphrase();
+  assert.match(p, /^[2-9a-hjkmnp-z]{5}(-[2-9a-hjkmnp-z]{5}){3}$/);
+  assert.ok(p.length >= MIN_PASSPHRASE);
+  assert.ok(!/[ilo01]/.test(PASSPHRASE_CHARS), "no look-alike characters");
+  assert.equal(new Set(Array.from({ length: 50 }, () => makePassphrase())).size, 50);
+});
+test("the suggestion draws bytes without bias: bytes of 248 or more are thrown away", () => {
+  const seq = [255, 248, 250, 0, 1, 30, 31, 247, ...Array(60).fill(7)];
+  let i = 0; const fill = (b) => { for (let k = 0; k < b.length; k++) b[k] = seq[i++ % seq.length]; return b; };
+  const p = makePassphrase(fill).replace(/-/g, "");
+  assert.equal(p.slice(0, 5), [0, 1, 30, 0, 30].map((x) => PASSPHRASE_CHARS[x]).join(""), "255, 248 and 250 skipped; 31 wraps to 0, 247 is the last character");
+  assert.equal(p.length, 20);
+  const seq2 = Array.from({ length: 20 }, (_, k) => k), fill2 = (b) => { b.fill(0); seq2.forEach((x, k) => { b[k] = x; }); return b; };
+  assert.equal(makePassphrase(fill2), [0, 1, 2, 3, 4].map((x) => PASSPHRASE_CHARS[x]).join("") + "-" + [5, 6, 7, 8, 9].map((x) => PASSPHRASE_CHARS[x]).join("") + "-" + [10, 11, 12, 13, 14].map((x) => PASSPHRASE_CHARS[x]).join("") + "-" + [15, 16, 17, 18, 19].map((x) => PASSPHRASE_CHARS[x]).join(""), "every drawn character is used once, in order");
+});
+test("the suggested passphrase really opens a backup made with it", async () => {
+  const p = makePassphrase(), box = await encryptBackup({ accounts: [], envelopes: [], goals: [], transactions: [], entries: [], categories: [] }, p);
+  await assert.doesNotReject(decryptBackup(box, p));
+  await assert.rejects(decryptBackup(box, makePassphrase()));
+});
+test("the backup sheet asks the phone to offer a new password; the restore sheet asks for the saved one; the app never writes a passphrase anywhere", () => {
+  assert.match(appJs, /id="b-pass"[^>]*autocomplete="new-password"/); assert.match(appJs, /id="b-pass2"[^>]*autocomplete="new-password"/);
+  assert.match(appJs, /id="r-pass"[^>]*autocomplete="current-password"/);
+  assert.equal((appJs.match(/autocomplete="username"/g) ?? []).length, 2, "a username field lets the phone label the saved entry");
+  assert.ok(!/localStorage[^\n]*pass|settings[^\n]*\.pass\b|commit\([^\n]*(form\.pass|made)/.test(appJs), "the passphrase is never saved by the app");
+  assert.match(appJs, /case "make-passphrase"[^\n]*M\.makePassphrase\(\)[^\n]*pass: made, pass2: made, made/, "both fields get the same passphrase");
+});

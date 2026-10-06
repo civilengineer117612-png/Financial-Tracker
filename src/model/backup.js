@@ -10,6 +10,19 @@ export { validateState } from "./validate.js";
 const ITERATIONS = 600000;     // PBKDF2-SHA256; deliberately slow so guessing is slow
 export const MIN_PASSPHRASE = 12;
 
+// A strong passphrase the app can suggest when the phone does not: 20 letters and digits in four groups, e.g. "k7m2q-9xrte-..." Characters that look alike
+// (i, l, o, 0, 1) are left out so it can be read back from paper. `fill(bytes)` fills a Uint8Array with random bytes (crypto.getRandomValues by default).
+// Bytes are drawn without bias: a byte of 248 or more is thrown away (31 characters divide 248 evenly). Nothing here is stored.
+export const PASSPHRASE_CHARS = "23456789abcdefghjkmnpqrstuvwxyz";
+export function makePassphrase(fill = (b) => crypto.getRandomValues(b)) {
+  const out = [], need = 20, limit = PASSPHRASE_CHARS.length * 8;
+  while (out.length < need) {
+    const bytes = fill(new Uint8Array(32));
+    for (const x of bytes) { if (x < limit && out.length < need) out.push(PASSPHRASE_CHARS[x % PASSPHRASE_CHARS.length]); }
+  }
+  return [0, 5, 10, 15].map((i) => out.slice(i, i + 5).join("")).join("-");
+}
+
 const b64 = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
