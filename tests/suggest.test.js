@@ -136,7 +136,7 @@ test("a pinned line is never changed; the difference from the suggestion is retu
   const free = run(s), r = run(s, { pinned: [{ name: "food", first: 100000, second: 120000 }] });
   assert.deepEqual([line(r, 0, "Food").amount, line(r, 1, "Food").amount], [100000, 120000]);
   assert.equal(line(r, 0, "Food").pinned, true); assert.match(line(r, 0, "Food").reason, /Pinned by you/);
-  const d = r.differences.find((x) => x.name === "food");
+  const d = r.differences.find((x) => x.name === "Food");
   assert.deepEqual(d.suggested, { first: line(free, 0, "Food").amount, second: line(free, 1, "Food").amount });
   assert.deepEqual(d.difference, { first: 100000 - d.suggested.first, second: 120000 - d.suggested.second });
   assert.ok(balances(r));
@@ -207,7 +207,7 @@ test("money must be whole centavos: a float is refused, never rounded", () => {
   assert.equal(resolveSettings({ starter: { needs: 5000, wants: 3000, savings: 1500, buffer: 600 } }).ok, false, "the ratios must add up to 100%");
   assert.equal(resolveSettings({ starter: { needs: 5000.5, wants: 2999.5, savings: 1500, buffer: 500 } }).ok, false);
   assert.equal(run(s, { month: "2026-13" }).ok, false);
-  assert.equal(run(s, { paydays: [PAYDAYS[0]] }).ok, false);
+  assert.equal(run(s, { paydays: [] }).ok, false);
 });
 
 test("the starter ratios live in ONE settings table and are used nowhere else", () => {
@@ -281,4 +281,20 @@ test("a reached goal listed first never takes the leftover: it goes to the first
   });
   const u = run(t), got = (name) => u.paydays.reduce((a, p) => a + (p.lines.find((l) => l.name === name)?.amount ?? 0), 0);
   assert.deepEqual([got("Done Pot"), got("Open Pot")], [0, 450000]);
+});
+
+test("monthly pay (one payday): everything lands on the one payday, the whole month is its stretch, and the books still balance", () => {
+  const s = withHistory();
+  const r = suggestPlan({ state: s, paydays: [{ id: "month", label: "Month", day: 1 }], income: [3000000], today: TODAY, month: MONTH });
+  assert.equal(r.ok, true); assert.equal(r.paydays.length, 1); assert.deepEqual(r.daysCovered, [31, 0]);
+  const p = r.paydays[0];
+  assert.equal(p.income, 3000000); assert.match(p.incomeReason, /Your base income figure/);
+  assert.equal(p.lines.find((l) => l.name === "Food").amount, 600000); assert.equal(p.lines.find((l) => l.name === "Rent").amount, 800000);
+  assert.equal(p.lines.reduce((a, l) => a + l.amount, 0) + p.unallocated - p.short, 3000000);
+  assert.equal(p.lines.find((l) => l.name === "Savings").amount, 450000);
+  assert.equal(r.paydays[0].lines.find((l) => l.name === "Rent").category_id, "rent", "a line carries its category id");
+  assert.equal(suggestPlan({ state: s, paydays: [{ day: 1 }], income: [3000000.5], today: TODAY, month: MONTH }).ok, false, "a float income is refused");
+  assert.equal(suggestPlan({ state: s, paydays: [{ day: 1 }], income: [1, 2], today: TODAY, month: MONTH }).ok, false, "one figure per payday");
+  assert.equal(suggestPlan({ state: base(), paydays: [{ day: 1 }], today: TODAY, month: MONTH }).message, "Add a payslip first", "without payslips or a typed income there is nothing to go on");
+  assert.equal(suggestPlan({ state: base(), paydays: [{ day: 1 }], income: [2500000], today: TODAY, month: MONTH }).ok, true, "a typed income is enough");
 });
