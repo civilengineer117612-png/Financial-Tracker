@@ -21,6 +21,8 @@ const raw = (edit) => {
 function ledger(balance) {
   const s = makeState();
   s.accounts.push(account({ id: "efa", name: "Test EF Pocket", class: "asset", opening_balance: balance }));
+  s.categories = s.categories.map((c) => (c.id === "food" ? { ...c, role: "food" } : c));
+  s.categories.push({ id: "c-rent", name: "Rent", kind: "expense", role: "rent" }, { id: "c-ess", name: "Essentials", kind: "expense", role: "essentials" });
   s.goals = [{ id: "ef", account_id: "efa", name: "Emergency Fund", hidden_by_default: true }];
   return s;
 }
@@ -72,4 +74,33 @@ test("reached funds show zero months; no plan contribution leaves months to targ
   const noLine = emergencyFundStatus(ledger(0), raw((o) => { o.lines = o.lines.filter((l) => l.name !== "Emergency Fund"); o.lines.find((l) => l.name === "Fun").first += 1000; o.lines.find((l) => l.name === "Fun").second += 1000; }).plan, ledger(0).goals[0]);
   assert.equal(noLine.monthly, 0);
   assert.equal(noLine.monthsToTarget, null);
+});
+
+// ----- the target reads category ROLES, not the words Rent, Food and Essentials -----
+import { oldEmergencyFundStatus } from "./old-ef.js";
+import { renameCategory } from "../src/model/index.js";
+
+test("BEFORE/AFTER: with the usual names the status is exactly what it was, and the same goes for a plan that sets its own basis", () => {
+  for (const edit of [undefined, (o) => { o.ef_target_basis = ["Rent", "Food"]; o.ef_target_months = 6; }]) {
+    const r = raw(edit), s = ledger(500000), goal = s.goals[0];
+    assert.deepEqual(emergencyFundStatus(s, r.plan, goal), oldEmergencyFundStatus(s, r.plan, goal));
+  }
+  assert.equal(emergencyFundStatus(ledger(0), raw().plan, ledger(0).goals[0]).target, 3 * 770000, "3 x (4,000 + 2,500 + 1,200) pesos");
+});
+test("a category renamed from Food to Groceries still counts: the target follows the role, the plan line carries the category's current name", () => {
+  const s = ledger(0), goal = s.goals[0];
+  const renamed = renameCategory(s, "food", "Groceries");
+  assert.equal(renamed.ok, true, JSON.stringify(renamed));
+  const r = raw((o) => { o.lines.find((l) => l.name === "Food").name = "Groceries"; });
+  assert.ok(r.ok, r.error);
+  const e = emergencyFundStatus(renamed.state, r.plan, goal);
+  assert.equal(e.target, 3 * 770000); assert.deepEqual(e.basis, ["Rent", "Groceries", "Essentials"]);
+  assert.equal(oldEmergencyFundStatus(renamed.state, r.plan, goal).target, 3 * (400000 + 120000), "the old code found only the Rent and Essentials lines");
+});
+test("without the roles on any category the default basis is empty and the status is null; the words Rent and Food alone find nothing", () => {
+  const s = ledger(0); s.categories = s.categories.map((c) => ({ ...c, role: undefined }));
+  assert.equal(emergencyFundStatus(s, raw().plan, s.goals[0]), null);
+  const only = ledger(0); only.categories = only.categories.filter((c) => c.role !== "rent");
+  const e = emergencyFundStatus(only, raw().plan, only.goals[0]);
+  assert.equal(e.target, 3 * (250000 + 120000), "a role with no category is left out");
 });

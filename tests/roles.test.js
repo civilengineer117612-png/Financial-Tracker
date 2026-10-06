@@ -1,3 +1,4 @@
+import { oldEmergencyFundStatus } from "./old-ef.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -89,7 +90,7 @@ test("BEFORE/AFTER: the emergency goal, the sweep and the Emergency Fund status 
     lines: [{ name: "Rent", kind: "expense", first: 300, second: 300 }, { name: "Food", kind: "expense", first: 200, second: 200 }, { name: "Essentials", kind: "expense", first: 100, second: 100 },
       { name: "Emergency Fund", kind: "goal", first: 400, second: 400 }] })).plan;
   assert.ok(plan, "the invented plan loads");
-  assert.deepEqual(emergencyFundStatus(after.state, plan, goalByRole(after.state, "emergency")), emergencyFundStatus(before.state, plan, oldGoal(before.state.goals, /emergency/i)));
+  assert.deepEqual(emergencyFundStatus(after.state, plan, goalByRole(after.state, "emergency")), oldEmergencyFundStatus(before.state, plan, oldGoal(before.state.goals, /emergency/i)));
   // the scanner's category guess
   const guess = readScan("JOLLIBEE\nOfficial Receipt\nTOTAL 150.00", "2026-09-06").categoryGuess;
   const oldPick = before.state.categories.find((c) => c.kind === "expense" && c.name.toLowerCase() === "food");

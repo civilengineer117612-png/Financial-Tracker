@@ -21,6 +21,7 @@ import { reportingCategory } from "./rules.js";
 import { isPhDate, phTimestamp } from "./util.js";
 import { checkTransactionSave } from "./index.js";
 import { naturalBalance } from "./balances.js";
+import { categoryByRole } from "./seed.js";
 
 const fail = (error) => ({ ok: false, error });
 const whole = (n) => Number.isSafeInteger(n) && n >= 0;
@@ -78,10 +79,13 @@ export function parsePlan(text) {
 // Target = months x (monthly Rent + Food + Essentials), or the months and names the plan itself sets (ef_target_*).
 // Monthly contribution = the plan's own goal line for the fund. `missing` names any basis line the plan does not have.
 // goal: the goal row whose account holds the fund. Returns null when the plan has none of the basis lines.
-export const DEFAULT_EF = { months: 3, basis: ["Rent", "Food", "Essentials"] };
+export const DEFAULT_EF = { months: 3, roles: ["rent", "food", "essentials"] };   // read by the categories that hold these ROLES, whatever they are named
 export function emergencyFundStatus(state, plan, goal) {
   if (!plan || !goal) return null;
-  const { months, basis } = plan.emergency ?? DEFAULT_EF;
+  // The basis is the plan file's own list of line names when it sets one; otherwise it is the categories that hold the roles rent, essentials and food
+  // (never the words "Rent", "Food" or "Essentials"). A plan line is found by that category's current name, as every plan line is.
+  const months = (plan.emergency ?? DEFAULT_EF).months;
+  const basis = plan.emergency ? plan.emergency.basis : DEFAULT_EF.roles.map((r) => categoryByRole(state.categories, r)?.name).filter(Boolean);
   const found = basis.map((n) => plan.lines.find((l) => key(l.name) === key(n))).filter(Boolean);
   if (!found.length) return null;
   const monthlyBasis = found.reduce((n, l) => n + l.first + l.second, 0), target = months * monthlyBasis;
