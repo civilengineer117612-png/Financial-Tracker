@@ -91,6 +91,7 @@ export function suggestPlan(input) {
   for (const x of scheduled) if (!whole(x.amount) || (x.months_left != null && !whole(x.months_left))) return bad(`The amount for ${x.name} must be whole centavos.`);
   for (const x of pinned) if (!whole(x.first) || !whole(x.second)) return bad(`The pinned amounts for ${x.name} must be whole centavos.`);
   if (input.ratchet && !whole(input.ratchet.amount)) return bad("The ratchet amount must be whole centavos.");
+  if (input.rent !== undefined && !whole(input.rent)) return bad("The rent must be whole centavos.");
 
   // 1. Income of each payday: median of the last 3 base nets (overtime out) of that payday.
   const slips = netPerPayday(state);
@@ -113,7 +114,7 @@ export function suggestPlan(input) {
   const cats = state.categories.filter((c) => c.kind === "expense" && c.id !== UNLOGGED_CATEGORY_ID);
   const monthly = (id) => months.map((u) => Math.max(0, u.by.rows.filter((r) => r.category_id === id).reduce((n, r) => n + r.amount, 0)));
   const subs = state.subscriptions ?? [];
-  const NEEDS = new Set(["rent", "essentials", "food"]);
+  const NEEDS = new Set(["rent", "essentials", "food", "transport", "health"]);   // categories with these ROLES are needs; everything else is a want
 
   // 3. Fixed first: subscriptions, scheduled payments and installments, placed on the payday their due day falls in.
   let fixedNeeds = 0, fixedWants = 0;
@@ -139,6 +140,12 @@ export function suggestPlan(input) {
     if (total > 0) { fixedAt(rentCat.name, "expense", total, day, `Median of the last ${plural(months.length, "usable month", "usable months")}, usually paid around day ${day}, so it is set aside on payday ${payOfDay(day) + 1}.`, "history", rentCat.id); fixedNeeds += total; }
   }
 
+  // Starter mode needs the owner's rent first: it is the one big fixed figure the shares cannot guess. 0 means no rent.
+  if (!learn && rentCat) {
+    if (input.rent === undefined) return { ok: false, code: "NEEDS_RENT", message: "Type your monthly rent first (0 if you pay none)." };
+    if (input.rent > 0) { fixedAt(rentCat.name, "expense", input.rent, 1, "The monthly rent you typed.", "history", rentCat.id); fixedNeeds += input.rent; }
+  }
+
   // 4. Spending lines. With 2 or more usable months: median of each category. Otherwise a starter share of pay, marked "starter".
   const schedulerCat = new Map();
   for (const x of scheduled) if (x.category_id && x.months_left !== 0) schedulerCat.set(x.category_id, (schedulerCat.get(x.category_id) ?? 0) + x.amount);
@@ -151,13 +158,24 @@ export function suggestPlan(input) {
       split(total, c.name, "expense", `Median of the last ${plural(months.length, "usable month", "usable months")}${schedulerCat.has(c.id) ? ", after its scheduled payments" : ""}, split by days covered (${days1} and ${days2} days).`, "history", c.id);
     }
   } else {
-    const groups = [["needs", spendCats.filter((c) => NEEDS.has(c.role)), Math.max(0, Math.floor((monthIncome * S.starter.needs) / 10000) - fixedNeeds)],
-      ["wants", spendCats.filter((c) => !NEEDS.has(c.role)), Math.max(0, Math.floor((monthIncome * S.starter.wants) / 10000) - fixedWants)]];
-    for (const [group, list, pool] of groups) {
-      const reason = `Starter share, a common rule of thumb and not advice: ${pct(S.starter[group])} of pay for ${group}, split evenly across ${plural(Math.max(1, list.length), "line", "lines")} and by days covered.`;
+    // Starter shares of pay, each group shared out by a rule and never split equally: needs by the ROLE weights in the settings table, wants by what the owner
+    // has logged so far (any month, even a badly logged one), and evenly only when nothing at all is logged yet.
+    const logged = new Map();
+    for (let i = 1, m = addMonths(monthOf(today), -1); i <= LOOKBACK_MONTHS / 2; i++, m = addMonths(m, -1)) for (const r of spendingByCategory(state, { month: m }).rows) logged.set(r.category_id, (logged.get(r.category_id) ?? 0) + Math.max(0, r.amount));
+    const shareOut = (pool, list, weightOf) => {   // exact: each takes its share rounded down, the biggest weight takes the rest
+      const w = list.map(weightOf), total = w.reduce((a, b) => a + b, 0), out = w.map((x) => (total ? Math.floor((pool * x) / total) : 0));
+      const big = w.indexOf(Math.max(...w)); out[big >= 0 ? big : 0] += pool - out.reduce((a, b) => a + b, 0);
+      return out;
+    };
+    const needsList = spendCats.filter((c) => NEEDS.has(c.role) && S.starter_weights[c.role] > 0), wantsList = spendCats.filter((c) => !NEEDS.has(c.role));
+    const needsPool = Math.max(0, Math.floor((monthIncome * S.starter.needs) / 10000) - fixedNeeds), wantsPool = Math.max(0, Math.floor((monthIncome * S.starter.wants) / 10000) - fixedWants);
+    const loggedAny = wantsList.some((c) => (logged.get(c.id) ?? 0) > 0);
+    const groups = [["needs", needsList, needsPool, (c) => S.starter_weights[c.role], `after the rent and fixed payments, shared by typical weights for its role`],
+      ["wants", wantsList, wantsPool, loggedAny ? (c) => logged.get(c.id) ?? 0 : () => 1, loggedAny ? "shared by what you have logged so far" : "shared evenly because nothing is logged yet"]];
+    for (const [group, list, pool, weightOf, how] of groups) {
+      const reason = `Starter share, a common rule of thumb and not advice: ${pct(S.starter[group])} of pay for ${group}, ${how}, and by days covered.`;
       if (!list.length) { if (pool > 0) split(pool, group === "needs" ? "Needs" : "Wants", "expense", reason, "starter"); continue; }
-      const each = Math.floor(pool / list.length);
-      list.forEach((c, i) => split(i === list.length - 1 ? pool - each * (list.length - 1) : each, c.name, "expense", reason, "starter", c.id));
+      shareOut(pool, list, weightOf).forEach((amount, i) => split(amount, list[i].name, "expense", reason, "starter", list[i].id));
     }
   }
 

@@ -75,13 +75,13 @@ test("overtime is left out of income, and only the last 3 payslips of a payday c
   const s = base();
   slip(s, "2026-06-15", 900000); slip(s, "2026-07-15", 1000000); slip(s, "2026-08-15", 1100000, 0); slip(s, "2026-09-15", 1400000, 400000);   // base 1,000,000 with 400,000 of overtime
   slip(s, "2026-09-30", 2000000);
-  const r = run(s);
+  const r = run(s, { rent: 0 });
   assert.equal(r.paydays[0].income, 1000000, "last 3 bases: 1,000,000 / 1,100,000 / 1,000,000 -> median 1,000,000");
   assert.equal(r.paydays[1].income, 2000000);
   const four = base(); for (const [d, v] of [["2026-06-15", 100000], ["2026-07-15", 1000000], ["2026-08-15", 1100000], ["2026-09-15", 1200000]]) slip(four, d, v); slip(four, "2026-09-30", 2000000);
-  assert.equal(run(four).paydays[0].income, 1100000, "the last 3 only: the old small payslip does not count");
+  assert.equal(run(four, { rent: 0 }).paydays[0].income, 1100000, "the last 3 only: the old small payslip does not count");
   const even = base(); slip(even, "2026-08-15", 1000000); slip(even, "2026-09-15", 1200000); slip(even, "2026-09-30", 2000000);
-  assert.equal(run(even).paydays[0].income, 1000000, "two payslips: the lower middle value, a pay that really arrived");
+  assert.equal(run(even, { rent: 0 }).paydays[0].income, 1000000, "two payslips: the lower middle value, a pay that really arrived");
   assert.equal(median([1, 2, 3, 4], "low"), 2); assert.equal(median([1, 2, 3, 4], "high"), 3); assert.equal(median([5, 1, 9]), 5); assert.equal(median([]), 0);
 });
 
@@ -119,15 +119,15 @@ test("a lump month does not move the median", () => {
 test("with no usable history the lines are starter shares, marked starter, with the rule-of-thumb reason", () => {
   const s = base(); slip(s, "2026-09-15", 1000000); slip(s, "2026-09-30", 2000000);
   logMonth(s, "2026-09");   // one usable month is still too few
-  const r = run(s);
+  const r = run(s, { rent: 800000 });
   assert.equal(r.history.used, "starter"); assert.equal(r.history.usableMonths, 1);
-  const spendLines = r.paydays.flatMap((p) => p.lines).filter((l) => ["Food", "Rent", "Fun"].includes(l.name));
-  assert.ok(spendLines.length >= 3 && spendLines.every((l) => l.source === "starter"));
-  assert.match(line(r, 0, "Food").reason, /Starter share, a common rule of thumb and not advice: 50% of pay for needs/);
-  assert.match(line(r, 0, "Fun").reason, /30% of pay for wants/);
-  // needs pool is 50% of 30,000 pesos = 1,500,000, split evenly over Rent and Food (the roles that are needs); wants 900,000 over Fun
+  const spendLines = r.paydays.flatMap((p) => p.lines).filter((l) => ["Food", "Fun"].includes(l.name));
+  assert.ok(spendLines.length >= 2 && spendLines.every((l) => l.source === "starter"));
+  assert.match(line(r, 0, "Food").reason, /Starter share, a common rule of thumb and not advice: 50% of pay for needs, after the rent and fixed payments, shared by typical weights for its role/);
+  assert.match(line(r, 0, "Fun").reason, /30% of pay for wants, shared by what you have logged so far/);
   const total = (name) => r.paydays.reduce((a, p) => a + (p.lines.find((l) => l.name === name)?.amount ?? 0), 0);
-  assert.deepEqual([total("Rent") + total("Food"), total("Fun")], [1500000, 900000]);
+  assert.equal(total("Rent"), 800000, "the rent is the owner's own figure"); assert.equal(line(r, 1, "Rent").reason, "The monthly rent you typed.");
+  assert.deepEqual([total("Rent") + total("Food"), total("Fun")], [1500000, 900000], "needs pool 50% of 30,000 pesos: the rent first, the rest to Food (the only other needs role here); wants 900,000 to Fun");
   assert.ok(balances(r));
 });
 
@@ -296,5 +296,61 @@ test("monthly pay (one payday): everything lands on the one payday, the whole mo
   assert.equal(suggestPlan({ state: s, paydays: [{ day: 1 }], income: [3000000.5], today: TODAY, month: MONTH }).ok, false, "a float income is refused");
   assert.equal(suggestPlan({ state: s, paydays: [{ day: 1 }], income: [1, 2], today: TODAY, month: MONTH }).ok, false, "one figure per payday");
   assert.equal(suggestPlan({ state: base(), paydays: [{ day: 1 }], today: TODAY, month: MONTH }).message, "Add a payslip first", "without payslips or a typed income there is nothing to go on");
-  assert.equal(suggestPlan({ state: base(), paydays: [{ day: 1 }], income: [2500000], today: TODAY, month: MONTH }).ok, true, "a typed income is enough");
+  assert.equal(suggestPlan({ state: base(), paydays: [{ day: 1 }], income: [2500000], rent: 0, today: TODAY, month: MONTH }).ok, true, "a typed income is enough");
+});
+
+// ----- the starter budget (no usable history): rent first, needs by role, nothing split equally -----
+function starterBase(extraCats = [], slips = true) {
+  const s = base();
+  if (slips) { slip(s, "2026-09-15", 1000000); slip(s, "2026-09-30", 2000000); }
+  s.categories.push(...extraCats);
+  return s;
+}
+const monthly3 = (s, o = {}) => suggestPlan({ state: s, paydays: [{ id: "m", label: "Month", day: 1 }], income: [3000000], today: TODAY, month: MONTH, ...o });
+const amt = (r, name) => r.paydays[0].lines.find((l) => l.name === name)?.amount ?? 0;
+
+test("while there is no history, the rent is asked for first: no suggestion until it is typed, and 0 means no rent", () => {
+  const s = starterBase();
+  const ask = monthly3(s);
+  assert.equal(ask.ok, false); assert.equal(ask.code, "NEEDS_RENT"); assert.match(ask.message, /Type your monthly rent first/);
+  assert.equal(monthly3(s, { rent: 0 }).ok, true); assert.equal(amt(monthly3(s, { rent: 0 }), "Rent"), 0, "no rent line at all");
+  assert.equal(amt(monthly3(s, { rent: 700000 }), "Rent"), 700000);
+  assert.equal(monthly3(s, { rent: 7000.5 }).ok, false, "rent is whole centavos");
+  const noRentCat = starterBase(); noRentCat.categories = noRentCat.categories.filter((c) => c.role !== "rent");
+  assert.equal(monthly3(noRentCat).ok, true, "with no rent category there is nothing to ask");
+  assert.equal(monthly3(withHistory(), {}).ok, true, "and with history it learns the rent, so it never asks");
+});
+
+test("Transport and Health count as needs by their ROLE, and the needs pool is shared by the role weights, not equally", () => {
+  const s = starterBase([{ id: "ess", name: "Essentials", kind: "expense", role: "essentials" }, { id: "tr", name: "Getting around", kind: "expense", role: "transport" }, { id: "he", name: "Care", kind: "expense", role: "health" }, { id: "sh", name: "Shopping", kind: "expense" }]);
+  const r = monthly3(s, { rent: 500000 });
+  // needs pool: 50% of 3,000,000 = 1,500,000, minus the 500,000 rent = 1,000,000, shared 40 / 25 / 20 / 15
+  assert.deepEqual(["Food", "Essentials", "Getting around", "Care"].map((n) => amt(r, n)), [400000, 250000, 200000, 150000]);
+  assert.equal(amt(r, "Rent") + ["Food", "Essentials", "Getting around", "Care"].reduce((a, n) => a + amt(r, n), 0), 1500000, "rent plus the shares are the whole needs pool, to the centavo");
+  assert.match(r.paydays[0].lines.find((l) => l.name === "Getting around").reason, /pay for needs/);
+  assert.ok(!/pay for needs/.test(r.paydays[0].lines.find((l) => l.name === "Shopping")?.reason ?? ""), "Shopping has no role, so it is a want");
+  const odd = monthly3(s, { rent: 500001 });
+  assert.equal(["Food", "Essentials", "Getting around", "Care"].reduce((a, n) => a + amt(odd, n), 0), 1500000 - 500001, "an odd pool still adds up exactly: the biggest share takes the remainder");
+  assert.notEqual(amt(r, "Food"), amt(r, "Essentials"));
+});
+
+test("the wants pool follows what the owner has logged so far, and is shared evenly only when nothing at all is logged", () => {
+  const s = starterBase([{ id: "sh", name: "Shopping", kind: "expense" }]);
+  for (let i = 0; i < 3; i++) spend(s, "2026-09-10", "fun", 100000); spend(s, "2026-09-11", "sh", 100000);   // fun 300,000 and shopping 100,000 in a month that is not well logged
+  const r = monthly3(s, { rent: 0 });
+  assert.equal(amt(r, "Fun") + amt(r, "Shopping"), 900000, "wants are 30% of 3,000,000");
+  assert.equal(amt(r, "Fun"), 675000); assert.equal(amt(r, "Shopping"), 225000, "three to one, as logged");
+  assert.match(r.paydays[0].lines.find((l) => l.name === "Fun").reason, /shared by what you have logged so far/);
+  const none = monthly3(starterBase([{ id: "sh", name: "Shopping", kind: "expense" }]), { rent: 0 });
+  assert.equal(amt(none, "Fun"), 450000); assert.equal(amt(none, "Shopping"), 450000);
+  assert.match(none.paydays[0].lines.find((l) => l.name === "Fun").reason, /shared evenly because nothing is logged yet/);
+});
+
+test("the starter weights are one settings table, whole basis points that add up to 100%", () => {
+  assert.deepEqual(SUGGEST_DEFAULTS.starter_weights, { food: 4000, essentials: 2500, transport: 2000, health: 1500 });
+  assert.equal(resolveSettings({ starter_weights: { food: 5000 } }).ok, false, "a table that no longer adds up is refused");
+  assert.equal(resolveSettings({ starter_weights: { food: 3000, essentials: 3000, transport: 2000, health: 2000 } }).ok, true);
+  assert.equal(resolveSettings({ starter_weights: { food: 4000.5, essentials: 2499.5, transport: 2000, health: 1500 } }).ok, false);
+  const dir = new URL("../src/model/", import.meta.url);
+  for (const f of readdirSync(dir).filter((x) => x.endsWith(".js") && x !== "suggest-settings.js")) assert.ok(!/starter_weights: ?\{|food: ?4000/.test(readFileSync(new URL(f, dir), "utf8")), f + " has no copy of the weights");
 });

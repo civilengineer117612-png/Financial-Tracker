@@ -44,13 +44,23 @@ function v3WithTrip() {
   l.settings = { ...l.settings, active_tag_id: "trip1" };
   return l;
 }
-const FIXTURES = { "version 1, before payslips": v1Early, "version 1, with a payslip": v1WithPayslip, "version 3, with a trip": v3WithTrip };
+// Data as version 4 wrote it, by hand: trips with dates, and categories that have no transport or health role yet (the roles are new in 5).
+function v4WithCategories() {
+  const l = v3WithTrip();
+  l.v = 4; l.rev = 31;
+  l.state.tags = [{ id: "trip1", name: "Sample Trip", budget: 500000, start: "2026-03-01", end: "2026-03-05" }];
+  l.state.transactions[0] = { ...l.state.transactions[0], tag_id: undefined, trip_add: "trip1" }; delete l.state.transactions[0].tag_id;
+  l.state.categories = [...l.state.categories, { id: "c-tr", name: "Transport", kind: "expense" }, { id: "c-tr2", name: "Transpo", kind: "expense" }, { id: "c-h", name: "Health", kind: "expense" },
+    { id: "c-h2", name: "Healthy snacks", kind: "expense" }, { id: "c-fun", name: "Fun", kind: "expense" }, { id: "c-set", name: "Transport costs", kind: "expense", role: "food" }, { id: "c-in", name: "Health pay", kind: "income" }];
+  return l;
+}
+const FIXTURES = { "version 1, before payslips": v1Early, "version 1, with a payslip": v1WithPayslip, "version 3, with a trip": v3WithTrip, "version 4, with dated trips and categories": v4WithCategories };
 const text = (l) => JSON.stringify(l);
 // every field of `a` is still in `b` with the same value (b may have more)
 const holds = (a, b) => (typeof a !== "object" || a === null ? a === b : typeof b === "object" && b !== null && Object.keys(a).every((k) => holds(a[k], b[k])));
 
-test("the current data version is 4 and the first version's data is still accepted as older", () => {
-  assert.equal(LEDGER_VERSION, 4);
+test("the current data version is 5 and the first version's data is still accepted as older", () => {
+  assert.equal(LEDGER_VERSION, 5);
   for (const make of Object.values(FIXTURES)) { const p = parseLedger(text(make())); assert.equal(p.ok, true); assert.equal(p.older, true); }
   const cur = upgradeLedger(v1Early()).ledger;
   assert.equal(parseLedger(text(cur)).older, undefined);
@@ -162,11 +172,11 @@ test("a stored copy comes back with its own data version, newer than what is on 
   assert.equal(restorableCopy(copy, 2).rev, 7, "or newer than the copy itself");
 });
 
-test("data version 3 upgrades to 4: a hand-tagged entry gets trip_add, tag_id stays, no trip gets dates, and the trip's total is the same", async () => {
+test("data version 3 upgrades (through 4): a hand-tagged entry gets trip_add, tag_id stays, no trip gets dates, and the trip's total is the same", async () => {
   const { tagSummary, tripMembership, validateState } = await import("../src/model/index.js");
   const before = v3WithTrip(), snapshot = JSON.stringify(before);
   const r = upgradeLedger(before, { now: new Date("2026-10-05T00:00:00Z") });
-  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, 4); assert.equal(JSON.stringify(before), snapshot);
+  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, LEDGER_VERSION); assert.equal(JSON.stringify(before), snapshot);
   const [t1, t2] = r.ledger.state.transactions;
   assert.deepEqual([t1.tag_id, t1.trip_add, t2.trip_add], ["trip1", "trip1", undefined], "copied, never removed");
   assert.deepEqual(r.ledger.state.tags, before.state.tags, "the trip is untouched: no dates added");
@@ -182,4 +192,28 @@ test("data version 3 upgrades to 4: a hand-tagged entry gets trip_add, tag_id st
   const again = upgradeLedger(back, { now: new Date("2026-10-05T00:00:00Z") });
   assert.equal(again.ok, true); assert.equal(again.ledger.state.transactions[0].trip_add, "trip1"); assert.equal(fingerprint(again.ledger), fingerprint(before));
   assert.equal(restoreLedger({ v: LEDGER_VERSION, rev: 30, saved_at: TS, state: {}, settings: {} }, back).v, 3, "a restored old backup keeps its own version, so the app upgrades it with a copy");
+});
+
+test("data version 4 upgrades to 5: Transport and Health categories get their roles once, by the way they start; nothing else changes and totals are the same", () => {
+  const before = v4WithCategories(), snapshot = JSON.stringify(before);
+  const r = upgradeLedger(before, { now: new Date("2026-10-07T00:00:00Z") });
+  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, 5); assert.equal(JSON.stringify(before), snapshot, "the input is never changed");
+  const role = (id) => r.ledger.state.categories.find((c) => c.id === id).role;
+  assert.deepEqual(["c-tr", "c-tr2", "c-h"].map(role), ["transport", "transport", "health"], "Transport, Transpo and Health");
+  assert.deepEqual(["c-h2", "c-fun", "c-in"].map(role), [undefined, undefined, undefined], "a different name, a plain category and an income category get none");
+  assert.equal(role("c-set"), "food", "a role the owner already has is never replaced");
+  assert.equal(fingerprint(r.ledger), fingerprint(before)); assert.deepEqual(selfCheck(r.ledger), []);
+  const strip = (l) => JSON.parse(JSON.stringify(l, (k, v) => (k === "role" ? undefined : v)));
+  assert.deepEqual(strip(r.ledger).state, strip(before).state, "every record is the same apart from the role field");
+  assert.deepEqual(r.ledger.settings, before.settings);
+  assert.equal(parseLedger(text(r.ledger)).ok, true);
+  const again = upgradeLedger(r.ledger);
+  assert.equal(again.ok, true); assert.equal(JSON.stringify(again.ledger.state.categories), JSON.stringify(r.ledger.state.categories), "running it again changes nothing");
+});
+test("an old version 4 backup file opens and upgrades; restoring it keeps its own version", async () => {
+  const sealed = await encryptLedgerBackup(v4WithCategories(), "correct horse battery"), back = await decryptLedgerBackup(sealed, "correct horse battery");
+  assert.equal(back.v, 4);
+  const r = upgradeLedger(back, { now: new Date("2026-10-07T00:00:00Z") });
+  assert.equal(r.ok, true); assert.equal(r.ledger.state.categories.find((c) => c.id === "c-tr").role, "transport");
+  assert.equal(restoreLedger({ v: LEDGER_VERSION, rev: 40, saved_at: TS, state: {}, settings: {} }, back).v, 4);
 });

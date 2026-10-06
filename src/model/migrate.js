@@ -10,7 +10,7 @@ import { phTimestamp } from "./util.js";
 
 // Version 2 is the first with named migrations. To change the data's shape: raise this number, add the step from the old number to MIGRATIONS,
 // add a backup fixture of the old version to tests/migrate.test.js, and add the new collection to COLLECTION_NAMES.
-export const LEDGER_VERSION = 4;
+export const LEDGER_VERSION = 5;
 export const COLLECTION_NAMES = ["accounts", "goals", "envelopes", "transactions", "entries", "categories", "categoryMaps", "rules",
   "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"];
 
@@ -36,6 +36,13 @@ export const MIGRATIONS = {
   // becomes the new field "trip_add" (a hand-added entry that overrides the dates). tag_id itself is left in place, unread. Trips get no dates, so
   // every existing trip counts exactly the entries it counted before.
   3: (ledger) => ({ ...ledger, state: { ...ledger.state, transactions: (ledger.state.transactions ?? []).map((t) => (t.tag_id != null && t.trip_add === undefined ? { ...t, trip_add: t.tag_id } : t)) } }),
+  // 4 to 5: two more category roles, so the starter budget can tell a need from a want by ROLE and not by name: transport and health. They are given ONCE,
+  // to expense categories that have no role yet and whose name starts the way the starter names do ("Transport...", "Health..."). Nothing else changes.
+  4: (ledger) => ({ ...ledger, state: { ...ledger.state, categories: (ledger.state.categories ?? []).map((c) => {
+    if (c.role !== undefined || c.kind !== "expense") return c;
+    const n = String(c.name).trim().toLowerCase();
+    return /^transpo/.test(n) ? { ...c, role: "transport" } : /^health(care)?\b/.test(n) ? { ...c, role: "health" } : c;
+  }) } }),
 };
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
