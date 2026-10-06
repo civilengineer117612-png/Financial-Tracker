@@ -1358,7 +1358,7 @@ function viewBudget() { return ledger.settings.try_new_budget ? viewBudgetNew() 
 function viewBudgetNew() {
   const month = M.monthOf(today()), next = M.addMonths(month, 1), set = ledger.settings, plan = planOf();
   const inc = M.baseIncome(S(), { plan, pin: set.income_base_pin ?? null }), income = inc.amount;
-  const pct = (amount) => (income ? ` \u00b7 ${M.showTenths(M.tenths(amount, income))} of income` : "");
+  const share = (amount) => (income ? `<small>${M.showTenths(M.tenths(amount, income))} of income</small>` : "");   // under the amount, on its own line, so the columns line up
   const status = new Map(M.budgetStatus(S(), { rules: S().rules, categoryMaps: S().categoryMaps, month, asOf: today() }).map((r) => [r.category_id, r]));
   const rows = expenseCategories().map((c) => ({ c, now: M.budgetFor(S().rules, c.id, month), later: M.budgetFor(S().rules, c.id, next), st: status.get(c.id) }));
   const spendTotal = rows.reduce((n, r) => n + (r.now ?? 0), 0);
@@ -1372,20 +1372,22 @@ function viewBudgetNew() {
   const spendRows = rows.map((r) => {
     const over = r.st?.over && r.now !== null;
     const change = r.later !== r.now ? `<small>${r.later === null ? "ends" : peso(r.later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "";
-    return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}${change}${over ? `<small class="overnote">${glyph("critical")} Over budget by ${peso(r.st.spent - r.now)}</small>` : ""}</span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month" + pct(r.now)}</span></button>`;
+    return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}${change}${over ? `<small class="overnote">${glyph("critical")} Over budget by ${peso(r.st.spent - r.now)}</small>` : ""}</span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month" + share(r.now)}</span></button>`;
   }).join("");
-  const savedHtml = saved.length ? saved.map((r) => `<div class="row"><div>${esc(r.name)}<small>${esc(r.label)}</small></div><div class="amt">${peso(r.amount)} a month${pct(r.amount)}</div></div>`).join("")
+  const savedHtml = saved.length ? saved.map((r) => `<div class="row"><div>${esc(r.name)}<small>${esc(r.label)}</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}</div></div>`).join("")
     : `<p class="note">${plan ? "Your plan has no savings, goal or buffer lines." : income ? "Nothing suggested yet. Suggest a budget to see it." : "Add income first."}</p>`;
   let sum = "";
+  const sh = income ? M.shares(income, spendTotal, savedTotal) : null;   // the totals lines and the overall line use the SAME three numbers, so they always agree
   if (income) {
-    const sh = M.shares(income, spendTotal, savedTotal), spentNow = M.spendingByCategory(S(), { month }).total;
-    sum = `<div class="meter" role="img" aria-label="Spending and saved together are ${M.showTenths(Math.min(1000, sh.spending + sh.saved))} of income"><span class="fill" style="width:${Math.max(0, Math.min(100, (sh.spending + sh.saved) / 10))}%"></span></div>
-      <p class="note" id="bud-shares">Spending ${M.showTenths(sh.spending)}, Saved ${M.showTenths(sh.saved)}, ${sh.unallocated < 0 ? "Over income by " + M.showTenths(-sh.unallocated) : "Unallocated " + M.showTenths(sh.unallocated)}</p>
+    const spentNow = M.spendingByCategory(S(), { month }).total;
+    const used = Math.max(0, Math.min(1000, M.tenths(spendTotal + savedTotal, income)));
+    sum = `<div class="meter goal" role="img" aria-label="Spending and saved together are ${M.showTenths(used)} of income"><span class="fill" style="width:${used / 10}%"></span></div>
+      <p class="note" id="bud-shares">Spending ${M.showTenths(sh.spending)}, Saved ${M.showTenths(sh.saved)}, ${sh.unallocated < 0 ? "Over income by " + peso(-sh.unallocated) : "Unallocated " + peso(sh.unallocated)}</p>
       <p class="note" id="bud-spent">Spent so far: ${M.showTenths(M.tenths(Math.max(0, spentNow), income))} of income</p>`;
   }
   return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${head}
-    <h2>Spending</h2>${spendRows}<p class="note" id="bud-spend-total">Total budgeted: ${peso(spendTotal)}${pct(spendTotal)}</p>
-    <h2>Saved and set aside</h2>${savedHtml}<p class="note" id="bud-saved-total">Total: ${peso(savedTotal)}${pct(savedTotal)}</p>${sum}
+    <h2>Spending</h2>${spendRows}<p class="note" id="bud-spend-total">Total budgeted: ${peso(spendTotal)}${sh ? " \u00b7 " + M.showTenths(sh.spending) + " of income" : ""}</p>
+    <h2>Saved and set aside</h2>${savedHtml}<p class="note" id="bud-saved-total">Total: ${peso(savedTotal)}${sh ? " \u00b7 " + M.showTenths(sh.saved) + " of income" : ""}</p>${sum}
     ${byPaydaySection()}
     <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
 }

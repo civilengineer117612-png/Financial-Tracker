@@ -1687,12 +1687,12 @@ console.log("The new Budget");
   await page.fill("#f-amount", "25000"); await page.click("#f-save"); await seen(page, "#toast", "Income figure set");
   t = await text(page, "#screen");
   check(t.includes("₱25,000.00 a month") && t.includes("Your own figure") && t.includes("Use my payslips again"), "the typed income is shown, with where it came from");
-  const sh = (txt) => { const m = /Spending ([\d.]+)%, Saved ([\d.]+)%, Unallocated ([\d.]+)%/.exec(txt); return m && m.slice(1).map((x) => Math.round(Number(x) * 10)); };
-  check(sh(t) && sh(t).reduce((a, b) => a + b, 0) === 1000 && sh(t)[0] === 0 && t.includes("Spent so far: 0.0% of income") && t.includes("Suggested, not saved"), "the three shares add up to exactly 100.0%, the extra figure shows, and with no plan the saved rows say they are only suggested");
+  const sh = (txt) => { const m = /Spending ([\d.]+)%, Saved ([\d.]+)%, Unallocated ₱([\d,]+\.\d\d)/.exec(txt); return m && [Math.round(Number(m[1]) * 10), Math.round(Number(m[2]) * 10), Math.round(Number(m[3].replace(/,/g, "")) * 100)]; };
+  check(sh(t) && sh(t)[0] === 0 && sh(t)[2] > 0 && t.includes("Spent so far: 0.0% of income") && t.includes("Suggested, not saved"), "the summary shows Spending and Saved as percents and Unallocated in pesos, the extra figure shows, and with no plan the saved rows say they are only suggested");
   // set a budget the old way: the row shows the amount and its share of income
   await page.click('button[data-action="open-budget"][data-id="cat-food"]'); await page.fill("#f-amount", "5000"); await page.click("#f-save"); await seen(page, "#toast", "Budget saved");
   t = await text(page, "#screen");
-  check(t.includes("₱5,000.00 a month · 20.0% of income") && sh(t)[0] === 200 && sh(t).reduce((a, b) => a + b, 0) === 1000, "a budget row shows its amount and its percent of income, and the shares follow");
+  check(/₱5,000\.00 a month\s+20\.0% of income/.test(t) && sh(t)[0] === 200 && sh(t)[2] > 0, "a budget row shows its amount and its percent of income, and the shares follow");
   check(!(await page.locator("#bud-income .overnote, .overnote").count()) && !(await page.locator("#screen .meter.g-critical").count()), "nothing is red when nothing is over");
   // suggest, pin one line, confirm for next month
   await page.click('button:has-text("Suggest a budget")');

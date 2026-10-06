@@ -48,15 +48,18 @@ test("the new Budget is behind a switch that is off by default, and off it is ex
   assert.match(app, /case "toggle-new-budget": await commit\(S\(\), \{ \.\.\.ledger\.settings, try_new_budget: !ledger\.settings\.try_new_budget \}\)/);
 });
 
-test("percentages are right, and Spending + Saved + Unallocated always add up to exactly 100.0%", () => {
-  assert.deepEqual(shares(2500000, 1000000, 500000), { spending: 400, saved: 200, unallocated: 400 });
+test("the summary: Spending and Saved are plainly rounded to a tenth of a percent, Unallocated is in pesos (centavos), and nothing forces the shares to add to 100.0%", () => {
+  assert.deepEqual(shares(2500000, 1000000, 500000), { spending: 400, saved: 200, unallocated: 1000000 });
   assert.equal(showTenths(400), "40.0%");
   assert.equal(tenths(1000000, 2500000), 400); assert.equal(tenths(1, 3), 333); assert.equal(tenths(2, 3), 667, "rounded to the nearest tenth");
-  for (const [inc, a, b] of [[1000003, 333333, 166667], [7, 3, 3], [999999, 1, 2], [1000000, 0, 0], [1000000, 700000, 500000]]) {
-    const s = shares(inc, a, b);
-    assert.equal(s.spending + s.saved + s.unallocated, 1000, `sums to 100% for ${inc}`);
-  }
-  assert.ok(shares(1000000, 700000, 500000).unallocated < 0, "over the income shows as a negative remainder, never hidden");
+  // 79.96% and 19.96% are shown as 80.0% and 20.0%, the unallocated 0.08% is a few pesos: the three are not made to add up
+  const s = shares(10000000, 7996000, 1996000);
+  assert.deepEqual([s.spending, s.saved, s.unallocated], [800, 200, 8000 * 1], "80.0%, 20.0% and 80.00 pesos left");
+  assert.equal(tenths(799, 1000) + tenths(199, 1000), 998 + 0, "each row is its own rounding");
+  const o = shares(1000000, 700000, 500000);
+  assert.equal(o.unallocated, -200000, "over the income is a negative amount, never hidden");
+  for (const [inc, a, b] of [[1000003, 333333, 166667], [7, 3, 3], [999999, 1, 2], [1000000, 0, 0]]) assert.equal(shares(inc, a, b).unallocated, inc - a - b, `exact centavos for ${inc}`);
+  assert.equal(shares(1000000, 333333, 333333).spending, 333, "33.3333% is 33.3%");
 });
 
 test("overtime does not change the income basis, and the base is the median of the last 3 nets", () => {
@@ -197,7 +200,7 @@ test("Saved rows are never red: the block carries no critical shape or colour, a
 test("the new screen adds only the amount and the share to a row, one totals line per block, one overall line and one extra figure", () => {
   const view = app.slice(app.indexOf("function viewBudgetNew()"), app.indexOf("function viewBudgetOld()"));
   for (const id of ["bud-income", "bud-shares", "bud-spent", "bud-spend-total", "bud-saved-total"]) assert.ok(view.includes(`id="${id}"`), id);
-  assert.match(view, /Spending \$\{M\.showTenths\(sh\.spending\)\}, Saved \$\{M\.showTenths\(sh\.saved\)\}, \$\{sh\.unallocated < 0 \? "Over income by " \+ M\.showTenths\(-sh\.unallocated\) : "Unallocated " \+ M\.showTenths\(sh\.unallocated\)\}/);
+  assert.match(view, /Spending \$\{M\.showTenths\(sh\.spending\)\}, Saved \$\{M\.showTenths\(sh\.saved\)\}, \$\{sh\.unallocated < 0 \? "Over income by " \+ peso\(-sh\.unallocated\) : "Unallocated " \+ peso\(sh\.unallocated\)\}/);
   assert.match(view, /Spent so far: \$\{M\.showTenths/);
   assert.ok(view.indexOf("<h2>Spending</h2>") < view.indexOf("<h2>Saved and set aside</h2>"), "Spending first, then Saved and set aside");
 });
@@ -210,4 +213,15 @@ test("no data version bump is needed: the new settings keys are additive, a ledg
   for (const l of [plain, keyed]) { assert.equal(parseLedger(JSON.stringify(l)).ok, true); assert.deepEqual(selfCheck(l), []); }
   const r = upgradeLedger({ ...plain, v: LEDGER_VERSION - 1, settings: { notice_seen_at: TS } });
   assert.equal(r.ok, true); assert.equal(r.ledger.settings.try_new_budget, undefined, "an upgraded ledger never gets the switch turned on");
+});
+
+test("the new Budget's amounts line up: the share sits under the amount, the totals lines and the overall line use the same numbers, and the bar has a colour", () => {
+  const view = app.slice(app.indexOf("function viewBudgetNew()"), app.indexOf("function viewBudgetOld()"));
+  assert.match(view, /const share = \(amount\) => \(income \? `<small>\$\{M\.showTenths\(M\.tenths\(amount, income\)\)\} of income<\/small>` : ""\)/);
+  assert.ok(!/ \\u00b7 \$\{M\.showTenths\(M\.tenths/.test(view), "no share is glued to the amount on one long line");
+  assert.match(view, /M\.showTenths\(sh\.spending\) \+ " of income"/); assert.match(view, /M\.showTenths\(sh\.saved\) \+ " of income"/);
+  assert.match(view, /"Over income by " \+ peso\(-sh\.unallocated\) : "Unallocated " \+ peso\(sh\.unallocated\)/, "Unallocated is shown in pesos");
+  assert.match(view, /<div class="meter goal"/);
+  const css = readFileSync(new URL("../app/index.html", import.meta.url), "utf8");
+  assert.match(css, /\.row \.amt \{[^}]*text-align: right/); assert.match(css, /\.choice \.bval \{ text-align: right; \}/); assert.match(css, /\.meter\.goal \.fill \{ background: var\(--chart\)/);
 });
