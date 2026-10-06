@@ -1794,6 +1794,7 @@ console.log("The new Budget");
   check(await page.locator("#f-save").isEnabled(), "a goal can be saved without choosing an account");
   await page.click("#f-save"); await seen(page, "#screen", "Savings");
   if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
+  await seen(page, "#screen", "No account yet");
   let t = await text(page, "#screen");
   check(t.includes("No account yet") && !(await page.locator('button[data-action="open-deposit"]').count()), "it says it has no account yet, and offers no deposit");
   let led = JSON.parse((await stored(page)).local);
