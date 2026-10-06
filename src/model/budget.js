@@ -54,6 +54,10 @@ export function budgetGrade(spent, budget) {
   return { level, percent: Math.max(0, Math.floor((spent * 100) / budget)), over: spent > budget };
 }
 
+// The pace line (Cash flow, Budget view): true only when the share of the budget used is more than the share of the month gone, so the line shows up
+// as a warning and not on every row. Whole centavos; `elapsed` is the whole percent from monthElapsedPercent, or null for a month that is not the current one.
+export const paceAhead = (spent, budget, elapsed) => elapsed !== null && budget > 0 && spent * 100 > budget * elapsed;
+
 // How far through the month a date is, as a whole percent: the "where you should be" mark on a meter.
 export function monthElapsedPercent(month, today) {
   const now = today.slice(0, 7);

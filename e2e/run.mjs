@@ -724,8 +724,9 @@ check(meters[1].cls === "g-serious" && meters[1].w === 95 && meters[1].color ===
 check((await text(page, ".legend")).replace(/\s+/g, " ").includes("On track Getting there Nearly used up Over budget No budget") && (await page.locator(".legend svg").count()) === 5, "the Budgets view has the legend, in words, each with its own shape");
 check(meters[2].cls === "g-good" && meters[2].w === 0 && meters[2].color === "rgb(116, 171, 232)", "an unused meter is empty and light blue");
 const ticks = await page.locator(".meter .tick").evaluateAll((els) => els.map((e) => e.style.left));
-check(ticks.length === 3 && ticks.every((t) => t === "10%"), "each meter has a mark for today's place in the month (3 of 31 days): " + ticks.join());
-check((await text(page, "#screen")).includes("The black line is today's place in the month."), "and the page explains it");
+check(ticks.length === 2 && ticks.every((t) => t === "10%"), "only the two budgets that are ahead of the calendar (Shopping, Food) have the line, at today's place (3 of 31 days): " + ticks.join());
+check(await page.locator(".bcard", { hasText: "Rent" }).locator(".tick").count() === 0, "a budget that is not ahead of the month has no line");
+check((await text(page, ".legend")).includes("Today's place in the month, shown when spending is ahead of it") && (await page.locator(".legend svg").count()) === 5, "the legend explains the line, in words");
 check((await page.locator(".tbl").count()) === 1 && (await text(page, "#screen")).toLowerCase().includes("budget vs actual"), "the budget-vs-actual table sits under the chart");
 const vcolors = await page.locator(".tbl td.vo, .tbl td.vu").evaluateAll((els) => els.map((e) => e.className.includes("vo") ? "over" : "under"));
 check(vcolors.includes("over") && vcolors.includes("under"), "variance cells are marked over and under");

@@ -108,3 +108,24 @@ test("the trend uses each month's own budget and shows a gap, never an error, wh
   assert.deepEqual(t.map((x) => x.budget), [null, null, 100000, 100000, 150000], "August's budget stays August's");
   assert.deepEqual(t.map((x) => x.actual), [null, null, 30000, null, 20000], "no transactions that month is a gap, not zero");
 });
+
+// ----- the pace line shows only when spending is ahead of the calendar -----
+import { paceAhead } from "../src/model/index.js";
+import { readFileSync as readApp } from "node:fs";
+test("the pace line is drawn only when the share of the budget used is more than the share of the month gone", () => {
+  assert.equal(paceAhead(10000, 100000, 10), false, "10% used on day 3 of 31 is exactly level: no line");
+  assert.equal(paceAhead(10001, 100000, 10), true, "one centavo more is ahead");
+  assert.equal(paceAhead(0, 100000, 10), false); assert.equal(paceAhead(5000, 100000, 50), false);
+  assert.equal(paceAhead(30000, 25000, 10), true, "over budget is ahead too");
+  assert.equal(paceAhead(99999, 100000, null), false, "a month that is not the current one has no line");
+  assert.equal(paceAhead(5, 0, 10), false, "no budget, no line");
+  assert.equal(monthElapsedPercent("2026-10", "2026-10-03"), 10);
+});
+test("the Budget view draws the line only on rows that are ahead, and the legend (not a note at the bottom) explains it", () => {
+  const app = readApp(new URL("../app/app.js", import.meta.url), "utf8");
+  assert.match(app, /\$\{aheadOfMonth\(r\.spent, r\.budget, elapsed\) \? `<span class="tick" style="left:\$\{elapsed\}%"><\/span>` : ""\}/);
+  assert.match(app, /legend\(budgeted\.some\(\(r\) => aheadOfMonth\(r\.spent, r\.budget, elapsed\)\)\)/);
+  assert.match(app, /Today's place in the month, shown when spending is ahead of it/);
+  assert.ok(!app.includes("The black line is today's place in the month."), "the old note under the list is gone");
+  assert.match(app, /const aheadOfMonth = M\.paceAhead;/);
+});
