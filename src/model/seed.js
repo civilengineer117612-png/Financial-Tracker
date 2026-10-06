@@ -1,3 +1,4 @@
+import { kindOf } from "./types.js";
 // First-run defaults: plain category names and no quick tiles.
 // No accounts and no balances: those are typed on the device and never leave it.
 
@@ -65,6 +66,8 @@ export function renameCategory(state, id, name) {
 
 // The spending categories that hold a Type (many may), in the order they are listed; the first one, or null, for a place that needs just one (the scanner's guess).
 // Whatever needs rent, food or essentials sums or searches ALL of them. Nothing finds a category by its NAME.
+// ALL spending categories of a kind, stored or read from the name (the Emergency Fund target sums them): a "Groceries" added today counts as food.
+export const categoriesOfKind = (categories, kind) => (categories ?? []).filter((c) => c.kind === "expense" && kindOf(c) === kind);
 export const categoriesByRole = (categories, role) => (categories ?? []).filter((c) => c.kind === "expense" && c.role === role);
 export const categoryByRole = (categories, role) => categoriesByRole(categories, role)[0] ?? null;
 

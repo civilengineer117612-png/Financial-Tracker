@@ -6,6 +6,7 @@ const WORDS = [
   ["subscription", /\b(subscription|subscriptions|netflix|spotify|youtube|icloud|disney|hbo|prime|chatgpt|membership|apple music|google one)\b/],
   ["utilities", /\b(utilities|utility|electric|electricity|kuryente|water|tubig|meralco|internet|wifi|wi-fi|load|prepaid|postpaid|mobile plan|phone bill|bills?)\b/],
   ["dining", /\b(dining|restaurant|resto|eat ?out|eating out|kainan|jollibee|mcdo|starbucks|coffee|kape|cafe|café|milk ?tea|boba|fast ?food|delivery|grabfood|foodpanda|takeout|take-out|snacks?|merienda)\b/],
+  ["essentials", /\b(essentials?|toiletries|hygiene|household|laundry|labada|sabon)\b/],
   ["rent", /\b(rent|renta|upa|apartment|apartelle|condo|dorm|boarding ?house|lease|bedspace|bed space)\b/],
   ["transport", /\b(transport|transpo|commute|fare|pamasahe|jeep|jeepney|tricycle|trike|bus|mrt|lrt|angkas|grab|taxi|gas|gasoline|fuel|petrol|parking|toll|motorcycle|moto|habal)\b/],
   ["food", /\b(food|groceries|grocery|palengke|market|pagkain|kain|ulam|bigas|rice|supermarket|meals?|lunch|baon|sari-?sari|ingredients)\b/],
@@ -23,6 +24,9 @@ export function guessType(name) {
 
 // What a category's Type is, and whether the owner has confirmed it: a stored Type (the category's `role`) is confirmed, carried over from before or chosen
 // by a tap. With none stored, the name's guess is offered (or nothing).
+// The kind of a category where one matters out of sight (rent, food and essentials for the Emergency Fund, the typed rent): the stored one, else its name's.
+export const kindOf = (category) => category.role ?? guessType(category.name);
+
 export function typeOf(category) {
   if (category.role) return { type: category.role, confirmed: true, guess: false };
   const g = guessType(category.name);

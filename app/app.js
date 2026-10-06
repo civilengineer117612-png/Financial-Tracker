@@ -1393,10 +1393,19 @@ function viewBudgetNew() {
   const unsure = M.unclear(S().categories, set.bucket_overrides ?? {}, M.UNLOGGED_CATEGORY_ID);
   const confirmHtml = unsure.length ? `<h3 id="bud-confirm">Which bucket?</h3><p class="note">The name does not say clearly, so these wait in Other. Tap once for each; the answer is remembered, and you can change it in Setup.</p>${unsure.map((c) =>
     `<div class="row"><div>${esc(c.name)}</div></div><div class="chips">${bucketChips(c.id, null)}</div>`).join("")}` : "";
-  const bucketsHtml = income ? `<h2>Buckets</h2><p class="sub">${esc(M.TARGET_SOURCE)} Each bucket is shown against its target, as a reference and never as a limit.</p>
-    ${bk.rows.map(bucketLine).join("")}
+  // The list twin of the bucket bars: the same rows and numbers as a table (tap either one to switch; the choice stays while the app is open).
+  const pctOf = (a) => (income ? M.showTenths(M.tenths(a, income)) : "");
+  const bucketTable = `<table class="tbl" id="bud-bucket-table"><tr><th>Bucket</th><th class="n">A month</th><th class="n">Of income</th><th class="n">Target</th></tr>${[
+    ...bk.rows.map((r) => [esc(r.label), peso(r.amount), pctOf(r.amount), r.target != null ? M.showTenths(r.target) : ""]),
+    ...(bk.invested.amount > 0 ? [[esc(bk.invested.label) + "<small>in Savings</small>", peso(bk.invested.amount), pctOf(bk.invested.amount), ""]] : []),
+    ...(bk.buffer.amount > 0 ? [[esc(bk.buffer.label) + "<small>not savings</small>", peso(bk.buffer.amount), pctOf(bk.buffer.amount), ""]] : []),
+  ].map((r) => `<tr>${r.map((c, i) => `<td${i ? ' class="n"' : ""}>${c}</td>`).join("")}</tr>`).join("")}</table>`;
+  const bucketBars = `${bk.rows.map(bucketLine).join("")}
     ${bk.invested.amount > 0 ? `<div class="row" id="bud-invested"><div>${esc(bk.invested.label)}<small>Counted in Savings. Spent, not held, so never part of the emergency fund.</small></div><div class="amt">${peso(bk.invested.amount)} a month</div></div>` : ""}
-    ${bk.buffer.amount > 0 ? `<div class="row" id="bud-buffer"><div>${esc(bk.buffer.label)}<small>Its own line. Not savings.</small></div><div class="amt">${peso(bk.buffer.amount)} a month${bk.buffer.tenths != null ? `<small>${M.showTenths(bk.buffer.tenths)} of income</small>` : ""}</div></div>` : ""}
+    ${bk.buffer.amount > 0 ? `<div class="row" id="bud-buffer"><div>${esc(bk.buffer.label)}<small>Its own line. Not savings.</small></div><div class="amt">${peso(bk.buffer.amount)} a month${bk.buffer.tenths != null ? `<small>${M.showTenths(bk.buffer.tenths)} of income</small>` : ""}</div></div>` : ""}`;
+  const bucketsHtml = income ? `<h2>Buckets</h2><p class="sub">${esc(M.TARGET_SOURCE)} Each bucket is shown against its target, as a reference and never as a limit.</p>
+    <div class="modebar"><button data-action="bucket-mode" aria-label="${ui.bucketsAsList ? "Show the buckets as bars" : "Show the buckets as a table"}">${ui.bucketsAsList ? "Chart" : "List"}</button></div>
+    <div class="flip" id="bud-buckets" data-action="bucket-mode" role="button" tabindex="0" aria-label="${ui.bucketsAsList ? "The table of the buckets. Tap to show the bars." : "Bars of the buckets. Tap to show the table."}">${ui.bucketsAsList ? bucketTable : bucketBars}</div>
     ${bk.unconfirmed.count ? `<p class="note" id="bud-unconfirmed">Includes ${peso(bk.unconfirmed.amount)} from ${bk.unconfirmed.count} unconfirmed ${bk.unconfirmed.count === 1 ? "category" : "categories"} - <button class="link" data-action="goto-confirm">confirm them</button></p>` : ""}
     <p class="note"><button class="link" data-action="open-targets">Change the targets</button>${set.bucket_targets ? ` \u00b7 <button class="link" data-action="clear-targets">Use 50/30/20 again</button>` : ""}</p>${confirmHtml}` : "";
   let sum = "";
@@ -2097,6 +2106,7 @@ async function onClick(el) {
       ui.period = { kind: "range", ...r }; ui.sheet = null; ui.sel = null; renderAll(); break;
     }
     case "chart-view": ui.view = el.dataset.view; ui.sel = null; renderScreen(); break;
+    case "bucket-mode": ui.bucketsAsList = !ui.bucketsAsList; renderScreen(); break;
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
     case "open-month": ui.period = { kind: "month", month: id }; ui.view = "budget"; ui.sel = null; ui.asList = false; renderScreen(); break;
     case "pick-bar": ui.sel = ui.sel === id ? null : id; renderScreen(); break;
