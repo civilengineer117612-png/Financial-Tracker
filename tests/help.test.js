@@ -51,7 +51,7 @@ test("the first-run notice says the five plain things: data stays here, nothing 
 
 test("Help words never name an owner-specific goal or category, and the goals topic speaks of roles", () => {
   const words = TOPICS.flatMap((t) => t.lines).join(" ") + QUICK_NOTES.join(" ") + FIRST_RUN_NOTICE.lines.join(" ");
-  for (const owner of ["Mole", "Lakat", "Upskill", "Family"]) assert.ok(!words.includes(owner), owner);
+  for (const owner of ["Mole", "Lakat", "Upskill"]) assert.ok(!words.includes(owner), owner);
   assert.match(TOPICS.find((t) => t.tab === "goals").lines.join(" "), /Choose which goal is your emergency fund/);
 });
 

@@ -7,6 +7,7 @@ import { formatPesos } from "./money.js";
 import { budgetFor, planBudgetChange } from "./budget.js";
 import { UNLOGGED_CATEGORY_ID } from "./seed.js";
 import { bucketMap, resolveTargets, starterFromTargets } from "./buckets.js";
+import { guessType } from "./types.js";
 import { SUGGEST_DEFAULTS } from "./suggest-settings.js";
 
 // Suggestions are shown rounded to the nearest 50 pesos (5,000 centavos), halves going up: 126 becomes 150, 124 becomes 100, 125 becomes 150.
@@ -117,7 +118,7 @@ export function suggestBudgets({ state, plan = null, pin = null, today, month, s
   });
   const others = lines.filter((l) => !l.category_id && l.kind === "expense").map((l) => ({ name: l.name, amount: l.amount, reason: l.reason }));
   const saved = lines.filter((l) => l.kind === "goal" || l.kind === "buffer").map((l) => ({ name: l.name, kind: l.kind, amount: l.pinned ? l.amount : toNearest50(l.amount), reason: l.reason, ...(l.goal_id ? { goal_id: l.goal_id } : {}), ...(l.pinned ? { pinned: true } : {}) }));
-  const roles = new Map(state.categories.filter((c) => c.role).map((c) => [c.id, c.role]));
+  const roles = new Map(state.categories.map((c) => [c.id, c.role ?? guessType(c.name)]).filter(([, r]) => r));
   const fit = fitToIncome({ rows, others, saved, income: income.amount, roles, buckets });
   return { ok: true, income, rows: fit.rows, others, saved, trimmed: fit.trimmed, unallocated: fit.unallocated, short: fit.short, history: r.history };
 }

@@ -29,6 +29,9 @@ const S = () => ledger.state;
 const activeAccounts = () => S().accounts.filter((a) => !a.archived);
 const accountName = (id) => S().accounts.find((a) => a.id === id)?.name ?? "?";
 const categoryName = (id) => S().categories.find((c) => c.id === id)?.name ?? "?";
+// "Name \u00b7 Type \u00b7 Bucket" for a category. A Type guessed from the name and not yet confirmed says "(guess)"; with no guess it says the Type is not set.
+const catLine = (c) => { const t = M.typeOf(c), b = M.bucketOf(c, ledger.settings.bucket_overrides ?? {});
+  return `${esc(c.name)} \u00b7 ${esc(t.type ? M.ROLE_LABELS[t.type] + (t.confirmed ? "" : " (guess)") : "Type not set")} \u00b7 ${esc(M.BUCKET_LABELS[b])}`; };
 const expenseCategories = () => S().categories.filter((c) => c.kind === "expense" && c.id !== M.UNLOGGED_CATEGORY_ID);
 
 // The picture the owner chose for an account, or a plain first-letter tile until they do.
@@ -908,7 +911,7 @@ function viewSetup() {
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}
     <h2>Categories</h2>
-    ${expenseCategories().map((c) => `<div class="row"><div>${esc(c.name)}${c.role ? ` <span style="color:var(--mid)">\u00b7 ${esc(M.ROLE_LABELS[c.role])}</span>` : ""}</div><div class="amt"><button class="link" data-action="cat-role" data-id="${esc(c.id)}">Role</button> <button class="link" data-action="rename-cat" data-id="${esc(c.id)}">Rename</button></div></div>`).join("")}
+    ${expenseCategories().map((c) => `<div class="row"><div>${catLine(c)}</div><div class="amt"><button class="link" data-action="cat-role" data-id="${esc(c.id)}">Type</button> <button class="link" data-action="rename-cat" data-id="${esc(c.id)}">Rename</button></div></div>`).join("")}
     <p><button data-action="add-cat" style="width:100%">Add a category</button></p>
     ${planOf() ? `<h2>Pay plan</h2>
     <p class="note">A plan is in effect. <button class="link" data-action="tab" data-tab="${ledger.settings.try_new_budget ? "budget" : "plan"}">${ledger.settings.try_new_budget ? "Open it in Budget" : "Open it"}</button></p>` : ""}
@@ -1380,17 +1383,21 @@ function viewBudgetNew() {
   const savedHtml = saved.length ? saved.map((r) => `<div class="row"><div>${esc(r.name)}<small>${esc(r.pinned ? "The amount you typed" : r.label)}</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}${r.goal_id && !plan ? `<button class="link" data-action="open-goal-monthly" data-id="${esc(r.goal_id)}">Change</button>` : ""}</div></div>`).join("")
     : `<p class="note">${plan ? "Your plan has no savings, goal or buffer lines." : income ? (sug?.code === "NEEDS_RENT" ? "Suggest a budget asks for your rent first, then shows what to set aside." : "Nothing suggested yet. Suggest a budget to see it.") : "Add income first."}</p>`;
   const bk = M.bucketRows({ categories: S().categories, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets, income: income ?? 0,
-    budgets: Object.fromEntries(rows.map((r) => [r.c.id, r.now ?? 0])), goals: savedTotal, buffer: bufferTotal });
+    budgets: Object.fromEntries(rows.map((r) => [r.c.id, r.now ?? 0])), goals: savedTotal, buffer: bufferTotal, skipId: M.UNLOGGED_CATEGORY_ID });
   const bucketLine = (r) => `<div class="row" data-bucket="${r.bucket}"><div>${esc(r.label)}${r.target != null ? `<small>Target ${M.showTenths(r.target)}</small>` : ""}</div><div class="amt">${peso(r.amount)} a month${r.tenths != null ? `<small>${M.showTenths(r.tenths)} of income</small>` : ""}</div></div>
     ${r.tenths != null ? `<div class="meter goal" role="img" aria-label="${esc(r.label)}: ${M.showTenths(r.tenths)} of income${r.target != null ? ", target " + M.showTenths(r.target) : ""}"><span class="fill" style="width:${Math.min(100, r.tenths / 10)}%"></span></div>` : ""}`;
-  const ask = M.unsorted(S().categories, set.bucket_overrides ?? {}, M.UNLOGGED_CATEGORY_ID);
-  const askHtml = ask.length ? `<h3 id="bud-ask">Need or want?</h3><p class="note">Tap once for each. The answer is remembered, and you can change it in Setup.</p>${ask.map((c) => { const g = M.guessBucket(c.name);
-    return `<div class="row"><div>${esc(c.name)}</div><div class="amt">${["need", "want"].map((b) => `<button class="chip" data-action="pick-bucket" data-id="${esc(c.id)}" data-bucket="${b}" aria-pressed="false">${b === "need" ? "Need" : "Want"}${g === b ? " (suggested)" : ""}</button>`).join(" ")}</div></div>`; }).join("")}` : "";
+  const ask = M.askBucket(S().categories, set.bucket_overrides ?? {});
+  const askHtml = ask.length ? `<h3 id="bud-ask">Need or want?</h3><p class="note">Family and Other have no default. Tap once for each; the answer is remembered, and you can change it in Setup.</p>${ask.map((c) =>
+    `<div class="row"><div>${esc(c.name)}</div><div class="amt">${["need", "want"].map((b) => `<button class="chip" data-action="pick-bucket" data-id="${esc(c.id)}" data-bucket="${b}" aria-pressed="false">${b === "need" ? "Need" : "Want"}</button>`).join(" ")}</div></div>`).join("")}` : "";
+  const unsure = M.unconfirmed(S().categories, M.UNLOGGED_CATEGORY_ID);
+  const confirmHtml = unsure.length ? `<h3 id="bud-confirm">Confirm the Type</h3><p class="note">These have no Type yet. A guess from the name is shown; one tap confirms it. Until then they are counted under the guessed bucket, or Other when there is no guess.</p>${unsure.map((c) => { const t = M.typeOf(c);
+    return `<div class="row"><div>${esc(c.name)}<small>${esc(t.guess ? M.ROLE_LABELS[t.type] + " (guess)" : "Type not set")}</small></div><div class="amt">${t.guess ? `<button class="chip" data-action="confirm-type" data-id="${esc(c.id)}" data-type="${t.type}">Confirm</button> ` : ""}<button class="link" data-action="cat-role" data-id="${esc(c.id)}">${t.guess ? "Change" : "Choose"}</button></div></div>`; }).join("")}` : "";
   const bucketsHtml = income ? `<h2>Buckets</h2><p class="sub">${esc(M.TARGET_SOURCE)} Each bucket is shown against its target, as a reference and never as a limit.</p>
     ${bk.rows.map(bucketLine).join("")}
     ${bk.invested.amount > 0 ? `<div class="row" id="bud-invested"><div>${esc(bk.invested.label)}<small>Counted in Savings. Spent, not held, so never part of the emergency fund.</small></div><div class="amt">${peso(bk.invested.amount)} a month</div></div>` : ""}
     ${bk.buffer.amount > 0 ? `<div class="row" id="bud-buffer"><div>${esc(bk.buffer.label)}<small>Its own line. Not savings.</small></div><div class="amt">${peso(bk.buffer.amount)} a month${bk.buffer.tenths != null ? `<small>${M.showTenths(bk.buffer.tenths)} of income</small>` : ""}</div></div>` : ""}
-    <p class="note"><button class="link" data-action="open-targets">Change the targets</button>${set.bucket_targets ? ` \u00b7 <button class="link" data-action="clear-targets">Use 50/30/20 again</button>` : ""}</p>${askHtml}` : "";
+    ${bk.unconfirmed.count ? `<p class="note" id="bud-unconfirmed">Includes ${peso(bk.unconfirmed.amount)} from ${bk.unconfirmed.count} unconfirmed ${bk.unconfirmed.count === 1 ? "category" : "categories"} - <button class="link" data-action="goto-confirm">confirm them</button></p>` : ""}
+    <p class="note"><button class="link" data-action="open-targets">Change the targets</button>${set.bucket_targets ? ` \u00b7 <button class="link" data-action="clear-targets">Use 50/30/20 again</button>` : ""}</p>${confirmHtml}${askHtml}` : "";
   let sum = "";
   const sh = income ? M.shares(income, spendTotal, savedTotal, bufferTotal) : null;   // the totals lines and the overall line use the SAME three numbers, so they always agree
   if (income) {
@@ -1831,15 +1838,22 @@ function renderSheet() {
       <p class="note">Next you choose where to keep the file, for example Save to Files. It is encrypted, so it is safe in iCloud Drive or on a flash drive.</p>`;
   } else if (sh.type === "roles") {
     const cats = sh.ids.map((id) => S().categories.find((c) => c.id === id)).filter(Boolean);
-    body = `<h3>${sh.notice ? "Roles your categories were given" : "Category role"}</h3>
-      <p class="note">${sh.notice ? "The last update gave these categories a role, by their exact name, so the app can tell what each one is for. Nothing else changed. Change any you do not agree with." : "A role tells the app what the category is for (the scanner and the budget use it). A role belongs to one category at a time."}</p>
-      ${cats.map((c) => `<label for="r_${esc(c.id)}">${esc(c.name)}</label><select id="r_${esc(c.id)}" data-action-change="set-cat-role" data-id="${esc(c.id)}"><option value="">No role</option>${M.CATEGORY_ROLES.map((r) => `<option value="${r}"${c.role === r ? " selected" : ""}>${esc(M.ROLE_LABELS[r])}</option>`).join("")}</select>${sh.notice ? "" : `<label for="b_${esc(c.id)}">Bucket</label><select id="b_${esc(c.id)}" data-action-change="set-cat-bucket" data-id="${esc(c.id)}"><option value="">${M.bucketOf(c, {}) === "other" ? "Not sorted yet (asked on Budget)" : "Automatic: " + M.BUCKET_LABELS[M.bucketOf(c, {})]}</option>${M.BUCKETS.map((b) => `<option value="${b}"${ledger.settings.bucket_overrides?.[c.id] === b ? " selected" : ""}>${M.BUCKET_LABELS[b]}</option>`).join("")}</select>`}`).join("")}
+    const options = (c) => [...M.CATEGORY_ROLES, ...(M.LEGACY_ROLES.includes(c.role) ? [c.role] : [])];
+    body = `<h3>${sh.notice ? "Types your categories were given" : "Type"}</h3>
+      <p class="note">${sh.notice ? "The last update gave these categories a Type, by their exact name, so the app can tell what each one is for. Nothing else changed. Change any you do not agree with." : "The Type says what a category is for (the scanner, the budget and the emergency fund use it). Many categories can share a Type. A guess from the name is shown as (guess) until you tap to confirm it."}</p>
+      ${cats.map((c) => { const t = M.typeOf(c);
+        return `<label for="r_${esc(c.id)}">${esc(c.name)}</label><select id="r_${esc(c.id)}" data-action-change="set-cat-role" data-id="${esc(c.id)}"><option value="">${t.confirmed ? "No Type" : "Choose a Type"}</option>${options(c).map((r) => `<option value="${r}"${t.confirmed && c.role === r ? " selected" : ""}>${esc(M.ROLE_LABELS[r])}</option>`).join("")}</select>
+        ${t.guess ? `<p><button class="chip" data-action="confirm-type" data-id="${esc(c.id)}" data-type="${t.type}">Confirm ${esc(M.ROLE_LABELS[t.type])} (guess)</button></p>` : ""}
+        ${sh.notice ? "" : `<label for="b_${esc(c.id)}">Bucket</label><select id="b_${esc(c.id)}" data-action-change="set-cat-bucket" data-id="${esc(c.id)}"><option value="">${M.bucketOf(c, {}) === "other" ? "Not decided (asked on Budget)" : "Follows the Type: " + M.BUCKET_LABELS[M.bucketOf(c, {})]}</option>${M.BUCKETS.map((b) => `<option value="${b}"${ledger.settings.bucket_overrides?.[c.id] === b ? " selected" : ""}>${M.BUCKET_LABELS[b]}</option>`).join("")}</select>`}`; }).join("")}
       <p><button class="primary" data-action="close-sheet" style="margin-top:14px">${sh.notice ? "I understand" : "Done"}</button></p>`;
   } else if (sh.type === "cat") {
     body = `<h3>${sh.id ? "Rename this category" : "Add a category"}</h3>
       <label for="c-name">Name</label><input id="c-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off" enterkeyhint="done">
       <p class="note">${sh.id ? "Its entries, budget and everything else stay with it." : "For spending. You can rename it later."}</p>
-      ${sh.id ? "" : (() => { const g = M.guessBucket(ui.form.name); return `<label>Need or want?</label><div class="chips" id="c-bucket">${[["need", "Need"], ["want", "Want"], ["later", "Decide later"]].map(([b, t]) => `<button class="chip" data-action="pick-new-bucket" data-bucket="${b}" aria-pressed="${ui.form.bucket === b}">${t}${g === b ? " (suggested)" : ""}</button>`).join("")}</div><p class="note">Tap one. A guess from the name is only a hint; nothing is chosen for you. The answer is remembered and can be changed in Setup.</p>`; })()}
+      ${sh.id ? "" : `<label for="c-type">Type</label><p id="c-guesswrap"${M.guessType(ui.form.name) ? "" : " hidden"}><button class="chip" id="c-guess" data-action="pick-new-type" data-type="${esc(M.guessType(ui.form.name) ?? "")}" aria-pressed="${ui.form.type === M.guessType(ui.form.name) && ui.form.type}">${M.guessType(ui.form.name) ? "Use " + esc(M.ROLE_LABELS[M.guessType(ui.form.name)]) + " (guess)" : ""}</button></p>
+        <select id="c-type" data-field="type"><option value="">Choose a Type</option>${M.CATEGORY_ROLES.map((r) => `<option value="${r}"${ui.form.type === r ? " selected" : ""}>${esc(M.ROLE_LABELS[r])}</option>`).join("")}</select>
+        <p><button class="chip" id="c-type-later" data-action="pick-new-type" data-type="later" aria-pressed="${ui.form.type === "later"}">Decide later</button></p>
+        <p class="note">One tap confirms it. A guess from the name is only a hint; nothing is chosen for you. Family and Other ask Need or want on Budget.</p>`}
       <p><button class="primary" id="f-save" data-action="save-cat" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "sweeporder") {
     const f = ui.form, goals = S().goals, picked = f.order ?? [];
@@ -1964,9 +1978,9 @@ function refreshSave() {
     const why = $("scan-why");   // a greyed button must say what it is waiting for
     if (why) why.textContent = !(a.ok && a.centavos > 0) ? "Enter the amount to save." : !M.isPhDate(f.date) ? "Choose the date to save." : !f.category_id ? "Choose a category to save." : !f.account_id ? "Choose the account it " + (M.kindById(f.kind).direction === "in" ? "arrived in" : "was paid from") + " to save." : !splitOk ? "Finish the split to save." : "";
   } else if (type === "cat") {
-    btn.disabled = !(f.name ?? "").trim() || (!ui.sheet.id && !f.bucket);
-    const guess = M.guessBucket(f.name);   // the hint follows the name as it is typed (the typing box is not redrawn)
-    for (const b of document.querySelectorAll("#c-bucket button")) b.textContent = ({ need: "Need", want: "Want", later: "Decide later" })[b.dataset.bucket] + (guess === b.dataset.bucket ? " (suggested)" : "");
+    btn.disabled = !(f.name ?? "").trim() || (!ui.sheet.id && !f.type);
+    const g = M.guessType(f.name), btnG = $("c-guess"), wrap = $("c-guesswrap");   // the hint follows the name as it is typed (the typing box is not redrawn)
+    if (btnG && wrap) { wrap.hidden = !g; btnG.dataset.type = g ?? ""; btnG.textContent = g ? "Use " + M.ROLE_LABELS[g] + " (guess)" : ""; }
   } else if (type === "sweeporder") {
     const bad = (f.order ?? []).slice(0, -1).some((id) => { const raw = (f["t_" + id] ?? "").trim(); if (!raw) return false; const a = M.parsePesos(raw); return !a.ok || a.centavos < 0; });
     const msg = $("sweep-msg"); if (msg) msg.textContent = bad ? "Enter a target like 20000, or leave it empty." : "";
@@ -2258,13 +2272,15 @@ async function onClick(el) {
     case "cat-role": ui.sheet = { type: "roles", ids: [id] }; renderSheet(); break;
     case "add-cat": ui.sheet = { type: "cat", id: null }; ui.form = { name: "" }; renderSheet(); break;
     case "rename-cat": ui.sheet = { type: "cat", id }; ui.form = { name: S().categories.find((c) => c.id === id)?.name ?? "" }; renderSheet(); break;
-    case "pick-new-bucket": ui.form.bucket = el.dataset.bucket; renderSheet(); refreshSave(); break;
+    case "pick-new-type": ui.form.type = el.dataset.type; renderSheet(); refreshSave(); break;
+    case "confirm-type": { const r = M.setCategoryRole(S(), id, el.dataset.type); if (!r.ok) { showToast(r.violations[0].message); break; } await commit(r.state); renderSheet(); break; }
+    case "goto-confirm": $("bud-confirm")?.scrollIntoView({ block: "start" }); break;
     case "save-cat": {
       const r = ui.sheet.id ? M.renameCategory(S(), ui.sheet.id, ui.form.name) : M.addCategory(S(), { id: newId("cat"), name: ui.form.name });
       if (!r.ok) { showToast(r.violations[0].message); break; }
-      const answer = !ui.sheet.id && ["need", "want"].includes(ui.form.bucket) ? ui.form.bucket : null;
+      const chosen = !ui.sheet.id && M.CATEGORY_ROLES.includes(ui.form.type) ? M.setCategoryRole(r.state, r.category.id, ui.form.type) : null;
       ui.sheet = null; renderSheet();
-      await commit(r.state, answer ? M.withBucket(ledger.settings, r.category.id, answer) : ledger.settings);
+      await commit(chosen?.ok ? chosen.state : r.state);
       break;
     }
     case "open-notice": ui.sheet = { type: "notice" }; renderSheet(); break;

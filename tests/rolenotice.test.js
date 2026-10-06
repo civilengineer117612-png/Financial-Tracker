@@ -34,7 +34,11 @@ test("setCategoryRole changes, clears and refuses", () => {
   assert.equal(r.ok, true); assert.equal(r.state.categories[0].role, "fun");
   assert.equal(setCategoryRole(s, "a", null).state.categories[0].role, undefined);
   assert.equal("role" in setCategoryRole(s, "a", null).state.categories[0], false);
-  assert.equal(setCategoryRole(s, "b", "shopping").violations[0].code, "ROLE_TAKEN");
+  const shared = setCategoryRole(s, "b", "shopping");
+  assert.equal(shared.ok, true, "many categories can share a Type");
+  assert.deepEqual(shared.state.categories.filter((x) => x.role === "shopping").map((x) => x.id), ["a", "b"]);
+  assert.equal(setCategoryRole(s, "b", "essentials").violations[0].code, "BAD_ROLE", "an older Type can be kept but not newly given");
+  assert.equal(setCategoryRole({ categories: [cat("e", "Needs", "essentials")] }, "e", "essentials").ok, true);
   assert.equal(setCategoryRole(s, "b", "banana").violations[0].code, "BAD_ROLE");
   assert.equal(setCategoryRole(s, "inc", "fun").violations[0].code, "FIXED_CATEGORY");
   assert.equal(setCategoryRole(s, "zzz", "fun").violations[0].code, "UNKNOWN_CATEGORY");

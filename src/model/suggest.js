@@ -11,6 +11,7 @@ import { netPerPayday } from "./income.js";
 import { spendingByCategory, addMonths, monthOf } from "./reports.js";
 import { goalProgress } from "./goals.js";
 import { splitSavings } from "./savings.js";
+import { guessType } from "./types.js";
 import { UNLOGGED_CATEGORY_ID } from "./seed.js";
 import { dim, dayIn } from "./plan.js";
 import { resolveSettings } from "./suggest-settings.js";
@@ -117,7 +118,7 @@ export function suggestPlan(input) {
   const cats = state.categories.filter((c) => c.kind === "expense" && c.id !== UNLOGGED_CATEGORY_ID);
   const monthly = (id) => months.map((u) => Math.max(0, u.by.rows.filter((r) => r.category_id === id).reduce((n, r) => n + r.amount, 0)));
   const subs = state.subscriptions ?? [];
-  const NEEDS = new Set(NEEDS_ROLES);
+  const NEEDS = new Set(NEEDS_ROLES), typeOf = (c) => c.role ?? guessType(c.name);
 
   // 3. Fixed first: subscriptions, scheduled payments and installments, placed on the payday their due day falls in.
   let fixedNeeds = 0, fixedWants = 0;
@@ -133,8 +134,9 @@ export function suggestPlan(input) {
     fixedNeeds += x.amount;
   }
   // Rent is fixed too, once there is history to learn its amount and its usual day from.
-  const rentCat = cats.find((c) => c.role === "rent");
-  if (learn && rentCat) {
+  // Every category of the Type Rent (a stored Type, else the name's guess) is fixed rent; many may share it.
+  const rentCats = cats.filter((c) => typeOf(c) === "rent");
+  if (learn) for (const rentCat of rentCats) {
     const total = median(monthly(rentCat.id));
     const txById = new Map(state.transactions.map((t) => [t.id, t]));
     const days = state.entries.filter((e) => e.category_id === rentCat.id && e.amount > 0).map((e) => txById.get(e.transaction_id))
@@ -143,16 +145,16 @@ export function suggestPlan(input) {
     if (total > 0) { fixedAt(rentCat.name, "expense", total, day, `Median of the last ${plural(months.length, "usable month", "usable months")}, usually paid around day ${day}, so it is set aside on payday ${payOfDay(day) + 1}.`, "history", rentCat.id); fixedNeeds += total; }
   }
 
-  // Starter mode needs the owner's rent first: it is the one big fixed figure the shares cannot guess. 0 means no rent.
-  if (!learn && rentCat) {
+  // Starter mode needs the owner's rent first: it is the one big fixed figure the shares cannot guess. 0 means no rent. The typed figure is the total rent: it goes on the first Rent category.
+  if (!learn && rentCats.length) {
     if (input.rent === undefined) return { ok: false, code: "NEEDS_RENT", message: "Type your monthly rent first (0 if you pay none)." };
-    if (input.rent > 0) { fixedAt(rentCat.name, "expense", input.rent, 1, "The monthly rent you typed.", "history", rentCat.id); fixedNeeds += input.rent; }
+    if (input.rent > 0) { fixedAt(rentCats[0].name, "expense", input.rent, 1, "The monthly rent you typed.", "history", rentCats[0].id); fixedNeeds += input.rent; }
   }
 
   // 4. Spending lines. With 2 or more usable months: median of each category. Otherwise a starter share of pay, marked "starter".
   const schedulerCat = new Map();
   for (const x of scheduled) if (x.category_id && x.months_left !== 0) schedulerCat.set(x.category_id, (schedulerCat.get(x.category_id) ?? 0) + x.amount);
-  const skip = (c) => lines.has(c.name.trim().toLowerCase()) || (c.role === "subscription" && subs.length > 0);
+  const skip = (c) => lines.has(c.name.trim().toLowerCase()) || (typeOf(c) === "subscription" && subs.length > 0);
   const spendCats = cats.filter((c) => !skip(c));
   const split = (total, name, kind, reason, source, category_id) => put(name, kind, splitBy(total, days1, days2), reason, source, category_id);
   if (learn) {
@@ -171,8 +173,8 @@ export function suggestPlan(input) {
       return out;
     };
     // With buckets (the owner's answers and the role defaults) a need is any category in Needs; without them, the old role list. Savings-bucket categories take no starter share.
-    const bk = input.buckets, isNeed = (c) => (bk ? bk.get(c.id) === "need" : NEEDS.has(c.role));
-    const needWeight = (c) => (c.role === "rent" ? 0 : S.starter_weights[c.role] ?? (bk ? S.needs_other_weight : 0));
+    const bk = input.buckets, isNeed = (c) => (bk ? bk.get(c.id) === "need" : NEEDS.has(typeOf(c)));
+    const needWeight = (c) => (typeOf(c) === "rent" ? 0 : S.starter_weights[typeOf(c)] ?? (bk ? S.needs_other_weight : 0));
     const needsList = spendCats.filter((c) => isNeed(c) && needWeight(c) > 0), wantsList = spendCats.filter((c) => !isNeed(c) && !(bk && bk.get(c.id) === "savings"));
     const needsPool = Math.max(0, Math.floor((monthIncome * S.starter.needs) / 10000) - fixedNeeds), wantsPool = Math.max(0, Math.floor((monthIncome * S.starter.wants) / 10000) - fixedWants);
     const loggedAny = wantsList.some((c) => (logged.get(c.id) ?? 0) > 0);
