@@ -34,7 +34,9 @@ export const SCHEMAS = {
     status: oneOf("draft", "verified"),
     source: oneOf("manual", "preset", "template", "photo", "voice", "import", "reconciliation"),
     reference_no: optional(text),
-    tag_id: optional(id),        // ADDED: spec 8.1 says trip expenses carry one tag
+    tag_id: optional(id),        // ADDED: spec 8.1 says trip expenses carry one tag. OLD: no longer read or written (data version 4 copies it to trip_add)
+    trip_add: optional(id),      // ADDED (version 4): put on this trip by hand (or by a manual trip start); overrides the dates
+    trip_out: optional(id),      // ADDED (version 4): taken off this trip by hand although its date falls inside the trip
     created_at: timestamp, verified_at: optional(timestamp),
     edited_before_verify: optional(bool),   // ADDED (addendum 3): photo/voice drafts only, feeds survey Q4
   },
@@ -57,7 +59,8 @@ export const SCHEMAS = {
   Subscription: { id, name, card: id, currency: name, amount: centavos, renewal_day: { type: "day" }, exit_condition: text, review_date: date },
   CheckIn: { id, date, account_id: id, counted_balance: centavos, ledger_balance: centavos, difference: centavos },
   Attachment: { id, transaction_id: id, type: name, file: name, file_timestamp: timestamp },
-  Tag: { id, name, budget: optional(centavos) },
+  Tag: { id, name, budget: optional(centavos),
+    start: optional(date), end: optional(date) },   // ADDED (data version 4): the trip's first and last day, inclusive; entries on those days belong to it, worked out when shown
   // Addendum 3: one row per week, answered at the end of the weekly check-in.
   SurveyResponse: {
     id, week_start: date, week_end: date,
@@ -103,6 +106,10 @@ const TYPE_CHECKS = {
 
 // Rules that involve two fields at once and so cannot live in a per-field spec.
 const CROSS_FIELD = {
+  Tag: (t) => [
+    ...((t.start == null) !== (t.end == null) ? ["a trip needs both a start and an end date, or neither"] : []),
+    ...(t.start != null && t.end != null && t.end < t.start ? ["a trip cannot end before it starts"] : []),
+  ],
   Transaction: (t) => {
     if (t.status === "verified" && t.verified_at == null) return ["verified transaction needs verified_at"];
     if (t.status === "draft" && t.verified_at != null) return ["draft transaction must not have verified_at"];

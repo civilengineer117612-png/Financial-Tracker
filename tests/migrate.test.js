@@ -34,13 +34,23 @@ function v1WithPayslip() {
   l.state.payslipLines = [{ payslip_id: "ps1", side: "earning", kind: "basic", amount: 500000 }];
   return l;
 }
-const FIXTURES = { "version 1, before payslips": v1Early, "version 1, with a payslip": v1WithPayslip };
+// Data as version 3 wrote it, by hand: a trip (no dates), one entry put on it by hand (the old tag_id) and one not.
+function v3WithTrip() {
+  const l = v1Early();
+  l.v = 3; l.rev = 20;
+  for (const k of COLLECTION_NAMES) l.state[k] ??= [];
+  l.state.tags = [{ id: "trip1", name: "Sample Trip", budget: 500000 }];
+  l.state.transactions[0] = { ...l.state.transactions[0], tag_id: "trip1" };
+  l.settings = { ...l.settings, active_tag_id: "trip1" };
+  return l;
+}
+const FIXTURES = { "version 1, before payslips": v1Early, "version 1, with a payslip": v1WithPayslip, "version 3, with a trip": v3WithTrip };
 const text = (l) => JSON.stringify(l);
 // every field of `a` is still in `b` with the same value (b may have more)
 const holds = (a, b) => (typeof a !== "object" || a === null ? a === b : typeof b === "object" && b !== null && Object.keys(a).every((k) => holds(a[k], b[k])));
 
-test("the current data version is 3 and the first version's data is still accepted as older", () => {
-  assert.equal(LEDGER_VERSION, 3);
+test("the current data version is 4 and the first version's data is still accepted as older", () => {
+  assert.equal(LEDGER_VERSION, 4);
   for (const make of Object.values(FIXTURES)) { const p = parseLedger(text(make())); assert.equal(p.ok, true); assert.equal(p.older, true); }
   const cur = upgradeLedger(v1Early()).ledger;
   assert.equal(parseLedger(text(cur)).older, undefined);
@@ -150,4 +160,26 @@ test("a stored copy comes back with its own data version, newer than what is on 
   const r = restorableCopy(copy, 20, new Date("2026-10-05T00:00:00Z"));
   assert.equal(r.v, 1); assert.equal(r.rev, 21); assert.equal(r.state.accounts.length, 3);
   assert.equal(restorableCopy(copy, 2).rev, 7, "or newer than the copy itself");
+});
+
+test("data version 3 upgrades to 4: a hand-tagged entry gets trip_add, tag_id stays, no trip gets dates, and the trip's total is the same", async () => {
+  const { tagSummary, tripMembership, validateState } = await import("../src/model/index.js");
+  const before = v3WithTrip(), snapshot = JSON.stringify(before);
+  const r = upgradeLedger(before, { now: new Date("2026-10-05T00:00:00Z") });
+  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, 4); assert.equal(JSON.stringify(before), snapshot);
+  const [t1, t2] = r.ledger.state.transactions;
+  assert.deepEqual([t1.tag_id, t1.trip_add, t2.trip_add], ["trip1", "trip1", undefined], "copied, never removed");
+  assert.deepEqual(r.ledger.state.tags, before.state.tags, "the trip is untouched: no dates added");
+  assert.deepEqual(validateState(r.ledger.state), []);
+  // what the trip counted before is what it counts now (before: the entries carrying tag_id; now: trip_add)
+  const verifiedBefore = before.state.transactions.filter((t) => t.tag_id === "trip1").map((t) => t.id);
+  assert.deepEqual([...tripMembership(r.ledger.state)].map(([id]) => id), verifiedBefore);
+  assert.equal(tagSummary(r.ledger.state, "trip1").spent, 9500);
+  // an old backup file opens and upgrades
+  const sealed = await encryptLedgerBackup(before, "correct horse battery");
+  const back = await decryptLedgerBackup(sealed, "correct horse battery");
+  assert.equal(back.v, 3);
+  const again = upgradeLedger(back, { now: new Date("2026-10-05T00:00:00Z") });
+  assert.equal(again.ok, true); assert.equal(again.ledger.state.transactions[0].trip_add, "trip1"); assert.equal(fingerprint(again.ledger), fingerprint(before));
+  assert.equal(restoreLedger({ v: LEDGER_VERSION, rev: 30, saved_at: TS, state: {}, settings: {} }, back).v, 3, "a restored old backup keeps its own version, so the app upgrades it with a copy");
 });

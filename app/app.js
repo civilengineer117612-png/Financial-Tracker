@@ -1167,6 +1167,7 @@ function viewBuffer() {
 // ---------- trips ----------
 // A trip is a tag with an optional budget. Switch one on and new entries are tagged with it, with no extra taps.
 function viewTrips() {
+  if (ui.tripId && S().tags.some((t) => t.id === ui.tripId)) return viewTripDetail(ui.tripId);
   const tags = S().tags, active = ledger.settings.active_tag_id;
   const cards = tags.map((t) => {
     const sum = M.tagSummary(S(), t.id, { categoryMaps: S().categoryMaps, asOf: today() });
@@ -1174,12 +1175,28 @@ function viewTrips() {
     const meter = g ? `<div class="meter g-${g.level}"><span class="fill" style="width:${sum.spent > 0 ? Math.max(1, Math.min(100, g.percent)) : 0}%"></span></div>
       <div class="status">${glyph(g.level)}${esc(LEVELS[g.level])} \u00b7 ${esc(g.over ? "Over by " + peso(sum.spent - sum.budget) : peso(sum.budget - sum.spent) + " left")}</div>` : "";
     const rows = sum.rows.length ? `<table class="tbl"><tr><th>Category</th><th class="n">Spent</th></tr>${sum.rows.map((r) => `<tr><td>${esc(r.name)}</td><td class="n">${peso(r.amount)}</td></tr>`).join("")}</table>` : `<p class="note">Nothing verified on this trip yet.</p>`;
-    return `<div class="bcard"><div class="btop"><span class="bname">${esc(t.name)}</span><span class="bval">${peso(sum.spent)}${sum.budget != null ? " of " + peso(sum.budget) : ""}</span></div>${meter}
+    const days = M.tripDays(t);
+    return `<div class="bcard"><div class="btop"><span class="bname">${esc(t.name)}</span><span class="bval">${peso(sum.spent)}${sum.budget != null ? " of " + peso(sum.budget) : ""}</span></div>
+      <p class="note">${days ? esc(days) + ` \u00b7 <button class="link" data-action="open-trip-dates" data-id="${esc(t.id)}">Change dates</button>` : `<button class="link" data-action="open-trip-dates" data-id="${esc(t.id)}">Add dates</button>`}</p>${meter}
       ${sum.pending > 0 ? `<p class="note">plus ${peso(sum.pending)} not verified yet</p>` : ""}${rows}
+      <p><button data-action="open-trip-detail" data-id="${esc(t.id)}">See the entries</button></p>
       <p><button data-action="use-trip" data-id="${esc(t.id)}" aria-pressed="${on}">${on ? "Tagging new entries \u2713 (tap to stop)" : "Tag new entries with this trip"}</button></p></div>`;
   }).join("");
-  return `<h1>Trips</h1><p class="sub">Spending for a trip, kept apart from everyday spending.</p>${cards || `<p class="note">No trips yet.</p>`}
+  return `<h1>Trips</h1><p class="sub">Spending for a trip, kept apart from everyday spending. Give a trip dates and the entries on those days join it by themselves.</p>${cards || `<p class="note">No trips yet.</p>`}
     <p><button class="primary" data-action="open-trip" style="margin-top:8px">Add a trip</button></p>`;
+}
+
+// One trip's entries. Membership is worked out from the dates each time (nothing is written into the entries); the buttons only record a hand override.
+function viewTripDetail(id) {
+  const d = M.tripEntries(S(), id), sum = M.tagSummary(S(), id, { categoryMaps: S().categoryMaps, asOf: today() }), days = M.tripDays(d.tag);
+  const row = (r) => { const t = r.transaction;
+    return `<div class="row"><div>${esc(t.payee || (S().entries.filter((e) => e.transaction_id === t.id && e.category_id).map((e) => categoryName(e.category_id))[0] ?? "Entry"))}<small>${esc(longDate(t.date))}${r.counted ? "" : " \u00b7 not counted as spending"}${t.status === "verified" ? "" : " \u00b7 not verified yet"}${r.how === "hand" ? " \u00b7 added by hand" : ""}</small></div>
+      <div class="amt">${peso(r.amount)}<br><button class="link" data-action="trip-remove" data-id="${esc(t.id)}">Take off this trip</button></div></div>`; };
+  return `<h1>${esc(d.tag.name)}</h1><p class="sub">${days ? esc(days) + " (both days included)" : "No dates yet."} Total ${peso(sum.spent)}${sum.pending > 0 ? ", plus " + peso(sum.pending) + " not verified yet" : ""}.</p>
+    <p><button class="link" data-action="trip-back">\u2039 All trips</button> \u00b7 <button class="link" data-action="open-trip-dates" data-id="${esc(id)}">${days ? "Change dates" : "Add dates"}</button></p>
+    ${d.rows.length ? d.rows.map(row).join("") : `<p class="note">${days ? "No entries on these days yet." : "Nothing on this trip yet."}</p>`}
+    ${d.before.length ? `<h2>Before the trip</h2><p class="note">Added by hand, dated before the first day. They count in the total.</p>${d.before.map(row).join("")}` : ""}
+    <p><button data-action="open-trip-pick" style="margin-top:10px">Add an entry by hand</button></p>`;
 }
 
 // ---------- checks: card reserve and the weekly Unlogged habit ----------
@@ -1449,7 +1466,27 @@ function renderSheet() {
     body = `<h3>New trip</h3>
       <label for="t-name">Name</label><input id="t-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
       <label for="f-amount">Trip budget (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label for="t-start">First day (optional)</label><input id="t-start" data-field="start" type="date" value="${esc(ui.form.start ?? "")}">
+      <label for="t-end">Last day (optional, included)</label><input id="t-end" data-field="end" type="date" value="${esc(ui.form.end ?? "")}">
+      <p class="note">With dates, entries on those days join the trip by themselves. Without, you start and stop it by hand.</p>
+      ${ui.form.error ? `<p id="f-msg" role="alert"><b>${esc(ui.form.error)}</b></p>` : ""}
       <p><button class="primary" id="f-save" data-action="save-trip" style="margin-top:14px" disabled>Save trip</button></p>`;
+  } else if (sh.type === "trip-dates") {
+    const t = S().tags.find((x) => x.id === sh.id);
+    body = `<h3>${esc(t?.name ?? "Trip")}: dates</h3>
+      <label for="t-start">First day</label><input id="t-start" data-field="start" type="date" value="${esc(ui.form.start ?? "")}">
+      <label for="t-end">Last day (included)</label><input id="t-end" data-field="end" type="date" value="${esc(ui.form.end ?? "")}">
+      <p class="note">Entries on these days join the trip by themselves, except moves between your own accounts, card bill payments and entries made from templates. You can add or take off single entries by hand.</p>
+      ${ui.form.error ? `<p id="f-msg" role="alert"><b>${esc(ui.form.error)}</b></p>` : ""}
+      <p><button class="primary" id="f-save" data-action="save-trip-dates" style="margin-top:14px" disabled>Save dates</button></p>
+      ${t?.start ? `<p><button class="link" data-action="clear-trip-dates">Take the dates off (start and stop by hand)</button></p>` : ""}`;
+  } else if (sh.type === "trip-pick") {
+    const member = M.tripMembership(S()), tripName = (tid) => S().tags.find((x) => x.id === tid)?.name;
+    const cands = S().transactions.filter((t) => member.get(t.id)?.tag_id !== sh.id).sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id)).slice(0, 40);
+    const rowOf = (t) => { const es = S().entries.filter((e) => e.transaction_id === t.id), spend = es.filter((e) => e.category_id && S().categories.find((c) => c.id === e.category_id)?.kind === "expense"), amt = spend.length ? spend.reduce((n, e) => n + e.amount, 0) : es.filter((e) => e.amount > 0).reduce((n, e) => n + e.amount, 0);
+      const other = tripName(member.get(t.id)?.tag_id);
+      return `<div class="row"><div>${esc(t.payee || (spend[0] ? categoryName(spend[0].category_id) : "Entry"))}<small>${esc(longDate(t.date))}${spend.length ? "" : " \u00b7 a move or bill payment"}${other ? " \u00b7 now on " + esc(other) : ""}</small></div><div class="amt">${peso(amt)}<br><button class="link" data-action="trip-add" data-id="${esc(t.id)}">Add</button></div></div>`; };
+    body = `<h3>Add an entry to this trip</h3><p class="note">The latest 40 entries that are not on it. Adding one works on any date.</p>${cands.map(rowOf).join("") || `<p class="note">Every entry is already on this trip.</p>`}<p><button data-action="close-sheet">Done</button></p>`;
   } else if (sh.type === "income") {
     body = `<h3>Money received</h3>
       <label for="f-amount">Amount received (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off" placeholder="e.g. 9776.98">
@@ -1697,7 +1734,9 @@ function refreshSave() {
     btn.disabled = !(a.ok && a.centavos > 0 && f.account_id);
   } else if (type === "trip") {
     const a = f.amount ? M.parsePesos(f.amount) : { ok: true };
-    btn.disabled = !((f.name ?? "").trim() && a.ok);
+    btn.disabled = !((f.name ?? "").trim() && a.ok && Boolean(f.start) === Boolean(f.end));
+  } else if (type === "trip-dates") {
+    btn.disabled = !(f.start && f.end);
   } else if (type === "otfree") {
     btn.disabled = !f.account_id;
   } else if (type === "payslip") {
@@ -1792,7 +1831,7 @@ async function logExpense(input, label) {
     const p = M.planGcashSpend(S(), { transaction_id: input.transaction_id, date: input.date ?? logDay(), payee: input.payee ?? "", category_id: input.category_id, amount: input.amount,
       gcash_account_id: g.account_id, allowance_envelope_id: g.allowance_id, buffer_envelope_id: g.buffer_id }, new Date());
     if (!p.ok) { showToast("Could not save: " + p.violations[0].message); return false; }
-    drafts = [swapLines({ transaction: { ...p.transaction, source: input.source ?? "manual", ...(input.source === "photo" ? { edited_before_verify: false } : {}), ...(input.payee ? { payee: input.payee } : {}), ...(tag_id ? { tag_id } : {}) }, entries: p.entries })];
+    drafts = [swapLines({ transaction: { ...p.transaction, source: input.source ?? "manual", ...(input.source === "photo" ? { edited_before_verify: false } : {}), ...(input.payee ? { payee: input.payee } : {}), ...(tag_id ? { trip_add: tag_id } : {}) }, entries: p.entries })];
     note = bufferNote(p.violations);
   } else {
     const args = { ...input, tag_id, date: input.date ?? logDay(), reserve_source_id: ledger.settings.reserve_source_id };
@@ -1820,7 +1859,7 @@ async function onClick(el) {
     }
     case "open-menu": ui.menu = true; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "true"); break;
     case "close-menu": ui.menu = false; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "false"); break;
-    case "tab": $("toast").innerHTML = ""; ui.menu = false; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null; renderAll(); break;
+    case "tab": $("toast").innerHTML = ""; ui.menu = false; ui.tripId = null; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null; renderAll(); break;
     case "period-step": {
       const p = period(), step = Number(el.dataset.step);
       ui.period = p.kind === "year" ? { kind: "year", year: p.year + step } : { kind: "month", month: M.addMonths(p.month, step) };
@@ -1993,12 +2032,32 @@ async function onClick(el) {
       showToast("Sweep saved as a draft. Verify it in Verify.");
       break;
     }
-    case "open-trip": ui.sheet = { type: "trip" }; ui.form = { name: "", amount: "" }; renderSheet(); break;
+    case "open-trip": ui.sheet = { type: "trip" }; ui.form = { name: "", amount: "", start: "", end: "" }; renderSheet(); break;
+    case "open-trip-dates": { const t = S().tags.find((x) => x.id === id); ui.sheet = { type: "trip-dates", id }; ui.form = { start: t?.start ?? "", end: t?.end ?? "" }; renderSheet(); break; }
+    case "save-trip-dates": case "clear-trip-dates": {
+      const dates = action === "clear-trip-dates" ? {} : { start: ui.form.start, end: ui.form.end };
+      const plan = M.planTripDates(S(), ui.sheet.id, dates);
+      if (!plan.ok) { ui.form = { ...ui.form, error: plan.violations[0].message }; renderSheet(); break; }   // a plain message in the sheet; nothing is saved
+      ui.sheet = null; renderSheet();
+      await commit(plan.state);
+      showToast(action === "clear-trip-dates" ? "Dates taken off" : "Dates saved");
+      break;
+    }
+    case "open-trip-detail": ui.tripId = id; renderScreen(); break;
+    case "trip-back": ui.tripId = null; renderScreen(); break;
+    case "open-trip-pick": ui.sheet = { type: "trip-pick", id: ui.tripId }; ui.form = {}; renderSheet(); break;
+    case "trip-add": case "trip-remove": {
+      const plan = M.planTripOverride(S(), id, ui.sheet?.type === "trip-pick" ? ui.sheet.id : ui.tripId, action === "trip-add" ? "add" : "remove");
+      if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
+      await commit(plan.state);
+      if (ui.sheet?.type === "trip-pick") renderSheet();
+      break;
+    }
     case "save-trip": {
       const budget = ui.form.amount ? M.parsePesos(ui.form.amount) : null;
       if (budget && !budget.ok) { showToast("Enter the budget like 13000"); break; }
-      const plan = M.planTag(S(), { id: newId("tag"), name: ui.form.name, budget: budget ? budget.centavos : undefined });
-      if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
+      const plan = M.planTag(S(), { id: newId("tag"), name: ui.form.name, budget: budget ? budget.centavos : undefined, start: ui.form.start, end: ui.form.end });
+      if (!plan.ok) { ui.form = { ...ui.form, error: plan.violations[0].message }; renderSheet(); break; }   // a plain message in the sheet; nothing is saved
       ui.sheet = null; renderSheet();
       await commit(plan.state);
       showToast("Trip added: " + plan.tag.name);
