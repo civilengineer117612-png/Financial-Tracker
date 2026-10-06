@@ -97,12 +97,21 @@ test("a category renamed from Food to Groceries still counts: the target follows
   assert.equal(e.target, 3 * 770000); assert.deepEqual(e.basis, ["Rent", "Groceries", "Essentials"]);
   assert.equal(oldEmergencyFundStatus(renamed.state, r.plan, goal).target, 3 * (400000 + 120000), "the old code found only the Rent and Essentials lines");
 });
-test("without the roles on any category the default basis is empty and the status is null; the words Rent and Food alone find nothing", () => {
+test("with no stored kinds the names are read instead (Rent, Food, Essentials count); a name that says something else is left out", () => {
   const s = ledger(0); s.categories = s.categories.map((c) => ({ ...c, role: undefined }));
-  assert.equal(emergencyFundStatus(s, raw().plan, s.goals[0]), null);
+  const e = emergencyFundStatus(s, raw().plan, s.goals[0]);
+  assert.equal(e.target, 3 * (400000 + 250000 + 120000), "read from the names, the same three as before");
+  const odd = ledger(0); odd.categories = odd.categories.map((c) => ({ ...c, role: undefined, name: c.role === "rent" ? "Lola" : c.name }));
+  assert.equal(emergencyFundStatus(odd, raw().plan, odd.goals[0]).target, 3 * (250000 + 120000), "a name with no rent word is left out");
   const only = ledger(0); only.categories = only.categories.filter((c) => c.role !== "rent");
-  const e = emergencyFundStatus(only, raw().plan, only.goals[0]);
-  assert.equal(e.target, 3 * (250000 + 120000), "a role with no category is left out");
+  assert.equal(emergencyFundStatus(only, raw().plan, only.goals[0]).target, 3 * (250000 + 120000), "no rent category at all: left out");
+  const none = ledger(0); none.categories = none.categories.map((c) => ({ ...c, role: undefined, name: "Zz" + c.id }));
+  assert.equal(emergencyFundStatus(none, raw().plan, none.goals[0]), null, "nothing reads as rent, food or essentials: no target");
+});
+
+test("a stored kind still wins over the name: a category named Food that holds the kind Fun is not counted", () => {
+  const s = ledger(0); s.categories = s.categories.map((c) => (c.role === "food" ? { ...c, role: "fun" } : c));
+  assert.equal(emergencyFundStatus(s, raw().plan, s.goals[0]).target, 3 * (400000 + 120000));
 });
 
 // ----- no plan: the target from the budgets of the rent, food and essentials categories -----

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { parsePlan, emergencyFundStatus, emergencyFundFromBudgets, suggestBudgets, categoriesByRole, categoryByRole, defaultCategories, planBudgetChange, ROLE_LABELS, CATEGORY_ROLES } from "../src/model/index.js";
+import { parsePlan, emergencyFundStatus, emergencyFundFromBudgets, suggestBudgets, categoriesByRole, categoriesOfKind, categoryByRole, defaultCategories, planBudgetChange, ROLE_LABELS, CATEGORY_ROLES } from "../src/model/index.js";
 import { UNLOGGED_CATEGORY_ID } from "../src/model/seed.js";
 import { makeState, account } from "./fixtures.js";
 
@@ -45,6 +45,15 @@ test("the Emergency Fund target from the budgets sums ALL categories of the rent
   const e = emergencyFundFromBudgets(s, s.goals[0], { month: "2026-10" });
   assert.equal(e.target, 3 * (400000 + 50000 + 200000 + 30000 + 120000));
   assert.deepEqual(e.basis.sort(), ["Basics", "Eating in", "Flat", "Garage", "Groceries"]);
+});
+
+test("a category added today with no stored kind counts toward the Emergency Fund when its name reads as rent, food or essentials", () => {
+  let s = efState();
+  s.categories.push(cat("g", "Groceries"), cat("t", "Toiletries"), cat("u", "Upa sa kwarto"), cat("k", "Kape"));
+  for (const [id, a] of [["r1", 400000], ["g", 100000], ["t", 20000], ["u", 30000], ["k", 50000]]) s = budget(s, id, a);
+  const e = emergencyFundFromBudgets(s, s.goals[0], { month: "2026-10" });
+  assert.equal(e.target, 3 * (400000 + 100000 + 20000 + 30000), "Groceries, Toiletries and Upa count; Kape does not");
+  assert.deepEqual(categoriesOfKind(s.categories, "essentials").map((c) => c.id), ["e1", "t"]);
 });
 
 test("the Emergency Fund target from a plan reads the lines of ALL those categories", () => {
@@ -94,4 +103,11 @@ test("the screens show Name and Bucket only, ask the unclear ones with four answ
   assert.match(app, /You set this to \$\{M\.BUCKET_LABELS\[sh\.mine\]\}\. The new name reads as \$\{M\.BUCKET_LABELS\[sh\.read\]\}/);
   assert.ok(!/>Type</.test(app) && !/>Role</.test(app) && !/\(guess\)/.test(app), "no Type, no Role and no guesses on the screens");
   assert.ok(/tap Bucket/.test(help) && !/tap Type/.test(help));
+});
+
+test("the bucket bars have a list twin: the same rows as a table, switched by a tap", () => {
+  const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
+  assert.match(app, /id="bud-bucket-table"><tr><th>Bucket<\/th><th class="n">A month<\/th><th class="n">Of income<\/th><th class="n">Target<\/th>/);
+  assert.match(app, /\$\{ui\.bucketsAsList \? bucketTable : bucketBars\}/);
+  assert.match(app, /case "bucket-mode": ui\.bucketsAsList = !ui\.bucketsAsList; renderScreen\(\); break;/);
 });
