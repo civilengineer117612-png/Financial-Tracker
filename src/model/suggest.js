@@ -169,10 +169,13 @@ export function suggestPlan(input) {
       const big = w.indexOf(Math.max(...w)); out[big >= 0 ? big : 0] += pool - out.reduce((a, b) => a + b, 0);
       return out;
     };
-    const needsList = spendCats.filter((c) => NEEDS.has(c.role) && S.starter_weights[c.role] > 0), wantsList = spendCats.filter((c) => !NEEDS.has(c.role));
+    // With buckets (the owner's answers and the role defaults) a need is any category in Needs; without them, the old role list. Savings-bucket categories take no starter share.
+    const bk = input.buckets, isNeed = (c) => (bk ? bk.get(c.id) === "need" : NEEDS.has(c.role));
+    const needWeight = (c) => (c.role === "rent" ? 0 : S.starter_weights[c.role] ?? (bk ? S.needs_other_weight : 0));
+    const needsList = spendCats.filter((c) => isNeed(c) && needWeight(c) > 0), wantsList = spendCats.filter((c) => !isNeed(c) && !(bk && bk.get(c.id) === "savings"));
     const needsPool = Math.max(0, Math.floor((monthIncome * S.starter.needs) / 10000) - fixedNeeds), wantsPool = Math.max(0, Math.floor((monthIncome * S.starter.wants) / 10000) - fixedWants);
     const loggedAny = wantsList.some((c) => (logged.get(c.id) ?? 0) > 0);
-    const groups = [["needs", needsList, needsPool, (c) => S.starter_weights[c.role], `after the rent and fixed payments, shared by typical weights for its role`],
+    const groups = [["needs", needsList, needsPool, needWeight, `after the rent and fixed payments, shared by typical weights for its role`],
       ["wants", wantsList, wantsPool, loggedAny ? (c) => logged.get(c.id) ?? 0 : () => 1, loggedAny ? "shared by what you have logged so far" : "shared evenly because nothing is logged yet"]];
     for (const [group, list, pool, weightOf, how] of groups) {
       const reason = `Starter share, a common rule of thumb and not advice: ${pct(S.starter[group])} of pay for ${group}, ${how}, and by days covered.`;

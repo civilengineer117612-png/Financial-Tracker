@@ -6,6 +6,8 @@ import { median, suggestPlan, NEEDS_ROLES } from "./suggest.js";
 import { formatPesos } from "./money.js";
 import { budgetFor, planBudgetChange } from "./budget.js";
 import { UNLOGGED_CATEGORY_ID } from "./seed.js";
+import { bucketMap, resolveTargets, starterFromTargets } from "./buckets.js";
+import { SUGGEST_DEFAULTS } from "./suggest-settings.js";
 
 // Suggestions are shown rounded to the nearest 50 pesos (5,000 centavos), halves going up: 126 becomes 150, 124 becomes 100, 125 becomes 150.
 // Only what is SUGGESTED is rounded; a figure the owner typed is kept exactly as typed.
@@ -15,10 +17,10 @@ export const toNearest50 = (centavos) => Math.floor((centavos + 2500) / 5000) * 
 // line in 50-peso steps (then the next largest, and so on); with no want line left it comes off the largest unpinned spending line. Never the rent, never a
 // line the owner typed (pinned), never a saved line (goals and the buffer), never a fixed payment. What is still short after that is the owner's own doing.
 // rows: [{category_id, name, amount, suggested, pinned, ...}]; others: [{amount}] fixed payments; saved: [{amount}]; roles: Map(category_id -> role).
-export function fitToIncome({ rows, others = [], saved = [], income, roles = new Map() }) {
+export function fitToIncome({ rows, others = [], saved = [], income, roles = new Map(), buckets = null }) {
   const out = rows.map((r) => ({ ...r })), trimmed = [];
   const sum = (xs) => xs.reduce((n, x) => n + x.amount, 0), total = () => sum(out) + sum(others) + sum(saved);
-  const isNeed = (r) => NEEDS_ROLES.includes(roles.get(r.category_id)), isRent = (r) => roles.get(r.category_id) === "rent";
+  const isNeed = (r) => (buckets ? buckets.get(r.category_id) === "need" : NEEDS_ROLES.includes(roles.get(r.category_id))), isRent = (r) => roles.get(r.category_id) === "rent";
   const cutFrom = (cands) => {
     while (total() > income) {
       const c = cands.filter((r) => r.amount > 0).sort((a, b) => b.amount - a.amount || (a.name < b.name ? -1 : 1))[0];
@@ -94,12 +96,15 @@ export function savedRows({ plan, suggestion }) {
 // A suggested budget for one month, built by the engine for ONE monthly payday on the base income. Lines are mapped by category id, never by name.
 // rent: the monthly rent the owner typed (centavos, 0 for none), needed only while there is too little history to learn it from: without it the answer is {ok: false, code: "NEEDS_RENT"}.
 // pins: {category_id: centavos} the owner typed; they come back as the owner's, and the engine's own figure is kept as the suggestion.
-export function suggestBudgets({ state, plan = null, pin = null, today, month, settings, pins = {}, scheduled = [], rent }) {
+export function suggestBudgets({ state, plan = null, pin = null, today, month, settings, pins = {}, scheduled = [], rent, overrides = {}, targets }) {
   const income = baseIncome(state, { plan, pin });
   if (!income.amount) return { ok: false, code: "NO_INCOME", message: NO_INCOME_PROMPT };
   const names = new Map(state.categories.filter((c) => c.kind === "expense" && c.id !== UNLOGGED_CATEGORY_ID).map((c) => [c.id, c.name]));
   const pinned = Object.entries(pins).filter(([id, v]) => names.has(id) && whole(v)).map(([category_id, v]) => ({ category_id, name: names.get(category_id), first: v, second: 0 }));
-  const r = suggestPlan({ state, paydays: [{ id: "month", label: "Month", day: 1 }], income: [income.amount], today, month, settings, scheduled, pinned, rent });
+  // The buckets (the owner's answers, else the role defaults) say which categories are needs; the bucket targets give the starter ratios, the buffer coming off the top of savings.
+  const buckets = bucketMap(state.categories, overrides), buffer = settings?.starter?.buffer ?? SUGGEST_DEFAULTS.starter.buffer;
+  const withTargets = targets === undefined ? settings : { ...(settings ?? {}), starter: { ...(settings?.starter ?? {}), ...starterFromTargets(resolveTargets(targets), buffer) } };
+  const r = suggestPlan({ state, paydays: [{ id: "month", label: "Month", day: 1 }], income: [income.amount], today, month, settings: withTargets, scheduled, pinned, rent, buckets });
   if (!r.ok) return r;
   const lines = r.paydays[0].lines, diff = new Map(r.differences.filter((d) => d.category_id).map((d) => [d.category_id, d]));
   // every spending category gets a row (the engine drops a line that comes to nothing), so a figure can be typed for any of them
@@ -112,7 +117,7 @@ export function suggestBudgets({ state, plan = null, pin = null, today, month, s
   const others = lines.filter((l) => !l.category_id && l.kind === "expense").map((l) => ({ name: l.name, amount: l.amount, reason: l.reason }));
   const saved = lines.filter((l) => l.kind === "goal" || l.kind === "buffer").map((l) => ({ name: l.name, kind: l.kind, amount: toNearest50(l.amount), reason: l.reason }));
   const roles = new Map(state.categories.filter((c) => c.role).map((c) => [c.id, c.role]));
-  const fit = fitToIncome({ rows, others, saved, income: income.amount, roles });
+  const fit = fitToIncome({ rows, others, saved, income: income.amount, roles, buckets });
   return { ok: true, income, rows: fit.rows, others, saved, trimmed: fit.trimmed, unallocated: fit.unallocated, short: fit.short, history: r.history };
 }
 

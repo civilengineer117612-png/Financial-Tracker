@@ -1376,6 +1376,18 @@ function viewBudgetNew() {
   }).join("");
   const savedHtml = saved.length ? saved.map((r) => `<div class="row"><div>${esc(r.name)}<small>${esc(r.label)}</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}</div></div>`).join("")
     : `<p class="note">${plan ? "Your plan has no savings, goal or buffer lines." : income ? (sug?.code === "NEEDS_RENT" ? "Suggest a budget asks for your rent first, then shows what to set aside." : "Nothing suggested yet. Suggest a budget to see it.") : "Add income first."}</p>`;
+  const bk = M.bucketRows({ categories: S().categories, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets, income: income ?? 0,
+    budgets: Object.fromEntries(rows.map((r) => [r.c.id, r.now ?? 0])), goals: saved.filter((r) => r.kind === "goal").reduce((n, r) => n + r.amount, 0), buffer: saved.filter((r) => r.kind === "buffer").reduce((n, r) => n + r.amount, 0) });
+  const bucketLine = (r) => `<div class="row" data-bucket="${r.bucket}"><div>${esc(r.label)}${r.target != null ? `<small>Target ${M.showTenths(r.target)}</small>` : ""}</div><div class="amt">${peso(r.amount)} a month${r.tenths != null ? `<small>${M.showTenths(r.tenths)} of income</small>` : ""}</div></div>
+    ${r.tenths != null ? `<div class="meter goal" role="img" aria-label="${esc(r.label)}: ${M.showTenths(r.tenths)} of income${r.target != null ? ", target " + M.showTenths(r.target) : ""}"><span class="fill" style="width:${Math.min(100, r.tenths / 10)}%"></span></div>` : ""}`;
+  const ask = M.unsorted(S().categories, set.bucket_overrides ?? {}, M.UNLOGGED_CATEGORY_ID);
+  const askHtml = ask.length ? `<h3 id="bud-ask">Need or want?</h3><p class="note">Tap once for each. The answer is remembered, and you can change it in Setup.</p>${ask.map((c) => { const g = M.guessBucket(c.name);
+    return `<div class="row"><div>${esc(c.name)}</div><div class="amt">${["need", "want"].map((b) => `<button class="chip" data-action="pick-bucket" data-id="${esc(c.id)}" data-bucket="${b}" aria-pressed="false">${b === "need" ? "Need" : "Want"}${g === b ? " (suggested)" : ""}</button>`).join(" ")}</div></div>`; }).join("")}` : "";
+  const bucketsHtml = income ? `<h2>Buckets</h2><p class="sub">${esc(M.TARGET_SOURCE)} Each bucket is shown against its target, as a reference and never as a limit.</p>
+    ${bk.rows.map(bucketLine).join("")}
+    ${bk.invested.amount > 0 ? `<div class="row" id="bud-invested"><div>${esc(bk.invested.label)}<small>Counted in Savings. Spent, not held, so never part of the emergency fund.</small></div><div class="amt">${peso(bk.invested.amount)} a month</div></div>` : ""}
+    ${bk.buffer.amount > 0 ? `<div class="row" id="bud-buffer"><div>${esc(bk.buffer.label)}<small>Its own line. Not savings.</small></div><div class="amt">${peso(bk.buffer.amount)} a month${bk.buffer.tenths != null ? `<small>${M.showTenths(bk.buffer.tenths)} of income</small>` : ""}</div></div>` : ""}
+    <p class="note"><button class="link" data-action="open-targets">Change the targets</button>${set.bucket_targets ? ` \u00b7 <button class="link" data-action="clear-targets">Use 50/30/20 again</button>` : ""}</p>${askHtml}` : "";
   let sum = "";
   const sh = income ? M.shares(income, spendTotal, savedTotal) : null;   // the totals lines and the overall line use the SAME three numbers, so they always agree
   if (income) {
@@ -1388,11 +1400,12 @@ function viewBudgetNew() {
   return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${head}
     <h2>Spending</h2>${spendRows}<p class="note" id="bud-spend-total">Total budgeted: ${peso(spendTotal)}${sh ? " \u00b7 " + M.showTenths(sh.spending) + " of income" : ""}</p>
     <h2>Saved and set aside</h2>${savedHtml}${plan ? "" : `<details class="explain" id="bud-how"><summary>How saving is worked out</summary>${M.savingsExplained(M.resolveSettings(set.suggest_settings ?? {}).settings ?? M.SUGGEST_DEFAULTS).map((x) => `<p class="note">${esc(x)}</p>`).join("")}</details>`}<p class="note" id="bud-saved-total">Total: ${peso(savedTotal)}${sh ? " \u00b7 " + M.showTenths(sh.saved) + " of income" : ""}</p>${sum}
+    ${bucketsHtml}
     ${byPaydaySection()}
     <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
 }
 
-const runSuggest = () => { const set = ledger.settings; return M.suggestBudgets({ state: S(), plan: planOf(), pin: set.income_base_pin ?? null, today: today(), month: M.monthOf(today()), settings: set.suggest_settings, pins: set.budget_pins ?? {}, rent: set.starter_rent ?? undefined }); };
+const runSuggest = () => { const set = ledger.settings; return M.suggestBudgets({ state: S(), plan: planOf(), pin: set.income_base_pin ?? null, today: today(), month: M.monthOf(today()), settings: set.suggest_settings, pins: set.budget_pins ?? {}, rent: set.starter_rent ?? undefined, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets }); };
 // What the "Yours" box shows: what was typed or taken from the suggestion, else the pinned figure, else the budget in force.
 const yoursOf = (x, f) => (f["y_" + x.category_id] !== undefined ? f["y_" + x.category_id] : ledger.settings.budget_pins?.[x.category_id] !== undefined ? (ledger.settings.budget_pins[x.category_id] / 100).toFixed(2) : x.current != null ? (x.current / 100).toFixed(2) : "");
 // The figures the owner has in the suggestion sheet, as {category_id: centavos}, plus which were TYPED (those become pins).
@@ -1652,6 +1665,12 @@ function renderSheet() {
     body = `<h3>Income (base)</h3><p class="note">The monthly figure every share is measured against. It stays until you choose "Use my payslips again".</p>
       <label for="f-amount">Per month (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <p><button class="primary" id="f-save" data-action="save-income-base" style="margin-top:6px" disabled>Use this figure</button></p>`;
+  } else if (sh.type === "targets") {
+    const f = ui.form;
+    body = `<h3>Bucket targets</h3><p class="note">${esc(M.TARGET_SOURCE)} Whole percents that add up to 100.</p>
+      ${[["need", "Needs"], ["want", "Wants"], ["savings", "Savings"]].map(([k, t]) => `<label for="t-${k}">${t} (%)</label><input id="t-${k}" data-field="${k}" inputmode="numeric" value="${esc(f[k] ?? "")}" autocomplete="off">`).join("")}
+      <p class="note" id="t-msg" role="status"></p>
+      <p><button class="primary" id="f-save" data-action="save-targets" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "budget-suggest") {
     const f = ui.form, r = f.sug, month = M.monthOf(today());
     if (r?.code === "NEEDS_RENT") body = `<h3>Suggest a budget</h3><p class="note">There is not enough history to learn from yet, so I start from common shares of your pay. Your rent is the biggest fixed figure and I cannot guess it.</p>
@@ -1797,12 +1816,13 @@ function renderSheet() {
     const cats = sh.ids.map((id) => S().categories.find((c) => c.id === id)).filter(Boolean);
     body = `<h3>${sh.notice ? "Roles your categories were given" : "Category role"}</h3>
       <p class="note">${sh.notice ? "The last update gave these categories a role, by their exact name, so the app can tell what each one is for. Nothing else changed. Change any you do not agree with." : "A role tells the app what the category is for (the scanner and the budget use it). A role belongs to one category at a time."}</p>
-      ${cats.map((c) => `<label for="r_${esc(c.id)}">${esc(c.name)}</label><select id="r_${esc(c.id)}" data-action-change="set-cat-role" data-id="${esc(c.id)}"><option value="">No role</option>${M.CATEGORY_ROLES.map((r) => `<option value="${r}"${c.role === r ? " selected" : ""}>${esc(M.ROLE_LABELS[r])}</option>`).join("")}</select>`).join("")}
+      ${cats.map((c) => `<label for="r_${esc(c.id)}">${esc(c.name)}</label><select id="r_${esc(c.id)}" data-action-change="set-cat-role" data-id="${esc(c.id)}"><option value="">No role</option>${M.CATEGORY_ROLES.map((r) => `<option value="${r}"${c.role === r ? " selected" : ""}>${esc(M.ROLE_LABELS[r])}</option>`).join("")}</select>${sh.notice ? "" : `<label for="b_${esc(c.id)}">Bucket</label><select id="b_${esc(c.id)}" data-action-change="set-cat-bucket" data-id="${esc(c.id)}"><option value="">${M.bucketOf(c, {}) === "other" ? "Not sorted yet (asked on Budget)" : "Automatic: " + M.BUCKET_LABELS[M.bucketOf(c, {})]}</option>${M.BUCKETS.map((b) => `<option value="${b}"${ledger.settings.bucket_overrides?.[c.id] === b ? " selected" : ""}>${M.BUCKET_LABELS[b]}</option>`).join("")}</select>`}`).join("")}
       <p><button class="primary" data-action="close-sheet" style="margin-top:14px">${sh.notice ? "I understand" : "Done"}</button></p>`;
   } else if (sh.type === "cat") {
     body = `<h3>${sh.id ? "Rename this category" : "Add a category"}</h3>
       <label for="c-name">Name</label><input id="c-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off" enterkeyhint="done">
       <p class="note">${sh.id ? "Its entries, budget and everything else stay with it." : "For spending. You can rename it later."}</p>
+      ${sh.id ? "" : (() => { const g = M.guessBucket(ui.form.name); return `<label>Need or want?</label><div class="chips" id="c-bucket">${[["need", "Need"], ["want", "Want"], ["later", "Decide later"]].map(([b, t]) => `<button class="chip" data-action="pick-new-bucket" data-bucket="${b}" aria-pressed="${ui.form.bucket === b}">${t}${g === b ? " (suggested)" : ""}</button>`).join("")}</div><p class="note">Tap one. A guess from the name is only a hint; nothing is chosen for you. The answer is remembered and can be changed in Setup.</p>`; })()}
       <p><button class="primary" id="f-save" data-action="save-cat" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "sweeporder") {
     const f = ui.form, goals = S().goals, picked = f.order ?? [];
@@ -1881,6 +1901,10 @@ function refreshSave() {
     btn.disabled = !((f.name ?? "").trim() && a.ok && Boolean(f.start) === Boolean(f.end));
   } else if (type === "trip-dates") {
     btn.disabled = !(f.start && f.end);
+  } else if (type === "targets") {
+    const r = M.parseTargets({ need: f.need ?? "", want: f.want ?? "", savings: f.savings ?? "" }), msg = $("t-msg");
+    if (msg) msg.textContent = r.ok ? "" : (f.need && f.want && f.savings ? r.message : "");
+    btn.disabled = !r.ok;
   } else if (type === "budget-income") {
     const a = M.parsePesos(f.amount ?? "");
     btn.disabled = !(a.ok && a.centavos > 0);
@@ -1916,7 +1940,9 @@ function refreshSave() {
     const why = $("scan-why");   // a greyed button must say what it is waiting for
     if (why) why.textContent = !(a.ok && a.centavos > 0) ? "Enter the amount to save." : !M.isPhDate(f.date) ? "Choose the date to save." : !f.category_id ? "Choose a category to save." : !f.account_id ? "Choose the account it " + (M.kindById(f.kind).direction === "in" ? "arrived in" : "was paid from") + " to save." : !splitOk ? "Finish the split to save." : "";
   } else if (type === "cat") {
-    btn.disabled = !(f.name ?? "").trim();
+    btn.disabled = !(f.name ?? "").trim() || (!ui.sheet.id && !f.bucket);
+    const guess = M.guessBucket(f.name);   // the hint follows the name as it is typed (the typing box is not redrawn)
+    for (const b of document.querySelectorAll("#c-bucket button")) b.textContent = ({ need: "Need", want: "Want", later: "Decide later" })[b.dataset.bucket] + (guess === b.dataset.bucket ? " (suggested)" : "");
   } else if (type === "sweeporder") {
     const bad = (f.order ?? []).slice(0, -1).some((id) => { const raw = (f["t_" + id] ?? "").trim(); if (!raw) return false; const a = M.parsePesos(raw); return !a.ok || a.centavos < 0; });
     const msg = $("sweep-msg"); if (msg) msg.textContent = bad ? "Enter a target like 20000, or leave it empty." : "";
@@ -2047,6 +2073,13 @@ async function onClick(el) {
       break;
     }
     case "toggle-new-budget": await commit(S(), { ...ledger.settings, try_new_budget: !ledger.settings.try_new_budget }); break;
+    case "pick-bucket": await commit(S(), M.withBucket(ledger.settings, id, el.dataset.bucket), { quiet: false }); break;
+    case "open-targets": { const t = M.resolveTargets(ledger.settings.bucket_targets); ui.sheet = { type: "targets" }; ui.form = { need: String(t.need / 100), want: String(t.want / 100), savings: String(t.savings / 100) }; renderSheet(); break; }
+    case "save-targets": {
+      const r = M.parseTargets({ need: ui.form.need, want: ui.form.want, savings: ui.form.savings }); if (!r.ok) break;
+      ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, bucket_targets: r.targets }); break;
+    }
+    case "clear-targets": { const { bucket_targets, ...rest } = ledger.settings; await commit(S(), rest); break; }
     case "open-income-base": { const cur = ledger.settings.income_base_pin; ui.sheet = { type: "budget-income" }; ui.form = { amount: cur ? (cur / 100).toFixed(2) : "" }; renderSheet(); break; }
     case "save-income-base": { const a = M.parsePesos(ui.form.amount); if (!a.ok || a.centavos <= 0) break; ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, income_base_pin: a.centavos }); showToast("Income figure set"); break; }
     case "clear-income-pin": { const { income_base_pin, ...rest } = ledger.settings; await commit(S(), rest); break; }
@@ -2193,11 +2226,13 @@ async function onClick(el) {
     case "cat-role": ui.sheet = { type: "roles", ids: [id] }; renderSheet(); break;
     case "add-cat": ui.sheet = { type: "cat", id: null }; ui.form = { name: "" }; renderSheet(); break;
     case "rename-cat": ui.sheet = { type: "cat", id }; ui.form = { name: S().categories.find((c) => c.id === id)?.name ?? "" }; renderSheet(); break;
+    case "pick-new-bucket": ui.form.bucket = el.dataset.bucket; renderSheet(); refreshSave(); break;
     case "save-cat": {
       const r = ui.sheet.id ? M.renameCategory(S(), ui.sheet.id, ui.form.name) : M.addCategory(S(), { id: newId("cat"), name: ui.form.name });
       if (!r.ok) { showToast(r.violations[0].message); break; }
+      const answer = !ui.sheet.id && ["need", "want"].includes(ui.form.bucket) ? ui.form.bucket : null;
       ui.sheet = null; renderSheet();
-      await commit(r.state);
+      await commit(r.state, answer ? M.withBucket(ledger.settings, r.category.id, answer) : ledger.settings);
       break;
     }
     case "open-notice": ui.sheet = { type: "notice" }; renderSheet(); break;
@@ -2765,6 +2800,7 @@ document.addEventListener("change", (e) => {
   }
   const field = e.target.dataset?.field;
   if (field && !ui.sheet) { ui.accountForm[field] = e.target.value; if (field === "kind") { ui.accountForm.covers = ""; renderScreen(); } }
+  if (e.target.dataset?.actionChange === "set-cat-bucket") { commit(S(), M.withBucket(ledger.settings, e.target.dataset.id, e.target.value || null)).then(() => renderSheet()); return; }
   if (e.target.dataset?.actionChange === "set-cat-role") {
     const r = M.setCategoryRole(S(), e.target.dataset.id, e.target.value || null);
     if (!r.ok) { showToast(r.violations[0].message); renderSheet(); }
