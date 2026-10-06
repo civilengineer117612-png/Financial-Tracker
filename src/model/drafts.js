@@ -33,7 +33,7 @@ export function planExpense(state, input, now = new Date()) {
 
   if (tag_id != null && !(state.tags ?? []).some((t) => t.id === tag_id)) return fail("UNKNOWN_TAG", "no tag " + tag_id);
 
-  const transaction = { id, date, payee, memo, status: "draft", source, created_at: phTimestamp(now), ...(source === "photo" || source === "voice" ? { edited_before_verify: false } : {}), ...(tag_id != null ? { tag_id } : {}) };
+  const transaction = { id, date, payee, memo, status: "draft", source, created_at: phTimestamp(now), ...(source === "photo" || source === "voice" ? { edited_before_verify: false } : {}), ...(tag_id != null ? { trip_add: tag_id } : {}) };
   const entries = [
     { transaction_id: id, category_id, amount },
     { transaction_id: id, account_id, amount: -amount, ...(account.class === "liability" ? { card_state: "pending" } : {}) },

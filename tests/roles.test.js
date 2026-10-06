@@ -42,9 +42,9 @@ function v2() {
 const oldGoal = (goals, re) => goals.find((g) => re.test(g.name));
 const up = () => { const r = upgradeLedger(v2(), { now: new Date("2026-10-07T00:00:00Z") }); assert.equal(r.ok, true, r.error); return r.ledger; };
 
-test("data version 2 upgrades to 3: nothing but roles and the sweep order are added; totals and the self-check are the same", () => {
+test("data version 2 upgrades to the current version: nothing but roles and the sweep order are added; totals and the self-check are the same", () => {
   const before = v2(), after = up();
-  assert.equal(after.v, 3); assert.equal(after.rev, 12);
+  assert.equal(after.v, LEDGER_VERSION); assert.equal(after.rev, 12);
   assert.equal(fingerprint(after), fingerprint(before)); assert.deepEqual(selfCheck(after), []);
   assert.equal(parseLedger(JSON.stringify(after)).ok, true); assert.deepEqual(validateState(after.state), []);
   const strip = (l) => JSON.parse(JSON.stringify(l, (k, v) => (k === "role" ? undefined : v)));
