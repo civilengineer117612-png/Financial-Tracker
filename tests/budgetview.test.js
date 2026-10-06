@@ -324,7 +324,7 @@ test("end to end: suggestions that round up past the income are brought back und
 });
 
 test("the Suggest sheet says what was lowered and what is left unallocated, in pesos", () => {
-  assert.match(app, /Left unallocated if you use all of them: \$\{peso\(r\.unallocated\)\}\./);
+  assert.match(app, /Left unallocated if you use all of them: <b>\$\{peso\(r\.unallocated\)\}<\/b>\./);
   assert.match(app, /Rounding would have gone over your income, so/);
   assert.match(app, /more than your income\./);
 });
