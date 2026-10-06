@@ -303,10 +303,6 @@ function viewVerify() {
 const slipsIn = (range) => (S().payslips ?? []).filter((p) => M.slipDate(p) >= range.from && M.slipDate(p) <= range.to)
   .sort((a, b) => (M.slipDate(a) < M.slipDate(b) ? 1 : M.slipDate(a) > M.slipDate(b) ? -1 : a.pay_date < b.pay_date ? 1 : -1));
 const flagLine = (f) => `<p class="note flag">▲ ${esc(f.message)}</p>`;   // a triangle plus words, never colour alone
-function hbars(rows) {   // plain horizontal bars with the value at the tip; the table below each chart is its list twin
-  const max = Math.max(...rows.map((r) => r.amount), 1);
-  return `<div class="bars">${rows.map((r) => `<div class="brow"><span class="btop"><span class="bname">${esc(r.label)}</span><span class="bval">${peso(r.amount)}</span></span><span class="btrack"><span class="bfill" style="width:${Math.max(r.amount > 0 ? 1 : 0, Math.round((r.amount * 100) / max))}%"></span></span></div>`).join("")}</div>`;
-}
 function stackedPaydays(rows) {   // base and overtime stacked, one ramp of one blue, with a legend and the values written
   const max = Math.max(...rows.map((r) => r.net), 1);
   return `<p class="legend"><span class="key"></span> Regular pay <span class="key ot"></span> Overtime</p><div class="bars">${rows.map((r) => `<div class="brow"><span class="btop"><span class="bname">${esc(longDate(r.date))}</span><span class="bval">${peso(r.net)}</span></span>
@@ -353,31 +349,35 @@ function viewIncome() {
     <button class="choice" data-action="open-payslips"><span>Payslips</span><span class="bval">${slips.length}${loose.length ? " + " + loose.length + " without one" : ""} \u203A</span></button>
     <div class="seg" role="group" aria-label="What to show">${IVIEWS.map(([v, t]) => `<button data-action="income-view" data-view="${v}" aria-pressed="${view === v}">${t}</button>`).join("")}</div><div class="viewmark"></div>`;
   if (!rows.length && !slips.length && !loose.length) return head + `<p class="note">Nothing recorded for ${esc(label)} yet. Add a payslip to see where your income comes from, your raises, and what went to government.</p>`;
-  // The same kinds as the Earnings view (basic salary, rice subsidy, each allowance, overtime), before the deductions came off.
-  const bd = y.ytd.breakdown, bySrc = [...bd.lines.map((l) => ({ label: l.label, amount: l.amount })), { label: "Other income", amount: bd.other }, { label: "Not from the payslip lines", amount: bd.unmatched }].filter((r) => r.amount > 0);
-  // One line per month with what arrived; tap a month to see where it came from: each kind of earning (basic salary, rice subsidy, each allowance,
-  // overtime), other income, the deductions, and anything the payslip lines do not explain, so the lines always add up to the month.
+  const bd = y.ytd.breakdown;
+  // One block per month, open at once: what arrived at the top, then each kind of earning (basic salary, rice subsidy, each allowance, overtime),
+  // other income, anything the payslip lines do not explain, the gross, and the deductions, so the lines always add up to the month.
   const minus = (c) => "\u2212" + peso(c);
   const mline = (label, value) => `<div class="mrow mline"><span class="mn">${esc(label)}</span><span class="mv">${value}</span></div>`;   // a plain line: the name at the left, the amount at the right
-  const parts = (m) => { const b = m.breakdown; return [...b.lines.map((l) => [l.label, peso(l.amount)]), ...(b.other ? [["Other income", peso(b.other)]] : []), ...(b.deductions ? [["Deductions", minus(b.deductions)]] : []), ...(b.unmatched ? [["Not from the payslip lines", (b.unmatched < 0 ? "\u2212" : "") + peso(Math.abs(b.unmatched))]] : [])]; };
-  const monthTable = `<div class="mlist">${rows.map((m) => `<details class="mrow"><summary><span class="mn">${esc(MONTH3[Number(m.month.slice(5)) - 1])}</span><b class="mv">${peso(m.total)}</b><span class="tchev" aria-hidden="true">\u203A</span></summary>${parts(m).map(([t, v]) => `<div class="mpart"><span>${esc(t)}</span><span>${v}</span></div>`).join("")}</details>`).join("")}
-    ${y.ytd.breakdown.deductions ? mline("Gross", peso(y.ytd.breakdown.earned)) + mline("Deductions", minus(y.ytd.breakdown.deductions)) : ""}
-    <div class="mrow mtotal"><span class="mn">Net, ${esc(ytdLabel.toLowerCase())}</span><b class="mv">${peso(y.ytd.total)}</b></div></div>`;
+  const parts = (m) => {
+    const b = m.breakdown;
+    return [...b.lines.map((l) => [l.label, peso(l.amount)]), ...(b.other ? [["Other income", peso(b.other)]] : []),
+      ...(b.unmatched ? [["Not from the payslip lines", (b.unmatched < 0 ? "\u2212" : "") + peso(Math.abs(b.unmatched))]] : []),
+      ...(b.deductions ? [["Gross", peso(b.earned), "sub"], ["Deductions", minus(b.deductions)]] : [])];
+  };
+  // The sum for the whole range is added only when there is more than one month (one month is already its own sum).
+  const monthTable = `<div class="mlist">${rows.map((m) => `<details class="mrow" open><summary><span class="mn">${esc(MONTH3[Number(m.month.slice(5)) - 1])}</span><b class="mv">${peso(m.total)}</b><span class="tchev" aria-hidden="true">\u203A</span></summary>${parts(m).map(([t, v, c]) => `<div class="mpart${c ? " " + c : ""}"><span>${esc(t)}</span><span>${v}</span></div>`).join("")}</details>`).join("")}
+    ${rows.length > 1 ? `<div class="mrow mtotal"><span class="mn">Net, ${esc(ytdLabel.toLowerCase())}</span><b class="mv">${peso(y.ytd.total)}</b></div>` : ""}</div>`;
   const pd = M.netPerPayday(S(), range);
   const paydays = pd.length ? `<h2>Net pay per payday</h2>${stackedPaydays(pd)}<table class="tbl"><tr><th>Payday</th><th class="n">Regular</th><th class="n">Overtime</th><th class="n">Net</th></tr>${pd.map((r) => `<tr><td>${esc(longDate(r.date))}<small> ${esc(r.employer)}</small></td><td class="n">${peso(r.base)}</td><td class="n">${peso(r.overtime)}</td><td class="n">${peso(r.net)}</td></tr>`).join("")}</table>` : "";
   const dd = M.deductionsByMonth(S(), range);
   // One line per month with ALL its deductions added up; tap a month for each kind (only the kinds that have an amount).
   const DEDNAME = Object.fromEntries(M.DEDUCTIONS.map(([k, t]) => [k, t]));
   const dedParts = (m) => Object.keys(DEDNAME).map((k) => [DEDNAME[k], m[k]]).filter(([, v]) => v);
-  const dedTable = dd.months.length ? `<h2>Deductions</h2><div class="mlist">${dd.months.map((m) => `<details class="mrow"><summary><span class="mn">${esc(MONTH3[Number(m.month.slice(5)) - 1])}</span><b class="mv">${peso(m.total)}</b><span class="tchev" aria-hidden="true">\u203A</span></summary>${dedParts(m).map(([t, v]) => `<div class="mpart"><span>${esc(t)}</span><span>${peso(v)}</span></div>`).join("")}</details>`).join("")}
-    <div class="mrow mtotal"><span class="mn">Total deductions</span><b class="mv">${peso(dd.ytd.total)}</b></div></div>
+  const dedTable = dd.months.length ? `<h2>Deductions</h2><div class="mlist">${dd.months.map((m) => `<details class="mrow" open><summary><span class="mn">${esc(MONTH3[Number(m.month.slice(5)) - 1])}</span><b class="mv">${peso(m.total)}</b><span class="tchev" aria-hidden="true">\u203A</span></summary>${dedParts(m).map(([t, v]) => `<div class="mpart"><span>${esc(t)}</span><span>${peso(v)}</span></div>`).join("")}</details>`).join("")}
+    ${dd.months.length > 1 ? `<div class="mrow mtotal"><span class="mn">Total deductions</span><b class="mv">${peso(dd.ytd.total)}</b></div>` : ""}</div>
     <p class="note">Went to government in this period: ${peso(dd.ytd.government)}. Lost to absences and lates: ${peso(dd.ytd.lost)}.${dd.ytd.loan ? " Loans: " + peso(dd.ytd.loan) + "." : ""}</p>` : "";
   const plan = from <= today() && today() <= to ? planOf() : null;   // the plan in force speaks only of the present
   const ivar = (v) => v === 0 ? "As planned" : (v > 0 ? "+" : "−") + peso(Math.abs(v)) + (v > 0 ? " more" : " less");
   const pv = plan ? [M.planIncome(S(), plan, today())].map((v) => `<h2>Plan against what arrived</h2><table class="tbl"><tr><th>Payday</th><th class="n">Plan</th><th class="n">Received</th><th class="n">Difference</th></tr><tr><td>${esc(v.label)}<small> ${esc(longDate(v.period.start))}</small></td><td class="n">${peso(v.planned)}</td><td class="n">${peso(v.actual)}</td><td class="n">${esc(ivar(v.variance))}</td></tr></table><p class="note">The plan is never edited; the difference is only shown.</p>`)[0] : "";
   const bodies = {
     overview: `<h2>Gross, deductions and net, ${esc(label)}</h2><div class="mlist">${mline("Gross", peso(bd.earned))}${mline("Deductions", (bd.deductions ? "\u2212" : "") + peso(bd.deductions))}<div class="mrow mtotal"><span class="mn">Net</span><b class="mv">${peso(y.ytd.total)}</b></div></div>${loose.length ? `<p class="note">${peso(loose.reduce((n, r) => n + r.amount, 0))} of this was added without a payslip (${loose.length} ${loose.length === 1 ? "entry" : "entries"}). <button class="link" data-action="open-payslips">See them</button></p>` : ""}${pv}`,
-    earnings: `${bySrc.length ? `<h2>Where it came from, ${esc(label)}</h2><div class="mlist">${bySrc.map((r) => mline(r.label, peso(r.amount))).join("")}</div>` : ""}<h2>Earnings by month</h2>${monthTable}${paydays}`,
+    earnings: `<h2>Earnings by month</h2>${monthTable}${paydays}`,
     deductions: dedTable || `<p class="note">No deductions in this period.</p>`,
   };
   return `${head}${bodies[view]}`;
