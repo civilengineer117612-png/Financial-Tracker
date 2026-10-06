@@ -9,6 +9,7 @@ export { QUICK_NOTES, FIRST_RUN_NOTICE, TOPICS as HELP_TOPICS, checklist } from 
 export { SCREEN_NAMES, MENU_GROUPS, TERMS } from "./names.js";
 export { drawing, DRAWING_IDS, NOTE_ICONS } from "./helpart.js";
 export { suggestPlan, median, paydayDays, usableMonths, NO_PAYSLIP_MESSAGE } from "./suggest.js";
+export { budgetMonthFor, planBudgetRows, planBudgetMismatches, planWithBudgets } from "./planwrite.js";
 export { NO_INCOME_PROMPT, netsByKind, baseIncome, shares, tenths, showTenths, incomeChanged, savedRows, suggestBudgets, budgetChangesFromDraft } from "./budgetview.js";
 export { SUGGEST_DEFAULTS, resolveSettings } from "./suggest-settings.js";
 export { APP_BUILD, APP_BUILT_ON, isDevBuild } from "./version.js";

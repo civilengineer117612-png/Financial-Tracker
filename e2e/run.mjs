@@ -1724,6 +1724,42 @@ console.log("The new Budget");
   check((await text(page, "#screen")).includes("Tap one to set it.") && !(await text(page, "#screen")).includes("Income (base)"), "turned off again, it is the old Budget");
   await ctx.close(); }
 
+// Budget Stage B: By payday, and ONE save for the plan and its budgets
+{ ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 1200000 } } }));
+  const planFile = (edit) => { const o = { schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-10-01", paydays: [{ day: 15, expected_income: 5000 }, { day: "last", expected_income: 7000 }],
+    lines: [{ name: "Food", kind: "expense", first: 3000, second: 3000 }, { name: "Shopping", kind: "expense", first: 1000, second: 1000 }, { name: "Rent", kind: "expense", first: 0, second: 2000 }, { name: "Apartment", kind: "goal", first: 1000, second: 1000 }] }; edit?.(o); return JSON.stringify(o); };
+  await menuGo(page, "Budget");
+  check(/by payday/i.test(await text(page, "#screen")) && (await text(page, "#screen")).includes("You can skip it. Budget works without it."), "Budget has a By payday section; with no plan it says the plan is optional");
+  await page.click('#screen button:has-text("Load a plan")');
+  await page.fill("#p-text", planFile());
+  check((await text(page, "#p-prev")).includes("Looks good") && (await text(page, "#p-prev")).includes("Saving also sets these budgets from October 2026") && (await text(page, "#p-prev")).includes("Food ₱6,000.00"), "the plan sheet says which budgets saving will also set");
+  await page.click("#f-save"); await seen(page, "#toast", "budgets set from October 2026");
+  let led = JSON.parse((await stored(page)).local);
+  check(led.settings.plans.length === 1 && led.state.rules.filter((r) => r.kind === "budget").length === 3 && led.state.rules.find((r) => r.subject_id === "cat-food").amount === 600000, "one save wrote the plan and its three budgets together");
+  let t = await text(page, "#screen");
+  check(t.includes("Your plan and your budgets agree for October 2026") && t.includes("₱6,000.00 a month") && t.includes("Total (= income)") && /this cutoff/i.test(t), "By payday shows the plan tables and says they agree");
+  // a budget changed by hand later: they disagree, plainly, and one button puts them back
+  await page.click('button[data-action="open-budget"][data-id="cat-food"]'); await page.fill("#f-amount", "5000"); await page.click("#f-save"); await seen(page, "#toast", "Budget saved");
+  t = await text(page, "#screen");
+  check(t.includes("Your budgets differ from your plan") && t.includes("Food budget ₱5,000.00, plan ₱6,000.00"), "a hand-changed budget is shown as different from the plan");
+  const before = JSON.parse((await stored(page)).local).state.rules.length;
+  await page.click('button:has-text("Make the budgets match the plan")'); await seen(page, "#toast", "set from November 2026");
+  led = JSON.parse((await stored(page)).local);
+  check(led.state.rules.length === before + 1 && led.settings.plans.length === 1 && (await text(page, "#screen")).includes("agree"), "matching them adds one new dated rule, no second plan row, and they agree again");
+  check(led.state.rules.filter((r) => r.subject_id === "cat-food").map((r) => r.amount).join() === "600000,500000,600000", "the old rules are still there, in order");
+  // the same plan again writes nothing; a one-payday (monthly) plan loads
+  await page.click('#screen button:has-text("Load a newer plan")'); await page.fill("#p-text", planFile()); await page.click("#f-save"); await seen(page, "#toast", "already saved");
+  await page.click('#screen button:has-text("Load a newer plan")');
+  await page.fill("#p-text", JSON.stringify({ schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-12-01", paydays: [{ day: 5, expected_income: 12000 }],
+    lines: [{ name: "Food", kind: "expense", first: 6000 }, { name: "Shopping", kind: "expense", first: 2000 }, { name: "Rent", kind: "expense", first: 2000 }, { name: "Apartment", kind: "goal", first: 2000 }] }));
+  check((await text(page, "#p-prev")).includes("payday on the 5th"), "a monthly plan (one payday) is accepted");
+  await page.click("#f-save"); await seen(page, "#toast", "Plan loaded");
+  led = JSON.parse((await stored(page)).local);
+  check(led.settings.plans.length === 2 && led.settings.plans[1].paydays.length === 1 && led.settings.plans[1].lines.every((l) => l.second === 0), "stored with one payday and no second amounts");
+  await menuGo(page, "Pay plan");
+  check((await text(page, "#screen")).includes("This divides each payday. Budget sets your limit per category for the month."), "the Pay plan screen is still there, unchanged");
+  await ctx.close(); }
+
 // An over-budget category is red, with a shape and words, in the new Budget too; the Saved rows never are
 { ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 2500000 }, state: { ...OWNER_STYLE.state,
     rules: [{ id: "r1", kind: "budget", subject_id: "cat-food", amount: 10000, effective_from: "2026-10-01", created_at: "2026-10-01T08:00:00.000+08:00" }],

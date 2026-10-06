@@ -49,6 +49,16 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 - ROLES, NOT NAMES: never find a goal or a category by its NAME in code. A goal may hold the role "emergency" (the overtime draft, the Emergency Fund status and messages use it; the owner chooses it on Goals); the month-end sweep follows the setting `sweep_order` ([{goal_id, target?}], the last goal takes the rest). A spending category may hold a role (food, essentials, subscription, rent); the scanner and the voice guess by role, so renaming is safe. Messages say "Choose which goal is your emergency fund", never a fixed name. Plan lines still match categories and goals by the plan file's own names (the owner's file).
 - A NEW install is neutral: plain starter categories (Food, Essentials, Transport, Rent, Subscription, Shopping, Health, Fun, Other), no quick tiles, no owner names or amounts in code, tests or Help. Categories can be added and renamed in Setup (a rename keeps the id and role). A brand-new install shows the first-run notice once (`FIRST_RUN_NOTICE` in `src/model/help.js`); Help shows it again on request. Existing ledgers are never reset to these defaults; a migration gives roles to what already exists, once, by the old names.
 
+## Every PR message starts with a MERGE CHECK (owner's rule)
+The PR message must START with a block titled "MERGE CHECK", exactly these six lines, each answered in one short line:
+1. Data version: before -> after (or "unchanged").
+2. Fresh encrypted backup needed before merge: YES or NO.
+3. New Setup switch, default value: (or "none").
+4. Tests: unit count and e2e result.
+5. Does anything change for an existing user with the switch off: YES or NO (if YES, what).
+6. Help or screen wording the user must read: the exact text, or "none".
+Then the rest of the PR message. The "Merge PR n" box stays last.
+
 ## One thing at a time (owner's rule)
 One open item at a time: finish the current review round and its PR before starting anything else. A new problem that shows up mid-review
 (a bug, an idea) is NOT worked on at once: put it in a short "Waiting" list, tell the owner it was noted (one line), and raise it when
