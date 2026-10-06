@@ -63,7 +63,7 @@ test("Pay plan words: the label, the empty state, the line under the title and t
   assert.ok(app.includes(`<h1>Pay plan</h1><p class="sub">${LINE}</p>`), "the line sits right under the title when a plan exists");
   const t = TOPICS.find((x) => x.tab === "plan");
   assert.equal(t.label, "Pay plan (optional)");
-  assert.deepEqual(t.lines, [EMPTY, LINE]);
+  assert.deepEqual(t.lines, [EMPTY, LINE, "With the new Budget switched on (Setup), the plan lives in Budget, under By payday."]);
   assert.ok(MENU_GROUPS.some(([, ids]) => ids.includes("plan")), "it is still a menu screen, and so still needs (and has) its Help topic");
 });
 
@@ -78,4 +78,15 @@ test("loading and viewing a plan does not change it: an invented plan file parse
   assert.equal(JSON.stringify(planInEffect(stored, "2026-10-20")), before);
   assert.deepEqual(planTotals(r.plan), { first: 100000, second: 240000, month: 340000 });
   assert.deepEqual(r.plan.paydays.map((p) => p.income), [100000, 240000]);
+});
+
+test("Stage C: the Pay plan menu entry is hidden only when the new Budget is on; the screen, its Help topic and every other entry stay", async () => {
+  const { menuHidden, MENU_GROUPS } = await import("../src/model/index.js");
+  assert.equal(menuHidden({}).size, 0); assert.equal(menuHidden(undefined).size, 0); assert.equal(menuHidden({ try_new_budget: false }).size, 0, "off: nothing is hidden");
+  assert.deepEqual([...menuHidden({ try_new_budget: true })], ["plan"]);
+  assert.ok(MENU_GROUPS.some(([, ids]) => ids.includes("plan")), "the entry is still part of the menu list, so Help keeps its topic");
+  assert.match(app, /items\.filter\(\(\[id\]\) => !hidden\.has\(id\)\)/); assert.match(app, /const hidden = M\.menuHidden\(ledger\.settings\)/);
+  assert.match(app, /data-tab="\$\{ledger\.settings\.try_new_budget \? "budget" : "plan"\}"/, "Setup points at Budget when the new Budget is on");
+  assert.match(app, /ledger\.settings\.try_new_budget \? "Menu, Budget, By payday" : "Menu, Pay plan"/, "Goals names where to load a plan");
+  assert.ok(app.includes('ui.tab === "plan" ? viewPlan()'), "the old Pay plan screen is still routed for one more release");
 });

@@ -152,10 +152,11 @@ function renderMenu() {
   clearTimeout(menuTimer); el.classList.remove("leaving");
   const current = (id) => ui.tab === id || (id === "money" && ui.tab === "income");   // Money holds Spending and Income
   const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}"${current(id) ? ' aria-current="page"' : ""}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span></button>`;
+  const hidden = M.menuHidden(ledger.settings);   // the new Budget holds the pay plan, so its menu entry is not shown
   const age = M.daysSinceBackup(ledger.settings, today());
   const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
   el.innerHTML = `<div class="scrim${opening ? " enter" : ""}" data-action="close-menu"></div><aside class="drawer${opening ? " enter" : ""}" role="dialog" aria-label="Menu">
-    <div class="groups">${MENU.map(([group, items]) => `<p class="glabel">${group}</p>${items.map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
+    <div class="groups">${MENU.map(([group, items]) => `<p class="glabel">${group}</p>${items.filter(([id]) => !hidden.has(id)).map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
     <div class="foot"><p class="note">${backup}</p>${item("help", M.SCREEN_NAMES.help)}${item("setup", M.SCREEN_NAMES.setup)}</div></aside>`;
 }
 
@@ -908,7 +909,7 @@ function viewSetup() {
     ${expenseCategories().map((c) => `<div class="row"><div>${esc(c.name)}</div><div class="amt"><button class="link" data-action="rename-cat" data-id="${esc(c.id)}">Rename</button></div></div>`).join("")}
     <p><button data-action="add-cat" style="width:100%">Add a category</button></p>
     <h2>Pay plan</h2>
-    <p class="note">${planOf() ? "A plan is in effect." : "No plan in effect."} <button class="link" data-action="${planOf() ? "tab" : "open-plan"}" data-tab="plan">${planOf() ? "Open it" : "Load a plan"}</button></p>
+    <p class="note">${planOf() ? "A plan is in effect." : "No plan in effect."} <button class="link" data-action="${planOf() ? "tab" : "open-plan"}" data-tab="${ledger.settings.try_new_budget ? "budget" : "plan"}">${planOf() ? (ledger.settings.try_new_budget ? "Open it in Budget" : "Open it") : "Load a plan"}</button></p>
     <h2>Try the new Budget</h2>
     <p class="note">Shows your income, every limit as a share of it, and what you save, with a way to suggest a budget. Off by default; turn it off and everything is as before.</p>
     <p><button data-action="toggle-new-budget" aria-pressed="${Boolean(ledger.settings.try_new_budget)}" style="width:100%">${ledger.settings.try_new_budget ? "On (tap to turn off)" : "Off (tap to turn on)"}</button></p>
@@ -1305,7 +1306,7 @@ function viewGoals() {
         <p class="note">Target = ${ef.months} months of ${esc(ef.basis.join(", "))} from your plan (${peso(ef.monthlyBasis)} a month). It changes when your plan does.${ef.missing.length ? " Your plan has no line named " + esc(ef.missing.join(", ")) + "." : ""}</p>`;
     const body = hidden ? `<p class="note">Hidden. Tap Show balances above.</p>`
       : ef ? efBody
-      : isEf ? `<div class="btop"><span class="bval">${peso(p.balance)}</span></div><p class="note">Load a pay plan (Menu, Pay plan) and the target is worked out from it: 3 months of Rent, Food and Essentials.</p>`
+      : isEf ? `<div class="btop"><span class="bval">${peso(p.balance)}</span></div><p class="note">Load a pay plan (${ledger.settings.try_new_budget ? "Menu, Budget, By payday" : "Menu, Pay plan"}) and the target is worked out from it: 3 months of Rent, Food and Essentials.</p>`
       : `<div class="btop"><span class="bval">${peso(p.balance)}${p.target != null ? " of " + peso(p.target) : ""}</span></div>
          ${p.target != null ? `<div class="meter goal" role="img" aria-label="${p.percent}% of the goal"><span class="fill" style="width:${p.percent}%"></span></div>
          <div class="status">${p.reached ? "Goal reached" : p.percent + "% \u00b7 " + peso(p.remaining) + " to go"}${eta ? " \u00b7 about " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : ""}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div>` : `<div class="status">No target, just a place to build up.</div>`}`;

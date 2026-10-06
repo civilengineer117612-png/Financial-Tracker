@@ -1722,6 +1722,7 @@ console.log("The new Budget");
   // switching off again restores the old screen, and the data is as it was
   await menuGo(page, "Setup"); await page.click('button:has-text("On (tap to turn off)")'); await menuGo(page, "Budget");
   check((await text(page, "#screen")).includes("Tap one to set it.") && !(await text(page, "#screen")).includes("Income (base)"), "turned off again, it is the old Budget");
+  await page.click("#menuBtn"); check((await page.locator("#menu .item").allInnerTexts()).join().includes("Pay plan (optional)"), "turned off, the Pay plan entry is back in the menu"); await page.click(".scrim, #menu .scrim").catch(() => {});
   await ctx.close(); }
 
 // Budget Stage B: By payday, and ONE save for the plan and its budgets
@@ -1756,8 +1757,16 @@ console.log("The new Budget");
   await page.click("#f-save"); await seen(page, "#toast", "Plan loaded");
   led = JSON.parse((await stored(page)).local);
   check(led.settings.plans.length === 2 && led.settings.plans[1].paydays.length === 1 && led.settings.plans[1].lines.every((l) => l.second === 0), "stored with one payday and no second amounts");
-  await menuGo(page, "Pay plan");
-  check((await text(page, "#screen")).includes("This divides each payday. Budget sets your limit per category for the month."), "the Pay plan screen is still there, unchanged");
+  // Stage C: with the new Budget on, the menu has no Pay plan entry; the screen is still reachable from Help, and Setup points at Budget
+  await page.click("#menuBtn");
+  const menuOn = (await page.locator("#menu .item").allInnerTexts()).join();
+  check(!menuOn.includes("Pay plan") && menuOn.includes("Budget") && menuOn.includes("Goals") && menuOn.includes("Help") && menuOn.includes("Setup"), "with the new Budget on, the menu has no Pay plan entry and keeps every other entry");
+  await page.click('#menu button[data-tab="setup"]');
+  check((await text(page, "#screen")).includes("Open it in Budget"), "Setup points at Budget for the plan");
+  await menuGo(page, "Help"); await page.locator("#screen details.mrow summary", { hasText: "Pay plan" }).click();
+  check((await text(page, "#screen")).includes("the plan lives in Budget, under By payday"), "the Pay plan topic in Help says where the plan went");
+  await page.locator("#screen details.mrow[open] button", { hasText: "Open Pay plan" }).click();
+  check((await text(page, "#screen")).includes("This divides each payday. Budget sets your limit per category for the month."), "the old Pay plan screen is still there, unchanged, for one more release");
   await ctx.close(); }
 
 // An over-budget category is red, with a shape and words, in the new Budget too; the Saved rows never are
