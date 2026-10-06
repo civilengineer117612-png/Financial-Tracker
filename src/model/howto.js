@@ -8,16 +8,26 @@ export const HOWTOS = [
   { id: "log", label: "Log an expense", caption: "Tap a tile, check it, Save: logged in two taps." },
   { id: "verify", label: "Verify an entry", caption: "Open Verify, look at one entry, tap Correct." },
   { id: "scan", label: "Scan a receipt", caption: "Tap the camera, take the receipt, and it waits in Verify." },
+  { id: "budget", label: "Set a budget", caption: "Tap a category, type its monthly limit, Save: the bucket bars follow." },
 ];
-export const HOWTO_HINT = "Hold Log, Verify or the camera for a moment to watch how it works.";
+export const HOWTO_HINT = "Hold Log, Verify, the camera or Budget in the menu for a moment to watch how it works.";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const EXAMPLE_TILES = [{ name: "Coffee", amount: 15000, category: "Food" }, { name: "Jeep", amount: 1300, category: "Transport" }, { name: "Lunch", amount: 9500, category: "Food" }];
 
+// The Budget clip's data: {income: centavos a month, rows: [{name, amount (this month's budget), bucket: "need" | "want" | "savings" | "other"}],
+// buckets: [{bucket, label, amount}] or null when the new Budget is off}. The first row is the one changed; the change shown is +P500 (or P3,000 for a
+// category with no budget yet), only in the picture.
+const EXAMPLE_BUDGET = { income: 3000000, rows: [{ name: "Food", amount: 600000, bucket: "need" }, { name: "Transport", amount: 250000, bucket: "need" }, { name: "Fun", amount: 300000, bucket: "want" }],
+  buckets: [{ bucket: "need", label: "Needs", amount: 1400000 }, { bucket: "want", label: "Wants", amount: 700000 }, { bucket: "savings", label: "Savings", amount: 400000 }] };
+const tenthsOf = (a, income) => (income > 0 ? Math.min(1000, Math.floor((a * 2000 + income) / (2 * income))) : 0);
+const pctText = (t) => (t / 10).toFixed(1) + "%";
+
 // data: {date: "Tue, 7 Oct", tiles: [{name, amount (centavos), category}], account: {name, picture?: html for its picture}, total: centavos logged today}
-export function clipData({ date, tiles = [], account = null, total = 0 }) {
-  const own = tiles.slice(0, 3);
-  return { date, total, example: own.length === 0 || !account, tiles: own.length ? own : EXAMPLE_TILES, account: account ?? { name: "Wallet" } };
+export function clipData({ date, tiles = [], account = null, total = 0, budget = null }) {
+  const own = tiles.slice(0, 3), b = budget?.income > 0 && budget.rows?.length ? budget : null;
+  return { date, total, example: own.length === 0 || !account, tiles: own.length ? own : EXAMPLE_TILES, account: account ?? { name: "Wallet" },
+    budget: b ? { ...b, rows: b.rows.slice(0, 3) } : EXAMPLE_BUDGET, budgetExample: !b };
 }
 
 const phone = (id, inner, label) => `<div class="hw hw-${id}" role="img" aria-label="${esc(label)}">${inner}<div class="hw-finger" aria-hidden="true"></div></div>`;
@@ -48,6 +58,19 @@ export function howtoClip(id, raw) {
       <div class="hw-date">${esc(d.date)}</div>${receipt}</div><div class="hw-nav"><div>Log</div><div>Verify</div></div>
       ${sheet(`<div class="hw-amt">${esc(formatPesos(24500))}</div><div class="hw-row"><span>Sample Store</span><span>${esc(d.date)}</span></div><div class="hw-row"><span>Paid from</span>${acct(d.account)}</div>`, "Save as a draft")}${tick}`,
       `A finger taps the camera, an invented receipt is read, the window shows 245 pesos from Sample Store paid from ${d.account.name}, and it is saved as a draft for Verify.`);
+  }
+  if (id === "budget") {
+    const b = d.budget, pick = b.rows[0], next = pick.amount > 0 ? pick.amount + 50000 : 300000, delta = next - pick.amount;
+    const money = (a) => `${esc(formatPesos(a))}<small>${pctText(tenthsOf(a, b.income))}</small>`;   // the amount and its share of income change together
+    const rows = b.rows.map((r, i) => `<div class="hw-brow${i === 0 ? " hw-bpick" : ""}"><span>${esc(r.name)}</span><span class="hw-bval">${i === 0
+      ? `<span class="hw-t0">${money(r.amount)}</span><span class="hw-t1">${money(next)}</span>` : `<span>${money(r.amount)}</span>`}</span></div>`).join("");
+    const bars = (b.buckets ?? []).map((k) => { const t0 = tenthsOf(k.amount, b.income), t1 = tenthsOf(k.amount + (k.bucket === pick.bucket ? delta : 0), b.income), grow = k.bucket === pick.bucket;
+      return `<div class="hw-bk"><span>${esc(k.label)}</span><div class="hw-meter"><span class="hw-fill${grow ? " hw-grow" : ""}" style="--w0:${t0 / 10}%;--w1:${t1 / 10}%"></span></div><span class="hw-tip">${grow
+        ? `<span class="hw-t0">${pctText(t0)}</span><span class="hw-t1">${pctText(t1)}</span>` : `<span>${pctText(t0)}</span>`}</span></div>`; }).join("");
+    return phone("budget", `<div class="hw-screen">${d.budgetExample ? `<div class="hw-ex">Example</div>` : ""}<div class="hw-h">Budget</div><div class="hw-date">Income ${esc(formatPesos(b.income))} a month</div>
+      <div class="hw-blist">${rows}</div>${bars ? `<div class="hw-bars">${bars}</div>` : ""}</div>
+      ${sheet(`<div class="hw-row"><span>${esc(pick.name)}</span><span>a month</span></div><div class="hw-amt hw-type"><span class="hw-t0">${esc(formatPesos(pick.amount))}</span><span class="hw-t1">${esc(formatPesos(next))}</span></div>`, "Save")}${tick}`,
+      `A finger taps ${pick.name}, types ${formatPesos(next)} a month and taps Save; ${pick.name} shows the new limit${bars ? " and its bucket bar grows" : ""}.`);
   }
   return "";
 }

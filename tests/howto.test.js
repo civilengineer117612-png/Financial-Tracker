@@ -45,12 +45,37 @@ test("names from the owner's screen are escaped, never run as markup", () => {
 });
 
 test("every clip has one caption; the hint names the buttons that hold a how-to, and the app wires exactly those", () => {
-  assert.deepEqual(HOWTOS.map((h) => h.id), ["log", "verify", "scan"]);
+  assert.deepEqual(HOWTOS.map((h) => h.id), ["log", "verify", "scan", "budget"]);
   for (const h of HOWTOS) assert.ok(h.caption && h.label && h.caption.length < 80, h.id);
-  assert.match(HOWTO_HINT, /^Hold Log, Verify or the camera/);
+  assert.match(HOWTO_HINT, /^Hold Log, Verify, the camera or Budget in the menu/);
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8"), css = readFileSync(new URL("../app/index.html", import.meta.url), "utf8");
   assert.match(app, /data-tab="\$\{id\}" data-howto="\$\{id\}"/); assert.match(app, /class="camicon" data-action="open-scan-pick" data-howto="scan"/);
   assert.match(app, /class="tile addtile" data-action="add-tile" data-howto="log"/);
+  assert.match(app, /<button class="item" data-action="tab" data-tab="\$\{id\}" data-howto="\$\{id\}"/, "menu items carry their how-to");
+
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\n    \.hw \*/, "Reduce Motion stops every clip");
-  for (const k of ["hwLogFinger", "hwVerFinger", "hwScanFinger"]) assert.ok(css.includes(`@keyframes ${k}`), k);
+  for (const k of ["hwLogFinger", "hwVerFinger", "hwScanFinger", "hwBudFinger", "hwGrow"]) assert.ok(css.includes(`@keyframes ${k}`), k);
+});
+
+const bud = { income: 2500000, rows: [{ name: "Groceries", amount: 500000, bucket: "need" }, { name: "Coffee", amount: 100000, bucket: "want" }, { name: "Misc", amount: 0, bucket: "other" }],
+  buckets: [{ bucket: "need", label: "Needs", amount: 1000000 }, { bucket: "want", label: "Wants", amount: 400000 }, { bucket: "savings", label: "Savings", amount: 300000 }] };
+
+test("the budget clip is drawn from the owner's own budgets, income and buckets; the first category gets +P500 in the picture only", () => {
+  const h = howtoClip("budget", { ...own, budget: bud });
+  for (const w of ["Groceries", "Coffee", "Misc", "₱25,000.00", "₱5,000.00", "₱5,500.00", "₱1,000.00", "Needs", "Wants", "Savings"]) assert.ok(h.includes(w), w);
+  assert.ok(!h.includes("Example"));
+  assert.match(h, /hw-fill hw-grow" style="--w0:40%;--w1:42%"/, "the Needs bar grows from 40.0% to 42.0% of income");
+  assert.match(h, /hw-fill" style="--w0:16%;--w1:16%"/, "the other bars stay");
+  assert.match(h, /hw-t0">₱5,000\.00<small>20\.0%<\/small>/, "before: 5,000 is 20.0% of 25,000");
+  assert.match(h, /hw-t1">₱5,500\.00<small>22\.0%<\/small>/, "after: 5,500 is 22.0%");
+  assert.match(h, /hw-tip"><span class="hw-t0">40\.0%<\/span><span class="hw-t1">42\.0%<\/span>/, "the Needs value at the bar tip changes with it");
+});
+
+test("a category with no budget yet is shown going to P3,000; with the new Budget off there are no bars; with no income or budgets, a marked example", () => {
+  const zero = howtoClip("budget", { ...own, budget: { ...bud, rows: [{ name: "Pets", amount: 0, bucket: "other" }] } });
+  assert.ok(zero.includes("₱3,000.00"));
+  const off = howtoClip("budget", { ...own, budget: { ...bud, buckets: null } });
+  assert.ok(!off.includes("hw-bars") && off.includes("Groceries"));
+  assert.ok(howtoClip("budget", { ...own, budget: { income: 0, rows: [] } }).includes("Example"));
+  assert.ok(howtoClip("budget", { ...own, budget: null }).includes("Example"));
 });

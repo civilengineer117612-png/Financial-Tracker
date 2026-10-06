@@ -34,7 +34,15 @@ const categoryName = (id) => S().categories.find((c) => c.id === id)?.name ?? "?
 function clipFor(id) {
   const tiles = S().presets.slice(0, 3).map((p) => ({ name: p.name, amount: p.amount, category: categoryName(p.category_id) }));
   const a = cashFirst(activeAccounts())[0] ?? null;
-  return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total });
+  let budget = null;
+  if (id === "budget") {   // this month's budgets, the base income and (with the new Budget on) the bucket totals, as the Budget screen shows them
+    const month = M.monthOf(today()), set = ledger.settings, income = M.baseIncome(S(), { plan: planOf(), pin: set.income_base_pin ?? null }).amount ?? 0;
+    const cats = expenseCategories().map((c) => ({ c, amount: M.budgetFor(S().rules, c.id, month) ?? 0 }));
+    const rows = [...cats.filter((x) => x.amount > 0), ...cats.filter((x) => x.amount === 0)].map((x) => ({ name: x.c.name, amount: x.amount, bucket: M.bucketOf(x.c, set.bucket_overrides ?? {}) }));
+    const bk = set.try_new_budget ? M.bucketRows({ categories: S().categories, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets, income, budgets: Object.fromEntries(cats.map((x) => [x.c.id, x.amount])), skipId: M.UNLOGGED_CATEGORY_ID }).rows.filter((r) => r.bucket !== "other") : null;
+    budget = { income, rows, buckets: bk };
+  }
+  return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total, budget });
 }
 const catLine = (c) => `${esc(c.name)} \u00b7 ${esc(M.BUCKET_LABELS[M.bucketOf(c, ledger.settings.bucket_overrides ?? {})])}`;
 // The four buttons for choosing a bucket by hand; the one in force is pressed.
@@ -165,7 +173,7 @@ function renderMenu() {
   const opening = !el.firstChild || el.classList.contains("leaving");
   clearTimeout(menuTimer); el.classList.remove("leaving");
   const current = (id) => ui.tab === id || (id === "money" && ui.tab === "income");   // Money holds Spending and Income
-  const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}"${current(id) ? ' aria-current="page"' : ""}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span></button>`;
+  const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}" data-howto="${id}"${current(id) ? ' aria-current="page"' : ""}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span></button>`;
   const hidden = M.menuHidden(ledger.settings);   // the new Budget holds the pay plan, so its menu entry is not shown
   const age = M.daysSinceBackup(ledger.settings, today());
   const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
@@ -2814,7 +2822,7 @@ document.addEventListener("pointerdown", (e) => {
   const b = e.target.closest("[data-howto]");
   if (!b || ui.sheet || !M.HOWTOS.some((h) => h.id === b.dataset.howto)) return;
   hwAt = { x: e.clientX, y: e.clientY };
-  hwTimer = setTimeout(() => { hwTimer = null; suppressClick = true; navigator.vibrate?.(12); ui.sheet = { type: "howto", id: b.dataset.howto }; renderSheet(); }, 550);
+  hwTimer = setTimeout(() => { hwTimer = null; suppressClick = true; navigator.vibrate?.(12); if (ui.menu) { ui.menu = false; renderMenu(); } ui.sheet = { type: "howto", id: b.dataset.howto }; renderSheet(); }, 550);   // from the menu: the menu closes so the clip is in front
 });
 const hwCancel = () => { clearTimeout(hwTimer); hwTimer = null; };
 document.addEventListener("pointerup", hwCancel); document.addEventListener("pointercancel", hwCancel);
