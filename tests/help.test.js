@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { MENU_GROUPS } from "../src/model/names.js";
+import { MENU_GROUPS, SCREEN_NAMES } from "../src/model/names.js";
 import { QUICK_NOTES, FIRST_RUN_NOTICE, TOPICS, checklist } from "../src/model/help.js";
 
 const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
@@ -53,4 +53,13 @@ test("Help words never name an owner-specific goal or category, and the goals to
   const words = TOPICS.flatMap((t) => t.lines).join(" ") + QUICK_NOTES.join(" ") + FIRST_RUN_NOTICE.lines.join(" ");
   for (const owner of ["Mole", "Lakat", "Upskill", "Family"]) assert.ok(!words.includes(owner), owner);
   assert.match(TOPICS.find((t) => t.tab === "goals").lines.join(" "), /Choose which goal is your emergency fund/);
+});
+
+test("Pay plan is marked optional in the menu, the empty screen and Help, in the owner's approved words", () => {
+  assert.equal(SCREEN_NAMES.plan, "Pay plan (optional)");
+  assert.match(app, /A pay plan says how you split each payday, so the app can show what is left in each line\. You do not need one: Budget works without it\./);
+  const t = TOPICS.find((x) => x.tab === "plan");
+  assert.equal(t.label, "Pay plan (optional)");
+  assert.deepEqual(t.lines, ["Optional. A pay plan is a small file that says how much of each payday goes to each line, such as rent, food or savings.", "With one, the app shows what is left in each line, compares the pay you received, and works out your Emergency Fund target.", "Without one, everything else works, including Budget."]);
+  assert.match(app, /<h1>Pay plan<\/h1>/, "the screen's own title stays Pay plan");
 });

@@ -1243,7 +1243,7 @@ const planOf = () => M.planInEffect(plansOf(), today());
 const paydayText = (d) => (d === "last" ? "the last day of the month" : "the " + d + ord(d));
 function viewPlan() {
   const plan = planOf(), all = plansOf();
-  if (!plan) return `<h1>Pay plan</h1><p class="note">${all.length ? "Your plan starts " + esc(longDate([...all].sort((x, y) => (x.effective_from < y.effective_from ? -1 : 1))[0].effective_from)) + "." : "No plan loaded yet. A plan says what to set aside from each of your two paydays."}</p>
+  if (!plan) return `<h1>Pay plan</h1><p class="note">${all.length ? "Your plan starts " + esc(longDate([...all].sort((x, y) => (x.effective_from < y.effective_from ? -1 : 1))[0].effective_from)) + "." : "A pay plan says how you split each payday, so the app can show what is left in each line. You do not need one: Budget works without it."}</p>
     <p><button class="primary" data-action="open-plan">Load a plan</button></p>`;
   const t = M.planTotals(plan), [p1, p2] = plan.paydays;
   const lines = plan.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="n">${peso(l.first)}</td><td class="n">${peso(l.second)}</td><td class="n">${peso(l.first + l.second)}</td></tr>`).join("");

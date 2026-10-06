@@ -1,7 +1,7 @@
 // The ONE place the screens' names are written. The menu, the bottom bar, the Help topics and the Help drawings all read them from here, so renaming a
 // screen changes every one of them together (tests/helpart.test.js proves a drawing follows a rename).
 export const SCREEN_NAMES = {
-  log: "Log", verify: "Verify", money: "Cash flow", income: "Income", cards: "Cards", budget: "Budget", goals: "Goals", plan: "Pay plan", checks: "Checks",
+  log: "Log", verify: "Verify", money: "Cash flow", income: "Income", cards: "Cards", budget: "Budget", goals: "Goals", plan: "Pay plan (optional)", checks: "Checks",
   trips: "Trips", buffer: "Buffer", scan: "Scan", checkin: "Weekly review", help: "Help", setup: "Setup",
 };
 

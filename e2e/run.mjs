@@ -584,7 +584,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3 && (await page.locator("#menuBtn").evaluate((b) => getComputedStyle(b).borderTopWidth === "0px" && getComputedStyle(b).backgroundColor === "rgba(0, 0, 0, 0)")), "it is just three lines, without a box around it");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Cards,Budget,Goals,Pay plan,Checks,Trips,Buffer,Scan,Weekly review,Help,Setup", "the menu lists Cash flow (Spending and Income together), Cards, Budget, Goals, Pay plan, Checks, Trips, Buffer, Scan, Weekly review, Help and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Cards,Budget,Goals,Pay plan (optional),Checks,Trips,Buffer,Scan,Weekly review,Help,Setup", "the menu lists Cash flow (Spending and Income together), Cards, Budget, Goals, Pay plan, Checks, Trips, Buffer, Scan, Weekly review, Help and Setup");
 check(await page.locator("#menu .drawer").evaluate((d) => d.scrollHeight <= d.clientHeight + 1), "everything fits without scrolling");
 check(await page.locator("#menu .drawer").evaluate((d) => getComputedStyle(d).borderRightWidth === "0px"), "there is no hard black line at the panel's edge");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
@@ -1043,7 +1043,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 
 // ---- the pay plan ----
 await menuGo(page, "Pay plan");
-check((await text(page, "#screen")).includes("No plan loaded"), "the pay plan starts empty");
+check((await text(page, "#screen")).includes("You do not need one: Budget works without it"), "the pay plan starts empty");
 await page.click('button:has-text("Load a plan")');
 await page.fill("#p-text", "{ not a plan");
 check((await text(page, "#p-prev")).includes("could not be read") && await page.locator("#f-save").isDisabled(), "a broken plan is refused in plain words");
