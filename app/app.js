@@ -47,11 +47,19 @@ function clipFor(id) {
 // The reason under a suggested figure. The starter share's long note was the same on every row, so it is said once, in the tips at the bottom; a row
 // keeps only what is its own (learned from history, pinned, or lowered to fit the income).
 const rowWhy = (x) => (x.source === "starter" && !x.pinned ? (/Lowered by .*$/.exec(x.reason)?.[0] ?? "") : x.reason);
+// Your own figures for the tips: this month's budgets against the base income, and the emergency fund in months of its basis.
+function tipsYoursNow() {
+  const set = ledger.settings, month = M.monthOf(today()), income = M.baseIncome(S(), { plan: planOf(), pin: set.income_base_pin ?? null }).amount ?? 0;
+  const budgets = Object.fromEntries(expenseCategories().map((c) => [c.id, M.budgetFor(S().rules, c.id, month) ?? 0]));
+  const g = M.goalByRole(S(), "emergency"), e = g ? (planOf() ? M.emergencyFundStatus(S(), planOf(), g) : M.emergencyFundFromBudgets(S(), g, { month })) : null;
+  return M.tipsYours({ income, categories: S().categories, overrides: set.bucket_overrides ?? {}, budgets, ef: e ? { balance: e.balance, monthlyBasis: e.monthlyBasis } : null });
+}
 // Budgeting tips: one block at the bottom, with where each comes from. With little history, the starter shares in use come first.
 function tipsBlock(starter) {
   const t = M.starterFromTargets(ledger.settings.bucket_targets, M.SUGGEST_DEFAULTS.starter.buffer), pc = (bps) => bps / 100 + "%";   // the shares the suggestion really uses
   const first = starter ? `<li><b>Starter shares (used until about 2 months are logged):</b> <i>needs ${pc(t.needs)}, wants ${pc(t.wants)}, savings ${pc(t.savings)} and an overrun buffer of ${pc(t.buffer)} of pay; the rent and fixed payments come out of the needs, which are shared by typical weights for each kind.</i></li>` : "";
-  return `<div class="tips" id="sug-tips"><h4>Budgeting tips</h4><ul>${first}${M.BUDGET_TIPS.map((x) => `<li><b>${esc(x.rule)}:</b> <i>${esc(x.text)}</i> <small>${esc(x.source)}</small></li>`).join("")}</ul><p class="note"><i>${esc(M.TIPS_NOTE)}</i></p></div>`;
+  const yours = tipsYoursNow();
+  return `<div class="tips" id="sug-tips"><h4>Budgeting tips</h4><ul>${first}${M.BUDGET_TIPS.map((x) => `<li><b>${esc(x.rule)}:</b> <i>${esc(x.text)}</i>${yours[x.rule] ? ` <span class="yours">Yours: <b>${esc(yours[x.rule])}</b></span>` : ""} <small>${esc(x.source)}</small></li>`).join("")}</ul><p class="note"><i>${esc(M.TIPS_NOTE)}</i></p></div>`;
 }
 const catLine = (c) => `${esc(c.name)} \u00b7 ${esc(M.BUCKET_LABELS[M.bucketOf(c, ledger.settings.bucket_overrides ?? {})])}`;
 // The four buttons for choosing a bucket by hand; the one in force is pressed.
@@ -1753,6 +1761,7 @@ function renderSheet() {
           <label for="y_${esc(x.category_id)}">Yours (\u20B1 a month)</label><input id="y_${esc(x.category_id)}" data-field="y_${esc(x.category_id)}" inputmode="decimal" value="${esc(yoursOf(x, f))}" autocomplete="off">
           ${x.suggested === null ? "" : `<p><button class="link" data-action="use-sug" data-id="${esc(x.category_id)}">Use this</button></p>`}</div>`; }).join("")}
         ${r.others.length ? `<p class="note">Also in the suggestion, but not a category budget: ${esc(r.others.map((o) => o.name + " " + peso(o.amount)).join(", "))}.</p>` : ""}
+        <p><button data-action="use-all-sug" style="width:100%">Use all suggestions</button></p>
         <p><button class="primary" data-action="review-sug">Confirm</button></p>
         ${tipsBlock(r.history.used === "starter")}`;
     }

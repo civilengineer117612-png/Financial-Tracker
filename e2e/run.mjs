@@ -1714,7 +1714,10 @@ console.log("The new Budget");
   { const st = await text(page, "#sheet");
     check(!st.includes("Starter share, a common rule of thumb") && (st.match(/50% of pay for needs/g) ?? []).length === 0, "the starter note is no longer repeated under every row");
     check(/Budgeting tips/i.test(st) && st.includes("Starter shares (used until about 2 months are logged)") && st.includes("savings 15% and an overrun buffer of 5%") && st.includes("Pag-IBIG") && st.includes("not advice"), "the tips sit at the bottom, starter shares first, each with its source");
-    check(await page.locator("#sheet .bval b").count() >= 3 && await page.locator("#sug-tips i").count() >= 5, "suggested figures are bold and the notes are in italics"); }
+    check(await page.locator("#sheet .bval b").count() >= 3 && await page.locator("#sug-tips i").count() >= 5, "suggested figures are bold and the notes are in italics");
+    check(await page.locator('#sheet button[data-action="use-all-sug"]').count() === 2, "Use all suggestions is also beside Confirm");
+    check(st.includes("PDIC") && st.includes("3 months single"), "the two Philippine tips are there");
+    check(await page.evaluate(() => getComputedStyle(document.querySelector("#sheet .note")).fontStyle) === "italic", "notes are in italics"); }
   await page.click('button:has-text("Use all suggestions")');
   await page.fill("#y_cat-food", "4000");
   await page.click('#sheet button:has-text("Confirm")');
