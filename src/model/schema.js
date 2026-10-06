@@ -47,7 +47,7 @@ export const SCHEMAS = {
     card_state: optional(oneOf("pending", "posted")),   // "Card entry state" row
   },
   Category: { id, name, kind: oneOf("income", "expense"),
-    role: optional(oneOf("food", "essentials", "subscription", "rent")) },   // ADDED: what the category is FOR (the scanner guesses by role, so renaming cannot break a guess)
+    role: optional(oneOf("food", "essentials", "subscription", "rent", "transport", "health")) },   // ADDED: what the category is FOR (the scanner guesses by role, so renaming cannot break a guess)
   CategoryMap: { from: id, to: id, effective_from: date },
   // BudgetRule / SavingsRule / AllocationRule share one shape, told apart by `kind`.
   // Fields beyond id and effective_from are a placeholder; the append-only check

@@ -116,7 +116,7 @@ test("two paydays a month: the base income is the sum of each kind's median", ()
 
 test("with no usable history the suggestion is starter shares and says so; a plan-less ledger still gets Saved rows, labelled not saved", () => {
   const s = base(); slip(s, "2026-09-28", 2500000); logMonth(s, "2026-09");
-  const r = sug(s);
+  const r = sug(s, { rent: 800000 });
   assert.equal(r.ok, true); assert.equal(r.history.used, "starter");
   assert.ok(r.rows.some((x) => x.source === "starter" && /rule of thumb/.test(x.reason)));
   const rows = savedRows({ plan: null, suggestion: r });

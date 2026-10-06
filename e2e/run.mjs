@@ -18,8 +18,8 @@ const T0 = new Date("2026-10-03T03:00:00Z");   // 11:00 on Oct 3 in Manila
 // What most tests start from: a ledger in the owner's own style (the categories and the three meal tiles the app used to start everyone with), so the
 // long flows below keep their wording. A brand-new install is now neutral: tests of that open with styled: false.
 const owner = (id, name, role) => ({ id, name, kind: "expense", ...(role ? { role } : {}) });
-const LEDGER_V = 4;
-const OWNER_STYLE = { v: 4, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings: { notice_seen_at: "2026-10-01T08:00:00.000+08:00" }, state: {
+const LEDGER_V = 5;
+const OWNER_STYLE = { v: 5, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings: { notice_seen_at: "2026-10-01T08:00:00.000+08:00" }, state: {
   ...Object.fromEntries(["accounts", "goals", "envelopes", "transactions", "entries", "categoryMaps", "rules", "templates", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"].map((k) => [k, []])),
   categories: [owner("cat-food", "Food", "food"), owner("cat-lakat", "Lakat/Date"), owner("cat-family", "Family"), owner("cat-shopping", "Shopping"), owner("cat-essentials", "Essentials", "essentials"), owner("cat-upskill", "Upskill"),
     owner("cat-subscription", "Subscription", "subscription"), owner("cat-rent", "Rent", "rent"), owner("cat-unlogged", "Unlogged"),
@@ -1688,7 +1688,7 @@ console.log("The new Budget");
   t = await text(page, "#screen");
   check(t.includes("₱25,000.00 a month") && t.includes("Your own figure") && t.includes("Use my payslips again"), "the typed income is shown, with where it came from");
   const sh = (txt) => { const m = /Spending ([\d.]+)%, Saved ([\d.]+)%, Unallocated ₱([\d,]+\.\d\d)/.exec(txt); return m && [Math.round(Number(m[1]) * 10), Math.round(Number(m[2]) * 10), Math.round(Number(m[3].replace(/,/g, "")) * 100)]; };
-  check(sh(t) && sh(t)[0] === 0 && sh(t)[2] > 0 && t.includes("Spent so far: 0.0% of income") && t.includes("Suggested, not saved"), "the summary shows Spending and Saved as percents and Unallocated in pesos, the extra figure shows, and with no plan the saved rows say they are only suggested");
+  check(sh(t) && sh(t)[0] === 0 && sh(t)[2] > 0 && t.includes("Spent so far: 0.0% of income") && t.includes("asks for your rent first"), "the summary shows Spending and Saved as percents and Unallocated in pesos, the extra figure shows, and with no history the saved block says the suggestion asks for the rent first");
   // set a budget the old way: the row shows the amount and its share of income
   await page.click('button[data-action="open-budget"][data-id="cat-food"]'); await page.fill("#f-amount", "5000"); await page.click("#f-save"); await seen(page, "#toast", "Budget saved");
   t = await text(page, "#screen");
@@ -1696,7 +1696,13 @@ console.log("The new Budget");
   check(!(await page.locator("#bud-income .overnote, .overnote").count()) && !(await page.locator("#screen .meter.g-critical").count()), "nothing is red when nothing is over");
   // suggest, pin one line, confirm for next month
   await page.click('button:has-text("Suggest a budget")');
-  check((await text(page, "#sheet")).includes("Nothing is saved until you confirm") && (await text(page, "#sheet")).includes("Suggested"), "the suggestion sheet explains that nothing is saved yet");
+  check((await text(page, "#sheet")).includes("What is your monthly rent?") && !(await text(page, "#sheet")).includes("Suggested"), "with no history, the rent is asked for first");
+  await page.click('#sheet button:has-text("Continue")');
+  check(!(await text(page, "#sheet")).includes("Suggested"), "it will not go on without a rent figure");
+  await page.fill("#s-rent", "8000"); await page.click('#sheet button:has-text("Continue")');
+  await seen(page, "#sheet", "Nothing is saved until you confirm");
+  check((await text(page, "#sheet")).includes("Nothing is saved until you confirm") && (await text(page, "#sheet")).includes("Suggested") && (await text(page, "#sheet")).includes("Rent: ₱8,000.00"), "then the suggestion sheet explains that nothing is saved yet, and shows the rent you typed");
+  check(JSON.parse((await stored(page)).local).settings.starter_rent === 800000, "the rent is remembered, not asked again");
   await page.click('button:has-text("Use all suggestions")');
   await page.fill("#y_cat-food", "4000");
   await page.click('button:has-text("Confirm")');
@@ -1846,7 +1852,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
     check(same(kept.local) && same(kept.idb), "the data as it was before the update is kept in both stores"); }
   await menuGo(page, "Setup");
   const su = await text(page, "#screen");
-  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 4") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
+  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 5") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
   await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "40"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
   check(JSON.parse((await stored(page)).local).state.transactions.length === 2, "an expense is added after the update");
   await menuGo(page, "Setup");

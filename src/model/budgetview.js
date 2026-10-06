@@ -50,13 +50,14 @@ export function savedRows({ plan, suggestion }) {
 }
 
 // A suggested budget for one month, built by the engine for ONE monthly payday on the base income. Lines are mapped by category id, never by name.
+// rent: the monthly rent the owner typed (centavos, 0 for none), needed only while there is too little history to learn it from: without it the answer is {ok: false, code: "NEEDS_RENT"}.
 // pins: {category_id: centavos} the owner typed; they come back as the owner's, and the engine's own figure is kept as the suggestion.
-export function suggestBudgets({ state, plan = null, pin = null, today, month, settings, pins = {}, scheduled = [] }) {
+export function suggestBudgets({ state, plan = null, pin = null, today, month, settings, pins = {}, scheduled = [], rent }) {
   const income = baseIncome(state, { plan, pin });
   if (!income.amount) return { ok: false, code: "NO_INCOME", message: NO_INCOME_PROMPT };
   const names = new Map(state.categories.filter((c) => c.kind === "expense" && c.id !== UNLOGGED_CATEGORY_ID).map((c) => [c.id, c.name]));
   const pinned = Object.entries(pins).filter(([id, v]) => names.has(id) && whole(v)).map(([category_id, v]) => ({ category_id, name: names.get(category_id), first: v, second: 0 }));
-  const r = suggestPlan({ state, paydays: [{ id: "month", label: "Month", day: 1 }], income: [income.amount], today, month, settings, scheduled, pinned });
+  const r = suggestPlan({ state, paydays: [{ id: "month", label: "Month", day: 1 }], income: [income.amount], today, month, settings, scheduled, pinned, rent });
   if (!r.ok) return r;
   const lines = r.paydays[0].lines, diff = new Map(r.differences.filter((d) => d.category_id).map((d) => [d.category_id, d]));
   // every spending category gets a row (the engine drops a line that comes to nothing), so a figure can be typed for any of them
