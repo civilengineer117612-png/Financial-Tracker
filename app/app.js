@@ -1290,7 +1290,7 @@ function viewGoals() {
     let p = M.goalProgress(S(), g);
     if (!p) return "";
     // The Emergency Fund's target is worked out from the plan in force, never kept as a typed number.
-    const isEf = g.role === "emergency", ef = isEf && planOf() ? M.emergencyFundStatus(S(), planOf(), g) : null;
+    const isEf = g.role === "emergency", ef = !isEf ? null : planOf() ? M.emergencyFundStatus(S(), planOf(), g) : M.emergencyFundFromBudgets(S(), g, { month: M.monthOf(today()) });
     if (isEf) p = { ...p, target: null, remaining: null, percent: null, reached: false };
     const hidden = g.hidden_by_default && !ui.reveal;
     const line = planOf()?.lines.find((l) => l.kind === "goal" && l.name.toLowerCase() === g.name.toLowerCase());
@@ -1298,14 +1298,14 @@ function viewGoals() {
     const eta = monthly > 0 && p.remaining ? Math.ceil(p.remaining / monthly) : null;
     const need = g.deadline && p.remaining ? M.requiredPerMonth(p, g.deadline, today().slice(0, 7)) : null;
     const efBody = !ef ? "" : `<table class="tbl"><tr><td>Target</td><td class="n">${peso(ef.target)}</td></tr><tr><td>Balance now</td><td class="n">${peso(ef.balance)}</td></tr>
-        <tr><td>Monthly contribution</td><td class="n">${ef.monthly ? peso(ef.monthly) : "none in your plan"}</td></tr>
+        <tr><td>Monthly contribution</td><td class="n">${ef.monthly ? peso(ef.monthly) : ef.source === "budgets" ? "not set" : "none in your plan"}</td></tr>
         <tr><td>Months to target</td><td class="n">${ef.reached ? "Reached" : ef.monthsToTarget === null ? "Not known yet" : "About " + ef.monthsToTarget}</td></tr></table>
         <div class="meter goal" role="img" aria-label="${ef.percent}% of the target"><span class="fill" style="width:${ef.percent}%"></span></div>
         <div class="status">${ef.reached ? "Target reached" : ef.percent + "% \u00b7 " + peso(ef.remaining) + " to go"}</div>
-        <p class="note">Target = ${ef.months} months of ${esc(ef.basis.join(", "))} from your plan (${peso(ef.monthlyBasis)} a month). It changes when your plan does.${ef.missing.length ? " Your plan has no line named " + esc(ef.missing.join(", ")) + "." : ""}</p>`;
+        <p class="note">Target = ${ef.months} months of ${esc(ef.basis.join(", "))} from ${ef.source === "budgets" ? "your budgets" : "your plan"} (${peso(ef.monthlyBasis)} a month). It changes when ${ef.source === "budgets" ? "your budgets do" : "your plan does"}.${ef.missing.length ? " Your plan has no line named " + esc(ef.missing.join(", ")) + "." : ""}</p>`;
     const body = hidden ? `<p class="note">Hidden. Tap Show balances above.</p>`
       : ef ? efBody
-      : isEf ? `<div class="btop"><span class="bval">${peso(p.balance)}</span></div><p class="note">The target for your emergency fund is worked out from a pay plan: 3 months of Rent, Food and Essentials. This version has no way to load a plan yet.</p>`
+      : isEf ? `<div class="btop"><span class="bval">${peso(p.balance)}</span></div><p class="note">The target for your emergency fund is worked out from your budgets: 3 months of your rent, food and essentials. Set those budgets (Menu, Budget) and it appears here.</p>`
       : `<div class="btop"><span class="bval">${peso(p.balance)}${p.target != null ? " of " + peso(p.target) : ""}</span></div>
          ${p.target != null ? `<div class="meter goal" role="img" aria-label="${p.percent}% of the goal"><span class="fill" style="width:${p.percent}%"></span></div>
          <div class="status">${p.reached ? "Goal reached" : p.percent + "% \u00b7 " + peso(p.remaining) + " to go"}${eta ? " \u00b7 about " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : ""}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div>` : `<div class="status">No target, just a place to build up.</div>`}`;

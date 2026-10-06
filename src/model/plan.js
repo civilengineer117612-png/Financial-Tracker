@@ -22,6 +22,7 @@ import { isPhDate, phTimestamp } from "./util.js";
 import { checkTransactionSave } from "./index.js";
 import { naturalBalance } from "./balances.js";
 import { categoryByRole } from "./seed.js";
+import { budgetFor } from "./budget.js";
 
 const fail = (error) => ({ ok: false, error });
 const whole = (n) => Number.isSafeInteger(n) && n >= 0;
@@ -98,6 +99,18 @@ export function emergencyFundStatus(state, plan, goal) {
   return { target, months, basis: found.map((l) => l.name), missing: basis.filter((n) => !plan.lines.some((l) => key(l.name) === key(n))), monthlyBasis,
     balance, remaining, percent: target ? Math.min(100, Math.floor((balance * 100) / target)) : 0, reached: balance >= target,
     monthly, monthsToTarget: remaining === 0 ? 0 : monthly > 0 ? Math.ceil(remaining / monthly) : null };
+}
+
+// The same Emergency Fund status when there is no pay plan: the target is months x the budgets (this month) of the categories that hold the roles rent, food and
+// essentials. Nothing is typed in; it changes when the budgets do. `monthly` is 0: with no plan there is no contribution line to read.
+export function emergencyFundFromBudgets(state, goal, { month }) {
+  if (!goal) return null;
+  const budgets = DEFAULT_EF.roles.map((r) => categoryByRole(state.categories, r)).filter(Boolean).map((c) => ({ name: c.name, amount: budgetFor(state.rules ?? [], c.id, month) ?? 0 })).filter((b) => b.amount > 0);
+  if (!budgets.length) return null;
+  const months = DEFAULT_EF.months, monthlyBasis = budgets.reduce((n, b) => n + b.amount, 0), target = months * monthlyBasis;
+  const account = state.accounts.find((a) => a.id === goal.account_id), balance = account ? naturalBalance(account, state.entries) : 0, remaining = Math.max(0, target - balance);
+  return { source: "budgets", target, months, basis: budgets.map((b) => b.name), missing: [], monthlyBasis, balance, remaining, percent: target ? Math.min(100, Math.floor((balance * 100) / target)) : 0,
+    reached: balance >= target, monthly: 0, monthsToTarget: remaining === 0 ? 0 : null };
 }
 
 // Adds a plan without ever editing one: the same effective date twice is refused unless it is the identical plan.

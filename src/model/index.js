@@ -65,7 +65,7 @@ export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID, categoryByRole
 export { applyDrafts, planExpense, discardDraft, verifyDraft, editDraftFields, setAccountIcon, planAttachment, attachmentsFor, planSplitExpense, splitCategoryEntry } from "./drafts.js";
 export { LEDGER_VERSION, emptyState, emptyLedger, nextLedger, parseLedger, chooseLedger, restoreLedger, summarizeLedger, backupFileName, daysSinceBackup } from "./persist.js";
 export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByRange, spendingByAccount, cardsSummary, accountsOverview, monthlySpending, dayTotal } from "./reports.js";
-export { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, emergencyFundStatus, DEFAULT_EF, cutoffFor, planProgress, planIncome, planPayReceived } from "./plan.js";
+export { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, emergencyFundStatus, emergencyFundFromBudgets, DEFAULT_EF, cutoffFor, planProgress, planIncome, planPayReceived } from "./plan.js";
 export { planTag, planTripDates, planTripOverride, tripMembership, tripEntries, tagSummary, overlappingTrip, tripDays, niceDay, AUTO_TAG_SKIPS } from "./trips.js";
 export { BANKS, CASH, pickerBanks, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, bankPicture, isPlaceholderAddress, dropPlaceholderAddresses } from "./banks.js";
 export { KINDS, kindById, wordsToCentavos, readScan, readPayslip, linesFromWords, linesFromBoxes, snapEmployer, categoryFromHistory } from "./scan.js";

@@ -104,3 +104,32 @@ test("without the roles on any category the default basis is empty and the statu
   const e = emergencyFundStatus(only, raw().plan, only.goals[0]);
   assert.equal(e.target, 3 * (250000 + 120000), "a role with no category is left out");
 });
+
+// ----- no plan: the target from the budgets of the rent, food and essentials categories -----
+import { emergencyFundFromBudgets, planBudgetChange } from "../src/model/index.js";
+test("with no plan the target is 3 x this month's budgets for the rent, food and essentials categories, and follows them", () => {
+  let s = ledger(500000); s.rules = []; const goal = s.goals[0];
+  assert.equal(emergencyFundFromBudgets(s, goal, { month: "2026-10" }), null, "no budgets, no target");
+  const set = (cat, amount, id) => { s = planBudgetChange(s, { id, category_id: cat, amount, from_month: "2026-10" }, new Date()).state; };
+  set("c-rent", 400000, "b1"); set("food", 250000, "b2"); set("c-ess", 120000, "b3");
+  const e = emergencyFundFromBudgets(s, goal, { month: "2026-10" });
+  assert.equal(e.target, 3 * 770000); assert.deepEqual(e.basis, ["Rent", "Food", "Essentials"]); assert.equal(e.source, "budgets"); assert.equal(e.monthlyBasis, 770000);
+  assert.equal(e.balance, 500000); assert.equal(e.remaining, 3 * 770000 - 500000); assert.equal(e.reached, false); assert.equal(e.percent, Math.floor((500000 * 100) / (3 * 770000)));
+  assert.equal(emergencyFundFromBudgets(s, goal, { month: "2026-09" }), null, "budgets of a later month do not reach back");
+  set("c-rent", 450000, "b4");
+  assert.equal(emergencyFundFromBudgets(s, goal, { month: "2026-10" }).target, 3 * 820000, "it follows the budgets");
+  const same = emergencyFundStatus(s, raw().plan, goal);
+  assert.equal(same.target, 3 * 770000, "with a plan, the plan still decides (unchanged)");
+  const rentOnly = ledger(0); rentOnly.categories = rentOnly.categories.filter((c) => c.role === "rent");
+  assert.equal(emergencyFundFromBudgets(rentOnly, rentOnly.goals[0], { month: "2026-10" }), null, "a role with no budget is left out; none at all is no target");
+  assert.equal(emergencyFundFromBudgets(s, null, { month: "2026-10" }), null);
+  const full = emergencyFundFromBudgets(ledger(5000000), goal, { month: "2026-10" });
+  assert.equal(full, null, "that ledger has no budgets");
+  const big = ledger(3000000); big.rules = s.rules; assert.equal(emergencyFundFromBudgets(big, big.goals[0], { month: "2026-10" }).reached, true);
+});
+test("the Goals screen uses the plan when there is one and the budgets when there is not", async () => {
+  const { readFileSync } = await import("node:fs");
+  const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
+  assert.match(app, /ef = !isEf \? null : planOf\(\) \? M\.emergencyFundStatus\(S\(\), planOf\(\), g\) : M\.emergencyFundFromBudgets\(S\(\), g, \{ month: M\.monthOf\(today\(\)\) \}\);/);
+  assert.match(app, /from \$\{ef\.source === "budgets" \? "your budgets" : "your plan"\}/);
+});
