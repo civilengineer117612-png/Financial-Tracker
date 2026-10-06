@@ -225,3 +225,33 @@ test("the new Budget's amounts line up: the share sits under the amount, the tot
   const css = readFileSync(new URL("../app/index.html", import.meta.url), "utf8");
   assert.match(css, /\.row \.amt \{[^}]*text-align: right/); assert.match(css, /\.choice \.bval \{ text-align: right; \}/); assert.match(css, /\.meter\.goal \.fill \{ background: var\(--chart\)/);
 });
+
+// ----- rounding to the nearest 50 pesos, and how saving is worked out -----
+import { toNearest50, savingsExplained, SUGGEST_DEFAULTS as DEFAULTS } from "../src/model/index.js";
+test("suggestions are rounded to the nearest 50 pesos, halves up; a typed (pinned) figure is kept exactly", () => {
+  assert.equal(toNearest50(12600), 15000, "126 becomes 150"); assert.equal(toNearest50(12400), 10000, "124 becomes 100"); assert.equal(toNearest50(12500), 15000, "125 goes up");
+  assert.equal(toNearest50(0), 0); assert.equal(toNearest50(2499), 0); assert.equal(toNearest50(521548), 520000, "5,215.48 becomes 5,200"); assert.equal(toNearest50(325967), 325000);
+  const s = base(); slip(s, "2026-09-28", 3277737); logMonth(s, "2026-09");
+  const r = sug(s, { rent: 335000, pins: { fun: 123456 } });
+  for (const x of r.rows.filter((y) => !y.pinned)) { assert.equal(x.suggested % 5000, 0, x.name + " suggested is a multiple of 50 pesos"); assert.equal(x.amount, x.suggested); }
+  for (const x of r.saved) assert.equal(x.amount % 5000, 0, x.name);
+  const fun = r.rows.find((x) => x.category_id === "fun");
+  assert.equal(fun.amount, 123456, "the owner's own figure is not rounded"); assert.equal(fun.suggested % 5000, 0, "but the suggestion shown beside it is");
+});
+test("how saving is worked out is said in plain words, from the settings actually in use", () => {
+  const d = savingsExplained(DEFAULTS);
+  assert.match(d[0], /Overrun buffer: 5% of your pay/); assert.match(d[1], /no more than 15% of your pay\./); assert.ok(!/floor/.test(d[1]), "no floor, no floor sentence");
+  assert.match(d[2], /finish date gets what it needs/); assert.match(d[3], /rounded to the nearest ₱50/); assert.match(d[3], /not advice/);
+  const c = savingsExplained({ ...DEFAULTS, starter: { ...DEFAULTS.starter, savings: 2000, buffer: 300 }, savings_floor: 100000, buffer_amount: null });
+  assert.match(c[0], /3% of your pay/); assert.match(c[1], /no more than 20% of your pay and never less than your savings floor/);
+  assert.equal(savingsExplained({ ...DEFAULTS, buffer_amount: 50000 })[0], "Overrun buffer: the amount set for it.");
+  const view = app.slice(app.indexOf("function viewBudgetNew()"), app.indexOf("function viewBudgetOld()"));
+  assert.match(view, /How saving is worked out/); assert.match(view, /M\.savingsExplained\(/);
+});
+test("the Budget screen's Saved block uses the same suggestion as the sheet, so the rent you typed counts there too", () => {
+  const view = app.slice(app.indexOf("function viewBudgetNew()"), app.indexOf("function viewBudgetOld()"));
+  assert.match(view, /const sug = income && !plan \? runSuggest\(\) : null;/);
+  assert.match(app, /const runSuggest = \(\) => \{[^\n]*rent: set\.starter_rent \?\? undefined/);
+  const s = base(); slip(s, "2026-09-28", 2500000); logMonth(s, "2026-09");
+  assert.equal(sug(s).code, "NEEDS_RENT"); assert.ok(sug(s, { rent: 300000 }).saved.length >= 1, "with the rent, the saved rows are there");
+});

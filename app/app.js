@@ -1362,7 +1362,7 @@ function viewBudgetNew() {
   const status = new Map(M.budgetStatus(S(), { rules: S().rules, categoryMaps: S().categoryMaps, month, asOf: today() }).map((r) => [r.category_id, r]));
   const rows = expenseCategories().map((c) => ({ c, now: M.budgetFor(S().rules, c.id, month), later: M.budgetFor(S().rules, c.id, next), st: status.get(c.id) }));
   const spendTotal = rows.reduce((n, r) => n + (r.now ?? 0), 0);
-  const sug = income && !plan ? M.suggestBudgets({ state: S(), plan, pin: set.income_base_pin ?? null, today: today(), month, settings: set.suggest_settings, pins: set.budget_pins ?? {} }) : null;
+  const sug = income && !plan ? runSuggest() : null;   // the same call as the Suggest sheet, so the rent you typed is used here too
   const saved = M.savedRows({ plan, suggestion: sug?.ok ? sug : null }), savedTotal = saved.reduce((n, r) => n + r.amount, 0);
   const head = `<div class="card" id="bud-income"><dl><dt>Income (base)</dt><dd class="big">${income ? peso(income) + " a month" : "Not known yet"}</dd></dl>
     ${income ? `<p class="note">${esc(inc.text)}.${inc.source === "plan" ? " A plan is loaded, so its figure is used." : ""}</p>` : `<p class="note"><b>${esc(M.NO_INCOME_PROMPT)}</b></p>`}
@@ -1387,7 +1387,7 @@ function viewBudgetNew() {
   }
   return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${head}
     <h2>Spending</h2>${spendRows}<p class="note" id="bud-spend-total">Total budgeted: ${peso(spendTotal)}${sh ? " \u00b7 " + M.showTenths(sh.spending) + " of income" : ""}</p>
-    <h2>Saved and set aside</h2>${savedHtml}<p class="note" id="bud-saved-total">Total: ${peso(savedTotal)}${sh ? " \u00b7 " + M.showTenths(sh.saved) + " of income" : ""}</p>${sum}
+    <h2>Saved and set aside</h2>${savedHtml}${plan ? "" : `<details class="explain" id="bud-how"><summary>How saving is worked out</summary>${M.savingsExplained(M.resolveSettings(set.suggest_settings ?? {}).settings ?? M.SUGGEST_DEFAULTS).map((x) => `<p class="note">${esc(x)}</p>`).join("")}</details>`}<p class="note" id="bud-saved-total">Total: ${peso(savedTotal)}${sh ? " \u00b7 " + M.showTenths(sh.saved) + " of income" : ""}</p>${sum}
     ${byPaydaySection()}
     <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
 }
@@ -1661,7 +1661,7 @@ function renderSheet() {
         <p class="note">${esc(M.monthLabel(f.start))}. Old budgets stay in the history.</p>
         <p><button class="primary" data-action="save-sug"${f.changes.length ? "" : " disabled"}>Save budgets</button></p><p><button data-action="back-sug" style="width:100%">Back</button></p>`;
     } else {
-      body = `<h3>Suggest a budget</h3><p class="note">Based on ${peso(r.income.amount)} a month (${esc(r.income.text.toLowerCase())}). Nothing is saved until you confirm. Typing a figure pins it as yours.${r.history.used === "starter" && ledger.settings.starter_rent != null ? ` Rent: ${peso(ledger.settings.starter_rent)} <button class="link" data-action="change-rent">Change</button>` : ""}</p>
+      body = `<h3>Suggest a budget</h3><p class="note">Based on ${peso(r.income.amount)} a month (${esc(r.income.text.toLowerCase())}). Nothing is saved until you confirm. Suggestions are rounded to the nearest \u20B150. Typing a figure pins it as yours.${r.history.used === "starter" && ledger.settings.starter_rent != null ? ` Rent: ${peso(ledger.settings.starter_rent)} <button class="link" data-action="change-rent">Change</button>` : ""}</p>
         <p><button data-action="use-all-sug" style="width:100%">Use all suggestions</button></p>
         ${r.rows.map((x) => `<div class="bcard"><div class="btop"><span class="bname">${esc(x.name)}</span><span class="bval">Suggested ${x.suggested === null ? "none" : peso(x.suggested)}</span></div>
           <p class="note">${esc(x.reason)}</p>
