@@ -29,9 +29,13 @@ const S = () => ledger.state;
 const activeAccounts = () => S().accounts.filter((a) => !a.archived);
 const accountName = (id) => S().accounts.find((a) => a.id === id)?.name ?? "?";
 const categoryName = (id) => S().categories.find((c) => c.id === id)?.name ?? "?";
-// "Name \u00b7 Type \u00b7 Bucket" for a category. A Type guessed from the name and not yet confirmed says "(guess)"; with no guess it says the Type is not set.
-const catLine = (c) => { const t = M.typeOf(c), b = M.bucketOf(c, ledger.settings.bucket_overrides ?? {});
-  return `${esc(c.name)} \u00b7 ${esc(t.type ? M.ROLE_LABELS[t.type] + (t.confirmed ? "" : " (guess)") : "Type not set")} \u00b7 ${esc(M.BUCKET_LABELS[b])}`; };
+// "Name \u00b7 Bucket" for a category: the bucket is read from the name (or chosen by hand), so there is nothing else to set.
+const catLine = (c) => `${esc(c.name)} \u00b7 ${esc(M.BUCKET_LABELS[M.bucketOf(c, ledger.settings.bucket_overrides ?? {})])}`;
+// The four buttons for choosing a bucket by hand; the one in force is pressed.
+// What the name says, in the add window: the bucket it reads as, or that it is not clear and will be asked.
+const readLine = (name) => { if (!(name ?? "").trim()) return "The bucket is read from the name."; const r = M.readBucket(name).bucket;
+  return r ? `Reads as ${M.BUCKET_LABELS[r]}. You can change it later in Setup.` : "Not clear from the name. Choose one now, or it waits in Other and is asked on Budget."; };
+const bucketChips = (id, current, action = "pick-bucket") => M.CHOICES.map((b) => `<button class="chip" data-action="${action}" data-id="${esc(id ?? "")}" data-bucket="${b}" aria-pressed="${current === b}">${b === "other" ? "Keep in Other" : b === "need" ? "Need" : b === "want" ? "Want" : "Savings"}</button>`).join(" ");
 const expenseCategories = () => S().categories.filter((c) => c.kind === "expense" && c.id !== M.UNLOGGED_CATEGORY_ID);
 
 // The picture the owner chose for an account, or a plain first-letter tile until they do.
@@ -911,7 +915,7 @@ function viewSetup() {
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}
     <h2>Categories</h2>
-    ${expenseCategories().map((c) => `<div class="row"><div>${catLine(c)}</div><div class="amt"><button class="link" data-action="cat-role" data-id="${esc(c.id)}">Type</button> <button class="link" data-action="rename-cat" data-id="${esc(c.id)}">Rename</button></div></div>`).join("")}
+    ${expenseCategories().map((c) => `<div class="row"><div>${catLine(c)}</div><div class="amt"><button class="link" data-action="cat-bucket" data-id="${esc(c.id)}">Bucket</button> <button class="link" data-action="rename-cat" data-id="${esc(c.id)}">Rename</button></div></div>`).join("")}
     <p><button data-action="add-cat" style="width:100%">Add a category</button></p>
     ${planOf() ? `<h2>Pay plan</h2>
     <p class="note">A plan is in effect. <button class="link" data-action="tab" data-tab="${ledger.settings.try_new_budget ? "budget" : "plan"}">${ledger.settings.try_new_budget ? "Open it in Budget" : "Open it"}</button></p>` : ""}
@@ -1386,18 +1390,15 @@ function viewBudgetNew() {
     budgets: Object.fromEntries(rows.map((r) => [r.c.id, r.now ?? 0])), goals: savedTotal, buffer: bufferTotal, skipId: M.UNLOGGED_CATEGORY_ID });
   const bucketLine = (r) => `<div class="row" data-bucket="${r.bucket}"><div>${esc(r.label)}${r.target != null ? `<small>Target ${M.showTenths(r.target)}</small>` : ""}</div><div class="amt">${peso(r.amount)} a month${r.tenths != null ? `<small>${M.showTenths(r.tenths)} of income</small>` : ""}</div></div>
     ${r.tenths != null ? `<div class="meter goal" role="img" aria-label="${esc(r.label)}: ${M.showTenths(r.tenths)} of income${r.target != null ? ", target " + M.showTenths(r.target) : ""}"><span class="fill" style="width:${Math.min(100, r.tenths / 10)}%"></span></div>` : ""}`;
-  const ask = M.askBucket(S().categories, set.bucket_overrides ?? {});
-  const askHtml = ask.length ? `<h3 id="bud-ask">Need or want?</h3><p class="note">Family and Other have no default. Tap once for each; the answer is remembered, and you can change it in Setup.</p>${ask.map((c) =>
-    `<div class="row"><div>${esc(c.name)}</div><div class="amt">${["need", "want"].map((b) => `<button class="chip" data-action="pick-bucket" data-id="${esc(c.id)}" data-bucket="${b}" aria-pressed="false">${b === "need" ? "Need" : "Want"}</button>`).join(" ")}</div></div>`).join("")}` : "";
-  const unsure = M.unconfirmed(S().categories, M.UNLOGGED_CATEGORY_ID);
-  const confirmHtml = unsure.length ? `<h3 id="bud-confirm">Confirm the Type</h3><p class="note">These have no Type yet. A guess from the name is shown; one tap confirms it. Until then they are counted under the guessed bucket, or Other when there is no guess.</p>${unsure.map((c) => { const t = M.typeOf(c);
-    return `<div class="row"><div>${esc(c.name)}<small>${esc(t.guess ? M.ROLE_LABELS[t.type] + " (guess)" : "Type not set")}</small></div><div class="amt">${t.guess ? `<button class="chip" data-action="confirm-type" data-id="${esc(c.id)}" data-type="${t.type}">Confirm</button> ` : ""}<button class="link" data-action="cat-role" data-id="${esc(c.id)}">${t.guess ? "Change" : "Choose"}</button></div></div>`; }).join("")}` : "";
+  const unsure = M.unclear(S().categories, set.bucket_overrides ?? {}, M.UNLOGGED_CATEGORY_ID);
+  const confirmHtml = unsure.length ? `<h3 id="bud-confirm">Which bucket?</h3><p class="note">The name does not say clearly, so these wait in Other. Tap once for each; the answer is remembered, and you can change it in Setup.</p>${unsure.map((c) =>
+    `<div class="row"><div>${esc(c.name)}</div></div><div class="chips">${bucketChips(c.id, null)}</div>`).join("")}` : "";
   const bucketsHtml = income ? `<h2>Buckets</h2><p class="sub">${esc(M.TARGET_SOURCE)} Each bucket is shown against its target, as a reference and never as a limit.</p>
     ${bk.rows.map(bucketLine).join("")}
     ${bk.invested.amount > 0 ? `<div class="row" id="bud-invested"><div>${esc(bk.invested.label)}<small>Counted in Savings. Spent, not held, so never part of the emergency fund.</small></div><div class="amt">${peso(bk.invested.amount)} a month</div></div>` : ""}
     ${bk.buffer.amount > 0 ? `<div class="row" id="bud-buffer"><div>${esc(bk.buffer.label)}<small>Its own line. Not savings.</small></div><div class="amt">${peso(bk.buffer.amount)} a month${bk.buffer.tenths != null ? `<small>${M.showTenths(bk.buffer.tenths)} of income</small>` : ""}</div></div>` : ""}
     ${bk.unconfirmed.count ? `<p class="note" id="bud-unconfirmed">Includes ${peso(bk.unconfirmed.amount)} from ${bk.unconfirmed.count} unconfirmed ${bk.unconfirmed.count === 1 ? "category" : "categories"} - <button class="link" data-action="goto-confirm">confirm them</button></p>` : ""}
-    <p class="note"><button class="link" data-action="open-targets">Change the targets</button>${set.bucket_targets ? ` \u00b7 <button class="link" data-action="clear-targets">Use 50/30/20 again</button>` : ""}</p>${confirmHtml}${askHtml}` : "";
+    <p class="note"><button class="link" data-action="open-targets">Change the targets</button>${set.bucket_targets ? ` \u00b7 <button class="link" data-action="clear-targets">Use 50/30/20 again</button>` : ""}</p>${confirmHtml}` : "";
   let sum = "";
   const sh = income ? M.shares(income, spendTotal, savedTotal, bufferTotal) : null;   // the totals lines and the overall line use the SAME three numbers, so they always agree
   if (income) {
@@ -1836,24 +1837,21 @@ function renderSheet() {
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="make-backup" disabled>Create backup file</button></p>
       <p class="note">Next you choose where to keep the file, for example Save to Files. It is encrypted, so it is safe in iCloud Drive or on a flash drive.</p>`;
-  } else if (sh.type === "roles") {
-    const cats = sh.ids.map((id) => S().categories.find((c) => c.id === id)).filter(Boolean);
-    const options = (c) => [...M.CATEGORY_ROLES, ...(M.LEGACY_ROLES.includes(c.role) ? [c.role] : [])];
-    body = `<h3>${sh.notice ? "Types your categories were given" : "Type"}</h3>
-      <p class="note">${sh.notice ? "The last update gave these categories a Type, by their exact name, so the app can tell what each one is for. Nothing else changed. Change any you do not agree with." : "The Type says what a category is for (the scanner, the budget and the emergency fund use it). Many categories can share a Type. A guess from the name is shown as (guess) until you tap to confirm it."}</p>
-      ${cats.map((c) => { const t = M.typeOf(c);
-        return `<label for="r_${esc(c.id)}">${esc(c.name)}</label><select id="r_${esc(c.id)}" data-action-change="set-cat-role" data-id="${esc(c.id)}"><option value="">${t.confirmed ? "No Type" : "Choose a Type"}</option>${options(c).map((r) => `<option value="${r}"${t.confirmed && c.role === r ? " selected" : ""}>${esc(M.ROLE_LABELS[r])}</option>`).join("")}</select>
-        ${t.guess ? `<p><button class="chip" data-action="confirm-type" data-id="${esc(c.id)}" data-type="${t.type}">Confirm ${esc(M.ROLE_LABELS[t.type])} (guess)</button></p>` : ""}
-        ${sh.notice ? "" : `<label for="b_${esc(c.id)}">Bucket</label><select id="b_${esc(c.id)}" data-action-change="set-cat-bucket" data-id="${esc(c.id)}"><option value="">${M.bucketOf(c, {}) === "other" ? "Not decided (asked on Budget)" : "Follows the Type: " + M.BUCKET_LABELS[M.bucketOf(c, {})]}</option>${M.BUCKETS.map((b) => `<option value="${b}"${ledger.settings.bucket_overrides?.[c.id] === b ? " selected" : ""}>${M.BUCKET_LABELS[b]}</option>`).join("")}</select>`}`; }).join("")}
-      <p><button class="primary" data-action="close-sheet" style="margin-top:14px">${sh.notice ? "I understand" : "Done"}</button></p>`;
+  } else if (sh.type === "bucket-pick") {
+    const c = S().categories.find((x) => x.id === sh.id), mine = ledger.settings.bucket_overrides?.[sh.id], read = M.readBucket(c.name).bucket;
+    body = `<h3>${esc(c.name)}</h3><p class="note">${read ? `The name reads as ${M.BUCKET_LABELS[read]}.` : "The name does not say clearly."} ${mine ? `You set it to ${M.BUCKET_LABELS[mine]}.` : ""}</p>
+      <div class="chips">${M.CHOICES.map((b) => `<button class="chip" data-action="set-bucket" data-bucket="${b}" aria-pressed="${M.bucketOf(c, ledger.settings.bucket_overrides ?? {}) === b}">${b === "other" ? "Keep in Other" : M.BUCKET_LABELS[b]}</button>`).join(" ")}</div>
+      ${mine && read ? `<p><button data-action="set-bucket" data-bucket="" style="width:100%">Read it from the name again (${M.BUCKET_LABELS[read]})</button></p>` : ""}`;
+  } else if (sh.type === "bucket-clash") {
+    const c = S().categories.find((x) => x.id === sh.id);
+    body = `<h3>${esc(c.name)}</h3><p class="note">You set this to ${M.BUCKET_LABELS[sh.mine]}. The new name reads as ${M.BUCKET_LABELS[sh.read]}.</p>
+      <p><button class="primary" data-action="set-bucket" data-bucket="${sh.mine}">Keep ${M.BUCKET_LABELS[sh.mine]}</button></p>
+      <p><button data-action="set-bucket" data-bucket="" style="width:100%">Use ${M.BUCKET_LABELS[sh.read]}</button></p>`;
   } else if (sh.type === "cat") {
     body = `<h3>${sh.id ? "Rename this category" : "Add a category"}</h3>
       <label for="c-name">Name</label><input id="c-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off" enterkeyhint="done">
       <p class="note">${sh.id ? "Its entries, budget and everything else stay with it." : "For spending. You can rename it later."}</p>
-      ${sh.id ? "" : `<label for="c-type">Type</label><p id="c-guesswrap"${M.guessType(ui.form.name) ? "" : " hidden"}><button class="chip" id="c-guess" data-action="pick-new-type" data-type="${esc(M.guessType(ui.form.name) ?? "")}" aria-pressed="${ui.form.type === M.guessType(ui.form.name) && ui.form.type}">${M.guessType(ui.form.name) ? "Use " + esc(M.ROLE_LABELS[M.guessType(ui.form.name)]) + " (guess)" : ""}</button></p>
-        <select id="c-type" data-field="type"><option value="">Choose a Type</option>${M.CATEGORY_ROLES.map((r) => `<option value="${r}"${ui.form.type === r ? " selected" : ""}>${esc(M.ROLE_LABELS[r])}</option>`).join("")}</select>
-        <p><button class="chip" id="c-type-later" data-action="pick-new-type" data-type="later" aria-pressed="${ui.form.type === "later"}">Decide later</button></p>
-        <p class="note">One tap confirms it. A guess from the name is only a hint; nothing is chosen for you. Family and Other ask Need or want on Budget.</p>`}
+      ${sh.id ? "" : `<p class="note" id="c-read">${esc(readLine(ui.form.name))}</p><div class="chips" id="c-bucket"${M.readBucket(ui.form.name).bucket === null && (ui.form.name ?? "").trim() ? "" : ' style="display:none"'}>${bucketChips(null, ui.form.bucket, "pick-new-bucket")}</div>`}
       <p><button class="primary" id="f-save" data-action="save-cat" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "sweeporder") {
     const f = ui.form, goals = S().goals, picked = f.order ?? [];
@@ -1978,9 +1976,10 @@ function refreshSave() {
     const why = $("scan-why");   // a greyed button must say what it is waiting for
     if (why) why.textContent = !(a.ok && a.centavos > 0) ? "Enter the amount to save." : !M.isPhDate(f.date) ? "Choose the date to save." : !f.category_id ? "Choose a category to save." : !f.account_id ? "Choose the account it " + (M.kindById(f.kind).direction === "in" ? "arrived in" : "was paid from") + " to save." : !splitOk ? "Finish the split to save." : "";
   } else if (type === "cat") {
-    btn.disabled = !(f.name ?? "").trim() || (!ui.sheet.id && !f.type);
-    const g = M.guessType(f.name), btnG = $("c-guess"), wrap = $("c-guesswrap");   // the hint follows the name as it is typed (the typing box is not redrawn)
-    if (btnG && wrap) { wrap.hidden = !g; btnG.dataset.type = g ?? ""; btnG.textContent = g ? "Use " + M.ROLE_LABELS[g] + " (guess)" : ""; }
+    btn.disabled = !(f.name ?? "").trim();
+    const rl = $("c-read"), chips = $("c-bucket");   // the reading follows the name as it is typed (the typing box is not redrawn)
+    if (rl) rl.textContent = readLine(f.name);
+    if (chips) chips.style.display = !(f.name ?? "").trim() || M.readBucket(f.name).bucket !== null ? "none" : "";
   } else if (type === "sweeporder") {
     const bad = (f.order ?? []).slice(0, -1).some((id) => { const raw = (f["t_" + id] ?? "").trim(); if (!raw) return false; const a = M.parsePesos(raw); return !a.ok || a.centavos < 0; });
     const msg = $("sweep-msg"); if (msg) msg.textContent = bad ? "Enter a target like 20000, or leave it empty." : "";
@@ -2269,18 +2268,21 @@ async function onClick(el) {
       showToast(peso(amount.centavos) + " added to the buffer");
       break;
     }
-    case "cat-role": ui.sheet = { type: "roles", ids: [id] }; renderSheet(); break;
     case "add-cat": ui.sheet = { type: "cat", id: null }; ui.form = { name: "" }; renderSheet(); break;
     case "rename-cat": ui.sheet = { type: "cat", id }; ui.form = { name: S().categories.find((c) => c.id === id)?.name ?? "" }; renderSheet(); break;
-    case "pick-new-type": ui.form.type = el.dataset.type; renderSheet(); refreshSave(); break;
-    case "confirm-type": { const r = M.setCategoryRole(S(), id, el.dataset.type); if (!r.ok) { showToast(r.violations[0].message); break; } await commit(r.state); renderSheet(); break; }
+    case "pick-new-bucket": ui.form.bucket = el.dataset.bucket; for (const b of document.querySelectorAll("#c-bucket button")) b.setAttribute("aria-pressed", String(b.dataset.bucket === ui.form.bucket)); break;
+    case "cat-bucket": ui.sheet = { type: "bucket-pick", id }; renderSheet(); break;
+    case "set-bucket": { const cid = ui.sheet.id; ui.sheet = null; renderSheet(); await commit(S(), M.withBucket(ledger.settings, cid, el.dataset.bucket || null)); break; }
     case "goto-confirm": $("bud-confirm")?.scrollIntoView({ block: "start" }); break;
     case "save-cat": {
+      const cat = ui.sheet.id ? S().categories.find((c) => c.id === ui.sheet.id) : null;
       const r = ui.sheet.id ? M.renameCategory(S(), ui.sheet.id, ui.form.name) : M.addCategory(S(), { id: newId("cat"), name: ui.form.name });
       if (!r.ok) { showToast(r.violations[0].message); break; }
-      const chosen = !ui.sheet.id && M.CATEGORY_ROLES.includes(ui.form.type) ? M.setCategoryRole(r.state, r.category.id, ui.form.type) : null;
+      const clash = cat ? M.renameConflict(cat, ui.form.name, ledger.settings.bucket_overrides ?? {}) : null;
+      const answer = !ui.sheet.id && M.readBucket(ui.form.name).bucket === null && M.CHOICES.includes(ui.form.bucket) ? ui.form.bucket : null;
       ui.sheet = null; renderSheet();
-      await commit(chosen?.ok ? chosen.state : r.state);
+      await commit(r.state, answer ? M.withBucket(ledger.settings, r.category.id, answer) : ledger.settings);
+      if (clash) { ui.sheet = { type: "bucket-clash", id: cat.id, ...clash }; renderSheet(); }   // asked only after the rename is saved, so the answer is never overwritten
       break;
     }
     case "open-notice": ui.sheet = { type: "notice" }; renderSheet(); break;
@@ -2848,13 +2850,6 @@ document.addEventListener("change", (e) => {
   }
   const field = e.target.dataset?.field;
   if (field && !ui.sheet) { ui.accountForm[field] = e.target.value; if (field === "kind") { ui.accountForm.covers = ""; renderScreen(); } }
-  if (e.target.dataset?.actionChange === "set-cat-bucket") { commit(S(), M.withBucket(ledger.settings, e.target.dataset.id, e.target.value || null)).then(() => renderSheet()); return; }
-  if (e.target.dataset?.actionChange === "set-cat-role") {
-    const r = M.setCategoryRole(S(), e.target.dataset.id, e.target.value || null);
-    if (!r.ok) { showToast(r.violations[0].message); renderSheet(); }
-    else commit(r.state).then(() => renderSheet());
-    return;
-  }
   if (e.target.dataset?.actionChange === "set-reserve-source") commit(S(), { ...ledger.settings, reserve_source_id: e.target.value || undefined });
 });
 
@@ -2916,11 +2911,6 @@ async function start() {
   if (ui.upgrade?.done) showToast("Your data was updated to the newest format. A copy of the old data is kept in Setup.");
   // A brand-new install shows the notice once: the moment is remembered in the settings, which are saved with the first save. Help shows it again on request.
   if (device.allowEntry && boot.status === "NONE" && !ledger.settings.notice_seen_at) { ledger.settings = { ...ledger.settings, notice_seen_at: M.phTimestamp() }; ui.sheet = { type: "notice" }; renderSheet(); }
-  // Roles the last upgrade gave by exact name are shown once, with a way to change each. Shown means seen: the flag is saved at once.
-  if (device.allowEntry && boot.status === "OK" && !ui.sheet && !ui.upgrade?.failed && ledger.v === M.LEDGER_VERSION) {   // never on data that failed to upgrade: nothing is written to it
-    const rows = M.roleNoticeRows(S(), ledger.settings);
-    if (rows.length) { ui.sheet = { type: "roles", notice: true, ids: rows.map((r) => r.id) }; renderSheet(); await commit(S(), { ...ledger.settings, roles_notice_seen: M.phTimestamp() }, { quiet: true }); }
-  }
   if (device.allowEntry && boot.status === "OK") {
     // Grey placeholder pictures saved by earlier versions are dropped at once, so a letter tile shows instead of a wrong one;
     // then the listed banks' logos are loaded in the background, so they are there from the start. (On a brand-new phone

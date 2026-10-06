@@ -83,14 +83,15 @@ test("a category with no stored Type whose name is Rent also gets the rent quest
   assert.equal(sug(none).ok, true, "with no rent category at all nothing is asked");
 });
 
-test("the screens say Type, show Name, Type, Bucket, mark guesses, and warn about unconfirmed money with a link to the rows", () => {
+test("the screens show Name and Bucket only, ask the unclear ones with four answers, warn about them with a link, and ask on a clashing rename", () => {
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8"), help = readFileSync(new URL("../src/model/help.js", import.meta.url), "utf8");
-  assert.match(app, /const catLine = \(c\) =>/);
-  assert.match(app, /\\u00b7 \$\{esc\(M\.BUCKET_LABELS\[b\]\)\}/);
-  assert.match(app, /" \(guess\)"/); assert.match(app, /"Type not set"/);
+  assert.match(app, /const catLine = \(c\) => `\$\{esc\(c\.name\)\} \\u00b7 \$\{esc\(M\.BUCKET_LABELS\[M\.bucketOf\(c, /);
+  assert.match(app, /b === "other" \? "Keep in Other"/);
   assert.match(app, /Includes \$\{peso\(bk\.unconfirmed\.amount\)\} from \$\{bk\.unconfirmed\.count\} unconfirmed/);
   assert.match(app, /data-action="goto-confirm">confirm them/);
-  assert.match(app, /id="bud-confirm"/);
-  assert.ok(!/>Role</.test(app) && !/already has the role/.test(app), "the word Role is gone from the screens");
-  assert.ok(/tap Type/.test(help) && !/tap Role/.test(help));
+  assert.match(app, /id="bud-confirm">Which bucket\?/);
+  assert.match(app, /M\.renameConflict\(cat, ui\.form\.name/);
+  assert.match(app, /You set this to \$\{M\.BUCKET_LABELS\[sh\.mine\]\}\. The new name reads as \$\{M\.BUCKET_LABELS\[sh\.read\]\}/);
+  assert.ok(!/>Type</.test(app) && !/>Role</.test(app) && !/\(guess\)/.test(app), "no Type, no Role and no guesses on the screens");
+  assert.ok(/tap Bucket/.test(help) && !/tap Type/.test(help));
 });
