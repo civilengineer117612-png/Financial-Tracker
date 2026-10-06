@@ -76,3 +76,5 @@ export { BUCKETS, CHOICES, BUCKET_LABELS, INVESTED_LABEL, DEFAULT_TARGETS, TARGE
 export { BUCKET_WORDS, readBucket } from "./bucketwords.js";
 export { splitSavings, parseShares, shareableGoals, UNPLACED_NAME } from "./savings.js";
 export { guessType, typeOf, kindOf } from "./types.js";
+export { CHANGES, whatsNew } from "./whatsnew.js";
+export { HOWTOS, HOWTO_HINT, clipData, howtoClip } from "./howto.js";
