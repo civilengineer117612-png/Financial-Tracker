@@ -387,6 +387,15 @@ check(!["Test Cash", "Test Card", "Lunch", "9500"].some((x) => raw.includes(x)),
 check(await seen(page, "#toast", "Backup file created"), "the app says what to do next");
 { const st = await stored(page); check(!st.local.includes(made) && !st.local.includes(PASS) && !(JSON.stringify(st).includes(made)), "neither passphrase is kept anywhere on the phone"); }
 check(await seen(page, "#screen", "Last backup: today"), "Setup shows when the last backup was made");
+check((await text(page, "#screen")).includes("Keep a second copy off this phone"), "Setup reminds you to keep a second copy off the phone");
+{ const before = (await stored(page)).local;
+  await page.click('button:has-text("Check a backup file")');
+  await page.setInputFiles("#r-file", file); await page.fill("#r-pass", "a different passphrase"); await page.click('button:has-text("Check backup")');
+  check(await seen(page, "#sheet", "Wrong passphrase, or the file is damaged"), "checking a backup with a wrong passphrase says so");
+  await page.fill("#r-pass", PASS); await page.click('button:has-text("Check backup")');
+  check(await seen(page, "#sheet", "This backup opens") && (await text(page, "#sheet")).includes("2 accounts, 1 entry") && (await page.locator('#sheet button:has-text("Replace")').count()) === 0, "the right passphrase shows what the backup holds, with no way to replace anything");
+  await page.click('#sheet button:has-text("Cancel")');
+  check((await stored(page)).local === before, "checking changed nothing on the phone"); }
 await page.click('#nav button:has-text("Log")');
 check(!(await text(page, "#screen")).includes("No backup yet"), "the Log page stops mentioning it");
 

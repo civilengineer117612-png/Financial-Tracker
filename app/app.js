@@ -913,6 +913,8 @@ function viewSetup() {
     <p class="note">${backupAgeText()}</p>
     <p><button class="primary" data-action="open-backup">Back up now</button></p>
     <p><button data-action="open-restore" style="width:100%">Restore from a backup</button></p>
+    <p><button data-action="open-check-backup" style="width:100%">Check a backup file</button></p>
+    <p class="note">The file is encrypted, so it is safe in more than one place. Keep a second copy off this phone, for example in iCloud Drive or on a computer: a backup that only sits on a lost phone is lost too.</p>
     <h2>This app</h2>
     <p class="note">${M.isDevBuild() ? "Version: a development copy." : "Version " + esc(M.APP_BUILD) + ", updated " + esc(fullDate(M.APP_BUILT_ON)) + "."} Your data format: ${ledger.v}.</p>
     ${(ui.copies ?? []).map((c, i) => `<p><button data-action="restore-copy" data-id="${i}" style="width:100%">${ui.confirmCopy === i ? "Tap again to restore. Entries made since then will be lost." : i === 0 ? "Restore the copy from before the last update" : "Restore the copy from before the update before that"}</button></p><p class="note small">Saved ${esc(fullDate(c.at.slice(0, 10)))}, before your data was updated from format ${c.from_version}.</p>`).join("")}
@@ -1680,19 +1682,22 @@ function renderSheet() {
     body = `<h3>${esc(M.FIRST_RUN_NOTICE.title)}</h3>${figure("data")}<ol class="notes">${M.FIRST_RUN_NOTICE.lines.map((n) => `<li>${esc(n)}</li>`).join("")}</ol>
       <p><button class="primary" data-action="close-sheet">I understand</button></p>`;
   } else if (sh.type === "restore" && !ui.form.restored) {
-    body = `<h3>Restore from a backup</h3>
-      <p class="note">This replaces everything on this phone with the backup.</p>
-      <p class="note">Pictures of receipts and payslips are not in a backup. Entries come back without their pictures.</p>
+    body = `<h3>${sh.check ? "Check a backup file" : "Restore from a backup"}</h3>
+      ${sh.check ? `<p class="note">This opens the file to prove the passphrase works. Nothing on this phone changes.</p>` : `<p class="note">This replaces everything on this phone with the backup.</p>
+      <p class="note">Pictures of receipts and payslips are not in a backup. Entries come back without their pictures.</p>`}
       <label for="r-file">Backup file</label><input id="r-file" data-field="file" type="file" accept=".json,application/json">
       <input class="sr" type="text" name="username" autocomplete="username" value="Finance backup" readonly tabindex="-1" aria-hidden="true">
       <label for="r-pass">Passphrase</label><input id="r-pass" data-field="pass" name="password" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false">
       <p id="f-msg" role="alert" class="note"></p>
-      <p><button class="primary" id="f-save" data-action="open-backup-file" disabled>Open backup</button></p>`;
+      <p><button class="primary" id="f-save" data-action="open-backup-file" disabled>${sh.check ? "Check backup" : "Open backup"}</button></p>`;
   } else if (sh.type === "restore") {
     const b = M.summarizeLedger(ui.form.restored), now = M.summarizeLedger(ledger);
     const count = (n, one, many) => n + " " + (n === 1 ? one : many);
     const line = (x) => `${count(x.accounts, "account", "accounts")}, ${x.transactions ? count(x.transactions, "entry", "entries") : "no entries"}${x.latest_date ? ", latest " + longDate(x.latest_date) : ""}`;
-    body = `<h3>Replace this phone's data?</h3>
+    if (sh.check) body = `<h3>This backup opens</h3>
+      <div class="card" style="border:0;padding:0"><dl><dt>The backup</dt><dd>${esc(line(b))}${b.saved_at ? "<br>saved " + esc(longDate(b.saved_at.slice(0, 10))) : ""}</dd></dl></div>
+      <p class="note">The passphrase works. Nothing on this phone was changed.</p>`;
+    else body = `<h3>Replace this phone's data?</h3>
       <div class="card" style="border:0;padding:0"><dl><dt>The backup</dt><dd>${esc(line(b))}${b.saved_at ? "<br>saved " + esc(longDate(b.saved_at.slice(0, 10))) : ""}</dd><dt>This phone</dt><dd>${esc(line(now))}</dd></dl></div>
       <p class="note">Anything entered on this phone since the backup was made will be gone. Pictures are not in the backup: an entry with a picture will show "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
@@ -2309,6 +2314,7 @@ async function onClick(el) {
     }
     case "open-backup": ui.sheet = { type: "backup" }; ui.form = {}; renderSheet(); break;
     case "open-restore": ui.sheet = { type: "restore" }; ui.form = {}; renderSheet(); break;
+    case "open-check-backup": ui.sheet = { type: "restore", check: true }; ui.form = {}; renderSheet(); break;
     case "make-backup": await makeBackup(); break;
     case "make-passphrase": { const made = M.makePassphrase(); ui.form = { ...ui.form, pass: made, pass2: made, made }; renderSheet(); break; }   // shown on screen, kept nowhere
     case "copy-passphrase": {
@@ -2430,7 +2436,7 @@ async function makeBackup() {
   }
   ui.sheet = null;
   await commit(S(), { ...ledger.settings, last_backup_at: M.phTimestamp() });
-  showToast("Backup file created. Check that it is in Files or on your drive.");
+  showToast("Backup file created. Check that it is in Files or on your drive, and keep a second copy off this phone.");
 }
 
 async function openBackupFile() {

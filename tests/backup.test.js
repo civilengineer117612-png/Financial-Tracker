@@ -94,3 +94,11 @@ test("the backup sheet asks the phone to offer a new password; the restore sheet
   assert.ok(!/localStorage[^\n]*pass|settings[^\n]*\.pass\b|commit\([^\n]*(form\.pass|made)/.test(appJs), "the passphrase is never saved by the app");
   assert.match(appJs, /case "make-passphrase"[^\n]*M\.makePassphrase\(\)[^\n]*pass: made, pass2: made, made/, "both fields get the same passphrase");
 });
+
+test("Check a backup file only opens it: its own sheet, no replace button, no write; Setup tells you to keep a second copy off the phone", () => {
+  assert.match(appJs, /case "open-check-backup": ui\.sheet = \{ type: "restore", check: true \}/);
+  const block = appJs.slice(appJs.indexOf("if (sh.check) body = `<h3>This backup opens"), appJs.indexOf("else body = `<h3>Replace this phone's data?"));
+  assert.ok(block.includes("Nothing on this phone was changed") && !/restore-now|commit\(|writeBoth/.test(block), "the result has no replace button and writes nothing");
+  assert.match(appJs, /Keep a second copy off this phone, for example in iCloud Drive/);
+  assert.match(appJs, /keep a second copy off this phone\."\)/);
+});

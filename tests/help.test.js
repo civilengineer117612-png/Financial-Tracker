@@ -10,7 +10,7 @@ test("the five quick notes are there, in the owner's words", () => {
   assert.equal(QUICK_NOTES.length, 5);
   assert.match(QUICK_NOTES[0], /still being built/);
   assert.match(QUICK_NOTES[1], /only on your phone/);
-  assert.match(QUICK_NOTES[2], /Setup, then Backup/); assert.match(QUICK_NOTES[2], /passphrase/); assert.match(QUICK_NOTES[2], /can't be opened/);
+  assert.match(QUICK_NOTES[2], /Setup, then Backup/); assert.match(QUICK_NOTES[2], /passphrase/); assert.match(QUICK_NOTES[2], /can't be opened/); assert.match(QUICK_NOTES[2], /keep it in Passwords on your phone/);
   assert.match(QUICK_NOTES[3], /Home Screen icon, not a Safari tab/);
   assert.match(QUICK_NOTES[4], /screenshot/); assert.match(QUICK_NOTES[4], /Never send your backup file/);
 });
