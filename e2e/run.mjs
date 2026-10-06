@@ -1703,6 +1703,8 @@ console.log("The new Budget");
   await seen(page, "#sheet", "Nothing is saved until you confirm");
   check((await text(page, "#sheet")).includes("Nothing is saved until you confirm") && (await text(page, "#sheet")).includes("Suggested") && (await text(page, "#sheet")).includes("Rent: ₱8,000.00"), "then the suggestion sheet explains that nothing is saved yet, and shows the rent you typed");
   check(JSON.parse((await stored(page)).local).settings.starter_rent === 800000, "the rent is remembered, not asked again");
+  { const sugs = [...(await text(page, "#sheet")).matchAll(/Suggested ₱([\d,]+\.\d\d)/g)].map((m) => Number(m[1].replace(/,/g, "")));
+    check(sugs.length >= 3 && sugs.every((v) => Math.round(v * 100) % 5000 === 0) && (await text(page, "#sheet")).includes("rounded to the nearest ₱50"), "every suggestion is rounded to the nearest ₱50: " + sugs.join(", ")); }
   await page.click('button:has-text("Use all suggestions")');
   await page.fill("#y_cat-food", "4000");
   await page.click('button:has-text("Confirm")');
@@ -1712,6 +1714,9 @@ console.log("The new Budget");
   await page.click('button:has-text("Back")'); await page.click('button:has-text("Confirm")');
   check(JSON.parse((await stored(page)).local).state.rules.length === ruleCount, "nothing was saved yet");
   await page.click("#sheet button[data-action=save-sug]"); await seen(page, "#toast", "saved");
+  check((await text(page, "#screen")).includes("Suggested, not saved"), "with the rent typed, the Budget screen shows the suggested savings too");
+  await page.locator("#bud-how summary").click();
+  check((await text(page, "#bud-how")).includes("no more than 15% of your pay"), "and says how saving is worked out");
   const led = JSON.parse((await stored(page)).local);
   const food = led.state.rules.filter((r) => r.subject_id === "cat-food");
   check(food.length === 2 && food[0].amount === 500000 && food[1].amount === 400000 && food[1].effective_from === "2026-11-01", "the old rule stays and the new one starts next month");

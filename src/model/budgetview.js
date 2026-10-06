@@ -6,6 +6,22 @@ import { median, suggestPlan } from "./suggest.js";
 import { budgetFor, planBudgetChange } from "./budget.js";
 import { UNLOGGED_CATEGORY_ID } from "./seed.js";
 
+// Suggestions are shown rounded to the nearest 50 pesos (5,000 centavos), halves going up: 126 becomes 150, 124 becomes 100, 125 becomes 150.
+// Only what is SUGGESTED is rounded; a figure the owner typed is kept exactly as typed.
+export const toNearest50 = (centavos) => Math.floor((centavos + 2500) / 5000) * 5000;
+
+// How the "Saved and set aside" suggestion is worked out, in plain words, from the settings actually in use (so the words cannot drift from the rule).
+export function savingsExplained(settings) {
+  const pct = (bps) => String(bps / 100) + "%", floor = settings.savings_floor ?? 0;
+  return [
+    settings.buffer_amount != null ? "Overrun buffer: the amount set for it." : `Overrun buffer: ${pct(settings.starter.buffer)} of your pay, for months when a category runs over.`,
+    "Savings: if a savings ratchet is set, its amount. Otherwise a cautious start: what is left of your pay after the spending budgets and the buffer, but no more than " +
+      `${pct(settings.starter.savings)} of your pay${floor > 0 ? " and never less than your savings floor" : ""}.`,
+    "Then shared out: a goal with a finish date gets what it needs each month to make that date, and your emergency fund (or your first goal) takes the rest.",
+    "Every suggestion is rounded to the nearest ₱50. A common rule of thumb, not advice: change any figure.",
+  ];
+}
+
 export const NO_INCOME_PROMPT = "Add a payslip or your pay to get a suggested budget.";
 const whole = (n) => Number.isSafeInteger(n) && n >= 0;
 
@@ -64,11 +80,11 @@ export function suggestBudgets({ state, plan = null, pin = null, today, month, s
   const rows = [...names].map(([category_id, name]) => {
     const l = lines.find((x) => x.category_id === category_id), d = diff.get(category_id), current = budgetFor(state.rules, category_id, month);
     if (!l) return { category_id, name, suggested: 0, pinned: false, amount: 0, reason: "Nothing to suggest: no spending on it in the months I could learn from.", source: r.history.used, current };
-    return { category_id, name: l.name, suggested: l.pinned ? (d?.suggested?.first ?? null) : l.amount, pinned: Boolean(l.pinned), amount: l.amount,
+    return { category_id, name: l.name, suggested: l.pinned ? (d?.suggested?.first == null ? null : toNearest50(d.suggested.first)) : toNearest50(l.amount), pinned: Boolean(l.pinned), amount: l.pinned ? l.amount : toNearest50(l.amount),
       reason: l.pinned ? "You pinned this figure, so it is not changed." : l.reason, source: l.source, current };
   });
   const others = lines.filter((l) => !l.category_id && l.kind === "expense").map((l) => ({ name: l.name, amount: l.amount, reason: l.reason }));
-  const saved = lines.filter((l) => l.kind === "goal" || l.kind === "buffer").map((l) => ({ name: l.name, kind: l.kind, amount: l.amount, reason: l.reason }));
+  const saved = lines.filter((l) => l.kind === "goal" || l.kind === "buffer").map((l) => ({ name: l.name, kind: l.kind, amount: toNearest50(l.amount), reason: l.reason }));
   return { ok: true, income, rows, others, saved, unallocated: r.paydays[0].unallocated, short: r.paydays[0].short, history: r.history };
 }
 
