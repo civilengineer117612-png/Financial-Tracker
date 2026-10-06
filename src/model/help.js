@@ -39,7 +39,7 @@ export const TOPICS = [
   { tab: "buffer", label: N.buffer, lines: ["Money set aside inside one account for overruns, apart from your everyday allowance.", "At month end, choose which goals the leftover goes to, in order. Each is filled up to its target; the last takes the rest."] },
   { tab: "scan", label: N.scan, drawing: "scan", lines: ["Photograph a receipt, a payslip or a payment screen. The phone reads it; nothing is sent anywhere.", "You check the guess, and the entry waits in Verify with the photo beside it."] },
   { tab: "checkin", label: N.checkin, lines: ["Once a week, count each account for real and type the balance. The app shows the difference from what it expects."] },
-  { tab: "setup", label: N.setup, drawing: "data", lines: ["Add accounts, rename or add spending categories, back up, restore or check a backup file, and see which version of the app you have.", "A backup needs a passphrase. Your phone can make one and keep it in Passwords, or tap \"Make one for me\". The app never keeps it.", "Pictures of receipts are not in a backup, so restored entries show \"picture not on this phone\"."] },
+  { tab: "setup", label: N.setup, drawing: "data", lines: ["Add accounts, rename or add spending categories (tap Role to say what a category is for), back up, restore or check a backup file, and see which version of the app you have.", "A backup needs a passphrase. Your phone can make one and keep it in Passwords, or tap \"Make one for me\". The app never keeps it.", "Pictures of receipts are not in a backup, so restored entries show \"picture not on this phone\"."] },
 ];
 
 // Getting started: each step is done or not, worked out from your own data. `done` says what to look for; `tab` is where the step happens.

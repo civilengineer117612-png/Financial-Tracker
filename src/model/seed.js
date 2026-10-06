@@ -65,3 +65,30 @@ export function renameCategory(state, id, name) {
 
 // The spending category that holds a role (food, essentials, subscription, rent, transport, health, utilities, debt, shopping, fun, dining, invest), or null. Nothing finds a category by its NAME.
 export const categoryByRole = (categories, role) => (categories ?? []).find((c) => c.kind === "expense" && c.role === role) ?? null;
+
+// The roles a spending category can hold, with the words the screens use for them (the schema's list, in the order the pickers show them).
+export const CATEGORY_ROLES = ["food", "essentials", "subscription", "rent", "transport", "health", "utilities", "debt", "shopping", "fun", "dining", "invest"];
+export const ROLE_LABELS = { food: "Food", essentials: "Essentials", subscription: "Subscription", rent: "Rent", transport: "Transport", health: "Health", utilities: "Utilities",
+  debt: "Debt", shopping: "Shopping", fun: "Fun", dining: "Dining out", invest: "Invested in yourself" };
+
+// The one-time notice about roles the last data upgrade (5 to 6) gave by EXACT name: Shopping, Fun, Utilities (or Utility), Dining (or Dining out).
+// Nothing was stored when it ran, so the same rule finds them again: a spending category that holds one of those four roles and still has that name.
+// Once the owner has seen the notice (settings.roles_notice_seen) there is nothing to show. A brand-new install sets that at the start.
+const NOTICE_NAMES = { shopping: ["shopping"], fun: ["fun"], utilities: ["utilities", "utility"], dining: ["dining", "dining out"] };
+export function roleNoticeRows(state, settings) {
+  if (settings?.roles_notice_seen) return [];
+  return (state.categories ?? []).filter((c) => c.kind === "expense" && NOTICE_NAMES[c.role]?.includes(String(c.name).trim().toLowerCase()))
+    .map((c) => ({ id: c.id, name: c.name, role: c.role }));
+}
+
+// Give a spending category a role, or none (role null). A role belongs to one category at a time, because the app looks a category up by its role.
+export function setCategoryRole(state, id, role) {
+  const c = state.categories.find((x) => x.id === id);
+  if (!c) return catFail("UNKNOWN_CATEGORY", "no category " + id);
+  if (c.kind !== "expense" || id === UNLOGGED_CATEGORY_ID) return catFail("FIXED_CATEGORY", "That category is part of the app and has no role.");
+  if (role != null && !CATEGORY_ROLES.includes(role)) return catFail("BAD_ROLE", "That is not a role.");
+  const holder = role == null ? null : state.categories.find((x) => x.kind === "expense" && x.role === role && x.id !== id);
+  if (holder) return catFail("ROLE_TAKEN", `${holder.name} already has the role ${ROLE_LABELS[role]}. Take it off there first.`);
+  const next = { ...c }; if (role == null) delete next.role; else next.role = role;
+  return { ok: true, violations: [], state: { ...state, categories: state.categories.map((x) => (x.id === id ? next : x)) } };
+}
