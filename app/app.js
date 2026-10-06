@@ -44,6 +44,15 @@ function clipFor(id) {
   }
   return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total, budget });
 }
+// The reason under a suggested figure. The starter share's long note was the same on every row, so it is said once, in the tips at the bottom; a row
+// keeps only what is its own (learned from history, pinned, or lowered to fit the income).
+const rowWhy = (x) => (x.source === "starter" && !x.pinned ? (/Lowered by .*$/.exec(x.reason)?.[0] ?? "") : x.reason);
+// Budgeting tips: one block at the bottom, with where each comes from. With little history, the starter shares in use come first.
+function tipsBlock(starter) {
+  const t = M.starterFromTargets(ledger.settings.bucket_targets, M.SUGGEST_DEFAULTS.starter.buffer), pc = (bps) => bps / 100 + "%";   // the shares the suggestion really uses
+  const first = starter ? `<li><b>Starter shares (used until about 2 months are logged):</b> <i>needs ${pc(t.needs)}, wants ${pc(t.wants)}, savings ${pc(t.savings)} and an overrun buffer of ${pc(t.buffer)} of pay; the rent and fixed payments come out of the needs, which are shared by typical weights for each kind.</i></li>` : "";
+  return `<div class="tips" id="sug-tips"><h4>Budgeting tips</h4><ul>${first}${M.BUDGET_TIPS.map((x) => `<li><b>${esc(x.rule)}:</b> <i>${esc(x.text)}</i> <small>${esc(x.source)}</small></li>`).join("")}</ul><p class="note"><i>${esc(M.TIPS_NOTE)}</i></p></div>`;
+}
 const catLine = (c) => `${esc(c.name)} \u00b7 ${esc(M.BUCKET_LABELS[M.bucketOf(c, ledger.settings.bucket_overrides ?? {})])}`;
 // The four buttons for choosing a bucket by hand; the one in force is pressed.
 // What the name says, in the add window: the bucket it reads as, or that it is not clear and will be asked.
@@ -1736,15 +1745,16 @@ function renderSheet() {
         <p class="note">${esc(M.monthLabel(f.start))}. Old budgets stay in the history.</p>
         <p><button class="primary" data-action="save-sug"${f.changes.length ? "" : " disabled"}>Save budgets</button></p><p><button data-action="back-sug" style="width:100%">Back</button></p>`;
     } else {
-      body = `<h3>Suggest a budget</h3><p class="note">Based on ${peso(r.income.amount)} a month (${esc(r.income.text.toLowerCase())}). Nothing is saved until you confirm. Suggestions are rounded to the nearest \u20B150. Typing a figure pins it as yours.${r.history.used === "starter" && ledger.settings.starter_rent != null ? ` Rent: ${peso(ledger.settings.starter_rent)} <button class="link" data-action="change-rent">Change</button>` : ""}</p>
-        <p class="note" id="sug-left">${r.short > 0 ? `Your own figures, the rent and the saved lines add up to ${peso(r.short)} more than your income.` : `Left unallocated if you use all of them: ${peso(r.unallocated)}.`}${r.trimmed.length ? ` Rounding would have gone over your income, so ${esc(r.trimmed.map((t) => `${t.name} was lowered by ${peso(t.by)}`).join(", "))}.` : ""}</p>
+      body = `<h3>Suggest a budget</h3><p class="note">Based on <b>${peso(r.income.amount)} a month</b> (${esc(r.income.text.toLowerCase())}). Nothing is saved until you confirm. Suggestions are rounded to the nearest \u20B150. Typing a figure pins it as yours.${r.history.used === "starter" && ledger.settings.starter_rent != null ? ` Rent: ${peso(ledger.settings.starter_rent)} <button class="link" data-action="change-rent">Change</button>` : ""}</p>
+        <p class="note" id="sug-left">${r.short > 0 ? `Your own figures, the rent and the saved lines add up to <b>${peso(r.short)}</b> more than your income.` : `Left unallocated if you use all of them: <b>${peso(r.unallocated)}</b>.`}${r.trimmed.length ? ` Rounding would have gone over your income, so ${esc(r.trimmed.map((t) => `${t.name} was lowered by ${peso(t.by)}`).join(", "))}.` : ""}</p>
         <p><button data-action="use-all-sug" style="width:100%">Use all suggestions</button></p>
-        ${r.rows.map((x) => `<div class="bcard"><div class="btop"><span class="bname">${esc(x.name)}</span><span class="bval">Suggested ${x.suggested === null ? "none" : peso(x.suggested)}</span></div>
-          <p class="note">${esc(x.reason)}</p>
+        ${r.rows.map((x) => { const why = rowWhy(x); return `<div class="bcard"><div class="btop"><span class="bname">${esc(x.name)}</span><span class="bval">Suggested <b>${x.suggested === null ? "none" : peso(x.suggested)}</b></span></div>
+          ${why ? `<p class="note"><i>${esc(why)}</i></p>` : ""}
           <label for="y_${esc(x.category_id)}">Yours (\u20B1 a month)</label><input id="y_${esc(x.category_id)}" data-field="y_${esc(x.category_id)}" inputmode="decimal" value="${esc(yoursOf(x, f))}" autocomplete="off">
-          ${x.suggested === null ? "" : `<p><button class="link" data-action="use-sug" data-id="${esc(x.category_id)}">Use this</button></p>`}</div>`).join("")}
+          ${x.suggested === null ? "" : `<p><button class="link" data-action="use-sug" data-id="${esc(x.category_id)}">Use this</button></p>`}</div>`; }).join("")}
         ${r.others.length ? `<p class="note">Also in the suggestion, but not a category budget: ${esc(r.others.map((o) => o.name + " " + peso(o.amount)).join(", "))}.</p>` : ""}
-        <p><button class="primary" data-action="review-sug">Confirm</button></p>`;
+        <p><button class="primary" data-action="review-sug">Confirm</button></p>
+        ${tipsBlock(r.history.used === "starter")}`;
     }
   } else if (sh.type === "otfree") {
     const p = S().payslips.find((x) => x.id === sh.id);

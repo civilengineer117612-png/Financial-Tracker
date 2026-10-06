@@ -1711,6 +1711,10 @@ console.log("The new Budget");
   check(JSON.parse((await stored(page)).local).settings.starter_rent === 800000, "the rent is remembered, not asked again");
   { const sugs = [...(await text(page, "#sheet")).matchAll(/Suggested ₱([\d,]+\.\d\d)/g)].map((m) => Number(m[1].replace(/,/g, "")));
     check(sugs.length >= 3 && sugs.every((v) => Math.round(v * 100) % 5000 === 0) && (await text(page, "#sheet")).includes("rounded to the nearest ₱50"), "every suggestion is rounded to the nearest ₱50: " + sugs.join(", ")); }
+  { const st = await text(page, "#sheet");
+    check(!st.includes("Starter share, a common rule of thumb") && (st.match(/50% of pay for needs/g) ?? []).length === 0, "the starter note is no longer repeated under every row");
+    check(/Budgeting tips/i.test(st) && st.includes("Starter shares (used until about 2 months are logged)") && st.includes("savings 15% and an overrun buffer of 5%") && st.includes("Pag-IBIG") && st.includes("not advice"), "the tips sit at the bottom, starter shares first, each with its source");
+    check(await page.locator("#sheet .bval b").count() >= 3 && await page.locator("#sug-tips i").count() >= 5, "suggested figures are bold and the notes are in italics"); }
   await page.click('button:has-text("Use all suggestions")');
   await page.fill("#y_cat-food", "4000");
   await page.click('#sheet button:has-text("Confirm")');
@@ -2124,7 +2128,7 @@ console.log("What's new and how-tos");
   check(await seen(page, "#sheet", "What's new"), "after an update the What's new window opens");
   let t = await text(page, "#sheet");
   check(t.includes(CHANGES[0].text) && t.includes(CHANGES[2].text) && !t.includes(CHANGES[3]?.text ?? "never"), "it lists the latest three changes, one sentence each");
-  check(t.includes("Hold Log, Verify or the camera"), "and says to hold a button to watch how it works");
+  check(t.includes("Hold Log, Verify, the camera or Budget in the menu"), "and says to hold a button to watch how it works");
   await page.click('#sheet button:has-text("Got it")');
   await page.reload(); await page.waitForSelector("#nav button"); await page.waitForTimeout(600);
   check(!(await text(page, "#sheet")).includes("What's new"), "it is not shown again");

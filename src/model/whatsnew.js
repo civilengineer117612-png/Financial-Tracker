@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-07-tips", date: "2026-10-07", text: "Suggest a budget is shorter: the repeated starter note is gone, and budgeting tips with their sources sit at the bottom." },
   { id: "2026-10-07-start-date", date: "2026-10-07", text: "Spending dated before the day you added an account is now history only; it no longer comes off that account's balance." },
   { id: "2026-10-07-howto-budget", date: "2026-10-07", text: "Hold Budget in the menu to watch how to set a monthly limit, drawn from your own budgets." },
   { id: "2026-10-07-howto", date: "2026-10-07", text: "Hold Log, Verify or the camera for a moment to watch a short how-to drawn from your own screen. Help lists them all." },

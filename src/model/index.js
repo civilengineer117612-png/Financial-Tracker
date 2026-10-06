@@ -78,3 +78,4 @@ export { splitSavings, parseShares, shareableGoals, UNPLACED_NAME } from "./savi
 export { guessType, typeOf, kindOf } from "./types.js";
 export { CHANGES, whatsNew } from "./whatsnew.js";
 export { HOWTOS, HOWTO_HINT, clipData, howtoClip } from "./howto.js";
+export { BUDGET_TIPS, TIPS_NOTE } from "./tips.js";
