@@ -55,11 +55,27 @@ test("Help words never name an owner-specific goal or category, and the goals to
   assert.match(TOPICS.find((t) => t.tab === "goals").lines.join(" "), /Choose which goal is your emergency fund/);
 });
 
-test("Pay plan is marked optional in the menu, the empty screen and Help, in the owner's approved words", () => {
+test("Pay plan words: the label, the empty state, the line under the title and the Help topic, exactly as the owner wrote them", () => {
+  const EMPTY = "Your plan for each payday: how much goes to rent, daily spending and savings. You can skip it. Budget works without it.";
+  const LINE = "This divides each payday. Budget sets your limit per category for the month.";
   assert.equal(SCREEN_NAMES.plan, "Pay plan (optional)");
-  assert.match(app, /A pay plan says how you split each payday, so the app can show what is left in each line\. You do not need one: Budget works without it\./);
+  assert.ok(app.includes(`<p class="note">${EMPTY}</p>`) || app.includes(EMPTY), "the empty state");
+  assert.ok(app.includes(`<h1>Pay plan</h1><p class="sub">${LINE}</p>`), "the line sits right under the title when a plan exists");
   const t = TOPICS.find((x) => x.tab === "plan");
   assert.equal(t.label, "Pay plan (optional)");
-  assert.deepEqual(t.lines, ["Optional. A pay plan is a small file that says how much of each payday goes to each line, such as rent, food or savings.", "With one, the app shows what is left in each line, compares the pay you received, and works out your Emergency Fund target.", "Without one, everything else works, including Budget."]);
-  assert.match(app, /<h1>Pay plan<\/h1>/, "the screen's own title stays Pay plan");
+  assert.deepEqual(t.lines, [EMPTY, LINE]);
+  assert.ok(MENU_GROUPS.some(([, ids]) => ids.includes("plan")), "it is still a menu screen, and so still needs (and has) its Help topic");
+});
+
+test("loading and viewing a plan does not change it: an invented plan file parses to the same plan, the same totals and the same cutoff progress as before the words changed", async () => {
+  const { parsePlan, addPlan, planInEffect, planTotals } = await import("../src/model/index.js");
+  const file = { schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-10-01", paydays: [{ day: 15, expected_income: 1000 }, { day: "last", expected_income: 2400 }],
+    lines: [{ name: "Food", kind: "expense", first: 600, second: 600 }, { name: "Rent", kind: "expense", first: 0, second: 500 }, { name: "Savings", kind: "goal", first: 400, second: 1300 }] };
+  const r = parsePlan(JSON.stringify(file));
+  assert.equal(r.ok, true);
+  const before = JSON.stringify(r.plan);
+  const stored = addPlan([], r.plan).plans;
+  assert.equal(JSON.stringify(planInEffect(stored, "2026-10-20")), before);
+  assert.deepEqual(planTotals(r.plan), { first: 100000, second: 240000, month: 340000 });
+  assert.deepEqual(r.plan.paydays.map((p) => p.income), [100000, 240000]);
 });

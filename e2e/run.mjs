@@ -1043,7 +1043,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 
 // ---- the pay plan ----
 await menuGo(page, "Pay plan");
-check((await text(page, "#screen")).includes("You do not need one: Budget works without it"), "the pay plan starts empty");
+check((await text(page, "#screen")).includes("You can skip it. Budget works without it."), "the pay plan starts empty");
 await page.click('button:has-text("Load a plan")');
 await page.fill("#p-text", "{ not a plan");
 check((await text(page, "#p-prev")).includes("could not be read") && await page.locator("#f-save").isDisabled(), "a broken plan is refused in plain words");
@@ -1063,6 +1063,10 @@ const ptxt = await text(page, "#screen");
 if (!ptxt.includes("last day of the month")) console.log("   plan screen:", JSON.stringify(ptxt.slice(0, 500)));
 check(ptxt.includes("last day of the month") && ptxt.includes("₱5,100.00") && ptxt.includes("₱7,100.00") && ptxt.includes("₱12,200.00") && ptxt.toLowerCase().includes("this cutoff"), "the plan shows both paydays (the second at month end) and the totals per payday and month");
 check(ptxt.includes("Mystery") && ptxt.includes("not tracked") && ptxt.includes("In effect since"), "a line with no matching category is said out loud, and the start date is shown");
+check(ptxt.includes("This divides each payday. Budget sets your limit per category for the month."), "with a plan loaded, the line under the title says what a plan is for");
+{ const before = JSON.stringify(JSON.parse((await stored(page)).local).settings.plans);
+  await menuGo(page, "Setup"); await menuGo(page, "Pay plan");
+  check(JSON.stringify(JSON.parse((await stored(page)).local).settings.plans) === before && (await text(page, "#screen")).includes("₱12,200.00"), "viewing the plan again leaves the loaded plan exactly as it was"); }
 await page.click('button:has-text("Record pay received")');
 check(await page.locator("#f-save").isDisabled(), "pay needs an amount first");
 await page.fill("#f-amount", "5000.50"); await page.click("#f-save"); await seen(page, "#toast", "Pay recorded");
