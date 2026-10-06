@@ -54,13 +54,23 @@ function v4WithCategories() {
     { id: "c-h2", name: "Healthy snacks", kind: "expense" }, { id: "c-fun", name: "Fun", kind: "expense" }, { id: "c-set", name: "Transport costs", kind: "expense", role: "food" }, { id: "c-in", name: "Health pay", kind: "income" }];
   return l;
 }
-const FIXTURES = { "version 1, before payslips": v1Early, "version 1, with a payslip": v1WithPayslip, "version 3, with a trip": v3WithTrip, "version 4, with dated trips and categories": v4WithCategories };
+// Data as version 5 wrote it, by hand: the starter category names with no shopping, fun, utilities or dining roles yet, and goals that all have an account.
+function v5WithGoals() {
+  const l = v4WithCategories();
+  l.v = 5; l.rev = 50;
+  l.state.categories = [...l.state.categories.map((c) => (c.id === "c-tr" ? { ...c, role: "transport" } : c)), { id: "c-sh", name: "Shopping", kind: "expense" }, { id: "c-ut", name: "Utilities", kind: "expense" }, { id: "c-di", name: "Dining out", kind: "expense" },
+    { id: "c-ot", name: "Other", kind: "expense" }, { id: "c-fm", name: "Family", kind: "expense" }, { id: "c-fun2", name: "Fun stuff", kind: "expense" },
+    { id: "c-keep", name: "Shopping", kind: "expense", role: "food" }, { id: "c-inc", name: "Fun", kind: "income" }];
+  l.state.goals = [{ id: "g1", account_id: "chk", name: "Sample Goal", target: 500000, hidden_by_default: true }];
+  return l;
+}
+const FIXTURES = { "version 1, before payslips": v1Early, "version 1, with a payslip": v1WithPayslip, "version 3, with a trip": v3WithTrip, "version 4, with dated trips and categories": v4WithCategories, "version 5, with goals and more categories": v5WithGoals };
 const text = (l) => JSON.stringify(l);
 // every field of `a` is still in `b` with the same value (b may have more)
 const holds = (a, b) => (typeof a !== "object" || a === null ? a === b : typeof b === "object" && b !== null && Object.keys(a).every((k) => holds(a[k], b[k])));
 
-test("the current data version is 5 and the first version's data is still accepted as older", () => {
-  assert.equal(LEDGER_VERSION, 5);
+test("the current data version is 6 and the first version's data is still accepted as older", () => {
+  assert.equal(LEDGER_VERSION, 6);
   for (const make of Object.values(FIXTURES)) { const p = parseLedger(text(make())); assert.equal(p.ok, true); assert.equal(p.older, true); }
   const cur = upgradeLedger(v1Early()).ledger;
   assert.equal(parseLedger(text(cur)).older, undefined);
@@ -197,10 +207,10 @@ test("data version 3 upgrades (through 4): a hand-tagged entry gets trip_add, ta
 test("data version 4 upgrades to 5: Transport and Health categories get their roles once, by the way they start; nothing else changes and totals are the same", () => {
   const before = v4WithCategories(), snapshot = JSON.stringify(before);
   const r = upgradeLedger(before, { now: new Date("2026-10-07T00:00:00Z") });
-  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, 5); assert.equal(JSON.stringify(before), snapshot, "the input is never changed");
+  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, LEDGER_VERSION); assert.equal(JSON.stringify(before), snapshot, "the input is never changed");
   const role = (id) => r.ledger.state.categories.find((c) => c.id === id).role;
   assert.deepEqual(["c-tr", "c-tr2", "c-h"].map(role), ["transport", "transport", "health"], "Transport, Transpo and Health");
-  assert.deepEqual(["c-h2", "c-fun", "c-in"].map(role), [undefined, undefined, undefined], "a different name, a plain category and an income category get none");
+  assert.deepEqual(["c-h2", "c-in"].map(role), [undefined, undefined], "a different name and an income category get none"); assert.equal(role("c-fun"), "fun", "and the plain Fun category gets its role from the next step");
   assert.equal(role("c-set"), "food", "a role the owner already has is never replaced");
   assert.equal(fingerprint(r.ledger), fingerprint(before)); assert.deepEqual(selfCheck(r.ledger), []);
   const strip = (l) => JSON.parse(JSON.stringify(l, (k, v) => (k === "role" ? undefined : v)));
@@ -216,4 +226,28 @@ test("an old version 4 backup file opens and upgrades; restoring it keeps its ow
   const r = upgradeLedger(back, { now: new Date("2026-10-07T00:00:00Z") });
   assert.equal(r.ok, true); assert.equal(r.ledger.state.categories.find((c) => c.id === "c-tr").role, "transport");
   assert.equal(restoreLedger({ v: LEDGER_VERSION, rev: 40, saved_at: TS, state: {}, settings: {} }, back).v, 4);
+});
+
+test("data version 5 upgrades to 6: Shopping, Fun, Utilities and Dining get their roles once; goals, totals and everything else stay", () => {
+  const before = v5WithGoals(), snapshot = JSON.stringify(before);
+  const r = upgradeLedger(before, { now: new Date("2026-10-08T00:00:00Z") });
+  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, 6); assert.equal(JSON.stringify(before), snapshot, "the input is never changed");
+  const role = (id) => r.ledger.state.categories.find((c) => c.id === id).role;
+  assert.deepEqual(["c-sh", "c-fun", "c-ut", "c-di"].map(role), ["shopping", "fun", "utilities", "dining"]);
+  assert.deepEqual(["c-ot", "c-fm", "c-fun2", "c-in"].map(role), [undefined, undefined, undefined, undefined], "Other, Family, a different name and an income category get none: they are asked, not guessed");
+  assert.equal(role("c-set"), "food", "an existing role is never replaced"); assert.equal(role("c-tr"), "transport");
+  assert.equal(role("c-keep"), "food", "even a category named Shopping keeps the role it already has"); assert.equal(role("c-inc"), undefined, "an income category named Fun gets none");
+  assert.deepEqual(r.ledger.state.goals, before.state.goals, "goals are untouched: they all had an account and still do");
+  assert.equal(fingerprint(r.ledger), fingerprint(before)); assert.deepEqual(selfCheck(r.ledger), []);
+  const strip = (l) => JSON.parse(JSON.stringify(l, (k, v) => (k === "role" ? undefined : v)));
+  assert.deepEqual(strip(r.ledger).state, strip(before).state, "every record is the same apart from the role field");
+  assert.deepEqual(r.ledger.settings, before.settings);
+  const again = upgradeLedger(r.ledger); assert.equal(JSON.stringify(again.ledger.state), JSON.stringify(r.ledger.state), "running it again changes nothing");
+});
+test("a version 5 backup file opens and upgrades; restoring it keeps its own version", async () => {
+  const sealed = await encryptLedgerBackup(v5WithGoals(), "correct horse battery"), back = await decryptLedgerBackup(sealed, "correct horse battery");
+  assert.equal(back.v, 5);
+  const r = upgradeLedger(back, { now: new Date("2026-10-08T00:00:00Z") });
+  assert.equal(r.ok, true); assert.equal(r.ledger.state.categories.find((c) => c.id === "c-ut").role, "utilities");
+  assert.equal(restoreLedger({ v: LEDGER_VERSION, rev: 60, saved_at: TS, state: {}, settings: {} }, back).v, 5);
 });

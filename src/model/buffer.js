@@ -106,6 +106,7 @@ export function sweepOrderAccounts(state, sweepOrder) {
   for (const o of order) {
     const goal = (state.goals ?? []).find((g) => g.id === o.goal_id);
     if (!goal) return null;
+    if (!goal.account_id) continue;   // a goal with no account yet cannot receive the sweep
     out.push({ account_id: goal.account_id, target: o.target ?? goal.target ?? 0 });
   }
   return out;

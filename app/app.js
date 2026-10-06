@@ -504,6 +504,7 @@ async function savePayslip() {
   if (hasOvertime) {
     const emerg = M.goalByRole(S(), "emergency");
     if (!emerg) note = " Choose which goal is your emergency fund (Menu, Goals) to get the overtime draft.";
+    else if (!emerg.account_id) note = " Choose an account for your emergency fund (Menu, Goals) to get the overtime draft.";
     else if (!next.transactions.some((t) => t.id === "ot-" + id)) { const d = M.overtimeDraft(next, id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date()); if (d?.ok && d.transaction) { next = M.applyDrafts(next, [d]); note = " The Emergency Fund draft is waiting in Verify."; } }
   }
   ui.sheet = null; renderSheet();
@@ -1310,7 +1311,7 @@ function viewGoals() {
          ${p.target != null ? `<div class="meter goal" role="img" aria-label="${p.percent}% of the goal"><span class="fill" style="width:${p.percent}%"></span></div>
          <div class="status">${p.reached ? "Goal reached" : p.percent + "% \u00b7 " + peso(p.remaining) + " to go"}${eta ? " \u00b7 about " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : ""}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div>` : `<div class="status">No target, just a place to build up.</div>`}`;
     return `<div class="bcard"><div class="btop"><span class="bname who">${iconOf(S().accounts.find((a) => a.id === g.account_id) ?? { name: g.name }, 24)}<span>${esc(g.name)}</span></span></div>${body}
-      <p><button data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button></p>
+      <p>${g.account_id ? `<button data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button>` : `<span class="note">No account yet. </span><button data-action="open-goal-account" data-id="${esc(g.id)}">Choose an account</button>`}</p>
       <p class="note"><button class="link" data-action="goal-role" data-id="${esc(g.id)}">${g.role === "emergency" ? "This is your emergency fund (tap to undo)" : "Make this my emergency fund"}</button></p></div>`;
   }).join("");
   return `<h1>Goals</h1><p class="sub">Savings you are building. Hidden by default so they do not tempt you.</p>${toggle}${cards || `<p class="note">No goals yet.</p>`}
@@ -1606,9 +1607,13 @@ function renderSheet() {
       <label for="g-name">Name</label><input id="g-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
       <label for="f-amount">Target (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <label for="g-date">Finish by (optional)</label><input id="g-date" type="date" data-field="deadline" value="${esc(ui.form.deadline ?? "")}">
-      <label>Where the money sits</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <label>Where the money sits (optional: you can choose it later)</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
       <label>What it is for (optional)</label><div class="chips"><button class="chip" data-action="pick-goal-role" aria-pressed="${ui.form.role === "emergency"}">My emergency fund</button></div>
       <p><button class="primary" id="f-save" data-action="save-goal" style="margin-top:14px" disabled>Save goal</button></p>`;
+  } else if (sh.type === "goal-account") {
+    const g = S().goals.find((x) => x.id === sh.id);
+    body = `<h3>Where does ${esc(g.name)} sit?</h3><p class="note">Choose the account that holds this goal's money. Its balance is that account's balance.</p>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <p><button class="primary" id="f-save" data-action="save-goal-account" style="margin-top:14px" disabled>Use this account</button></p>`;
   } else if (sh.type === "deposit") {
     const g = S().goals.find((x) => x.id === sh.id);
     body = `<h3>Put money in ${esc(g.name)}</h3>
@@ -1920,7 +1925,9 @@ function refreshSave() {
       : `<p role="alert" class="note"><b>${esc(r.error)}</b></p>`;
   } else if (type === "goal") {
     const a = f.amount ? M.parsePesos(f.amount) : { ok: true };
-    btn.disabled = !((f.name ?? "").trim() && f.account_id && a.ok);
+    btn.disabled = !((f.name ?? "").trim() && a.ok);
+  } else if (type === "goal-account") {
+    btn.disabled = !f.account_id;
   } else if (type === "deposit") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && f.account_id);
@@ -2133,6 +2140,12 @@ async function onClick(el) {
       break;
     }
     case "open-deposit": ui.sheet = { type: "deposit", id }; ui.form = { amount: "", account_id: accountsFor(null).find((a) => a.id !== S().goals.find((g) => g.id === id)?.account_id)?.id ?? null }; renderSheet(); break;
+    case "open-goal-account": ui.sheet = { type: "goal-account", id }; ui.form = { account_id: null }; renderSheet(); break;
+    case "save-goal-account": {
+      const r = M.setGoalAccount(S(), ui.sheet.id, ui.form.account_id);
+      if (!r.ok) { showToast("Could not save: " + r.violations[0].message); break; }
+      ui.sheet = null; renderSheet(); await commit(r.state); showToast("Account chosen"); break;
+    }
     case "save-deposit": {
       const amount = M.parsePesos(ui.form.amount);
       if (!amount.ok) { showToast("Enter an amount like 500"); break; }
@@ -2411,6 +2424,7 @@ async function onClick(el) {
     case "ot-draft": {
       const emerg = M.goalByRole(S(), "emergency");
       if (!emerg) { showToast("Choose which goal is your emergency fund first (Menu, Goals)."); break; }
+      if (!emerg.account_id) { showToast("Choose an account for your emergency fund first (Menu, Goals)."); break; }
       const d = M.overtimeDraft(S(), id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date());
       if (!d?.ok || !d.transaction) { showToast("Could not make the draft."); break; }
       await commit(M.applyDrafts(S(), [d])); showToast("The Emergency Fund draft is waiting in Verify."); break;

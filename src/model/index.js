@@ -54,7 +54,7 @@ export { envelopeBalance, planGcashSpend, splitSweep, planMonthEndSweep, planSwe
 export { parseSchedule, isDue, datesBetween, categoryForPayee, draftId, draftFromTemplate, draftsForRange, planReserveTransfer, updatePreset, addPreset, removePreset, reorderPresets, MAX_PRESETS } from "./templates.js";
 export { budgetStatus, budgetTrend, budgetGrade, GRADE_AT, monthElapsedPercent, suggestedBudgetStart, budgetFor, planBudgetChange } from "./budget.js";
 export { pendingDrafts, verifyTransaction } from "./inbox.js";
-export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit, setGoalTarget, goalByRole, setGoalRole } from "./goals.js";
+export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit, setGoalAccount, setGoalTarget, goalByRole, setGoalRole } from "./goals.js";
 export { validateState, encryptBackup, decryptBackup, encryptLedgerBackup, decryptLedgerBackup, MIN_PASSPHRASE, makePassphrase, PASSPHRASE_CHARS } from "./backup.js";
 export { weekEndingOn, autoFillSurvey, planSurveyResponse, surveyReview, unloggedByWeek } from "./survey.js";
 export { editDraft } from "./inbox.js";

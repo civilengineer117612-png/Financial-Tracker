@@ -159,3 +159,9 @@ test("categories can be added and renamed: the id, role and every entry stay; un
   assert.equal(addCategory(s, { id: "c1", name: "Fresh" }).violations[0].code, "DUPLICATE_ID");
   assert.deepEqual(validateState(added.state), []);
 });
+
+test("a category can hold any of the twelve roles, and an unknown role is refused", async () => {
+  const { validateShape: vs } = await import("../src/model/index.js");
+  for (const role of ["food", "essentials", "subscription", "rent", "transport", "health", "utilities", "debt", "shopping", "fun", "dining", "invest"]) assert.deepEqual(vs("Category", { id: "c", name: "X", kind: "expense", role }), [], role);
+  assert.equal(vs("Category", { id: "c", name: "X", kind: "expense", role: "gambling" }).length, 1);
+});

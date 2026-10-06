@@ -18,8 +18,8 @@ const T0 = new Date("2026-10-03T03:00:00Z");   // 11:00 on Oct 3 in Manila
 // What most tests start from: a ledger in the owner's own style (the categories and the three meal tiles the app used to start everyone with), so the
 // long flows below keep their wording. A brand-new install is now neutral: tests of that open with styled: false.
 const owner = (id, name, role) => ({ id, name, kind: "expense", ...(role ? { role } : {}) });
-const LEDGER_V = 5;
-const OWNER_STYLE = { v: 5, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings: { notice_seen_at: "2026-10-01T08:00:00.000+08:00" }, state: {
+const LEDGER_V = 6;
+const OWNER_STYLE = { v: 6, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings: { notice_seen_at: "2026-10-01T08:00:00.000+08:00" }, state: {
   ...Object.fromEntries(["accounts", "goals", "envelopes", "transactions", "entries", "categoryMaps", "rules", "templates", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"].map((k) => [k, []])),
   categories: [owner("cat-food", "Food", "food"), owner("cat-lakat", "Lakat/Date"), owner("cat-family", "Family"), owner("cat-shopping", "Shopping"), owner("cat-essentials", "Essentials", "essentials"), owner("cat-upskill", "Upskill"),
     owner("cat-subscription", "Subscription", "subscription"), owner("cat-rent", "Rent", "rent"), owner("cat-unlogged", "Unlogged"),
@@ -1787,6 +1787,26 @@ console.log("The new Budget");
   check((await text(page, "#screen")).includes("This divides each payday. Budget sets your limit per category for the month."), "the old Pay plan screen is still there, unchanged, for one more release");
   await ctx.close(); }
 
+// Goals: a goal can be made with no account and given one later
+{ ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [{ id: "w", name: "Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-09-01" }] } } }));
+  await menuGo(page, "Goals");
+  await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Savings");
+  check(await page.locator("#f-save").isEnabled(), "a goal can be saved without choosing an account");
+  await page.click("#f-save"); await seen(page, "#screen", "Savings");
+  if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
+  await seen(page, "#screen", "No account yet");
+  let t = await text(page, "#screen");
+  check(t.includes("No account yet") && !(await page.locator('button[data-action="open-deposit"]').count()), "it says it has no account yet, and offers no deposit");
+  let led = JSON.parse((await stored(page)).local);
+  check(led.state.goals.length === 1 && !("account_id" in led.state.goals[0]), "stored without an account_id");
+  await page.click('button[data-action="open-goal-account"]');
+  check(await page.locator("#f-save").isDisabled(), "choosing an account needs a choice");
+  await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save"); await seen(page, "#toast", "Account chosen");
+  check(await page.locator('button[data-action="open-deposit"]').count() === 1, "once it has an account, money can be put in");
+  led = JSON.parse((await stored(page)).local);
+  check(led.state.goals[0].account_id === "w", "the account is kept");
+  await ctx.close(); }
+
 // An over-budget category is red, with a shape and words, in the new Budget too; the Saved rows never are
 { ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 2500000 }, state: { ...OWNER_STYLE.state,
     rules: [{ id: "r1", kind: "budget", subject_id: "cat-food", amount: 10000, effective_from: "2026-10-01", created_at: "2026-10-01T08:00:00.000+08:00" }],
@@ -1863,7 +1883,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
     check(same(kept.local) && same(kept.idb), "the data as it was before the update is kept in both stores"); }
   await menuGo(page, "Setup");
   const su = await text(page, "#screen");
-  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 5") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
+  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 6") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
   await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "40"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
   check(JSON.parse((await stored(page)).local).state.transactions.length === 2, "an expense is added after the update");
   await menuGo(page, "Setup");
