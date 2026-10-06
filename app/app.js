@@ -85,6 +85,7 @@ const dueDrafts = () => M.pendingDrafts(S(), addDays(today(), -1)).filter((t) =>
 
 // ---------- saving ----------
 async function commit(state, settings = ledger.settings, { quiet = false } = {}) {
+  if (ui.upgrade?.failed) return false;   // the update of the saved data failed: nothing is written until the owner restores the copy or updates the app, so old data is never overwritten
   const next = M.nextLedger(ledger, state, settings);
   const r = await writeBoth(JSON.stringify(next));
   ledger = next;   // keep working in memory even if a store failed; the banner says so
@@ -907,7 +908,7 @@ function viewSetup() {
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}
     <h2>Categories</h2>
-    ${expenseCategories().map((c) => `<div class="row"><div>${esc(c.name)}</div><div class="amt"><button class="link" data-action="rename-cat" data-id="${esc(c.id)}">Rename</button></div></div>`).join("")}
+    ${expenseCategories().map((c) => `<div class="row"><div>${esc(c.name)}${c.role ? ` <span style="color:var(--mid)">\u00b7 ${esc(M.ROLE_LABELS[c.role])}</span>` : ""}</div><div class="amt"><button class="link" data-action="cat-role" data-id="${esc(c.id)}">Role</button> <button class="link" data-action="rename-cat" data-id="${esc(c.id)}">Rename</button></div></div>`).join("")}
     <p><button data-action="add-cat" style="width:100%">Add a category</button></p>
     ${planOf() ? `<h2>Pay plan</h2>
     <p class="note">A plan is in effect. <button class="link" data-action="tab" data-tab="${ledger.settings.try_new_budget ? "budget" : "plan"}">${ledger.settings.try_new_budget ? "Open it in Budget" : "Open it"}</button></p>` : ""}
@@ -1792,6 +1793,12 @@ function renderSheet() {
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="make-backup" disabled>Create backup file</button></p>
       <p class="note">Next you choose where to keep the file, for example Save to Files. It is encrypted, so it is safe in iCloud Drive or on a flash drive.</p>`;
+  } else if (sh.type === "roles") {
+    const cats = sh.ids.map((id) => S().categories.find((c) => c.id === id)).filter(Boolean);
+    body = `<h3>${sh.notice ? "Roles your categories were given" : "Category role"}</h3>
+      <p class="note">${sh.notice ? "The last update gave these categories a role, by their exact name, so the app can tell what each one is for. Nothing else changed. Change any you do not agree with." : "A role tells the app what the category is for (the scanner and the budget use it). A role belongs to one category at a time."}</p>
+      ${cats.map((c) => `<label for="r_${esc(c.id)}">${esc(c.name)}</label><select id="r_${esc(c.id)}" data-action-change="set-cat-role" data-id="${esc(c.id)}"><option value="">No role</option>${M.CATEGORY_ROLES.map((r) => `<option value="${r}"${c.role === r ? " selected" : ""}>${esc(M.ROLE_LABELS[r])}</option>`).join("")}</select>`).join("")}
+      <p><button class="primary" data-action="close-sheet" style="margin-top:14px">${sh.notice ? "I understand" : "Done"}</button></p>`;
   } else if (sh.type === "cat") {
     body = `<h3>${sh.id ? "Rename this category" : "Add a category"}</h3>
       <label for="c-name">Name</label><input id="c-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off" enterkeyhint="done">
@@ -2183,6 +2190,7 @@ async function onClick(el) {
       showToast(peso(amount.centavos) + " added to the buffer");
       break;
     }
+    case "cat-role": ui.sheet = { type: "roles", ids: [id] }; renderSheet(); break;
     case "add-cat": ui.sheet = { type: "cat", id: null }; ui.form = { name: "" }; renderSheet(); break;
     case "rename-cat": ui.sheet = { type: "cat", id }; ui.form = { name: S().categories.find((c) => c.id === id)?.name ?? "" }; renderSheet(); break;
     case "save-cat": {
@@ -2757,6 +2765,12 @@ document.addEventListener("change", (e) => {
   }
   const field = e.target.dataset?.field;
   if (field && !ui.sheet) { ui.accountForm[field] = e.target.value; if (field === "kind") { ui.accountForm.covers = ""; renderScreen(); } }
+  if (e.target.dataset?.actionChange === "set-cat-role") {
+    const r = M.setCategoryRole(S(), e.target.dataset.id, e.target.value || null);
+    if (!r.ok) { showToast(r.violations[0].message); renderSheet(); }
+    else commit(r.state).then(() => renderSheet());
+    return;
+  }
   if (e.target.dataset?.actionChange === "set-reserve-source") commit(S(), { ...ledger.settings, reserve_source_id: e.target.value || undefined });
 });
 
@@ -2806,7 +2820,7 @@ async function start() {
       ledger = u.ledger; ui.upgrade = u.ok ? { done: true } : { failed: u.failed }; boot = { ...boot, status: "OK" };   // both stores were just written
     }
     ledger.state = M.dropUnusedCardCategory(M.ensureIncomeCategories(ledger.state));   // older ledgers gain Interest, Refund and Other income (saved with the next save)
-    if (boot.status === "NONE") ledger.state = { ...ledger.state, categories: M.defaultCategories(), presets: M.defaultPresets() };   // kept in memory until the first save
+    if (boot.status === "NONE") { ledger.state = { ...ledger.state, categories: M.defaultCategories(), presets: M.defaultPresets() }; ledger.settings = { ...ledger.settings, roles_notice_seen: M.phTimestamp() }; }   // kept in memory until the first save
     // The two stores disagree on revision only (a save reached one and not the other): repair quietly from the newer.
     if (boot.status === "REPAIR" && local != null && idb != null && device.allowEntry) {
       await writeBoth(JSON.stringify(ledger), { local: boot.repairTo === "local", idb: boot.repairTo === "idb" });
@@ -2818,6 +2832,11 @@ async function start() {
   if (ui.upgrade?.done) showToast("Your data was updated to the newest format. A copy of the old data is kept in Setup.");
   // A brand-new install shows the notice once: the moment is remembered in the settings, which are saved with the first save. Help shows it again on request.
   if (device.allowEntry && boot.status === "NONE" && !ledger.settings.notice_seen_at) { ledger.settings = { ...ledger.settings, notice_seen_at: M.phTimestamp() }; ui.sheet = { type: "notice" }; renderSheet(); }
+  // Roles the last upgrade gave by exact name are shown once, with a way to change each. Shown means seen: the flag is saved at once.
+  if (device.allowEntry && boot.status === "OK" && !ui.sheet && !ui.upgrade?.failed && ledger.v === M.LEDGER_VERSION) {   // never on data that failed to upgrade: nothing is written to it
+    const rows = M.roleNoticeRows(S(), ledger.settings);
+    if (rows.length) { ui.sheet = { type: "roles", notice: true, ids: rows.map((r) => r.id) }; renderSheet(); await commit(S(), { ...ledger.settings, roles_notice_seen: M.phTimestamp() }, { quiet: true }); }
+  }
   if (device.allowEntry && boot.status === "OK") {
     // Grey placeholder pictures saved by earlier versions are dropped at once, so a letter tile shows instead of a wrong one;
     // then the listed banks' logos are loaded in the background, so they are there from the start. (On a brand-new phone

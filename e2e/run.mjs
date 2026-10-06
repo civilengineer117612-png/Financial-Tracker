@@ -63,6 +63,7 @@ async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BAS
       await new Promise((res, rej) => { const r = indexedDB.open(dbName, 3); r.onsuccess = () => { const tx = r.result.transaction("kv", "readwrite"); tx.objectStore("kv").put(text, "ledger"); tx.oncomplete = () => { r.result.close(); res(); }; tx.onerror = () => rej(tx.error); }; r.onerror = () => rej(r.error); });
     }, [JSON.stringify(seed), url.includes("trial") ? "financialTracker.trial.ledger" : "financialTracker.ledger", url.includes("trial") ? "financialTracker-trial" : "financialTracker"]);
     await page.reload(); await page.waitForSelector("#nav button");
+    if (!keepNotice && seed.v < LEDGER_V) await dismissNotice(page);   // an upgraded ledger may show the one-time role notice
   }
   return { ctx, page, errors };
 }
@@ -1900,6 +1901,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
 // the update fails part way: nothing changes, the app keeps going on the old data and says so in plain words
 { ({ ctx, page, errors } = await open({ blockSw: true, seed: V1, routes: [[/\/src\/model\/migrate\.js/, (b) => b.replace("const step = migrations[v];", "const step = () => { throw new Error('boom'); };")]] }));
   check((await text(page, "#banner")).includes("Your data was not updated") && (await text(page, "#banner")).includes("exactly as it was"), "a failed update says so in plain words and that the data is exactly as it was");
+  await page.waitForTimeout(3500);   // long enough for a background save (the bank logos) to try and be refused
   const after = JSON.parse((await stored(page)).local);
   check(after.v === 1 && after.rev === 3 && JSON.stringify(after.state) === JSON.stringify(V1.state), "nothing on the phone changed");
   check(await page.locator('button:has-text("Add expense")').count() === 1 && (await text(page, "#screen")).includes("Sample Shop") === false, "and the app still works on the old data");
@@ -1990,6 +1992,27 @@ const FIX = { v: 3, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings:
   check(await seen(page, "#toast", "Sweep saved as a draft"), "the sweep follows the saved order");
   const sw = JSON.parse((await stored(page)).local).state, swTx = sw.transactions.find((t) => t.payee === "Month-end buffer sweep");
   check(JSON.stringify(sw.entries.filter((e) => e.transaction_id === swTx.id).map((e) => [e.account_id, e.amount])) === JSON.stringify([["pa", 10000], ["pb", 20000], ["wal", -30000]]), "Alpha is filled to its 100.00 target and Beta takes the other 200.00");
+  await ctx.close(); }
+
+// ===== 5p. roles given by exact name are shown once, and can be changed =====
+console.log("Role notice");
+{ const cats = OWNER_STYLE.state.categories.map((c) => c.id === "cat-shopping" ? { ...c, role: "shopping" } : c).concat([owner("cat-fun", "Fun", "fun")]);
+  ({ ctx, page, errors } = await open({ blockSw: true, keepNotice: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, categories: cats } } }));
+  check(await seen(page, "#sheet", "Roles your categories were given"), "an upgraded ledger shows the role notice");
+  let t = await text(page, "#sheet");
+  check((await page.locator("#sheet label").allInnerTexts()).join("|") === "Shopping|Fun", "the notice lists the categories that got a role by name, and no others");
+  await page.selectOption("#r_cat-fun", "");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.categories.find((c) => c.id === "cat-fun").role === undefined);
+  check(true, "choosing No role saves it at once");
+  await page.click('#sheet button:has-text("I understand")');
+  await page.reload(); await page.waitForSelector("#nav button");
+  check(!(await text(page, "#sheet")).includes("Roles your categories were given"), "it is not shown again");
+  const led = JSON.parse((await stored(page)).local);
+  check(led.settings.roles_notice_seen && led.state.categories.find((c) => c.id === "cat-shopping").role === "shopping" && led.state.categories.find((c) => c.id === "cat-fun").role === undefined, "the change stayed and the other role is untouched");
+  await menuGo(page, "Setup");
+  await page.click('button[data-action="cat-role"][data-id="cat-fun"]');
+  await page.selectOption("#r_cat-fun", "shopping");
+  check(await seen(page, "body", "already has the role"), "a role already held by another category is refused in plain words");
   await ctx.close(); }
 
 // ===== 6. wrong phone, wrong place =====

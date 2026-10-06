@@ -61,7 +61,7 @@ export { editDraft } from "./inbox.js";
 export { detectPlatform, assessDevice, trialAllowed } from "./device.js";
 export { buildReminderCalendar, defaultReminders, validateReminder, foldLine } from "./reminders.js";
 export { parsePesos, formatPesos, formatPesosWhole } from "./money.js";
-export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID, categoryByRole, addCategory, renameCategory, ensureIncomeCategories, dropUnusedCardCategory, INCOME_CATEGORIES } from "./seed.js";
+export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID, categoryByRole, addCategory, renameCategory, ensureIncomeCategories, dropUnusedCardCategory, INCOME_CATEGORIES, CATEGORY_ROLES, ROLE_LABELS, roleNoticeRows, setCategoryRole } from "./seed.js";
 export { applyDrafts, planExpense, discardDraft, verifyDraft, editDraftFields, setAccountIcon, planAttachment, attachmentsFor, planSplitExpense, splitCategoryEntry } from "./drafts.js";
 export { LEDGER_VERSION, emptyState, emptyLedger, nextLedger, parseLedger, chooseLedger, restoreLedger, summarizeLedger, backupFileName, daysSinceBackup } from "./persist.js";
 export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByRange, spendingByAccount, cardsSummary, accountsOverview, monthlySpending, dayTotal } from "./reports.js";
