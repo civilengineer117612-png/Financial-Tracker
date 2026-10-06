@@ -86,6 +86,21 @@ const stored = (page) => page.evaluate(async () => {
 });
 const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: SHOTS + "/" + name + ".png" }); };
 
+
+// The app has no way to load a plan file any more (nobody has one yet), so tests that need a plan put one in the phone's settings, as parsed by the model.
+import { parsePlan, planWithBudgets } from "../src/model/index.js";
+async function writeLedger(page, led) {
+  const text = JSON.stringify(led);
+  await page.evaluate(async ([text]) => { localStorage.setItem("financialTracker.ledger", text); await new Promise((res) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => { const tx = r.result.transaction("kv", "readwrite"); tx.objectStore("kv").put(text, "ledger"); tx.oncomplete = () => { r.result.close(); res(); }; }; }); }, [text]);
+  await page.reload(); await page.waitForSelector("#nav button");
+}
+async function installPlan(page, file) {
+  const parsed = parsePlan(JSON.stringify(file)); if (!parsed.ok) throw new Error(parsed.error);
+  const led = JSON.parse((await stored(page)).local);
+  led.settings = { ...led.settings, plans: [...(led.settings.plans ?? []), parsed.plan] }; led.rev += 1;
+  await writeLedger(page, led);
+}
+
 async function addAccount(page, name, kind, opening, covers) {
   await menuGo(page, "Setup");
   await page.fill("#a-name", name);
@@ -1045,21 +1060,13 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 // ---- the pay plan ----
 await menuGo(page, "Pay plan");
 check((await text(page, "#screen")).includes("You can skip it. Budget works without it."), "the pay plan starts empty");
-await page.click('button:has-text("Load a plan")');
-await page.fill("#p-text", "{ not a plan");
-check((await text(page, "#p-prev")).includes("could not be read") && await page.locator("#f-save").isDisabled(), "a broken plan is refused in plain words");
+check((await page.locator('button:has-text("Load a plan")').count()) === 0 && (await page.locator("#screen button").count()) === 0, "there is no Load a plan button anywhere: nobody has a plan file yet");
 const plan = { schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-10-01",
   paydays: [{ id: "first", day: 15, expected_income: 5100 }, { id: "second", day: "last", expected_income: 7100 }],
   lines: [{ name: "Food", first: 3000, second: 3000 }, { name: "Shopping", first: 1000, second: 1000 }, { name: "Rent", first: 0, second: 2000 },
     { name: "Apartment", kind: "goal", first: 1000, second: 1000 }, { name: "Mystery", first: 100, second: 100 }],
   ef_target_basis: ["Rent", "Food"], ef_target_months: 3 };
-await page.fill("#p-text", JSON.stringify({ ...plan, unit: undefined }));
-check((await text(page, "#p-prev")).includes("declare its unit") && await page.locator("#f-save").isDisabled(), "a plan that does not declare its unit is refused");
-await page.fill("#p-text", JSON.stringify({ ...plan, paydays: [{ day: 15, expected_income: 5101 }, plan.paydays[1]] }));
-check((await text(page, "#p-prev")).includes("short by 1"), "a payday whose lines do not add up to its income is refused, with the difference");
-await page.fill("#p-text", JSON.stringify(plan));
-check((await text(page, "#p-prev")).includes("Looks good") && !(await page.locator("#f-save").isDisabled()), "a good plan shows a one-line summary before it is used");
-await page.click("#f-save"); if (!(await seen(page, "#toast", "Plan loaded"))) console.log("   toast was:", JSON.stringify(await text(page, "#toast")), "banner:", JSON.stringify(await text(page, "#banner")), "sheet:", JSON.stringify((await text(page, "#sheet")).slice(0, 200)));
+await installPlan(page, plan); await menuGo(page, "Pay plan");
 const ptxt = await text(page, "#screen");
 if (!ptxt.includes("last day of the month")) console.log("   plan screen:", JSON.stringify(ptxt.slice(0, 500)));
 check(ptxt.includes("last day of the month") && ptxt.includes("₱5,100.00") && ptxt.includes("₱7,100.00") && ptxt.includes("₱12,200.00") && ptxt.toLowerCase().includes("this cutoff"), "the plan shows both paydays (the second at month end) and the totals per payday and month");
@@ -1075,15 +1082,12 @@ const inc = await text(page, "#screen");
 check(inc.includes("₱5,000.50") && inc.includes("−₱2,099.50 less"), "pay received is shown against the plan as a signed difference in words");
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.settings.plans[0].paydays[1].income === 710000, "the plan itself is not changed by the real pay");
-await page.click('button:has-text("Load a newer plan")');
-await page.fill("#p-text", JSON.stringify({ ...plan, lines: plan.lines.map((l) => (l.name === "Rent" ? { ...l, second: 1900 } : l.name === "Apartment" ? { ...l, second: 1100 } : l)) }));
-await page.click("#f-save");
-check(await seen(page, "#toast", "never edited"), "loading a different plan with the same start date is refused: plans are never edited");
-await page.click('#sheet button:has-text("Cancel")');
+check((await page.locator('button:has-text("Load a newer plan")').count()) === 0, "and no Load a newer plan button either");
 await shot(page, "26-plan");
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.settings.plans.length === 1 && ledgerNow.settings.plans[0].lines[0].first === 300000, "the plan is kept in the phone's settings as a dated list, in centavos");
 await menuGo(page, "Goals");
+if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
 check((await text(page, "#screen")).includes("at your plan's ₱2,000.00 a month"), "a goal shows how long the plan takes");
 await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.click('#sheet .chip:has-text("My emergency fund")'); await page.fill("#f-amount", "999"); await page.click("#sheet .chip >> nth=0"); await page.click("#f-save");
 await seen(page, "#screen", "Emergency Fund");
@@ -1737,18 +1741,22 @@ console.log("The new Budget");
   await page.click("#menuBtn"); check((await page.locator("#menu .item").allInnerTexts()).join().includes("Pay plan (optional)"), "turned off, the Pay plan entry is back in the menu"); await page.click(".scrim, #menu .scrim").catch(() => {});
   await ctx.close(); }
 
-// Budget Stage B: By payday, and ONE save for the plan and its budgets
-{ ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 1200000 } } }));
-  const planFile = (edit) => { const o = { schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-10-01", paydays: [{ day: 15, expected_income: 5000 }, { day: "last", expected_income: 7000 }],
-    lines: [{ name: "Food", kind: "expense", first: 3000, second: 3000 }, { name: "Shopping", kind: "expense", first: 1000, second: 1000 }, { name: "Rent", kind: "expense", first: 0, second: 2000 }, { name: "Apartment", kind: "goal", first: 1000, second: 1000 }] }; edit?.(o); return JSON.stringify(o); };
+// Budget Stage B: By payday (the plan inside Budget) and the plan and its budgets agreeing. A plan cannot be loaded in the app any more, so the phone is
+// seeded with a plan and the budgets the model's one save writes for it.
+{ const planFile = (edit) => { const o = { schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-10-01", paydays: [{ day: 15, expected_income: 5000 }, { day: "last", expected_income: 7000 }],
+    lines: [{ name: "Food", kind: "expense", first: 3000, second: 3000 }, { name: "Shopping", kind: "expense", first: 1000, second: 1000 }, { name: "Rent", kind: "expense", first: 0, second: 2000 }, { name: "Apartment", kind: "goal", first: 1000, second: 1000 }] }; edit?.(o); return o; };
+  const seeded = (file) => { let n = 0; const w = planWithBudgets(OWNER_STYLE.state, {}, { plan: parsePlan(JSON.stringify(file)).plan, newId: () => "rule-seed-" + ++n, now: new Date("2026-10-02T00:00:00Z") }); return { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 1200000, plans: w.settings.plans }, state: w.state }; };
+  // no plan: nothing about a plan is shown on Budget, and nothing offers to load one
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 1200000 } } }));
   await menuGo(page, "Budget");
-  check(/by payday/i.test(await text(page, "#screen")) && (await text(page, "#screen")).includes("You can skip it. Budget works without it."), "Budget has a By payday section; with no plan it says the plan is optional");
-  await page.click('#screen button:has-text("Load a plan")');
-  await page.fill("#p-text", planFile());
-  check((await text(page, "#p-prev")).includes("Looks good") && (await text(page, "#p-prev")).includes("Saving also sets these budgets from October 2026") && (await text(page, "#p-prev")).includes("Food ₱6,000.00"), "the plan sheet says which budgets saving will also set");
-  await page.click("#f-save"); await seen(page, "#toast", "budgets set from October 2026");
+  check(!/by payday/i.test(await text(page, "#screen")) && (await page.locator('button:has-text("Load a")').count()) === 0, "with no plan, Budget shows no By payday section and no way to load one");
+  await menuGo(page, "Setup");
+  check(!/pay plan/i.test(await text(page, "#screen").then((x) => x.replace(/Try the new Budget[\s\S]*/, ""))) && !(await text(page, "#screen")).includes("Load a plan"), "and Setup has no Pay plan section");
+  await ctx.close();
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: seeded(planFile()) }));
+  await menuGo(page, "Budget");
   let led = JSON.parse((await stored(page)).local);
-  check(led.settings.plans.length === 1 && led.state.rules.filter((r) => r.kind === "budget").length === 3 && led.state.rules.find((r) => r.subject_id === "cat-food").amount === 600000, "one save wrote the plan and its three budgets together");
+  check(led.settings.plans.length === 1 && led.state.rules.filter((r) => r.kind === "budget").length === 3 && led.state.rules.find((r) => r.subject_id === "cat-food").amount === 600000, "the seeded plan and its three budgets are there");
   let t = await text(page, "#screen");
   check(t.includes("Your plan and your budgets agree for October 2026") && t.includes("₱6,000.00 a month") && t.includes("Total (= income)") && /this cutoff/i.test(t), "By payday shows the plan tables and says they agree");
   // a budget changed by hand later: they disagree, plainly, and one button puts them back
@@ -1760,15 +1768,13 @@ console.log("The new Budget");
   led = JSON.parse((await stored(page)).local);
   check(led.state.rules.length === before + 1 && led.settings.plans.length === 1 && (await text(page, "#screen")).includes("agree"), "matching them adds one new dated rule, no second plan row, and they agree again");
   check(led.state.rules.filter((r) => r.subject_id === "cat-food").map((r) => r.amount).join() === "600000,500000,600000", "the old rules are still there, in order");
-  // the same plan again writes nothing; a one-payday (monthly) plan loads
-  await page.click('#screen button:has-text("Load a newer plan")'); await page.fill("#p-text", planFile()); await page.click("#f-save"); await seen(page, "#toast", "already saved");
-  await page.click('#screen button:has-text("Load a newer plan")');
-  await page.fill("#p-text", JSON.stringify({ schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-12-01", paydays: [{ day: 5, expected_income: 12000 }],
-    lines: [{ name: "Food", kind: "expense", first: 6000 }, { name: "Shopping", kind: "expense", first: 2000 }, { name: "Rent", kind: "expense", first: 2000 }, { name: "Apartment", kind: "goal", first: 2000 }] }));
-  check((await text(page, "#p-prev")).includes("payday on the 5th"), "a monthly plan (one payday) is accepted");
-  await page.click("#f-save"); await seen(page, "#toast", "Plan loaded");
-  led = JSON.parse((await stored(page)).local);
-  check(led.settings.plans.length === 2 && led.settings.plans[1].paydays.length === 1 && led.settings.plans[1].lines.every((l) => l.second === 0), "stored with one payday and no second amounts");
+  // one payday (monthly pay): the plan reads and agrees with its budgets too
+  await ctx.close();
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: seeded(planFile((o) => { o.effective_from = "2026-10-01"; o.paydays = [{ day: 5, expected_income: 12000 }]; o.lines = [{ name: "Food", kind: "expense", first: 6000 }, { name: "Shopping", kind: "expense", first: 2000 }, { name: "Rent", kind: "expense", first: 2000 }, { name: "Apartment", kind: "goal", first: 2000 }]; })) }));
+  await menuGo(page, "Budget");
+  check((await text(page, "#screen")).includes("Payday on the 5th") && (await text(page, "#screen")).includes("agree for October 2026"), "a monthly plan (one payday) reads as one payday and agrees with its budgets");
+  await ctx.close();
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: seeded(planFile()) }));
   // Stage C: with the new Budget on, the menu has no Pay plan entry; the screen is still reachable from Help, and Setup points at Budget
   await page.click("#menuBtn");
   const menuOn = (await page.locator("#menu .item").allInnerTexts()).join();
@@ -1940,8 +1946,8 @@ const FIX = { v: 3, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings:
   await page.locator('button[data-action="goal-role"]').first().click(); await seen(page, "#toast", "is your emergency fund");
   await page.locator('button[data-action="goal-role"]').nth(1).click(); await seen(page, "#toast", "is your emergency fund");
   check(await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1 && JSON.parse((await stored(page)).local).state.goals.filter((g) => g.role === "emergency").length === 1, "the role moves: one goal at most is the emergency fund");
-  await page.locator('button[data-action="goal-role"]').nth(2).click(); await seen(page, "#screen", "Load a pay plan");
-  check((await text(page, "#screen")).includes("Load a pay plan") && await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1, "choosing the goal makes it the emergency fund: its status card appears");
+  await page.locator('button[data-action="goal-role"]').nth(2).click(); await seen(page, "#screen", "no way to load a plan yet");
+  check((await text(page, "#screen")).includes("no way to load a plan yet") && await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1, "choosing the goal makes it the emergency fund: its status card appears");
   await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').click(); await seen(page, "#screen", "Make this my emergency fund");
   // overtime with no emergency fund chosen: the message says to choose, never a name
   await menuGo(page, "Income"); await addPayslipFlow(page); await page.click('#sheet button:has-text("Type a payslip")');
