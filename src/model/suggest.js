@@ -14,6 +14,8 @@ import { UNLOGGED_CATEGORY_ID } from "./seed.js";
 import { dim, dayIn } from "./plan.js";
 import { resolveSettings } from "./suggest-settings.js";
 
+// Categories holding one of these ROLES are needs; every other spending category is a want.
+export const NEEDS_ROLES = ["rent", "essentials", "food", "transport", "health"];
 export const NO_PAYSLIP_MESSAGE = "Add a payslip first";
 const LOOKBACK_MONTHS = 12, MAX_MONTHS = 6, MAX_NETS = 3;
 const bad = (message) => ({ ok: false, code: "BAD_INPUT", message });
@@ -114,7 +116,7 @@ export function suggestPlan(input) {
   const cats = state.categories.filter((c) => c.kind === "expense" && c.id !== UNLOGGED_CATEGORY_ID);
   const monthly = (id) => months.map((u) => Math.max(0, u.by.rows.filter((r) => r.category_id === id).reduce((n, r) => n + r.amount, 0)));
   const subs = state.subscriptions ?? [];
-  const NEEDS = new Set(["rent", "essentials", "food", "transport", "health"]);   // categories with these ROLES are needs; everything else is a want
+  const NEEDS = new Set(NEEDS_ROLES);
 
   // 3. Fixed first: subscriptions, scheduled payments and installments, placed on the payday their due day falls in.
   let fixedNeeds = 0, fixedWants = 0;
