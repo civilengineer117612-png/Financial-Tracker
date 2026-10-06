@@ -119,7 +119,7 @@ const ICONS = {
   help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/>',
   setup: '<path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/>',
 };
-const MENU = [["Overview", [["money", "Cash flow"], ["cards", "Cards"], ["budget", "Budget"], ["goals", "Goals"], ["plan", "Pay plan"], ["checks", "Checks"], ["trips", "Trips"], ["buffer", "Buffer"]]], ["Capture", [["scan", "Scan"]]], ["Weekly", [["checkin", "Weekly review"]]]];   // Setup is pinned at the bottom
+const MENU = M.MENU_GROUPS.map(([group, ids]) => [group, ids.map((id) => [id, M.SCREEN_NAMES[id]])]);   // names come from src/model/names.js; Setup and Help are pinned at the bottom
 
 // On the Cash flow screens the title itself is the switch: tap "Spending" to go to Income and back.
 const SWAP = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"/></svg>';
@@ -156,7 +156,7 @@ function renderMenu() {
   const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
   el.innerHTML = `<div class="scrim${opening ? " enter" : ""}" data-action="close-menu"></div><aside class="drawer${opening ? " enter" : ""}" role="dialog" aria-label="Menu">
     <div class="groups">${MENU.map(([group, items]) => `<p class="glabel">${group}</p>${items.map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
-    <div class="foot"><p class="note">${backup}</p>${item("help", "Help")}${item("setup", "Setup")}</div></aside>`;
+    <div class="foot"><p class="note">${backup}</p>${item("help", M.SCREEN_NAMES.help)}${item("setup", M.SCREEN_NAMES.setup)}</div></aside>`;
 }
 
 function renderBanner() {
@@ -175,7 +175,7 @@ function renderBanner() {
 function renderNav() {
   const n = device.allowEntry ? dueDrafts().length : 0;
   const tab = (id, label) => `<button data-action="tab" data-tab="${id}"${ui.tab === id ? ' aria-current="page"' : ""}>${label}</button>`;
-  $("nav").innerHTML = tab("log", "Log") + tab("verify", n ? `Verify (${n})` : "Verify");   // photo and audio will join these two
+  $("nav").innerHTML = tab("log", M.SCREEN_NAMES.log) + tab("verify", n ? `${M.SCREEN_NAMES.verify} (${n})` : M.SCREEN_NAMES.verify);   // photo and audio will join these two
 }
 
 let lastTabSig = null, lastViewSig = null, swapTimer = null;
@@ -865,15 +865,18 @@ const accountPreview = (f) => { const b = M.bankById(f.bank), sub = (f.sub ?? ""
 // ---------- Help: how the app works, in a minute ----------
 // The words live in src/model/help.js (kept true by a test that wants a topic for every screen in the menu). The notes come first, word for word;
 // then three getting-started steps that tick themselves from your own data; then one line-or-two topic per screen, each with a button that goes there.
+const noteIcon = (i) => `<svg class="noteicon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${M.NOTE_ICONS[i] ?? ""}</svg>`;
+// A topic's drawing (if it names one) goes at the top of its collapsible, with its caption under it: collapsing the topic hides both.
+const figure = (id) => { const d = id && M.drawing(id); return d ? `<figure class="hfig">${d.svg}<figcaption>${esc(d.caption)}</figcaption></figure>` : ""; };
 function viewHelp() {
   const steps = M.checklist(S(), ledger.settings);
   return `<h1>Help</h1><p class="sub">How this app works, in a minute.</p>
-    <div class="card"><h2>Quick notes</h2><ol class="notes">${M.QUICK_NOTES.map((n) => `<li>${esc(n)}</li>`).join("")}</ol></div>
+    <div class="card"><h2>Quick notes</h2><ol class="notes icons">${M.QUICK_NOTES.map((n, i) => `<li>${noteIcon(i)}<span>${esc(n)}</span></li>`).join("")}</ol></div>
     <p><button class="link" data-action="open-notice">Read the first-run notice again</button></p>
     <h2>Getting started</h2>
     <div class="mlist">${steps.map((st) => `<div class="mrow mline"><span class="mn">${st.done ? "\u2713" : "\u25CB"} ${esc(st.text)}</span><span class="mv">${st.done ? "Done" : `<button class="link" data-action="tab" data-tab="${st.tab}">${esc(st.button)}</button>`}</span></div>`).join("")}</div>
     <h2>Each screen</h2>
-    <div class="mlist">${M.HELP_TOPICS.map((t) => `<details class="mrow"><summary><span class="mn">${esc(t.label)}</span><span class="tchev" aria-hidden="true">\u203A</span></summary>${t.lines.map((l) => `<div class="mpart"><span>${esc(l)}</span></div>`).join("")}<div class="mpart"><button class="link" data-action="tab" data-tab="${t.tab}">Open ${esc(t.label)}</button></div></details>`).join("")}</div>
+    <div class="mlist">${M.HELP_TOPICS.map((t) => `<details class="mrow"><summary><span class="mn">${esc(t.label)}</span><span class="tchev" aria-hidden="true">\u203A</span></summary>${figure(t.drawing)}${t.lines.map((l) => `<div class="mpart"><span>${esc(l)}</span></div>`).join("")}<div class="mpart"><button class="link" data-action="tab" data-tab="${t.tab}">Open ${esc(t.label)}</button></div></details>`).join("")}</div>
     <p class="note">This guide is kept up to date as the app changes.</p>`;
 }
 
@@ -1634,7 +1637,7 @@ function renderSheet() {
       <p class="note" id="sweep-msg" role="status"></p>
       <p><button class="primary" id="f-save" data-action="save-sweep" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "notice") {
-    body = `<h3>${esc(M.FIRST_RUN_NOTICE.title)}</h3><ol class="notes">${M.FIRST_RUN_NOTICE.lines.map((n) => `<li>${esc(n)}</li>`).join("")}</ol>
+    body = `<h3>${esc(M.FIRST_RUN_NOTICE.title)}</h3>${figure("data")}<ol class="notes">${M.FIRST_RUN_NOTICE.lines.map((n) => `<li>${esc(n)}</li>`).join("")}</ol>
       <p><button class="primary" data-action="close-sheet">I understand</button></p>`;
   } else if (sh.type === "restore" && !ui.form.restored) {
     body = `<h3>Restore from a backup</h3>

@@ -1633,6 +1633,32 @@ console.log("Help and upgrade safety");
   check(await page.locator("h1, #top").first().isVisible() && (await text(page, "#screen")).toLowerCase().includes("nothing to verify"), "and its button goes to that screen");
   await ctx.close(); }
 
+// Help drawings: one at the top of its topic, inside the collapsible, nothing sideways at 320 px, icons beside the five notes
+{ ({ ctx, page, errors } = await open({ blockSw: true }));
+  await page.setViewportSize({ width: 320, height: 700 });
+  await menuGo(page, "Help");
+  check((await page.locator("#screen .notes.icons li svg.noteicon").count()) === 5 && (await page.locator("#screen .notes.icons li svg.noteicon").first().evaluate((e) => e.getBoundingClientRect().width)) === 24, "each of the five quick notes has a small line icon beside it");
+  check((await page.locator("#screen svg.hd:visible").count()) === 0, "no drawing is shown while the topics are collapsed");
+  check((await page.locator("#screen details.mrow summary").allInnerTexts()).every((t) => !/picture|words only/i.test(t)), "the topic list shows only the name and an arrow");
+  const topic = page.locator("#screen details.mrow").filter({ has: page.locator("summary", { hasText: /^Cash flow/ }) });
+  await topic.locator("summary").click();
+  check((await topic.locator("figure.hfig svg.hd[data-drawing=cashflow]").isVisible()) && (await topic.locator("figcaption").innerText()).includes("LEFT"), "opening Cash flow shows its drawing and caption");
+  check(await topic.evaluate((e) => e.querySelector("figure").nextElementSibling.classList.contains("mpart") && e.querySelector("summary").nextElementSibling.tagName === "FIGURE"), "the drawing is the first thing in the topic, the words are below it");
+  await topic.locator("summary").click();
+  check(!(await topic.locator("figure.hfig").isVisible()), "collapsing the topic hides the drawing and its caption");
+  for (const sm of await page.locator("#screen details.mrow summary").all()) await sm.click();
+  check((await page.locator("#screen svg.hd:visible").count()) >= 6, "with every topic open all the drawings show");
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth && [...document.querySelectorAll("svg.hd")].every((v) => v.getBoundingClientRect().width <= 288.5)), "nothing scrolls sideways at 320 px wide and every drawing fits");
+  check(await page.evaluate(() => [...document.querySelectorAll("svg.hd text")].every((t) => { const r = t.getBoundingClientRect(), v = t.ownerSVGElement.getBoundingClientRect(); return r.left >= v.left - 0.5 && r.right <= v.right + 0.5 && parseFloat(getComputedStyle(t).fontSize) * (v.width / 288) >= 11; })), "every drawing word fits inside its drawing and is at least 11 px as shown");
+  check(await page.evaluate(() => [...document.querySelectorAll("svg.hd *")].every((e) => { const c = getComputedStyle(e); return ![c.fill, c.stroke].some((x) => x === "rgb(208, 59, 59)"); })), "no drawing uses the red");
+  await page.screenshot({ path: process.env.SHOTS ? process.env.SHOTS + "/help-light.png" : "/tmp/help-light.png", fullPage: true });
+  await page.addStyleTag({ content: ":root{--ink:#eee;--mid:#aaa;--soft:#777;--line:#444;--wash:#242424;--paper:#111;--chart:#6aa9f0}" });
+  await page.screenshot({ path: process.env.SHOTS ? process.env.SHOTS + "/help-dark.png" : "/tmp/help-dark.png", fullPage: true });
+  await page.click("#menuBtn"); await page.click('#menu button[data-tab="help"]');
+  await page.click('button[data-action="open-notice"]');
+  check(await page.locator("#sheet svg.hd[data-drawing=data]").isVisible(), "the first-run notice shows the where-your-data-lives drawing");
+  await ctx.close(); }
+
 const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: {}, state: {
   accounts: [{ id: "w", name: "Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" }],
   goals: [], envelopes: [], categories: [{ id: "cat-food", name: "Food", kind: "expense" }], categoryMaps: [], rules: [], templates: [], presets: [], payeeRules: [], subscriptions: [], checkIns: [], attachments: [], tags: [], foreignAmounts: [], surveyResponses: [],

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { MENU_GROUPS } from "../src/model/names.js";
 import { QUICK_NOTES, FIRST_RUN_NOTICE, TOPICS, checklist } from "../src/model/help.js";
 
 const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
@@ -15,8 +16,8 @@ test("the five quick notes are there, in the owner's words", () => {
 });
 
 test("every screen in the menu, and the bottom bar, has a help topic (so adding a screen means writing its help)", () => {
-  const menu = app.match(/const MENU = (\[\[.*\]\]);/)[1];
-  const screens = [...menu.matchAll(/\["([a-z]+)", "([^"]+)"\]/g)].map((m) => m[1]);
+  assert.match(app, /const MENU = M\.MENU_GROUPS\.map/, "the menu is built from the shared names");
+  const screens = MENU_GROUPS.flatMap(([, ids]) => ids);
   assert.ok(screens.length >= 10, "found the menu screens: " + screens.join());
   const have = new Set(TOPICS.map((t) => t.tab));
   for (const id of [...screens, "setup", "log", "verify", "income"]) assert.ok(have.has(id), "a help topic for " + id);

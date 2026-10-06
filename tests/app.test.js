@@ -68,11 +68,12 @@ test("the app is black and gray except the chart blue, its shades for the budget
 });
 test("the bottom bar holds only Log and Verify; everything else is in the menu", () => {
   const js = read("app/app.js");
-  assert.match(js, /\$\("nav"\)\.innerHTML = tab\("log", "Log"\) \+ tab\("verify"/);
+  assert.match(js, /\$\("nav"\)\.innerHTML = tab\("log", M\.SCREEN_NAMES\.log\) \+ tab\("verify"/);
   assert.ok(!/tab\("(money|setup|budget)"/.test(js), "no menu screen is on the bottom bar");
-  const menu = /const MENU = \[(.*?)\];/s.exec(js)[1];
+  assert.match(js, /const MENU = M\.MENU_GROUPS\.map/);
+  const menu = readFileSync(new URL("../src/model/names.js", import.meta.url), "utf8").match(/MENU_GROUPS = (\[\[.*\]\]);/)[1];
   for (const id of ["money", "budget"]) assert.ok(menu.includes('"' + id + '"'), id + " is in the menu");
-  assert.match(js, /item\("setup", "Setup"\)/, "Setup is pinned at the bottom of the menu");
+  assert.match(js, /item\("setup", M\.SCREEN_NAMES\.setup\)/, "Setup is pinned at the bottom of the menu");
 });
 
 test("the icon lookup asks for 'not found' instead of a placeholder picture when a bank has no icon", () => {
