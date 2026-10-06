@@ -274,6 +274,67 @@
   #toast .bar { background: var(--ink); color: var(--paper); border-radius: 10px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   #toast .bar button { background: none; border: 1px solid var(--paper); color: var(--paper); min-height: 40px; }
   #toast .extra { background: var(--wash); border: 1px solid var(--ink); border-radius: 10px; padding: 8px 12px; margin-bottom: 6px; }
+
+  /* ---------- how-to clips (src/model/howto.js): one 8-second loop each, gentle easing; Reduce Motion shows the finished frame ---------- */
+  .hw { --touch: rgba(42, 120, 214, .28); position: relative; width: 264px; max-width: 100%; height: 400px; margin: 4px auto 0; border-radius: 28px; background: var(--paper); border: 1px solid var(--line); overflow: hidden; text-align: left; }
+  .hw-screen { position: absolute; inset: 0; padding: 20px 16px; display: grid; align-content: start; gap: 10px; }
+  .hw-ex { position: absolute; top: 10px; right: 12px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--mid); border: 1px solid var(--line); border-radius: 8px; padding: 1px 6px; }
+  .hw-top { display: flex; justify-content: space-between; align-items: center; }
+  .hw-h { font-size: 21px; font-weight: 700; } .hw-date { font-size: 12px; color: var(--mid); margin-top: -6px; }
+  .hw-cam svg { width: 26px; height: 26px; fill: none; stroke: var(--ink); stroke-width: 1.7; stroke-linejoin: round; }
+  .hw-total { position: relative; height: 38px; text-align: center; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; } .hw-total span { position: absolute; inset: 0; }
+  .hw-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+  .hw-tile { background: var(--wash); border-radius: 12px; min-height: 72px; display: grid; place-content: center; text-align: center; gap: 1px; font-size: 12px; padding: 4px; overflow-wrap: anywhere; }
+  .hw-tile b { font-size: 13px; } .hw-tile i { font-style: normal; font-size: 10px; color: var(--mid); }
+  .hw-nav { position: absolute; left: 12px; right: 12px; bottom: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .hw-nav div { border: 1px solid var(--line); border-radius: 12px; text-align: center; padding: 9px 0; font-size: 12px; }
+  .hw-log .hw-nav div:first-child, .hw-scan .hw-nav div:first-child, .hw-nav .hw-on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .hw-sheet { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 16px 20px; background: var(--paper); border-top: 1px solid var(--line); border-radius: 20px 20px 0 0; display: grid; gap: 8px; transform: translateY(105%); }
+  .hw-amt { font-size: 26px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+  .hw-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .hw-row > span:last-child { color: var(--mid); }
+  .hw-acct { display: inline-flex; align-items: center; gap: 6px; } .hw-acct .ico { width: 20px; height: 20px; font-size: 10px; }
+  .hw-btn { background: var(--ink); color: var(--paper); border-radius: 12px; text-align: center; padding: 11px 0; font-weight: 700; font-size: 13px; }
+  .hw-card { border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: grid; gap: 4px; }
+  .hw-empty { text-align: center; color: var(--mid); font-size: 13px; opacity: 0; }
+  .hw-receipt { position: relative; margin: 4px auto 0; width: 170px; padding: 12px 14px; background: var(--wash); border-radius: 4px; display: grid; gap: 5px; font-size: 11px; font-family: "Courier New", monospace; opacity: 0; overflow: hidden; }
+  .hw-receipt b { text-align: center; } .hw-receipt span { display: flex; justify-content: space-between; } .hw-receipt em { font-style: normal; } .hw-rt { font-weight: 700; border-top: 1px dashed var(--mid); padding-top: 4px; }
+  .hw-scanline { position: absolute; left: 0; right: 0; height: 2px; background: var(--chart); top: 0; opacity: 0; }
+  .hw-done { position: absolute; left: 50%; top: 44%; width: 60px; height: 60px; margin: -30px 0 0 -30px; opacity: 0; }
+  .hw-done circle, .hw-done path { fill: none; stroke: var(--chart); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+  .hw-done circle { stroke-dasharray: 176; stroke-dashoffset: 176; } .hw-done path { stroke-dasharray: 40; stroke-dashoffset: 40; }
+  .hw-finger { position: absolute; width: 32px; height: 32px; margin: -16px 0 0 -16px; border-radius: 50%; background: var(--touch); border: 2px solid var(--chart); opacity: 0; }
+  .hw-finger::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--chart); opacity: 0; }
+  .hw *, .hw-finger::after { animation-duration: 8s; animation-iteration-count: infinite; animation-timing-function: cubic-bezier(.45, 0, .25, 1); animation-fill-mode: both; }
+  .hw .hw-done { animation-name: hwDone; } .hw .hw-done circle { animation-name: hwCircle; } .hw .hw-done path { animation-name: hwTick; }
+  .hw-finger::after { animation-name: hwRipple; animation-timing-function: ease-out; }
+  .hw-log .hw-finger { animation-name: hwLogFinger; } .hw-log .hw-pick { animation-name: hwPress; } .hw-log .hw-sheet { animation-name: hwSheet; }
+  .hw-log .hw-t0 { animation-name: hwOld; } .hw-log .hw-t1 { animation-name: hwNew; }
+  .hw-verify .hw-finger { animation-name: hwVerFinger; } .hw-verify .hw-card { animation-name: hwCardAway; } .hw-verify .hw-empty { animation-name: hwAppear; } .hw-verify .hw-ok { animation-name: hwPressLate; }
+  .hw-scan .hw-finger { animation-name: hwScanFinger; } .hw-scan .hw-receipt { animation-name: hwReceipt; } .hw-scan .hw-scanline { animation-name: hwScanline; } .hw-scan .hw-sheet { animation-name: hwSheet; }
+  @keyframes hwRipple { 0%, 21% { opacity: 0; transform: scale(1); } 22% { opacity: .9; } 28% { opacity: 0; transform: scale(2.2); } 29%, 45% { opacity: 0; transform: scale(1); } 46% { opacity: .9; } 52% { opacity: 0; transform: scale(2.2); } 100% { opacity: 0; } }
+  @keyframes hwLogFinger { 0%, 6% { opacity: 0; left: 80%; top: 92%; } 12% { opacity: 1; left: 78%; top: 66%; } 20%, 24% { opacity: 1; left: 50%; top: 47%; } 30% { opacity: 0; } 38% { opacity: 0; left: 50%; top: 90%; } 44%, 49% { opacity: 1; left: 50%; top: 90%; } 54%, 100% { opacity: 0; left: 52%; top: 94%; } }
+  @keyframes hwVerFinger { 0%, 6% { opacity: 0; left: 80%; top: 98%; } 12% { opacity: 1; left: 75%; top: 95%; } 20%, 24% { opacity: 1; left: 75%; top: 95%; } 30% { opacity: 0; } 38% { opacity: 0; left: 50%; top: 66%; } 44%, 49% { opacity: 1; left: 50%; top: 64%; } 54%, 100% { opacity: 0; } }
+  @keyframes hwScanFinger { 0%, 6% { opacity: 0; left: 60%; top: 30%; } 12% { opacity: 1; left: 80%; top: 14%; } 20%, 24% { opacity: 1; left: 86%; top: 8%; } 30% { opacity: 0; } 38% { opacity: 0; left: 50%; top: 90%; } 44%, 49% { opacity: 1; left: 50%; top: 90%; } 54%, 100% { opacity: 0; } }
+  @keyframes hwPress { 0%, 21% { transform: scale(1); } 23% { transform: scale(.94); } 26%, 100% { transform: scale(1); } }
+  @keyframes hwPressLate { 0%, 45% { transform: scale(1); } 47% { transform: scale(.95); } 50%, 100% { transform: scale(1); } }
+  @keyframes hwSheet { 0%, 28% { transform: translateY(105%); } 35%, 50% { transform: translateY(0); } 57%, 100% { transform: translateY(105%); } }
+  @keyframes hwDone { 0%, 55% { opacity: 0; transform: scale(.8); } 60%, 76% { opacity: 1; transform: scale(1); } 82%, 100% { opacity: 0; } }
+  @keyframes hwCircle { 0%, 56% { stroke-dashoffset: 176; } 64%, 100% { stroke-dashoffset: 0; } }
+  @keyframes hwTick { 0%, 62% { stroke-dashoffset: 40; } 68%, 100% { stroke-dashoffset: 0; } }
+  @keyframes hwOld { 0%, 70% { opacity: 1; transform: translateY(0); } 76%, 94% { opacity: 0; transform: translateY(-14px); } 100% { opacity: 1; transform: translateY(0); } }
+  @keyframes hwNew { 0%, 70% { opacity: 0; transform: translateY(14px); } 76%, 94% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(14px); } }
+  @keyframes hwCardAway { 0%, 50% { opacity: 1; transform: translateX(0); } 56%, 94% { opacity: 0; transform: translateX(-30px); } 100% { opacity: 1; transform: translateX(0); } }
+  @keyframes hwAppear { 0%, 70% { opacity: 0; } 76%, 94% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes hwReceipt { 0%, 24% { opacity: 0; transform: scale(.96); } 28%, 52% { opacity: 1; transform: scale(1); } 58%, 100% { opacity: 0; } }
+  @keyframes hwScanline { 0%, 28% { opacity: 0; top: 0; } 30% { opacity: 1; top: 0; } 40% { opacity: 1; top: 100%; } 42%, 100% { opacity: 0; top: 100%; } }
+  @media (prefers-reduced-motion: reduce) {
+    .hw *, .hw-finger::after { animation: none !important; }
+    .hw .hw-finger, .hw .hw-done { opacity: 0; } .hw .hw-t0 { opacity: 0; } .hw .hw-t1 { opacity: 1; }
+    .hw-scan .hw-receipt { opacity: 1; } .hw-verify .hw-card { opacity: 0; } .hw-verify .hw-empty { opacity: 1; }
+  }
+  .hwcap { text-align: center; margin: 10px 0 0; }
+  [data-howto] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 </style>
 </head>
 <body>

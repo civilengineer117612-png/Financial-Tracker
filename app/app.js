@@ -30,6 +30,12 @@ const activeAccounts = () => S().accounts.filter((a) => !a.archived);
 const accountName = (id) => S().accounts.find((a) => a.id === id)?.name ?? "?";
 const categoryName = (id) => S().categories.find((c) => c.id === id)?.name ?? "?";
 // "Name \u00b7 Bucket" for a category: the bucket is read from the name (or chosen by hand), so there is nothing else to set.
+// A how-to clip drawn from this phone's own screen: its first three tiles, the account used most recently, today's date and total.
+function clipFor(id) {
+  const tiles = S().presets.slice(0, 3).map((p) => ({ name: p.name, amount: p.amount, category: categoryName(p.category_id) }));
+  const a = cashFirst(activeAccounts())[0] ?? null;
+  return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total });
+}
 const catLine = (c) => `${esc(c.name)} \u00b7 ${esc(M.BUCKET_LABELS[M.bucketOf(c, ledger.settings.bucket_overrides ?? {})])}`;
 // The four buttons for choosing a bucket by hand; the one in force is pressed.
 // What the name says, in the add window: the bucket it reads as, or that it is not clear and will be asked.
@@ -140,7 +146,7 @@ function titleOf(title) {
 function renderTop(title) {
   const lines = `<svg width="24" height="16" viewBox="0 0 24 16" aria-hidden="true"><rect y="0" width="24" height="2.5" rx="1.25" fill="currentColor"/><rect y="6.75" width="17" height="2.5" rx="1.25" fill="currentColor"/><rect y="13.5" width="10" height="2.5" rx="1.25" fill="currentColor"/></svg>`;   // lines of falling length, no box
   // One scanner button: it opens the two choices, camera or photos/files.
-  const camera = device.allowEntry && ui.tab === "log" ? `<button class="camicon" data-action="open-scan-pick" aria-label="Scan a receipt or payment screen: take a photo or choose from photos or files"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.scan}</svg></button>` : "";
+  const camera = device.allowEntry && ui.tab === "log" ? `<button class="camicon" data-action="open-scan-pick" data-howto="scan" aria-label="Scan a receipt or payment screen: take a photo or choose from photos or files"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.scan}</svg></button>` : "";
   const mic = device.allowEntry && ui.tab === "log" ? `<button class="camicon micbtn" data-action="open-voice" aria-label="Say an entry out loud"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.mic}</svg></button>` : "";
   $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + titleOf(title) + mic + camera;
 }
@@ -183,7 +189,7 @@ function renderBanner() {
 
 function renderNav() {
   const n = device.allowEntry ? dueDrafts().length : 0;
-  const tab = (id, label) => `<button data-action="tab" data-tab="${id}"${ui.tab === id ? ' aria-current="page"' : ""}>${label}</button>`;
+  const tab = (id, label) => `<button data-action="tab" data-tab="${id}" data-howto="${id}"${ui.tab === id ? ' aria-current="page"' : ""}>${label}</button>`;   // hold for its how-to
   $("nav").innerHTML = tab("log", M.SCREEN_NAMES.log) + tab("verify", n ? `${M.SCREEN_NAMES.verify} (${n})` : M.SCREEN_NAMES.verify);   // photo and audio will join these two
 }
 
@@ -265,7 +271,7 @@ function tilesHtml() {
     const hint = ledger.settings.tile_hint_done ? "" : `<p class="note small center">Hold a tile to move, change or remove it.</p>`;
     return `<div class="tiles">${S().presets.map((p) => tile(p, false)).join("")}</div>${hint}`;
   }
-  const add = S().presets.length < M.MAX_PRESETS ? `<div class="tile addtile" data-action="add-tile" role="button" tabindex="0" aria-label="Add a tile"><b>+</b></div>` : "";
+  const add = S().presets.length < M.MAX_PRESETS ? `<div class="tile addtile" data-action="add-tile" data-howto="log" role="button" tabindex="0" aria-label="Add a tile"><b>+</b></div>` : "";
   return `<div class="tiles arranging">${S().presets.map((p) => tile(p, true)).join("")}${add}</div><p class="center"><button class="link" data-action="arrange-done">Done</button></p>`;
 }
 
@@ -885,6 +891,10 @@ function viewHelp() {
     <p><button class="link" data-action="open-notice">Read the first-run notice again</button></p>
     <h2>Getting started</h2>
     <div class="mlist">${steps.map((st) => `<div class="mrow mline"><span class="mn">${st.done ? "\u2713" : "\u25CB"} ${esc(st.text)}</span><span class="mv">${st.done ? "Done" : `<button class="link" data-action="tab" data-tab="${st.tab}">${esc(st.button)}</button>`}</span></div>`).join("")}</div>
+    <h2>How-tos</h2><p class="note">${esc(M.HOWTO_HINT)}</p>
+    <div class="mlist">${M.HOWTOS.map((h) => `<div class="mrow mline"><span class="mn">${esc(h.label)}</span><span class="mv"><button class="link" data-action="open-howto" data-id="${h.id}">Watch</button></span></div>`).join("")}</div>
+    <h2>What's new</h2>
+    <div class="mlist">${M.CHANGES.map((c) => `<div class="mrow mline"><span class="mn">${esc(c.text)}</span><span class="mv">${esc(longDate(c.date))}</span></div>`).join("")}</div>
     <h2>Each screen</h2>
     <div class="mlist">${M.HELP_TOPICS.map((t) => `<details class="mrow"><summary><span class="mn">${esc(t.label)}</span><span class="tchev" aria-hidden="true">\u203A</span></summary>${figure(t.drawing)}${t.lines.map((l) => `<div class="mpart"><span>${esc(l)}</span></div>`).join("")}<div class="mpart"><button class="link" data-action="tab" data-tab="${t.tab}">Open ${esc(t.label)}</button></div></details>`).join("")}</div>
     <p class="note">This guide is kept up to date as the app changes.</p>`;
@@ -1846,6 +1856,13 @@ function renderSheet() {
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="make-backup" disabled>Create backup file</button></p>
       <p class="note">Next you choose where to keep the file, for example Save to Files. It is encrypted, so it is safe in iCloud Drive or on a flash drive.</p>`;
+  } else if (sh.type === "howto") {
+    const h = M.HOWTOS.find((x) => x.id === sh.id);
+    body = `<h3>${esc(h.label)}</h3>${clipFor(h.id)}<p class="hwcap">${esc(h.caption)}</p>`;
+  } else if (sh.type === "whatsnew") {
+    body = `<h3>What's new</h3><ul class="notes">${M.whatsNew({}, 3).map((c) => `<li><b>${esc(longDate(c.date))}</b> ${esc(c.text)}</li>`).join("")}</ul>
+      <p class="note">${esc(M.HOWTO_HINT)} Help keeps the full list.</p>
+      <p><button class="primary" data-action="close-sheet">Got it</button></p>`;
   } else if (sh.type === "bucket-pick") {
     const c = S().categories.find((x) => x.id === sh.id), mine = ledger.settings.bucket_overrides?.[sh.id], read = M.readBucket(c.name).bucket;
     body = `<h3>${esc(c.name)}</h3><p class="note">${read ? `The name reads as ${M.BUCKET_LABELS[read]}.` : "The name does not say clearly."} ${mine ? `You set it to ${M.BUCKET_LABELS[mine]}.` : ""}</p>
@@ -1895,7 +1912,7 @@ function renderSheet() {
       <p class="note">Anything entered on this phone since the backup was made will be gone. Pictures are not in the backup: an entry with a picture will show "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" ? "Close" : "Cancel"}</button></p></div>`;
+  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" ? "Close" : "Cancel"}</button></p></div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
   refreshSave();
@@ -2283,6 +2300,8 @@ async function onClick(el) {
     case "pick-new-bucket": ui.form.bucket = el.dataset.bucket; for (const b of document.querySelectorAll("#c-bucket button")) b.setAttribute("aria-pressed", String(b.dataset.bucket === ui.form.bucket)); break;
     case "cat-bucket": ui.sheet = { type: "bucket-pick", id }; renderSheet(); break;
     case "set-bucket": { const cid = ui.sheet.id; ui.sheet = null; renderSheet(); await commit(S(), M.withBucket(ledger.settings, cid, el.dataset.bucket || null)); break; }
+    case "open-howto": ui.sheet = { type: "howto", id }; renderSheet(); break;
+    case "open-whatsnew": ui.sheet = { type: "whatsnew" }; renderSheet(); break;
     case "goto-confirm": $("bud-confirm")?.scrollIntoView({ block: "start" }); break;
     case "save-cat": {
       const cat = ui.sheet.id ? S().categories.find((c) => c.id === ui.sheet.id) : null;
@@ -2789,7 +2808,19 @@ document.addEventListener("pointerdown", (e) => {
   tdrag.index = tdrag.order.indexOf(tdrag.id);
   try { t.setPointerCapture(e.pointerId); } catch { /* the tdrag still works without capture */ }
 });
+// Holding a button that has a how-to (Log, Verify, the camera, the + tile) plays it; a normal tap does what it always did. Tiles keep their own hold (arrange).
+let hwTimer = null, hwAt = null;
+document.addEventListener("pointerdown", (e) => {
+  const b = e.target.closest("[data-howto]");
+  if (!b || ui.sheet || !M.HOWTOS.some((h) => h.id === b.dataset.howto)) return;
+  hwAt = { x: e.clientX, y: e.clientY };
+  hwTimer = setTimeout(() => { hwTimer = null; suppressClick = true; navigator.vibrate?.(12); ui.sheet = { type: "howto", id: b.dataset.howto }; renderSheet(); }, 550);
+});
+const hwCancel = () => { clearTimeout(hwTimer); hwTimer = null; };
+document.addEventListener("pointerup", hwCancel); document.addEventListener("pointercancel", hwCancel);
+document.addEventListener("contextmenu", (e) => { if (e.target.closest("[data-howto]")) e.preventDefault(); });
 document.addEventListener("pointermove", (e) => {
+  if (hwTimer && hwAt && Math.hypot(e.clientX - hwAt.x, e.clientY - hwAt.y) > 10) hwCancel();
   if (holdTimer && holdAt && Math.hypot(e.clientX - holdAt.x, e.clientY - holdAt.y) > 10) { clearTimeout(holdTimer); holdTimer = null; }
   if (!tdrag) return;
   const dx = e.clientX - tdrag.x0, dy = e.clientY - tdrag.y0;
@@ -2909,7 +2940,7 @@ async function start() {
       ledger = u.ledger; ui.upgrade = u.ok ? { done: true } : { failed: u.failed }; boot = { ...boot, status: "OK" };   // both stores were just written
     }
     ledger.state = M.dropUnusedCardCategory(M.ensureIncomeCategories(ledger.state));   // older ledgers gain Interest, Refund and Other income (saved with the next save)
-    if (boot.status === "NONE") { ledger.state = { ...ledger.state, categories: M.defaultCategories(), presets: M.defaultPresets() }; ledger.settings = { ...ledger.settings, roles_notice_seen: M.phTimestamp() }; }   // kept in memory until the first save
+    if (boot.status === "NONE") { ledger.state = { ...ledger.state, categories: M.defaultCategories(), presets: M.defaultPresets() }; ledger.settings = { ...ledger.settings, roles_notice_seen: M.phTimestamp(), whatsnew_seen: M.CHANGES[0].id }; }   // kept in memory until the first save
     // The two stores disagree on revision only (a save reached one and not the other): repair quietly from the newer.
     if (boot.status === "REPAIR" && local != null && idb != null && device.allowEntry) {
       await writeBoth(JSON.stringify(ledger), { local: boot.repairTo === "local", idb: boot.repairTo === "idb" });
@@ -2921,6 +2952,11 @@ async function start() {
   if (ui.upgrade?.done) showToast("Your data was updated to the newest format. A copy of the old data is kept in Setup.");
   // A brand-new install shows the notice once: the moment is remembered in the settings, which are saved with the first save. Help shows it again on request.
   if (device.allowEntry && boot.status === "NONE" && !ledger.settings.notice_seen_at) { ledger.settings = { ...ledger.settings, notice_seen_at: M.phTimestamp() }; ui.sheet = { type: "notice" }; renderSheet(); }
+  // After an update: the latest changes, once. "Got it" (or closing the window) remembers it, saved at once so it is not shown again.
+  if (device.allowEntry && boot.status === "OK" && !ui.sheet && !ui.upgrade?.failed && ledger.v === M.LEDGER_VERSION && M.whatsNew(ledger.settings).length) {
+    ui.sheet = { type: "whatsnew" }; renderSheet();
+    await commit(S(), { ...ledger.settings, whatsnew_seen: M.CHANGES[0].id }, { quiet: true });
+  }
   if (device.allowEntry && boot.status === "OK") {
     // Grey placeholder pictures saved by earlier versions are dropped at once, so a letter tile shows instead of a wrong one;
     // then the listed banks' logos are loaded in the background, so they are there from the start. (On a brand-new phone

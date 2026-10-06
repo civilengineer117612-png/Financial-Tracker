@@ -34,8 +34,9 @@ const browser = await chromium.launch();
 let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
 const dismissNotice = async (page) => { try { await page.waitForSelector('#sheet button:has-text("I understand")', { timeout: 2500 }); await page.click('#sheet button:has-text("I understand")'); } catch { /* an old ledger shows no notice */ } };
-async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true } = {}) {
+async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false } = {}) {
   if (seed === undefined) seed = styled ? OWNER_STYLE : null;
+  if (seed && !whatsNew) seed = { ...seed, settings: { ...(seed.settings ?? {}), whatsnew_seen: seed.settings?.whatsnew_seen ?? CHANGES[0].id } };   // the What's new pop-up is tested on its own
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
   // A pretend phone speech service that, like the real ones, listens once and closes the microphone when you pause: the first try hears
@@ -89,7 +90,7 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: SH
 
 
 // The app has no way to load a plan file any more (nobody has one yet), so tests that need a plan put one in the phone's settings, as parsed by the model.
-import { parsePlan, planWithBudgets } from "../src/model/index.js";
+import { parsePlan, planWithBudgets, CHANGES } from "../src/model/index.js";
 async function writeLedger(page, led) {
   const text = JSON.stringify(led);
   await page.evaluate(async ([text]) => { localStorage.setItem("financialTracker.ledger", text); await new Promise((res) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => { const tx = r.result.transaction("kv", "readwrite"); tx.objectStore("kv").put(text, "ledger"); tx.oncomplete = () => { r.result.close(); res(); }; }; }); }, [text]);
@@ -2113,6 +2114,43 @@ console.log("Savings as goals");
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.goal_shares?.ga === 5000);
   check(true, "and are kept");
   check(errors.length === 0, "no script errors in the savings flow");
+  await ctx.close(); }
+
+// ===== 5s. What's new after an update, and the how-to clips =====
+console.log("What's new and how-tos");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-09-01" };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], presets: [{ id: "p1", name: "Corner Cafe", amount: 18000, category_id: "cat-food" }, { id: "p2", name: "Train", amount: 3000, category_id: "cat-food" }, { id: "p3", name: "Lunch", amount: 9500, category_id: "cat-food" }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed, whatsNew: true }));
+  check(await seen(page, "#sheet", "What's new"), "after an update the What's new window opens");
+  let t = await text(page, "#sheet");
+  check(t.includes(CHANGES[0].text) && t.includes(CHANGES[2].text) && !t.includes(CHANGES[3]?.text ?? "never"), "it lists the latest three changes, one sentence each");
+  check(t.includes("Hold Log, Verify or the camera"), "and says to hold a button to watch how it works");
+  await page.click('#sheet button:has-text("Got it")');
+  await page.reload(); await page.waitForSelector("#nav button"); await page.waitForTimeout(600);
+  check(!(await text(page, "#sheet")).includes("What's new"), "it is not shown again");
+  await page.click('#nav button[data-tab="verify"]'); await page.click('#nav button[data-tab="log"]');
+  check(!(await text(page, "#sheet")).includes("Log an expense"), "a normal tap on Log still just opens Log");
+  const holdOn = async (sel) => { const b = await page.locator(sel).first().boundingBox(); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down(); await page.waitForTimeout(800); await page.mouse.up(); };
+  await holdOn('#nav button[data-tab="log"]');
+  check(await seen(page, "#sheet", "Log an expense"), "holding Log plays its how-to");
+  t = await text(page, "#sheet");
+  check(t.includes("Corner Cafe") && t.includes("Train") && t.includes("Lunch") && t.includes("Test Wallet") && !t.includes("Example"), "drawn from the owner's own tiles and account");
+  check(t.includes("Tap a tile, check it, Save: logged in two taps."), "with its one caption");
+  led = JSON.parse((await stored(page)).local);
+  check(led.state.transactions.length === 0, "watching a clip logs nothing");
+  await page.click('#sheet button:has-text("Close")');
+  await holdOn('#nav button[data-tab="verify"]');
+  check(await seen(page, "#sheet", "Verify an entry"), "holding Verify plays its how-to");
+  await page.click('#sheet button:has-text("Close")');
+  await holdOn('button.camicon[data-howto="scan"]');
+  check(await seen(page, "#sheet", "Scan a receipt") && (await text(page, "#sheet")).includes("SAMPLE STORE"), "holding the camera plays the scan how-to, with an invented receipt");
+  await page.click('#sheet button:has-text("Close")');
+  await menuGo(page, "Help");
+  t = await text(page, "#screen");
+  check(/How-tos/i.test(t) && /What's new/i.test(t) && t.includes(CHANGES[CHANGES.length - 1].text), "Help lists the how-tos and every change");
+  await page.click('button[data-action="open-howto"][data-id="scan"]');
+  check(await seen(page, "#sheet", "Scan a receipt"), "a how-to can be played from Help too");
+  check(errors.length === 0, "no script errors with the pop-up and the clips");
   await ctx.close(); }
 
 // ===== 6. wrong phone, wrong place =====
