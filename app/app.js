@@ -561,6 +561,24 @@ const photoUrls = new Map();   // saved photos shown on this screen: attachment 
 
 // The two ways to give the app a photo, always both on offer: the camera, or an image you already have (photos or files).
 // mode: "quick" (saved at once when sure), "1" (check every field first), "payslip" (read as a payslip).
+// Reads old spending from a notes screenshot (the on-phone reader), a CSV file or an Excel file, then shows what will be added. Nothing leaves the phone.
+async function importFile(file) {
+  const today0 = today(), say = (m) => { ui.form = { busy: m }; renderSheet(); };
+  ui.sheet = { type: "import" }; say("Reading " + file.name + "...");
+  try {
+    let items, notRead;
+    if (/\.xlsx$/i.test(file.name) || /spreadsheetml/.test(file.type)) ({ items, notRead } = tableOrThrow(await M.readXlsx(await file.arrayBuffer())));
+    else if (/\.csv$/i.test(file.name) || /csv/.test(file.type)) ({ items, notRead } = tableOrThrow(M.parseCsv(await file.text())));
+    else {
+      const page = await readPage(file, (fr, what) => { const el = $("imp-msg"); if (el) el.textContent = `${what ?? "Reading"} ${Math.round((fr ?? 0) * 100)}%`; });
+      ({ items, notRead } = M.parseNotes(page.boxes ? M.linesByRow(page.boxes) : page.text));
+    }
+    if (!items.length) throw new Error("No dated spending was found. A notes list needs a date line (02/10/2026) above lines like \"Lunch - 100\".");
+    ui.form = { items, notRead, order: M.dateOrder(items.map((x) => x.dateRaw), today0), account_id: cashFirst(activeAccounts())[0]?.id ?? null };
+  } catch (err) { ui.form = { error: String(err?.message ?? err) }; }
+  if (ui.sheet?.type === "import") renderSheet();
+}
+const tableOrThrow = (rows) => { const t = M.parseTable(rows); if (!t.ok) throw new Error(t.message); return t; };
 const photoButtons = (mode, busy = false) => `<label class="filebtn" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="12.5" r="3.5"/></svg>&nbsp;${busy ? "Reading..." : "Take a photo"}<input type="file" accept="image/*" capture="environment" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>
   <label class="filebtn alt" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>&nbsp;Choose from photos or files<input type="file" accept="image/*" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>`;
 
@@ -1805,7 +1823,26 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>${sh.editId ? "Save changes" : "Save payslip"}</button></p>
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
   } else if (sh.type === "scanpick") {
-    body = `<h3>Scan</h3><p class="note">A receipt, a payment screen or a payslip. Take a photo now, or choose one you already have. If the app is sure of everything it saves a draft by itself; otherwise it asks.</p>${photoButtons("quick")}`;
+    body = `<h3>Scan</h3><p class="note">A receipt, a payment screen or a payslip. Take a photo now, or choose one you already have. If the app is sure of everything it saves a draft by itself; otherwise it asks.</p>${photoButtons("quick")}
+      <p class="note">Old spending you kept somewhere else: a screenshot of your notes, or a spreadsheet saved as CSV or Excel (.xlsx). Every line waits in Verify.</p>
+      <label class="filebtn alt" id="imp-pick">Import old spending<input type="file" accept="image/*,.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-import="1" hidden></label>`;
+  } else if (sh.type === "import") {
+    const f = ui.form;
+    if (f.busy) body = `<h3>Import old spending</h3><p class="note" id="imp-msg" role="status">${esc(f.busy)}</p>`;
+    else if (f.error) body = `<h3>Import old spending</h3><p class="note" role="alert"><b>${esc(f.error)}</b></p>`;
+    else {
+      const p = f.order ? M.previewImport(S(), f.items, f.order) : null, acct = S().accounts.find((a) => a.id === f.account_id);
+      const sample = f.items.find((x) => M.readDate(x.dateRaw) && !M.readDate(x.dateRaw).iso)?.dateRaw;
+      const orderLine = sample ? `<p class="note" id="imp-order">${f.order ? `Dates read as <b>${f.order === "dmy" ? "day/month" : "month/day"}</b>: ${esc(sample)} is <b>${esc(longDate(M.previewImport(S(), [{ dateRaw: sample, name: "x", amount: 1 }], f.order).lines[0]?.date ?? today()))}</b>.` : `<b>Which comes first in ${esc(sample)}?</b>`}</p>
+        <div class="seg" role="group" aria-label="Date order">${[["dmy", "Day / month"], ["mdy", "Month / day"]].map(([o, t]) => `<button data-action="import-order" data-id="${o}" aria-pressed="${f.order === o}">${t}</button>`).join("")}</div>` : "";
+      body = `<h3>Import old spending</h3>${orderLine}
+        <label>Paid from</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
+        ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
+          <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline"><span class="mn">${esc(longDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
+          ${f.notRead.length ? `<details><summary>Not read (${f.notRead.length})</summary>${f.notRead.slice(0, 20).map((l) => `<p class="note">${esc(l)}</p>`).join("")}</details>` : ""}
+          ${acct ? `<p class="note">Lines dated before you added ${esc(acct.name)} are history only: they do not change its balance.</p>` : ""}
+          <p><button class="primary" id="f-save" data-action="save-import"${p.lines.length && acct ? "" : " disabled"}>Add ${p.lines.length} ${p.lines.length === 1 ? "draft" : "drafts"} to Verify</button></p>` : ""}`;
+    }
   } else if (sh.type === "payslipchoice") {
     body = `<h3>Add income</h3>
       <p class="note">A payslip:</p>
@@ -2587,6 +2624,14 @@ async function onClick(el) {
     case "open-tx": ui.sheet = { type: "txdetail", id }; renderSheet(); break;
     case "open-photo": { const u = photoUrls.get(id) ?? (await getPhoto(id).then((b) => b && URL.createObjectURL(b))); if (u) { photoUrls.set(id, u); viewShot(u); } else showToast("Picture not on this phone. Pictures are not part of the backup file."); break; }
     case "pick-acct": form.account_id = id; renderSheet(); break;
+    case "import-order": form.order = id; renderSheet(); break;
+    case "save-import": {
+      const p = M.previewImport(S(), form.items, form.order), r = M.planImport(S(), p.lines, { account_id: form.account_id, newId: () => newId("tx") });
+      if (!r.ok) { showToast(r.message); break; }
+      ui.sheet = null; renderSheet();
+      if (await commit(r.state)) showToast(`${r.count} ${r.count === 1 ? "draft is" : "drafts are"} waiting in Verify.`);
+      break;
+    }
     case "close-sheet": voiceListener?.stop(); if (ui.sheet?.type === "budget-suggest") await savePinsFromForm(); ui.sheet = null; renderSheet(); break;
     case "save-other": {
       const amount = M.parsePesos(form.amount).centavos;
@@ -2905,6 +2950,7 @@ document.addEventListener("input", (e) => {
   else ui.accountForm[field] = e.target.value;
 });
 document.addEventListener("change", (e) => {
+  if (e.target.dataset?.import) { const file = e.target.files[0]; e.target.value = ""; if (file) importFile(file); return; }
   if (e.target.dataset?.scan) {
     const file = e.target.files[0], mode = e.target.dataset.scan; e.target.value = "";
     if (ui.sheet && (ui.sheet.type === "scanpick" || ui.sheet.type === "payslipchoice")) { ui.sheet = null; renderSheet(); }   // the choice is made: close it

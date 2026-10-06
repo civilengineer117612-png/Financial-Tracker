@@ -54,6 +54,8 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 
 - WHAT'S NEW AND HOW-TOS: every PR that changes what a user sees or does adds ONE plain sentence at the top of `CHANGES` in `src/model/whatsnew.js` (owner: even small fixes). After an update the app shows the latest three once ("Got it"; settings `whatsnew_seen`); Help lists them all. How-to clips (`src/model/howto.js`, motion in app/index.html `hw-*`, Reduce Motion shows the last frame) are drawn from the owner's own screen (tiles, account and picture, date, total), never log anything, use marked examples when there is nothing yet, and have one caption each. Holding a button with `data-howto` plays its clip; quick tiles keep their own hold (arrange). Never a real receipt in a clip.
 
+- IMPORT OLD SPENDING: `src/model/importer.js` (Scan window, "Import old spending"). Reads a notes screenshot (the on-phone reader, lines rebuilt with `linesByRow`), a CSV, or an .xlsx (our own small zip reader and the browser's DecompressionStream: no library, nothing leaves the phone). The date order (day/month or month/day) is decided per file from the dates themselves (a number above 12; else the number that changes is the day; else fewer future dates; else asked). Categories: the file's own category name, then a quick tile of that name, then the kind read from the name, else Unlogged. Lines already logged (same date, name, amount) are left out. Every line becomes a DRAFT (source "import") that waits in Verify; all or nothing.
+
 ## Every PR message starts with a MERGE CHECK (owner's rule)
 The PR message must START with a block titled "MERGE CHECK", exactly these six lines, each answered in one short line:
 1. Data version: before -> after (or "unchanged").

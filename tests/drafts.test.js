@@ -81,7 +81,7 @@ test("bad input is reported, not thrown", () => {
   const s = S();
   for (const [o, code] of [[{ amount: 0 }, "BAD_AMOUNT"], [{ amount: 9.5 }, "BAD_AMOUNT"], [{ amount: -5 }, "BAD_AMOUNT"],
     [{ account_id: "nope" }, "UNKNOWN_ACCOUNT"], [{ category_id: "nope" }, "UNKNOWN_CATEGORY"], [{ category_id: "pay" }, "UNKNOWN_CATEGORY"],
-    [{ source: "import" }, "BAD_SOURCE"]]) {
+    [{ source: "reconciliation" }, "BAD_SOURCE"]]) {
     const p = planExpense(s, input(o));
     assert.equal(p.ok, false, code);
     assert.equal(p.violations[0].code, code);

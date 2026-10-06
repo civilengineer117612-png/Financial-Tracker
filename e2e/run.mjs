@@ -2184,6 +2184,50 @@ console.log("Start date of an account");
   check(errors.length === 0, "no script errors around the start date");
   await ctx.close(); }
 
+// ===== 5u. importing old spending from a spreadsheet =====
+console.log("Import old spending");
+{ const { deflateRawSync } = await import("node:zlib");
+  const zipOf = (files) => { const parts = [], central = []; let off = 0;
+    for (const [name, text] of files) { const raw = Buffer.from(text), data = deflateRawSync(raw), n = Buffer.from(name);
+      const local = Buffer.alloc(30); local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(8, 8); local.writeUInt32LE(data.length, 18); local.writeUInt32LE(raw.length, 22); local.writeUInt16LE(n.length, 26);
+      const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(8, 10); c.writeUInt32LE(data.length, 20); c.writeUInt32LE(raw.length, 24); c.writeUInt16LE(n.length, 28); c.writeUInt32LE(off, 42);
+      parts.push(local, n, data); central.push(c, n); off += 30 + n.length + data.length; }
+    const cd = Buffer.concat(central), end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(off, 16);
+    return Buffer.concat([...parts, cd, end]); };
+  const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-10-02" };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct] } } }));
+  await page.click('button[data-action="open-scan-pick"]');
+  check(await seen(page, "#sheet", "Import old spending"), "the Scan window offers Import old spending");
+  const csv = "Daily Expenses\n\nExpense,Amount,Date,Category\nJeep,\u20B126,09/20/2026,Lakat/Date\nLunch,130,09/20/2026,Food\n\"Dinner, with friends\",\"\u20B11,545\",09/26/2026,Lakat/Date\nBad row,x,09/27/2026,Food\n";
+  await page.setInputFiles('input[data-import]', { name: "expenses.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+  check(await seen(page, "#sheet", "3 lines"), "a CSV is read: 3 lines");
+  let t = await text(page, "#sheet");
+  check(/month\/day/i.test(t) && t.includes("Sep 20"), "the date order is worked out from the file (20 cannot be a month)");
+  check(t.includes("1 not read") && t.includes("Lakat/Date (your file's category)"), "the bad row is listed as not read, and the file's own categories are used");
+  check(t.includes("history only"), "it says lines before the account was added are history only");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "3 drafts are waiting in Verify"), "the lines are added as drafts");
+  let led = JSON.parse((await stored(page)).local);
+  const imp = led.state.transactions.filter((x) => x.source === "import");
+  check(imp.length === 3 && imp.every((x) => x.status === "draft") && imp.some((x) => x.payee === "Dinner, with friends" && x.date === "2026-09-26"), "three drafts with their own dates and names");
+  check((await text(page, "#nav")).includes("Verify (3)"), "they wait in Verify");
+  const xlsx = zipOf([["xl/workbook.xml", '<workbook><sheets><sheet name="Log" sheetId="1" r:id="rId1"/></sheets></workbook>'], ["xl/_rels/workbook.xml.rels", '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>'],
+    ["xl/sharedStrings.xml", "<sst><si><t>Item</t></si><si><t>Amount</t></si><si><t>Date</t></si><si><t>Kape</t></si><si><t>Jeep</t></si></sst>"],
+    ["xl/worksheets/sheet1.xml", '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" t="s"><v>2</v></c></row><row r="2"><c r="A2" t="s"><v>3</v></c><c r="B2"><v>65</v></c><c r="C2"><v>46297</v></c></row><row r="3"><c r="A3" t="s"><v>4</v></c><c r="B3"><v>26</v></c><c r="C3"><v>46285</v></c></row></sheetData></worksheet>']]);
+  await page.click('button[data-action="open-scan-pick"]');
+  await page.setInputFiles('input[data-import]', { name: "tracker.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: xlsx });
+  check(await seen(page, "#sheet", "1 line to add"), "an Excel file is read on the phone");
+  t = await text(page, "#sheet");
+  check(t.includes("Kape") && t.includes("Oct 2") && t.includes("1 already logged, left out"), "its dates and names are right, and the Jeep already brought in from the CSV is left out");
+  check(t.includes("Add 1 draft to Verify"), "one draft, said as one");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "1 draft is waiting in Verify"), "added too");
+  await page.click('button[data-action="open-scan-pick"]');
+  await page.setInputFiles('input[data-import]', { name: "tracker.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: xlsx });
+  check(await seen(page, "#sheet", "2 already logged, left out"), "importing the same file again adds nothing twice");
+  check(errors.length === 0, "no script errors while importing");
+  await ctx.close(); }
+
 // ===== 6. wrong phone, wrong place =====
 console.log("Wrong device");
 ({ ctx, page } = await open({ ua: ANDROID }));
