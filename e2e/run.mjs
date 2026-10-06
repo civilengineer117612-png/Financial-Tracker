@@ -79,6 +79,7 @@ const menuGo = async (page, name) => {   // Spending and Income are one menu ite
   if (name === "Income") await page.click("#top .titleswitch");
 };
 // Saving is asynchronous (it writes two stores), so checks wait for the text to appear instead of racing it.
+const budView = async (page, v) => { await page.click(`button[data-action="budget-view"][data-view="${v}"]`); await page.waitForTimeout(200); };   // Budget shows one part at a time
 const seen = async (page, sel, sub, ms = 4000) => { try { await page.waitForFunction(([q, t]) => document.querySelector(q)?.innerText.includes(t), [sel, sub], { timeout: ms }); return true; } catch { return false; } };
 const gone = async (page, sel, sub, ms = 4000) => { try { await page.waitForFunction(([q, t]) => !document.querySelector(q)?.innerText.includes(t), [sel, sub], { timeout: ms }); return true; } catch { return false; } };
 const stored = (page) => page.evaluate(async () => {
@@ -1687,14 +1688,18 @@ console.log("The new Budget");
   await menuGo(page, "Budget");
   let t = await text(page, "#screen");
   check(t.includes("Income (base)") && t.includes("Add a payslip or your pay to get a suggested budget."), "with no income the plain prompt shows, in the income box at the top");
-  check(/spending[\s\S]*saved and set aside/i.test(t) && t.includes("Total budgeted") && /Total: ₱/.test(t), "two blocks, Spending first, then Saved and set aside, each with a totals line");
+  check(/spending/i.test(t) && t.includes("Total budgeted") && !/saved and set aside/i.test(t), "Spending shows first, on its own, with its totals line");
+  await budView(page, "saved");
+  check(/saved and set aside/i.test(await text(page, "#screen")) && /Total: ₱/.test(await text(page, "#screen")) && !(await text(page, "#screen")).includes("Total budgeted"), "the Saved view shows Saved and set aside with its own totals line");
+  await budView(page, "spending");
   await page.click('button:has-text("Type a different figure")');
   check(await page.locator("#f-save").isDisabled(), "a figure needs an amount first");
   await page.fill("#f-amount", "25000"); await page.click("#f-save"); await seen(page, "#toast", "Income figure set");
   t = await text(page, "#screen");
   check(t.includes("₱25,000.00 a month") && t.includes("Your own figure") && t.includes("Use my payslips again"), "the typed income is shown, with where it came from");
   const sh = (txt) => { const m = /Spending ([\d.]+)%, Saved ([\d.]+)%, Unallocated ₱([\d,]+\.\d\d)/.exec(txt); return m && [Math.round(Number(m[1]) * 10), Math.round(Number(m[2]) * 10), Math.round(Number(m[3].replace(/,/g, "")) * 100)]; };
-  check(sh(t) && sh(t)[0] === 0 && sh(t)[2] > 0 && t.includes("Spent so far: 0.0% of income") && t.includes("asks for your rent first"), "the summary shows Spending and Saved as percents and Unallocated in pesos, the extra figure shows, and with no history the saved block says the suggestion asks for the rent first");
+  await budView(page, "saved"); const tSaved = await text(page, "#screen"); await budView(page, "spending");
+  check(sh(t) && sh(t)[0] === 0 && sh(t)[2] > 0 && t.includes("Spent so far: 0.0% of income") && tSaved.includes("asks for your rent first"), "the summary shows Spending and Saved as percents and Unallocated in pesos, the extra figure shows, and with no history the saved block says the suggestion asks for the rent first");
   // set a budget the old way: the row shows the amount and its share of income
   await page.click('button[data-action="open-budget"][data-id="cat-food"]'); await page.fill("#f-amount", "5000"); await page.click("#f-save"); await seen(page, "#toast", "Budget saved");
   t = await text(page, "#screen");
@@ -1727,9 +1732,11 @@ console.log("The new Budget");
   await page.click('button:has-text("Back")'); await page.click('#sheet button:has-text("Confirm")');
   check(JSON.parse((await stored(page)).local).state.rules.length === ruleCount, "nothing was saved yet");
   await page.click("#sheet button[data-action=save-sug]"); await seen(page, "#toast", "saved");
+  await budView(page, "saved");
   check((await text(page, "#screen")).includes("Suggested, not saved"), "with the rent typed, the Budget screen shows the suggested savings too");
   await page.locator("#bud-how summary").click();
   check((await text(page, "#bud-how")).includes("no more than 15% of your pay"), "and says how saving is worked out");
+  await budView(page, "spending");
   const led = JSON.parse((await stored(page)).local);
   const food = led.state.rules.filter((r) => r.subject_id === "cat-food");
   check(food.length === 2 && food[0].amount === 500000 && food[1].amount === 400000 && food[1].effective_from === "2026-11-01", "the old rule stays and the new one starts next month");
@@ -2019,6 +2026,7 @@ console.log("Buckets");
   ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 2500000, roles_notice_seen: "2026-10-01T08:00:00.000+08:00" },
     state: { ...OWNER_STYLE.state, categories: cats, rules: [rule("r1", "cat-food", 500000), rule("r2", "cat-coffee", 100000), rule("r3", "cat-shabu", 40000), rule("r4", "cat-misc", 60000)] } } }));
   await menuGo(page, "Budget");
+  await budView(page, "buckets");
   check(await seen(page, "#screen", "BUCKETS"), "the new Budget shows a Buckets block");
   let t = await text(page, "#screen");
   check(t.includes("Warren and Tyagi") && t.includes("not advice") && /Target 50\.0%/.test(t) && /Target 30\.0%/.test(t) && /Target 20\.0%/.test(t), "it names the rule of thumb and shows the 50/30/20 targets");
@@ -2087,6 +2095,7 @@ console.log("Savings as goals");
     state: { ...OWNER_STYLE.state, accounts: [acct("p1", "Pocket One"), acct("p2", "Pocket Two")], goals: [{ id: "ga", account_id: "p1", name: "Alpha", hidden_by_default: true }, { id: "gb", account_id: "p2", name: "Beta", hidden_by_default: true }] } };
   ({ ctx, page, errors } = await open({ blockSw: true, seed }));
   await menuGo(page, "Budget");
+  await budView(page, "saved");
   check(await seen(page, "#screen", "Alpha") && (await text(page, "#screen")).includes("Beta"), "Saved and set aside lists each goal");
   let t = await text(page, "#screen");
   check(/overrun buffer/i.test(t) && /not savings/i.test(t), "the overrun buffer is its own line and says it is not savings");

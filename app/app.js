@@ -241,7 +241,7 @@ function renderScreen() {
   $("screen").innerHTML = m ? html.slice(m[0].length) : html;
   // Changing screen fades the whole screen in; changing the view (category, budget...) or chart/list fades in ONLY what is under the view
   // buttons, so the top (month, total, buttons) stays perfectly still. Fade only, nothing slides.
-  const tabSig = ui.tab, viewSig = [ui.view, ui.asList, ui.period?.kind, ui.incomeView].join(), scr = $("screen");
+  const tabSig = ui.tab, viewSig = [ui.view, ui.asList, ui.period?.kind, ui.incomeView, ui.budgetView].join(), scr = $("screen");
   const bar = scr.querySelector(".modebar, .viewmark");
   let body = null;
   if (bar) { body = document.createElement("div"); body.className = "viewbody"; while (bar.nextSibling) body.appendChild(bar.nextSibling); scr.appendChild(body); }
@@ -1482,16 +1482,19 @@ function viewBudgetNew() {
       <p class="note" id="bud-shares">Spending ${M.showTenths(sh.spending)}, Saved ${M.showTenths(sh.saved)}, ${bufferTotal ? "Buffer " + M.showTenths(sh.buffer) + ", " : ""}${sh.unallocated < 0 ? "Over income by " + peso(-sh.unallocated) : "Unallocated " + peso(sh.unallocated)}</p>
       <p class="note" id="bud-spent">Spent so far: ${M.showTenths(M.tenths(Math.max(0, spentNow), income))} of income</p>`;
   }
-  return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${head}
-    <h2>Spending</h2>${spendRows}<p class="note" id="bud-spend-total">Total budgeted: ${peso(spendTotal)}${sh ? " \u00b7 " + M.showTenths(sh.spending) + " of income" : ""}</p>
+  // Like Cash flow: the overview stays on top, and a switch shows one part at a time (Spending, Saved, Buckets). The choice stays while the app is open.
+  const bview = ui.budgetView ?? "spending";
+  const views = `<div class="seg" role="group" aria-label="What to show">${[["spending", "Spending"], ["saved", "Saved"], ["buckets", "Buckets"]].map(([v, t]) => `<button data-action="budget-view" data-view="${v}" aria-pressed="${bview === v}">${t}</button>`).join("")}</div><div class="viewmark"></div>`;
+  const part = bview === "saved" ? `
     <h2>Saved and set aside</h2>${savedHtml}${plan ? "" : `<details class="explain" id="bud-how"><summary>How saving is worked out</summary>${M.savingsExplained(M.resolveSettings(set.suggest_settings ?? {}).settings ?? M.SUGGEST_DEFAULTS).map((x) => `<p class="note">${esc(x)}</p>`).join("")}</details>`}<p class="note" id="bud-saved-total">Total: ${peso(savedTotal)}${sh ? " \u00b7 " + M.showTenths(sh.saved) + " of income" : ""}</p>
     ${bufferRows.map((r) => `<div class="row" id="bud-buffer-line"><div>${esc(r.name)}<small>Its own line. Not savings, so it is not in the total above.</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}</div></div>`).join("")}
-    <p><button data-action="open-savings" style="width:100%">Add a savings category</button></p>${!plan && shareable.length >= 2 ? `<p class="note"><button class="link" data-action="open-shares">Change the percentages</button> that share what is left between ${shareable.length} goals${set.goal_shares ? ` \u00b7 <button class="link" data-action="clear-shares">Share equally again</button>` : ""}</p>` : ""}${sum}
-    ${bucketsHtml}
+    <p><button data-action="open-savings" style="width:100%">Add a savings category</button></p>${!plan && shareable.length >= 2 ? `<p class="note"><button class="link" data-action="open-shares">Change the percentages</button> that share what is left between ${shareable.length} goals${set.goal_shares ? ` \u00b7 <button class="link" data-action="clear-shares">Share equally again</button>` : ""}</p>` : ""}` : bview === "buckets" ? (bucketsHtml || `<p class="note">Add your income first: the buckets are shares of it.</p>`) : `
+    <h2>Spending</h2>${spendRows}<p class="note" id="bud-spend-total">Total budgeted: ${peso(spendTotal)}${sh ? " \u00b7 " + M.showTenths(sh.spending) + " of income" : ""}</p>`;
+  return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${head}${sum}
+    ${views}<div class="viewbody">${part}</div>
     ${byPaydaySection()}
     <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
 }
-
 const runSuggest = () => { const set = ledger.settings; return M.suggestBudgets({ state: S(), plan: planOf(), pin: set.income_base_pin ?? null, today: today(), month: M.monthOf(today()), settings: set.suggest_settings, pins: set.budget_pins ?? {}, rent: set.starter_rent ?? undefined, goalPins: set.goal_monthly ?? {}, goalShares: set.goal_shares ?? {}, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets }); };
 // What the "Yours" box shows: what was typed or taken from the suggestion, else the pinned figure, else the budget in force.
 const yoursOf = (x, f) => (f["y_" + x.category_id] !== undefined ? f["y_" + x.category_id] : ledger.settings.budget_pins?.[x.category_id] !== undefined ? (ledger.settings.budget_pins[x.category_id] / 100).toFixed(2) : x.current != null ? (x.current / 100).toFixed(2) : "");
@@ -2200,6 +2203,7 @@ async function onClick(el) {
       ui.period = { kind: "range", ...r }; ui.sheet = null; ui.sel = null; renderAll(); break;
     }
     case "chart-view": ui.view = el.dataset.view; ui.sel = null; renderScreen(); break;
+    case "budget-view": ui.budgetView = el.dataset.view; renderScreen(); break;
     case "bucket-mode": ui.bucketsAsList = !ui.bucketsAsList; renderScreen(); break;
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
     case "open-month": ui.period = { kind: "month", month: id }; ui.view = "budget"; ui.sel = null; ui.asList = false; renderScreen(); break;
