@@ -18,7 +18,8 @@ const T0 = new Date("2026-10-03T03:00:00Z");   // 11:00 on Oct 3 in Manila
 // What most tests start from: a ledger in the owner's own style (the categories and the three meal tiles the app used to start everyone with), so the
 // long flows below keep their wording. A brand-new install is now neutral: tests of that open with styled: false.
 const owner = (id, name, role) => ({ id, name, kind: "expense", ...(role ? { role } : {}) });
-const OWNER_STYLE = { v: 3, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings: { notice_seen_at: "2026-10-01T08:00:00.000+08:00" }, state: {
+const LEDGER_V = 4;
+const OWNER_STYLE = { v: 4, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings: { notice_seen_at: "2026-10-01T08:00:00.000+08:00" }, state: {
   ...Object.fromEntries(["accounts", "goals", "envelopes", "transactions", "entries", "categoryMaps", "rules", "templates", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"].map((k) => [k, []])),
   categories: [owner("cat-food", "Food", "food"), owner("cat-lakat", "Lakat/Date"), owner("cat-family", "Family"), owner("cat-shopping", "Shopping"), owner("cat-essentials", "Essentials", "essentials"), owner("cat-upskill", "Upskill"),
     owner("cat-subscription", "Subscription", "subscription"), owner("cat-rent", "Rent", "rent"), owner("cat-unlogged", "Unlogged"),
@@ -847,10 +848,39 @@ await page.click('#nav button:has-text("Log")');
 check((await text(page, "#screen")).includes("Tagging new entries: Test Trip"), "the Log screen says new entries are being tagged");
 await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "120"); await page.click('#sheet .chip:has-text("Upskill")'); await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
 ledgerNow = JSON.parse((await stored(page)).local);
-check(ledgerNow.state.transactions.some((t) => t.tag_id === ledgerNow.state.tags[0].id && t.status === "draft"), "the new entry carries the trip tag with no extra taps");
+check(ledgerNow.state.transactions.some((t) => t.trip_add === ledgerNow.state.tags[0].id && t.status === "draft"), "the new entry carries the trip tag with no extra taps");
 await menuGo(page, "Trips");
 check((await text(page, "#screen")).includes("plus ₱120.00 not verified yet"), "unverified trip spending is mentioned, not counted");
 await shot(page, "28-trips");
+// trip dates: the dates add entries by themselves, trips cannot overlap, hand overrides, "Before the trip"
+{
+  const nowMs = await page.evaluate(() => Date.now());   // the test clock, not the real one
+  const phDay = (n) => new Date(nowMs + 8 * 3600e3 + n * 864e5).toISOString().slice(0, 10);
+  await page.click('button[data-action="open-trip-dates"]');
+  check(await page.locator("#f-save").isDisabled(), "dates need both days");
+  await page.fill("#t-start", phDay(-1)); await page.fill("#t-end", phDay(1)); await page.click("#f-save"); await seen(page, "#toast", "Dates saved");
+  check((await text(page, "#screen")).includes(" to ") && (await text(page, "#screen")).includes("Change dates"), "the trip shows its days");
+  await page.click('button:has-text("Add a trip")'); await page.fill("#t-name", "Second Trip"); await page.fill("#t-start", phDay(1)); await page.fill("#t-end", phDay(4)); await page.click("#f-save");
+  check((await text(page, "#sheet")).includes('overlap your trip "Test Trip"') && (await page.locator("#sheet #t-name").count()) === 1, "overlapping dates show a plain message naming the other trip, and the sheet stays open");
+  check(JSON.parse((await stored(page)).local).state.tags.length === 1, "and nothing is saved");
+  await page.fill("#t-start", phDay(2)); await page.click("#f-save"); await seen(page, "#toast", "Trip added");
+  check(JSON.parse((await stored(page)).local).state.tags.length === 2, "free days are accepted");
+  await page.click('button[data-action="open-trip-detail"] >> nth=0');
+  check((await text(page, "#screen")).includes("Upskill") || (await text(page, "#screen")).includes("₱120.00"), "the trip's entries are listed");
+  check(!(await text(page, "#screen")).includes("Before the trip"), "no Before the trip heading yet");
+  await page.locator('#screen .row:has-text("₱120.00") button[data-action="trip-remove"]').click();
+  let led = JSON.parse((await stored(page)).local); const tx = led.state.transactions.find((t) => t.status === "draft" && t.payee !== undefined && led.state.entries.some((e) => e.transaction_id === t.id && e.amount === 12000));
+  check(tx && tx.trip_add === undefined && tx.trip_out === led.state.tags[0].id, "taking an entry off records only a removal on that entry");
+  check((await page.locator('#screen .row:has-text("₱120.00")').count()) === 0, "it leaves the list");
+  await page.click('button[data-action="open-trip-pick"]'); await page.locator('#sheet .row:has-text("₱120.00") button[data-action="trip-add"]').click();
+  await page.click('#sheet button:has-text("Done")');
+  led = JSON.parse((await stored(page)).local);
+  check(led.state.transactions.some((t) => t.trip_add === led.state.tags[0].id), "adding by hand records trip_add");
+  await page.click('button[data-action="open-trip-dates"]'); await page.fill("#t-start", phDay(1)); await page.fill("#t-end", phDay(1)); await page.click("#f-save"); await seen(page, "#toast", "Dates saved");
+  check(/Before the trip[\s\S]*₱120\.00/i.test(await text(page, "#screen")), "a hand-added entry dated before the first day is listed under Before the trip");
+  await page.click('button[data-action="trip-back"]');
+  check((await text(page, "#screen")).includes("Second Trip"), "back to all trips");
+}
 await page.click('button:has-text("Tagging new entries")');
 await page.click('#nav button:has-text("Log")');
 check(!(await text(page, "#screen")).includes("Tagging new entries"), "tagging can be switched off");
@@ -1667,7 +1697,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
 { ({ ctx, page, errors } = await open({ blockSw: true, seed: V1 }));
   check(await seen(page, "#toast", "updated to the newest format"), "old data (the first data version) is updated when the app starts, and the app says so");
   let led = JSON.parse((await stored(page)).local), idb = JSON.parse((await stored(page)).idb);
-  check(led.v === 3 && idb.v === 3 && led.state.transactions.length === 1 && led.state.entries.length === 2 && Array.isArray(led.state.payslipRevisions) && led.state.accounts[0].opening_balance === 100000, "both stores hold the new format with every record kept");
+  check(led.v === LEDGER_V && idb.v === LEDGER_V && led.state.transactions.length === 1 && led.state.entries.length === 2 && Array.isArray(led.state.payslipRevisions) && led.state.accounts[0].opening_balance === 100000, "both stores hold the new format with every record kept");
   check(JSON.stringify(led.state.transactions[0]) === JSON.stringify(V1.state.transactions[0]), "and no field of a record changed");
   { const kept = await page.evaluate(async () => {
       const local = JSON.parse(localStorage.getItem("financialTracker.preupgrade") ?? "[]");
@@ -1678,7 +1708,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
     check(same(kept.local) && same(kept.idb), "the data as it was before the update is kept in both stores"); }
   await menuGo(page, "Setup");
   const su = await text(page, "#screen");
-  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 3") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
+  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 4") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
   await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "40"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
   check(JSON.parse((await stored(page)).local).state.transactions.length === 2, "an expense is added after the update");
   await menuGo(page, "Setup");
@@ -1687,7 +1717,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
   await Promise.all([page.waitForNavigation(), page.click('button[data-action="restore-copy"][data-id="0"]')]);
   await page.waitForSelector("#nav button"); await seen(page, "#toast", "updated to the newest format");
   led = JSON.parse((await stored(page)).local);
-  check(led.state.transactions.length === 1 && led.v === 3, "the copy is back (the later expense is gone) and it is updated again");
+  check(led.state.transactions.length === 1 && led.v === LEDGER_V, "the copy is back (the later expense is gone) and it is updated again");
   await menuGo(page, "Setup");
   check((await page.locator('button[data-action="restore-copy"]').count()) === 1, "restoring does not pile up copies of the same data");
   await ctx.close(); }
