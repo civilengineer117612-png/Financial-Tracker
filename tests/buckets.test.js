@@ -1,59 +1,84 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { fitToIncome, BUCKET_BY_ROLE, DEFAULT_TARGETS, resolveTargets, parseTargets, bucketOf, bucketMap, unconfirmed, askBucket, guessType, typeOf, withBucket, starterFromTargets, bucketRows, suggestBudgets, SUGGEST_DEFAULTS, CATEGORY_ROLES } from "../src/model/index.js";
+import { fitToIncome, DEFAULT_TARGETS, resolveTargets, parseTargets, bucketOf, bucketMap, unclear, renameConflict, readBucket, BUCKET_WORDS, withBucket, starterFromTargets, bucketRows, suggestBudgets, SUGGEST_DEFAULTS, CATEGORY_ROLES } from "../src/model/index.js";
 import { UNLOGGED_CATEGORY_ID } from "../src/model/seed.js";
 import { makeState, account } from "./fixtures.js";
 
 // Invented numbers only. 100 centavos = 1 peso.
 const c = (id, name, role) => ({ id, name, kind: "expense", ...(role ? { role } : {}) });
 
-test("the bucket follows from the Type: needs, wants, savings; Family and Other have no default", () => {
-  assert.deepEqual(Object.keys(BUCKET_BY_ROLE).sort(), [...CATEGORY_ROLES.filter((r) => r !== "family" && r !== "other"), "essentials", "health"].sort(), "every Type but Family and Other has a bucket; the two older Types keep theirs");
-  for (const r of ["rent", "food", "transport", "utilities", "debt", "essentials", "health"]) assert.equal(bucketOf(c("x", "Any", r)), "need", r);
-  for (const r of ["shopping", "dining", "fun", "subscription"]) assert.equal(bucketOf(c("x", "Any", r)), "want", r);
-  assert.equal(bucketOf(c("x", "Upskill", "invest")), "savings");
-  assert.equal(bucketOf(c("x", "Support", "family")), "other"); assert.equal(bucketOf(c("x", "Misc", "other")), "other");
+test("the bucket is read from the name: the owner's own categories need nothing set", () => {
+  const want = { Food: "need", Essentials: "need", Transpo: "need", Rent: "need", Subscription: "want", Shopping: "want", Health: "need", Fun: "want", Other: "other",
+    "Lakat/Date": "want", Lakat: "want", Upskill: "savings", Damit: "need" };
+  for (const [name, b] of Object.entries(want)) assert.equal(bucketOf(c("x", name)), b, name);
 });
 
-test("the owner's answer wins over the Type; an answer that is not a bucket is ignored", () => {
-  assert.equal(bucketOf(c("a", "Food", "food"), { a: "want" }), "want");
-  assert.equal(bucketOf(c("a", "Mystery", "family"), { a: "need" }), "need");
-  assert.equal(bucketOf(c("a", "Food", "food"), { a: "banana" }), "need", "an invalid answer is not used");
+test("English, Filipino, Taglish and shorthand are read; capitals, accents, plurals and extra words do not matter", () => {
+  const want = { "Grocery (SM)": "need", GROCERIES: "need", Palengke: "need", Baon: "need", "Kuryente & Tubig": "need", Meralco: "need", Load: "need", Bills: "need",
+    Pamasahe: "need", Grab: "need", Gasolina: "need", RFID: "need", Gamot: "need", PhilHealth: "need", "Pag-IBIG": "need", HDMF: "need", Amort: "need", "Assoc dues": "need",
+    Kape: "want", "Café": "want", "Milk tea": "want", Samgyup: "want", "Kain sa labas": "want", Gimik: "want", Inuman: "want", Netflix: "want", Shopee: "want", Budol: "want", Salon: "want",
+    Ipon: "savings", MP2: "savings", "Emergency fund": "savings", Books: "savings", Misc: "other", "Iba pa": "other", Others: "other" };
+  for (const [name, b] of Object.entries(want)) assert.equal(readBucket(name).bucket, b, name);
 });
 
-test("with no stored Type, the bucket is the name's guess; with no guess, Other. A stored Type always wins over the name", () => {
-  assert.equal(bucketOf(c("a", "Rent")), "need", "guessed rent");
-  assert.equal(bucketOf(c("a", "Netflix")), "want");
-  assert.equal(bucketOf(c("a", "Mystery")), "other", "no guess");
-  assert.equal(bucketOf(c("a", "Rent", "fun")), "want", "named Rent but the owner's Type is Fun");
+test("the longest matching words win: food delivery is a want, food alone a need; a tie goes to the word that must be asked", () => {
+  assert.equal(readBucket("Food delivery").bucket, "want");
+  assert.equal(readBucket("Food").bucket, "need");
+  assert.equal(readBucket("Other bills").bucket, "need", "a clear word beats Other");
+  assert.equal(readBucket("Gym membership").bucket, "want", "membership is longer than gym");
+  assert.equal(readBucket("Gym fees").bucket, null, "gym on its own is asked");
+  assert.equal(readBucket("Gym spa").bucket, null, "same length (gym, spa): the word to ask about wins");
+  assert.equal(readBucket("Bar fee").bucket, "want");
 });
 
-test("unconfirmed lists the spending categories with no stored Type, never Unlogged or income; askBucket lists Family and Other with no answer", () => {
-  const cats = [c("f", "Food", "food"), c("m", "Mystery"), c("z", "Zed"), c("fam", "Support", "family"), c("o", "Misc", "other"), c(UNLOGGED_CATEGORY_ID, "Unlogged"), { id: "i", name: "Salary", kind: "income" }];
-  assert.deepEqual(unconfirmed(cats, UNLOGGED_CATEGORY_ID).map((x) => x.id), ["m", "z"]);
-  assert.deepEqual(askBucket(cats, { o: "want" }).map((x) => x.id), ["fam"]);
-  assert.deepEqual(askBucket(cats, {}).map((x) => x.id), ["fam", "o"], "Other is asked too");
+test("names that depend on the person are not read but asked: family, debt, shoes, gym, pets, gifts", () => {
+  for (const n of ["Family", "Pamilya", "Padala", "Allowance", "Utang", "Loan", "Credit card", "CC", "Hulog", "Sapatos", "Shoes", "Gym", "Pets", "Regalo", "Tithes"]) {
+    assert.equal(readBucket(n).bucket, null, n); assert.ok(readBucket(n).word, n + " is recognised as a word to ask about");
+  }
+  for (const n of ["Shabu Kain", "Pets and stuff", "Zzz", ""]) assert.equal(readBucket(n).bucket, null, n);
+  assert.equal(readBucket("Shabu Kain").word, null, "an unknown name has no word at all");
 });
 
-test("typeOf: a stored Type is confirmed; a name's guess is not; no guess is no Type", () => {
-  assert.deepEqual(typeOf(c("a", "Pets", "family")), { type: "family", confirmed: true, guess: false });
-  assert.deepEqual(typeOf(c("a", "Groceries")), { type: "food", confirmed: false, guess: true });
-  assert.deepEqual(typeOf(c("a", "Pets")), { type: null, confirmed: false, guess: false });
+test("whole words only: a word inside another word does not count", () => {
+  assert.equal(readBucket("Update").bucket, null, "date is not read inside update");
+  assert.equal(readBucket("Bart").bucket, null, "bar is not read inside Bart");
+  assert.equal(readBucket("Carpool money").bucket, null, "car is not read inside carpool");
 });
 
-test("guessing a Type from the name, with common Filipino words; nothing for what is unclear", () => {
-  const want = { Rent: "rent", Upa: "rent", Groceries: "food", Palengke: "food", Pamasahe: "transport", Grab: "transport", Kuryente: "utilities", Meralco: "utilities", Netflix: "subscription", Shopee: "shopping",
-    "Milk tea": "dining", Kainan: "dining", "Lakat/Date": "fun", Sine: "fun", Pamilya: "family", "Family support": "family", Padala: "family", Upskill: "invest", Utang: "debt", "Credit card": "debt" };
-  for (const [name, type] of Object.entries(want)) assert.equal(guessType(name), type, name);
-  for (const n of ["Pets", "Misc", "Stuff", "", "Other"]) assert.equal(guessType(n), null, n);
+test("every word is in one list only, so a name never reads two ways", () => {
+  const seen = new Map();
+  for (const [kind, words] of Object.entries(BUCKET_WORDS)) for (const w of words) { assert.ok(!seen.has(w), `${w} is in ${seen.get(w)} and ${kind}`); seen.set(w, kind); }
+});
+
+test("the owner's answer (any of the four) wins over the name; an answer that is not one of them is ignored", () => {
+  assert.equal(bucketOf(c("a", "Food"), { a: "want" }), "want");
+  assert.equal(bucketOf(c("a", "Shabu Kain"), { a: "other" }), "other", "Keep in Other");
+  assert.equal(bucketOf(c("a", "Food"), { a: "other" }), "other", "Other chosen by hand wins over a clear name");
+  assert.equal(bucketOf(c("a", "Shabu Kain"), { a: "savings" }), "savings");
+  assert.equal(bucketOf(c("a", "Food"), { a: "banana" }), "need");
+  assert.equal(bucketOf(c("a", "Food", "fun")), "need", "an old stored Type no longer decides the bucket: the name does");
+});
+
+test("unclear lists the categories the name cannot place and the owner has not answered, never Unlogged or income", () => {
+  const cats = [c("f", "Food"), c("s", "Shabu Kain"), c("u", "Utang"), c("k", "Keep me", ), c("m", "Misc"), c(UNLOGGED_CATEGORY_ID, "Unlogged"), { id: "i", name: "Salary", kind: "income" }];
+  assert.deepEqual(unclear(cats, { k: "other" }, UNLOGGED_CATEGORY_ID).map((x) => x.id), ["s", "u"]);
+});
+
+test("renaming: a bucket set by hand is kept unless the new name clearly reads otherwise, and then the owner is asked", () => {
+  assert.deepEqual(renameConflict(c("a", "Coffee"), "Kape", { a: "need" }), { mine: "need", read: "want" });
+  assert.equal(renameConflict(c("a", "Coffee"), "Kape", {}), null, "nothing set by hand: the new name simply applies");
+  assert.equal(renameConflict(c("a", "Coffee"), "Shabu Kain", { a: "need" }), null, "an unclear new name keeps your choice");
+  assert.equal(renameConflict(c("a", "Coffee"), "Groceries", { a: "need" }), null, "the new name agrees");
+  assert.deepEqual(renameConflict(c("a", "X"), "Misc", { a: "need" }), { mine: "need", read: "other" });
 });
 
 test("withBucket stores an answer, clears it, and refuses a made-up bucket", () => {
   const s = withBucket({ keep: 1 }, "a", "want");
   assert.deepEqual(s, { keep: 1, bucket_overrides: { a: "want" } });
   assert.deepEqual(withBucket(s, "a", null).bucket_overrides, {});
-  assert.equal(withBucket(s, "a", "other"), s);
+  assert.equal(withBucket(s, "a", "banana"), s);
+  assert.deepEqual(withBucket(s, "a", "other").bucket_overrides, { a: "other" }, "Keep in Other is an answer");
   assert.deepEqual(s.bucket_overrides, { a: "want" }, "the old settings are not changed");
 });
 
@@ -75,8 +100,8 @@ test("the starter ratios come from the targets with the buffer off the top of sa
   assert.deepEqual(starterFromTargets({ need: 7000, want: 2800, savings: 200 }, 500), { needs: 7000, wants: 2800, savings: 0, buffer: 200 }, "the buffer never takes more than the savings target");
 });
 
-test("bucket rows: totals and percent of income per bucket, Goals and invested spending in savings, the buffer on its own line, never anything about red", () => {
-  const cats = [c("rent", "Rent", "rent"), c("food", "Food", "food"), c("fun", "Fun", "fun"), c("up", "Upskill", "invest"), c("m", "Mystery")];
+test("bucket rows: totals and percent of income per bucket, Goals and spending on yourself in savings, the buffer on its own line, never anything about red", () => {
+  const cats = [c("rent", "Rent"), c("food", "Food"), c("fun", "Fun"), c("up", "Upskill"), c("m", "Shabu Kain")];
   const r = bucketRows({ categories: cats, overrides: {}, targets: undefined, budgets: { rent: 800000, food: 500000, fun: 300000, up: 100000, m: 50000 }, goals: 400000, buffer: 100000, income: 2500000 });
   assert.deepEqual(r.rows.map((x) => [x.bucket, x.amount, x.tenths, x.target]), [["need", 1300000, 520, 500], ["want", 300000, 120, 300], ["savings", 500000, 200, 200], ["other", 50000, 20, null]]);
   assert.deepEqual(r.invested, { label: "Invest in yourself", amount: 100000 });
@@ -84,20 +109,17 @@ test("bucket rows: totals and percent of income per bucket, Goals and invested s
   assert.ok(!r.rows.some((x) => /red|over|short/i.test(JSON.stringify(x))));
 });
 
-test("bucket rows: unconfirmed categories are counted under their guessed bucket, or Other, and flagged with the amount and how many", () => {
-  const cats = [c("rent", "Rent", "rent"), c("g", "Groceries"), c("n", "Netflix"), c("m", "Mystery"), c("z", "Zero")];
-  const r = bucketRows({ categories: cats, overrides: {}, budgets: { rent: 800000, g: 400000, n: 50000, m: 30000, z: 0 }, income: 2500000 });
-  assert.deepEqual(r.rows.map((x) => [x.bucket, x.amount]), [["need", 1200000], ["want", 50000], ["savings", 0], ["other", 30000]]);
-  assert.deepEqual(r.unconfirmed, { amount: 480000, count: 3, ids: ["g", "n", "m"] }, "the Type-less ones with a budget; a zero budget is not counted");
-  const done = bucketRows({ categories: [c("g", "Groceries", "food"), c("m", "Mystery", "other")], overrides: {}, budgets: { g: 400000, m: 30000 }, income: 2500000 });
-  assert.equal(done.unconfirmed.count, 0, "a stored Type, even Other, is confirmed");
-  assert.deepEqual(done.rows.find((x) => x.bucket === "other"), { bucket: "other", label: "Other", amount: 30000, tenths: 12, target: null }, "Other is its own line, never dropped");
+test("bucket rows: unclear names are counted in Other and flagged with the amount and how many; Other on purpose and answered ones are not flagged", () => {
+  const cats = [c("rent", "Rent"), c("s", "Shabu Kain"), c("u", "Utang"), c("m", "Misc"), c("k", "Kept"), c("z", "Zero")];
+  const r = bucketRows({ categories: cats, overrides: { k: "other" }, budgets: { rent: 800000, s: 40000, u: 60000, m: 30000, k: 20000, z: 0 }, income: 2500000 });
+  assert.deepEqual(r.rows.map((x) => [x.bucket, x.amount]), [["need", 800000], ["want", 0], ["savings", 0], ["other", 150000]]);
+  assert.deepEqual(r.unconfirmed, { amount: 100000, count: 2, ids: ["s", "u"] }, "only the unclear ones with a budget");
 });
 
-test("only spending of the Type Invest in yourself shows as invested; another category the owner put in Savings does not", () => {
-  const r = bucketRows({ categories: [c("up", "Course", "invest"), c("x", "Misc", "food")], overrides: { x: "savings" }, budgets: { up: 100000, x: 70000 }, income: 2500000 });
+test("everything in Savings that is spending shows as Invest in yourself, chosen by hand or read from the name", () => {
+  const r = bucketRows({ categories: [c("up", "Course"), c("x", "Shabu Kain")], overrides: { x: "savings" }, budgets: { up: 100000, x: 70000 }, income: 2500000 });
   assert.equal(r.rows.find((x) => x.bucket === "savings").amount, 170000);
-  assert.equal(r.invested.amount, 100000);
+  assert.equal(r.invested.amount, 170000);
 });
 
 test("bucket rows: an answer moves a category; no 'not sorted' row when nothing is in it; no percent without income", () => {

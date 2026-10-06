@@ -1,17 +1,13 @@
-// Buckets: every spending category sits in one of NEEDS, WANTS or SAVINGS, or under "Other" until its Type or its bucket is known. The bucket follows from
-// the category's TYPE; the owner can override any bucket. Pure functions; the answers live in the settings (`bucket_overrides`, `bucket_targets`), so no data
-// version changes. A category with no stored Type is counted under the bucket of its NAME'S GUESS (types.js) and flagged unconfirmed until the owner taps.
-import { guessType } from "./types.js";
+// Buckets: every spending category sits in NEEDS, WANTS, SAVINGS or OTHER. The bucket is READ FROM THE CATEGORY'S NAME (bucketwords.js), so there is no
+// separate Type to set: "Food" is a need, "Netflix" a want, "Upskill" savings, "Misc" other. A name that is not clear ("Shabu Kain", or a word that depends on
+// the person, like family, utang, gym) sits in Other and is asked once: Need, Want, Savings, or Keep in Other. The owner's answer, or any bucket they set by
+// hand, is kept in the settings (`bucket_overrides`) and wins. Renaming reads the name again; if that disagrees with a bucket set by hand, the owner is asked.
+// Pure functions; everything lives in the settings, so no data version changes.
+import { readBucket } from "./bucketwords.js";
 export const BUCKETS = ["need", "want", "savings"];
+export const CHOICES = ["need", "want", "savings", "other"];   // what the owner can choose: the three, or Keep in Other
 export const BUCKET_LABELS = { need: "Needs", want: "Wants", savings: "Savings", other: "Other" };
-
-// A category's bucket follows from its TYPE (stored in `role`). Family and Other have no default: the owner is asked once, Need or want.
-export const BUCKET_BY_ROLE = {
-  rent: "need", food: "need", transport: "need", utilities: "need", debt: "need", essentials: "need", health: "need",
-  shopping: "want", dining: "want", fun: "want", subscription: "want",
-  invest: "savings",   // spent rather than held: it counts as savings but is shown as "Invest in yourself" and is never part of the emergency fund
-};
-export const INVESTED_LABEL = "Invest in yourself";
+export const INVESTED_LABEL = "Invest in yourself";   // spending in Savings (a course, books): counted as savings, never part of the emergency fund
 
 // ONE table of targets, in basis points (5000 = 50%), editable on the Budget screen. A common rule of thumb, not advice.
 export const DEFAULT_TARGETS = { need: 5000, want: 3000, savings: 2000 };
@@ -33,27 +29,29 @@ export function parseTargets({ need, want, savings }) {
   return { ok: true, targets: { need: p[0] * 100, want: p[1] * 100, savings: p[2] * 100 } };
 }
 
-// The bucket of one spending category: what the owner chose wins, then its Type's bucket, else (no Type yet) the bucket of the name's guess, else "other".
+// The bucket of one spending category: what the owner chose wins, then what its name says, else Other (not clear yet).
 export function bucketOf(category, overrides = {}) {
   const chosen = overrides?.[category.id];
-  if (BUCKETS.includes(chosen)) return chosen;
-  const type = category.role ?? guessType(category.name);
-  return BUCKET_BY_ROLE[type] ?? "other";
+  if (CHOICES.includes(chosen)) return chosen;
+  return readBucket(category.name).bucket ?? "other";
 }
 
 // Category id -> bucket for every spending category.
 export const bucketMap = (categories, overrides) => new Map(categories.filter((c) => c.kind === "expense").map((c) => [c.id, bucketOf(c, overrides)]));
 
-// Spending categories whose Type the owner has not confirmed (none stored): shown "(guess)" when the name suggests one. Never Unlogged.
-export const unconfirmed = (categories, skipId) => categories.filter((c) => c.kind === "expense" && c.id !== skipId && !c.role);
+// Spending categories whose name is not clear and that the owner has not answered: they sit in Other and are asked once. Never Unlogged.
+export const unclear = (categories, overrides, skipId) => categories.filter((c) => c.kind === "expense" && c.id !== skipId && !CHOICES.includes(overrides?.[c.id]) && readBucket(c.name).bucket === null);
 
-// Family and Other have no default bucket: asked once, "Need or want?", and remembered.
-export const askBucket = (categories, overrides) => categories.filter((c) => c.kind === "expense" && (c.role === "family" || c.role === "other") && !BUCKETS.includes(overrides?.[c.id]));
+// After a rename: when the owner had set the bucket by hand and the new name clearly reads as another bucket, ask which to keep. null when nothing to ask.
+export function renameConflict(category, newName, overrides) {
+  const mine = overrides?.[category.id], read = readBucket(newName).bucket;
+  return CHOICES.includes(mine) && read !== null && read !== mine ? { mine, read } : null;
+}
 
-// The settings after the owner's answer (null clears it, so the role's default applies again). Only the three buckets can be chosen.
+// The settings after the owner's answer (null clears it, so the name is read again). Need, Want, Savings or Other.
 export function withBucket(settings, categoryId, bucket) {
   const next = { ...(settings.bucket_overrides ?? {}) };
-  if (bucket == null) delete next[categoryId]; else if (BUCKETS.includes(bucket)) next[categoryId] = bucket; else return settings;
+  if (bucket == null) delete next[categoryId]; else if (CHOICES.includes(bucket)) next[categoryId] = bucket; else return settings;
   return { ...settings, bucket_overrides: next };
 }
 
@@ -65,18 +63,19 @@ export function starterFromTargets(targets, buffer) {
 }
 
 // The Budget screen's bucket block. budgets: {category_id: centavos} for the month; goals: monthly centavos set aside for Goals; buffer: monthly overrun buffer.
-// Savings = Goals + categories in the savings bucket (shown separately as "Invested in yourself" when their role is invest). The buffer is NOT savings.
+// Savings = Goals + spending categories in Savings (shown together as "Invest in yourself"). The buffer is NOT savings. Unclear names are counted in Other and
+// flagged (amount and how many) until the owner answers.
 // Percent is tenths of a percent of the income (1000 = 100.0%), plainly rounded; nothing here ever says red.
 export function bucketRows({ categories, overrides, targets, budgets, goals = 0, buffer = 0, income, skipId }) {
   const t = resolveTargets(targets), sum = { need: 0, want: 0, savings: 0, other: 0 };
   let invested = 0;
-  const unsure = [];   // categories with a budget whose Type is not confirmed: counted under their guessed bucket (or Other) and flagged
+  const unsure = [];   // unclear names with a budget, not yet answered: counted in Other and flagged
   for (const c of categories) {
     if (c.kind !== "expense") continue;
     const amount = budgets[c.id] ?? 0, b = bucketOf(c, overrides);
     sum[b] += amount;
-    if (b === "savings" && c.role === "invest") invested += amount;
-    if (!c.role && c.id !== skipId && amount > 0) unsure.push({ id: c.id, name: c.name, amount });
+    if (b === "savings") invested += amount;
+    if (c.id !== skipId && amount > 0 && !CHOICES.includes(overrides?.[c.id]) && readBucket(c.name).bucket === null) unsure.push({ id: c.id, name: c.name, amount });
   }
   sum.savings += goals;
   const pct = (a) => (income > 0 ? Math.floor((a * 2000 + income) / (2 * income)) : null);

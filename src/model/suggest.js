@@ -175,7 +175,7 @@ export function suggestPlan(input) {
     // With buckets (the owner's answers and the role defaults) a need is any category in Needs; without them, the old role list. Savings-bucket categories take no starter share.
     const bk = input.buckets, isNeed = (c) => (bk ? bk.get(c.id) === "need" : NEEDS.has(typeOf(c)));
     const needWeight = (c) => (typeOf(c) === "rent" ? 0 : S.starter_weights[typeOf(c)] ?? (bk ? S.needs_other_weight : 0));
-    const needsList = spendCats.filter((c) => isNeed(c) && needWeight(c) > 0), wantsList = spendCats.filter((c) => !isNeed(c) && !(bk && bk.get(c.id) === "savings"));
+    const needsList = spendCats.filter((c) => isNeed(c) && needWeight(c) > 0), wantsList = spendCats.filter((c) => !isNeed(c) && typeOf(c) !== "rent" && !(bk && bk.get(c.id) === "savings"));   // rent is fixed: never a share
     const needsPool = Math.max(0, Math.floor((monthIncome * S.starter.needs) / 10000) - fixedNeeds), wantsPool = Math.max(0, Math.floor((monthIncome * S.starter.wants) / 10000) - fixedWants);
     const loggedAny = wantsList.some((c) => (logged.get(c.id) ?? 0) > 0);
     const groups = [["needs", needsList, needsPool, needWeight, `after the rent and fixed payments, shared by typical weights for its role`],
