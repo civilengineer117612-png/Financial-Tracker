@@ -370,6 +370,12 @@ await page.fill("#b-pass", PASS); await page.fill("#b-pass2", PASS.slice(0, -1) 
 check((await text(page, "#sheet")).includes("do not match") && await page.locator("#f-save").isDisabled(), "a mismatch is explained and blocks");
 await page.fill("#b-pass2", PASS);
 check(await page.locator("#f-save").isEnabled(), "matching long passphrases turn it on");
+check((await page.locator("#b-pass").getAttribute("autocomplete")) === "new-password" && (await page.locator('#sheet input[autocomplete="username"]').count()) === 1, "the fields ask the phone to offer a new password");
+await page.click('button[data-action="make-passphrase"]');
+const made = await page.locator("#b-made").innerText();
+check(/^[2-9a-z]{5}(-[2-9a-z]{5}){3}$/.test(made) && (await page.inputValue("#b-pass")) === made && (await page.inputValue("#b-pass2")) === made && await page.locator("#f-save").isEnabled(), "Make one for me fills both fields, shows the passphrase, and turns the button on");
+check(await page.locator('button[data-action="copy-passphrase"]').isVisible(), "and offers to copy it");
+await page.fill("#b-pass", PASS); await page.fill("#b-pass2", PASS);
 await shot(page, "10-backup-sheet");
 const [download] = await Promise.all([page.waitForEvent("download"), page.click("#f-save")]);
 const file = join(mkdtempSync(join(tmpdir(), "bk-")), download.suggestedFilename());
@@ -379,6 +385,7 @@ const raw = readFileSync(file, "utf8"), box1 = JSON.parse(raw);
 check(box1.kind === "ledger" && box1.v === 1 && box1.iterations === 600000, "it is an encrypted ledger container");
 check(!["Test Cash", "Test Card", "Lunch", "9500"].some((x) => raw.includes(x)), "the file contains none of your data in the clear");
 check(await seen(page, "#toast", "Backup file created"), "the app says what to do next");
+{ const st = await stored(page); check(!st.local.includes(made) && !st.local.includes(PASS) && !(JSON.stringify(st).includes(made)), "neither passphrase is kept anywhere on the phone"); }
 check(await seen(page, "#screen", "Last backup: today"), "Setup shows when the last backup was made");
 await page.click('#nav button:has-text("Log")');
 check(!(await text(page, "#screen")).includes("No backup yet"), "the Log page stops mentioning it");
