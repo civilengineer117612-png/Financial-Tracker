@@ -1665,6 +1665,78 @@ console.log("Log date and Cash first");
   check(setupRows.length === 2 && /Cash/.test(setupRows[0]) && /Test Debit/.test(setupRows[1]), "on Setup, Cash is the first account in the list (" + setupRows.join(" | ").replace(/\n/g, " ") + ")");
   await ctx.close(); }
 
+// ===== 5m. the new Budget (Setup switch, off by default) =====
+console.log("The new Budget");
+{ ({ ctx, page, errors } = await open({ blockSw: true }));
+  await menuGo(page, "Budget");
+  const off = await text(page, "#screen");
+  check(off.includes("Tap one to set it.") && !off.includes("Income (base)") && !off.includes("Suggest a budget"), "with the switch off the Budget screen is the one it always was");
+  const before = JSON.parse((await stored(page)).local);
+  check(before.settings.try_new_budget === undefined, "the switch is not set on a ledger that never chose it");
+  await menuGo(page, "Setup");
+  await page.click('button:has-text("Off (tap to turn on)")');
+  const after = JSON.parse((await stored(page)).local);
+  check(after.settings.try_new_budget === true && JSON.stringify(after.state) === JSON.stringify(before.state), "turning it on changes only that one setting, never the records");
+  await menuGo(page, "Budget");
+  let t = await text(page, "#screen");
+  check(t.includes("Income (base)") && t.includes("Add a payslip or your pay to get a suggested budget."), "with no income the plain prompt shows, in the income box at the top");
+  check(/spending[\s\S]*saved and set aside/i.test(t) && t.includes("Total budgeted") && /Total: ₱/.test(t), "two blocks, Spending first, then Saved and set aside, each with a totals line");
+  await page.click('button:has-text("Type a different figure")');
+  check(await page.locator("#f-save").isDisabled(), "a figure needs an amount first");
+  await page.fill("#f-amount", "25000"); await page.click("#f-save"); await seen(page, "#toast", "Income figure set");
+  t = await text(page, "#screen");
+  check(t.includes("₱25,000.00 a month") && t.includes("Your own figure") && t.includes("Use my payslips again"), "the typed income is shown, with where it came from");
+  const sh = (txt) => { const m = /Spending ([\d.]+)%, Saved ([\d.]+)%, Unallocated ([\d.]+)%/.exec(txt); return m && m.slice(1).map((x) => Math.round(Number(x) * 10)); };
+  check(sh(t) && sh(t).reduce((a, b) => a + b, 0) === 1000 && sh(t)[0] === 0 && t.includes("Spent so far: 0.0% of income") && t.includes("Suggested, not saved"), "the three shares add up to exactly 100.0%, the extra figure shows, and with no plan the saved rows say they are only suggested");
+  // set a budget the old way: the row shows the amount and its share of income
+  await page.click('button[data-action="open-budget"][data-id="cat-food"]'); await page.fill("#f-amount", "5000"); await page.click("#f-save"); await seen(page, "#toast", "Budget saved");
+  t = await text(page, "#screen");
+  check(t.includes("₱5,000.00 a month · 20.0% of income") && sh(t)[0] === 200 && sh(t).reduce((a, b) => a + b, 0) === 1000, "a budget row shows its amount and its percent of income, and the shares follow");
+  check(!(await page.locator("#bud-income .overnote, .overnote").count()) && !(await page.locator("#screen .meter.g-critical").count()), "nothing is red when nothing is over");
+  // suggest, pin one line, confirm for next month
+  await page.click('button:has-text("Suggest a budget")');
+  check((await text(page, "#sheet")).includes("Nothing is saved until you confirm") && (await text(page, "#sheet")).includes("Suggested"), "the suggestion sheet explains that nothing is saved yet");
+  await page.click('button:has-text("Use all suggestions")');
+  await page.fill("#y_cat-food", "4000");
+  await page.click('button:has-text("Confirm")');
+  check(await page.locator('#sheet button[data-action="set-start-sug"][aria-pressed="true"]').innerText() === "Next month", "the start defaults to next month");
+  check((await text(page, "#sheet")).includes("Food") && (await text(page, "#sheet")).includes("₱5,000.00 → ₱4,000.00"), "the changes are listed before anything is saved");
+  const ruleCount = JSON.parse((await stored(page)).local).state.rules.length;
+  await page.click('button:has-text("Back")'); await page.click('button:has-text("Confirm")');
+  check(JSON.parse((await stored(page)).local).state.rules.length === ruleCount, "nothing was saved yet");
+  await page.click("#sheet button[data-action=save-sug]"); await seen(page, "#toast", "saved");
+  const led = JSON.parse((await stored(page)).local);
+  const food = led.state.rules.filter((r) => r.subject_id === "cat-food");
+  check(food.length === 2 && food[0].amount === 500000 && food[1].amount === 400000 && food[1].effective_from === "2026-11-01", "the old rule stays and the new one starts next month");
+  check(led.settings.budget_pins["cat-food"] === 400000 && led.settings.budget_income_seen === 2500000, "the typed figure is pinned, and the income at this confirm is remembered");
+  // a pinned figure survives a second suggestion
+  await page.click('button:has-text("Suggest a budget")');
+  check((await page.inputValue("#y_cat-food")) === "4000.00" && (await text(page, "#sheet")).includes("You pinned this figure"), "a pinned line is still yours when you ask again");
+  await page.fill("#y_cat-rent", "100"); await page.click('#sheet button:has-text("Cancel")');
+  check(JSON.parse((await stored(page)).local).settings.budget_pins["cat-rent"] === 10000, "a figure typed in a line is pinned even if the window is closed without confirming");
+  await page.click('button:has-text("Suggest a budget")'); await page.click('button[data-action="use-sug"][data-id="cat-rent"]'); await page.click('#sheet button:has-text("Cancel")');
+  check(JSON.parse((await stored(page)).local).settings.budget_pins["cat-rent"] === undefined, "taking the suggestion for a line un-pins it");
+  // income changes: a note, never a block
+  await page.click('button:has-text("Change my figure")'); await page.fill("#f-amount", "26000"); await page.click("#f-save"); await seen(page, "#toast", "Income figure set");
+  check((await text(page, "#screen")).includes("Income changed: review.") && await page.locator('button[data-action="open-budget"]').first().isEnabled(), "a changed income is a plain note, and nothing is blocked");
+  // switching off again restores the old screen, and the data is as it was
+  await menuGo(page, "Setup"); await page.click('button:has-text("On (tap to turn off)")'); await menuGo(page, "Budget");
+  check((await text(page, "#screen")).includes("Tap one to set it.") && !(await text(page, "#screen")).includes("Income (base)"), "turned off again, it is the old Budget");
+  await ctx.close(); }
+
+// An over-budget category is red, with a shape and words, in the new Budget too; the Saved rows never are
+{ ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 2500000 }, state: { ...OWNER_STYLE.state,
+    rules: [{ id: "r1", kind: "budget", subject_id: "cat-food", amount: 10000, effective_from: "2026-10-01", created_at: "2026-10-01T08:00:00.000+08:00" }],
+    accounts: [{ id: "w", name: "Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 1000000, opening_date: "2026-09-01" }],
+    transactions: [{ id: "t1", date: "2026-10-02", payee: "Sample", memo: "", status: "verified", source: "manual", created_at: "2026-10-02T09:00:00.000+08:00", verified_at: "2026-10-02T09:00:00.000+08:00" }],
+    entries: [{ transaction_id: "t1", category_id: "cat-food", amount: 15000 }, { transaction_id: "t1", account_id: "w", amount: -15000 }] } } }));
+  await menuGo(page, "Budget");
+  const over = page.locator("#screen .overnote");
+  check((await over.count()) === 1 && (await over.innerText()).includes("Over budget by ₱50.00") && (await over.locator("svg.glyph.g-critical").count()) === 1, "a category strictly over its budget shows a shape and words");
+  check(!(await text(page, "#screen")).includes("Saved") || (await page.locator("#screen .row svg.g-critical").count()) === 0, "Saved rows are never red");
+  check((await text(page, "#screen")).includes("Spent so far: 0.6% of income"), "spent so far is the verified spending as a share of income");
+  await ctx.close(); }
+
 // ===== 5n. help, and upgrading old data safely =====
 console.log("Help and upgrade safety");
 { ({ ctx, page, errors } = await open({ blockSw: true }));

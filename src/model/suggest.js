@@ -34,13 +34,16 @@ const splitBy = (total, w1, w2) => { if (w1 + w2 <= 0) return [total, 0]; const 
 
 // The paydays of a month: the day each falls on, and how many days each covers. 15 days and 16 days, never two halves.
 export function paydayDays(paydays, month) {
-  const [y, m] = month.split("-").map(Number), ny = m === 12 ? y + 1 : y, nm = m === 12 ? 1 : m + 1;
+  const [y, m] = month.split("-").map(Number);
+  if (paydays.length === 1) return { d1: 1, d2: 99, days1: dim(y, m), days2: 0 };   // monthly pay: the one payday covers the whole month
+  const ny = m === 12 ? y + 1 : y, nm = m === 12 ? 1 : m + 1;
   const d1 = dayIn(paydays[0].day, y, m), d2 = dayIn(paydays[1].day, y, m);
   return { d1, d2, days1: d2 - d1, days2: dim(y, m) - d2 + dayIn(paydays[0].day, ny, nm) };
 }
 
 // Which payday (0 or 1) a date's day-of-month is closest to; used to tell a payslip of the first payday from one of the second.
 function nearestPayday(paydays, date) {
+  if (paydays.length === 1) return 0;
   const [y, m, d] = date.split("-").map(Number), ds = paydays.map((p) => dayIn(p.day, y, m));
   const dist = (a) => { const x = Math.abs(a - d); return Math.min(x, 31 - x); };
   return dist(ds[0]) <= dist(ds[1]) ? 0 : 1;
@@ -70,7 +73,8 @@ export function usableMonths(state, { month, today, settings }) {
 }
 
 // suggestPlan({ state, plan?, paydays?, today, month, settings?, scheduled?, pinned?, ratchet? })
-//   paydays: [{id?, label?, day: 1-31 | "last"}, x2] (default: the plan's paydays)   month: "YYYY-MM", the month being planned
+//   paydays: [{id?, label?, day: 1-31 | "last"}] one (monthly pay) or two (default: the plan's paydays)   month: "YYYY-MM", the month being planned
+//   income: [centavos per payday] to use instead of the payslip medians (an owner-typed or plan figure); then no payslip is needed
 //   scheduled: [{name, kind: "scheduled" | "installment", amount, day, months_left?, category_id?}]   (category_id: the spending category it is paid
 //     under, so it is taken out of that category's median instead of being counted twice)
 //   pinned: [{name, first, second, kind?}]   the owner's own lines; never changed, the difference from the suggestion is returned
@@ -82,25 +86,26 @@ export function suggestPlan(input) {
   const S = cfg.settings;
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month ?? "") || !/^\d{4}-\d{2}-\d{2}$/.test(today ?? "")) return bad("Give the month as 2026-10 and today as 2026-10-05.");
   const paydays = (input.paydays ?? input.plan?.paydays)?.slice(0, 2);
-  if (!paydays || paydays.length !== 2) return bad("Choose your two paydays first.");
+  if (!paydays || paydays.length < 1) return bad("Choose your paydays first.");
+  if (input.income !== undefined && (!Array.isArray(input.income) || input.income.length !== paydays.length || !input.income.every(whole))) return bad("The income figures must be whole centavos, one per payday.");
   for (const x of scheduled) if (!whole(x.amount) || (x.months_left != null && !whole(x.months_left))) return bad(`The amount for ${x.name} must be whole centavos.`);
   for (const x of pinned) if (!whole(x.first) || !whole(x.second)) return bad(`The pinned amounts for ${x.name} must be whole centavos.`);
   if (input.ratchet && !whole(input.ratchet.amount)) return bad("The ratchet amount must be whole centavos.");
 
   // 1. Income of each payday: median of the last 3 base nets (overtime out) of that payday.
   const slips = netPerPayday(state);
-  if (!slips.length) return { ok: false, code: "NO_PAYSLIPS", message: NO_PAYSLIP_MESSAGE };
-  const nets = [[], []];
+  if (!slips.length && !input.income) return { ok: false, code: "NO_PAYSLIPS", message: NO_PAYSLIP_MESSAGE };
+  const nets = paydays.map(() => []);
   for (const r of slips) nets[nearestPayday(paydays, r.date)].push(r.base);   // oldest first
-  const income = nets.map((list) => median(list.slice(-MAX_NETS), "low"));
-  const incomeOf = (i) => (nets[i].length ? `Median of the last ${plural(Math.min(MAX_NETS, nets[i].length), "payslip", "payslips")}, overtime left out.` : "No payslip for this payday yet.");
-  const monthIncome = income[0] + income[1];
+  const income = input.income ? [...input.income] : nets.map((list) => median(list.slice(-MAX_NETS), "low"));
+  const incomeOf = (i) => (input.income ? "Your base income figure." : nets[i].length ? `Median of the last ${plural(Math.min(MAX_NETS, nets[i].length), "payslip", "payslips")}, overtime left out.` : "No payslip for this payday yet.");
+  const monthIncome = income.reduce((a, b) => a + b, 0), inc1 = income[1] ?? 0;
   const { days1, days2, d1, d2 } = paydayDays(paydays, month);
-  const payOfDay = (day) => (day >= d1 && day < d2 ? 0 : 1);
+  const payOfDay = (day) => (paydays.length === 1 || (day >= d1 && day < d2) ? 0 : 1);
 
   const lines = new Map();   // name (lower case) -> {name, kind, amounts: [first, second], reason, source}
-  const put = (name, kind, amounts, reason, source) => lines.set(name.trim().toLowerCase(), { name, kind, first: amounts[0], second: amounts[1], reason, source });
-  const fixedAt = (name, kind, total, day, reason, source) => put(name, kind, payOfDay(day) === 0 ? [total, 0] : [0, total], reason, source);
+  const put = (name, kind, amounts, reason, source, category_id) => lines.set(name.trim().toLowerCase(), { name, kind, first: amounts[0], second: amounts[1], reason, source, ...(category_id ? { category_id } : {}) });
+  const fixedAt = (name, kind, total, day, reason, source, category_id) => put(name, kind, payOfDay(day) === 0 ? [total, 0] : [0, total], reason, source, category_id);
 
   // 2. What history can teach: usable months, and each category's amount in each of them.
   const months = usableMonths(state, { month, today, settings: S });
@@ -131,7 +136,7 @@ export function suggestPlan(input) {
     const days = state.entries.filter((e) => e.category_id === rentCat.id && e.amount > 0).map((e) => txById.get(e.transaction_id))
       .filter((t) => t && t.status === "verified" && months.some((u) => t.date.startsWith(u.month + "-"))).map((t) => Number(t.date.slice(8)));
     const day = days.length ? median(days, "low") : d1;
-    if (total > 0) { fixedAt(rentCat.name, "expense", total, day, `Median of the last ${plural(months.length, "usable month", "usable months")}, usually paid around day ${day}, so it is set aside on payday ${payOfDay(day) + 1}.`, "history"); fixedNeeds += total; }
+    if (total > 0) { fixedAt(rentCat.name, "expense", total, day, `Median of the last ${plural(months.length, "usable month", "usable months")}, usually paid around day ${day}, so it is set aside on payday ${payOfDay(day) + 1}.`, "history", rentCat.id); fixedNeeds += total; }
   }
 
   // 4. Spending lines. With 2 or more usable months: median of each category. Otherwise a starter share of pay, marked "starter".
@@ -139,11 +144,11 @@ export function suggestPlan(input) {
   for (const x of scheduled) if (x.category_id && x.months_left !== 0) schedulerCat.set(x.category_id, (schedulerCat.get(x.category_id) ?? 0) + x.amount);
   const skip = (c) => lines.has(c.name.trim().toLowerCase()) || (c.role === "subscription" && subs.length > 0);
   const spendCats = cats.filter((c) => !skip(c));
-  const split = (total, name, kind, reason, source) => put(name, kind, splitBy(total, days1, days2), reason, source);
+  const split = (total, name, kind, reason, source, category_id) => put(name, kind, splitBy(total, days1, days2), reason, source, category_id);
   if (learn) {
     for (const c of spendCats) {
       const total = Math.max(0, median(monthly(c.id)) - (schedulerCat.get(c.id) ?? 0));
-      split(total, c.name, "expense", `Median of the last ${plural(months.length, "usable month", "usable months")}${schedulerCat.has(c.id) ? ", after its scheduled payments" : ""}, split by days covered (${days1} and ${days2} days).`, "history");
+      split(total, c.name, "expense", `Median of the last ${plural(months.length, "usable month", "usable months")}${schedulerCat.has(c.id) ? ", after its scheduled payments" : ""}, split by days covered (${days1} and ${days2} days).`, "history", c.id);
     }
   } else {
     const groups = [["needs", spendCats.filter((c) => NEEDS.has(c.role)), Math.max(0, Math.floor((monthIncome * S.starter.needs) / 10000) - fixedNeeds)],
@@ -152,7 +157,7 @@ export function suggestPlan(input) {
       const reason = `Starter share, a common rule of thumb and not advice: ${pct(S.starter[group])} of pay for ${group}, split evenly across ${plural(Math.max(1, list.length), "line", "lines")} and by days covered.`;
       if (!list.length) { if (pool > 0) split(pool, group === "needs" ? "Needs" : "Wants", "expense", reason, "starter"); continue; }
       const each = Math.floor(pool / list.length);
-      list.forEach((c, i) => split(i === list.length - 1 ? pool - each * (list.length - 1) : each, c.name, "expense", reason, "starter"));
+      list.forEach((c, i) => split(i === list.length - 1 ? pool - each * (list.length - 1) : each, c.name, "expense", reason, "starter", c.id));
     }
   }
 
@@ -160,10 +165,11 @@ export function suggestPlan(input) {
   const differences = [];
   const applyPins = () => {
     for (const p of pinned) {
-      const key = p.name.trim().toLowerCase(), was = lines.get(key);
+      const found = [...lines.entries()].find(([k, l]) => (p.category_id ? l.category_id === p.category_id : k === p.name.trim().toLowerCase()));
+      const key = found ? found[0] : p.name.trim().toLowerCase(), was = found?.[1];
       if (was?.pinned) continue;
-      differences.push({ name: p.name, pinned: { first: p.first, second: p.second }, suggested: was ? { first: was.first, second: was.second } : null, difference: was ? { first: p.first - was.first, second: p.second - was.second } : null });
-      lines.set(key, { name: was?.name ?? p.name, kind: p.kind ?? was?.kind ?? "expense", first: p.first, second: p.second, reason: "Pinned by you, so it is not changed.", source: was?.source ?? "history", pinned: true });
+      differences.push({ name: was?.name ?? p.name, ...(was?.category_id || p.category_id ? { category_id: was?.category_id ?? p.category_id } : {}), pinned: { first: p.first, second: p.second }, suggested: was ? { first: was.first, second: was.second } : null, difference: was ? { first: p.first - was.first, second: p.second - was.second } : null });
+      lines.set(key, { name: was?.name ?? p.name, kind: p.kind ?? was?.kind ?? "expense", first: p.first, second: p.second, reason: "Pinned by you, so it is not changed.", source: was?.source ?? "history", pinned: true, ...(was?.category_id || p.category_id ? { category_id: was?.category_id ?? p.category_id } : {}) });
     }
   };
   applyPins();
@@ -173,7 +179,7 @@ export function suggestPlan(input) {
   const spentSoFar = () => total("first") + total("second");
   const bufferMonthly = S.buffer_amount ?? Math.floor((monthIncome * S.starter.buffer) / 10000);
   const bufferName = "Overrun buffer";
-  if (!lines.has(bufferName.toLowerCase())) { const [a, b] = splitBy(bufferMonthly, income[0], income[1]); put(bufferName, "buffer", [a, b], S.buffer_amount !== null ? "Your overrun buffer setting, split by what each payday brings in." : `Starter share, a common rule of thumb and not advice: ${pct(S.starter.buffer)} of pay, split by what each payday brings in.`, S.buffer_amount !== null ? "history" : "starter"); }
+  if (!lines.has(bufferName.toLowerCase())) { const [a, b] = splitBy(bufferMonthly, income[0], inc1); put(bufferName, "buffer", [a, b], S.buffer_amount !== null ? "Your overrun buffer setting, split by what each payday brings in." : `Starter share, a common rule of thumb and not advice: ${pct(S.starter.buffer)} of pay, split by what each payday brings in.`, S.buffer_amount !== null ? "history" : "starter"); }
   const bufferNow = lines.get(bufferName.toLowerCase());
   const costs = spentSoFar();   // everything but savings, with the pins in
   let saving, why;
@@ -196,13 +202,13 @@ export function suggestPlan(input) {
     const hit = parts.find((x) => x.name === first);
     if (hit) { hit.amount += left; } else parts.push({ name: first, amount: left, reason: why });
   }
-  for (const part of parts) { const [a, b] = splitBy(part.amount, income[0], income[1]); put(part.name, "goal", [a, b], part.reason, input.ratchet || learn ? "history" : "starter"); }
+  for (const part of parts) { const [a, b] = splitBy(part.amount, income[0], inc1); put(part.name, "goal", [a, b], part.reason, input.ratchet || learn ? "history" : "starter"); }
   applyPins();
 
   // 7. Per payday: the lines, and the exact gap to the income. Nothing is cut.
   const rows = [...lines.values()];
   const out = paydays.map((p, i) => {
-    const key = i === 0 ? "first" : "second", list = rows.map((l) => ({ name: l.name, kind: l.kind, amount: l[key], reason: l.reason, source: l.source, ...(l.pinned ? { pinned: true } : {}) })).filter((l) => l.amount > 0 || l.pinned);
+    const key = i === 0 ? "first" : "second", list = rows.map((l) => ({ name: l.name, kind: l.kind, amount: l[key], reason: l.reason, source: l.source, ...(l.category_id ? { category_id: l.category_id } : {}), ...(l.pinned ? { pinned: true } : {}) })).filter((l) => l.amount > 0 || l.pinned);
     const sum = list.reduce((n, l) => n + l.amount, 0);
     return { id: p.id ?? (i === 0 ? "first" : "second"), label: p.label ?? (i === 0 ? "1st payday" : "2nd payday"), day: p.day, income: income[i], incomeReason: incomeOf(i), lines: list, total: sum, unallocated: Math.max(0, income[i] - sum), short: Math.max(0, sum - income[i]) };
   });
