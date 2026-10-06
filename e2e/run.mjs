@@ -2119,7 +2119,7 @@ console.log("Savings as goals");
 // ===== 5s. What's new after an update, and the how-to clips =====
 console.log("What's new and how-tos");
 { const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-09-01" };
-  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], presets: [{ id: "p1", name: "Corner Cafe", amount: 18000, category_id: "cat-food" }, { id: "p2", name: "Train", amount: 3000, category_id: "cat-food" }, { id: "p3", name: "Lunch", amount: 9500, category_id: "cat-food" }] } };
+  const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, income_base_pin: 2500000 }, state: { ...OWNER_STYLE.state, accounts: [acct], rules: [{ id: "r1", kind: "budget", subject_id: "cat-lakat", amount: 300000, effective_from: "2026-10-01", created_at: "2026-10-01T08:00:00.000+08:00" }], presets: [{ id: "p1", name: "Corner Cafe", amount: 18000, category_id: "cat-food" }, { id: "p2", name: "Train", amount: 3000, category_id: "cat-food" }, { id: "p3", name: "Lunch", amount: 9500, category_id: "cat-food" }] } };
   ({ ctx, page, errors } = await open({ blockSw: true, seed, whatsNew: true }));
   check(await seen(page, "#sheet", "What's new"), "after an update the What's new window opens");
   let t = await text(page, "#sheet");
@@ -2144,6 +2144,11 @@ console.log("What's new and how-tos");
   await page.click('#sheet button:has-text("Close")');
   await holdOn('button.camicon[data-howto="scan"]');
   check(await seen(page, "#sheet", "Scan a receipt") && (await text(page, "#sheet")).includes("SAMPLE STORE"), "holding the camera plays the scan how-to, with an invented receipt");
+  await page.click('#sheet button:has-text("Close")');
+  await page.click("#menuBtn"); await page.waitForSelector("#menu .item"); await page.waitForTimeout(500);   // the menu slides in first
+  await holdOn('#menu .item[data-tab="budget"]');
+  check(await seen(page, "#sheet", "Set a budget") && (await text(page, "#sheet")).includes("Lakat/Date") && (await text(page, "#sheet")).includes("₱3,500.00") && !/example/i.test(await text(page, "#sheet")) && (await text(page, "#sheet")).includes("Tap a category, type its monthly limit, Save"), "holding Budget in the menu plays the budget how-to, drawn from the owner's categories");
+  check(!(await text(page, "#top")).includes("Budget") && await page.locator("#menu .drawer").count() === 0, "holding does not open the Budget screen, and the menu steps aside for the clip");
   await page.click('#sheet button:has-text("Close")');
   await menuGo(page, "Help");
   t = await text(page, "#screen");
