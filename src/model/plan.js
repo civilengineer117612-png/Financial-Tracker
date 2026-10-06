@@ -121,8 +121,8 @@ export function planEmergencyTarget(plan) {
 }
 
 const pad = (n) => String(n).padStart(2, "0");
-const dim = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();   // m is 1-12
-const dayIn = (day, y, m) => (day === "last" ? dim(y, m) : Math.min(day, dim(y, m)));
+export const dim = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();   // m is 1-12
+export const dayIn = (day, y, m) => (day === "last" ? dim(y, m) : Math.min(day, dim(y, m)));
 const at = (y, m, day) => { const d = new Date(Date.UTC(y, m - 1, 1)); const yy = d.getUTCFullYear(), mm = d.getUTCMonth() + 1; return yy + "-" + pad(mm) + "-" + pad(dayIn(day, yy, mm)); };
 const dayBefore = (iso) => new Date(Date.parse(iso) - 86400000).toISOString().slice(0, 10);
 
