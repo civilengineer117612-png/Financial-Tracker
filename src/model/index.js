@@ -8,6 +8,8 @@ export { COLLECTION_NAMES, MIGRATIONS, selfCheck, fingerprint, upgradeLedger, ro
 export { QUICK_NOTES, FIRST_RUN_NOTICE, TOPICS as HELP_TOPICS, checklist } from "./help.js";
 export { SCREEN_NAMES, MENU_GROUPS, TERMS } from "./names.js";
 export { drawing, DRAWING_IDS, NOTE_ICONS } from "./helpart.js";
+export { suggestPlan, median, paydayDays, usableMonths, NO_PAYSLIP_MESSAGE } from "./suggest.js";
+export { SUGGEST_DEFAULTS, resolveSettings } from "./suggest-settings.js";
 export { APP_BUILD, APP_BUILT_ON, isDevBuild } from "./version.js";
 export { naturalBalance, cardOutstanding, reserveShortfalls } from "./balances.js";
 export { countsTowardBudget, splitByBudgetStatus } from "./invariants.js";
