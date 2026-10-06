@@ -96,7 +96,7 @@ test("there is no way to load a plan file in the app: no button anywhere, and no
   const view = app.slice(app.indexOf("function byPaydaySection()"), app.indexOf("function viewBudgetOld()"));
   assert.match(view, /if \(!plan\) return "";/, "By payday is not shown without a plan");
   assert.match(app, /\$\{planOf\(\) \? `<h2>Pay plan<\/h2>/, "Setup's Pay plan section only appears when a plan exists");
-  assert.match(app, /This version has no way to load a plan yet\./, "the emergency fund hint no longer tells you to load one");
+  assert.match(app, /worked out from your budgets: 3 months of your rent, food and essentials/, "the emergency fund hint points at Budget, not at loading a plan");
   const plan = app.slice(app.indexOf("function viewPlan()"), app.indexOf("function planBody("));
   assert.ok(!/<button/.test(plan), "the empty Pay plan screen has no button");
 });

@@ -1946,8 +1946,8 @@ const FIX = { v: 3, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings:
   await page.locator('button[data-action="goal-role"]').first().click(); await seen(page, "#toast", "is your emergency fund");
   await page.locator('button[data-action="goal-role"]').nth(1).click(); await seen(page, "#toast", "is your emergency fund");
   check(await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1 && JSON.parse((await stored(page)).local).state.goals.filter((g) => g.role === "emergency").length === 1, "the role moves: one goal at most is the emergency fund");
-  await page.locator('button[data-action="goal-role"]').nth(2).click(); await seen(page, "#screen", "no way to load a plan yet");
-  check((await text(page, "#screen")).includes("no way to load a plan yet") && await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1, "choosing the goal makes it the emergency fund: its status card appears");
+  await page.locator('button[data-action="goal-role"]').nth(2).click(); await seen(page, "#screen", "worked out from your budgets");
+  check((await text(page, "#screen")).includes("worked out from your budgets") && await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1, "choosing the goal makes it the emergency fund: its status card appears");
   await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').click(); await seen(page, "#screen", "Make this my emergency fund");
   // overtime with no emergency fund chosen: the message says to choose, never a name
   await menuGo(page, "Income"); await addPayslipFlow(page); await page.click('#sheet button:has-text("Type a payslip")');
