@@ -77,8 +77,9 @@ export function baseIncome(state, { plan = null, pin = null } = {}) {
 // The summary of the month: Spending and Saved as a share of the income, each PLAINLY rounded to the nearest tenth of a percent (1000 = 100.0%), and
 // Unallocated in whole centavos (what is left of the income; negative when the budgets and savings are more than the income). The shares are not forced
 // to add up to 100.0%: each is what it is, rounded like every other percent on the screen.
-export function shares(income, spending, saved) {
-  return { spending: tenths(spending, income), saved: tenths(saved, income), unallocated: income - spending - saved };
+// The overrun buffer is its own figure, never part of Saved (Saved counts Goals only); it still comes out of the income before Unallocated.
+export function shares(income, spending, saved, buffer = 0) {
+  return { spending: tenths(spending, income), saved: tenths(saved, income), buffer: tenths(buffer, income), unallocated: income - spending - saved - buffer };
 }
 // One amount as tenths of a percent of the income, rounded to the nearest tenth (rows are shown on their own; only the three shares above must add up).
 export const tenths = (amount, income) => Math.floor((amount * 2000 + income) / (2 * income));
@@ -96,7 +97,7 @@ export function savedRows({ plan, suggestion }) {
 // A suggested budget for one month, built by the engine for ONE monthly payday on the base income. Lines are mapped by category id, never by name.
 // rent: the monthly rent the owner typed (centavos, 0 for none), needed only while there is too little history to learn it from: without it the answer is {ok: false, code: "NEEDS_RENT"}.
 // pins: {category_id: centavos} the owner typed; they come back as the owner's, and the engine's own figure is kept as the suggestion.
-export function suggestBudgets({ state, plan = null, pin = null, today, month, settings, pins = {}, scheduled = [], rent, overrides = {}, targets }) {
+export function suggestBudgets({ state, plan = null, pin = null, today, month, settings, pins = {}, scheduled = [], rent, overrides = {}, targets, goalPins = {}, goalShares = {} }) {
   const income = baseIncome(state, { plan, pin });
   if (!income.amount) return { ok: false, code: "NO_INCOME", message: NO_INCOME_PROMPT };
   const names = new Map(state.categories.filter((c) => c.kind === "expense" && c.id !== UNLOGGED_CATEGORY_ID).map((c) => [c.id, c.name]));
@@ -104,7 +105,7 @@ export function suggestBudgets({ state, plan = null, pin = null, today, month, s
   // The buckets (the owner's answers, else the role defaults) say which categories are needs; the bucket targets give the starter ratios, the buffer coming off the top of savings.
   const buckets = bucketMap(state.categories, overrides), buffer = settings?.starter?.buffer ?? SUGGEST_DEFAULTS.starter.buffer;
   const withTargets = targets === undefined ? settings : { ...(settings ?? {}), starter: { ...(settings?.starter ?? {}), ...starterFromTargets(resolveTargets(targets), buffer) } };
-  const r = suggestPlan({ state, paydays: [{ id: "month", label: "Month", day: 1 }], income: [income.amount], today, month, settings: withTargets, scheduled, pinned, rent, buckets });
+  const r = suggestPlan({ state, paydays: [{ id: "month", label: "Month", day: 1 }], income: [income.amount], today, month, settings: withTargets, scheduled, pinned, rent, buckets, goalPins, goalShares });
   if (!r.ok) return r;
   const lines = r.paydays[0].lines, diff = new Map(r.differences.filter((d) => d.category_id).map((d) => [d.category_id, d]));
   // every spending category gets a row (the engine drops a line that comes to nothing), so a figure can be typed for any of them
@@ -115,7 +116,7 @@ export function suggestBudgets({ state, plan = null, pin = null, today, month, s
       reason: l.pinned ? "You pinned this figure, so it is not changed." : l.reason, source: l.source, current };
   });
   const others = lines.filter((l) => !l.category_id && l.kind === "expense").map((l) => ({ name: l.name, amount: l.amount, reason: l.reason }));
-  const saved = lines.filter((l) => l.kind === "goal" || l.kind === "buffer").map((l) => ({ name: l.name, kind: l.kind, amount: toNearest50(l.amount), reason: l.reason }));
+  const saved = lines.filter((l) => l.kind === "goal" || l.kind === "buffer").map((l) => ({ name: l.name, kind: l.kind, amount: l.pinned ? l.amount : toNearest50(l.amount), reason: l.reason, ...(l.goal_id ? { goal_id: l.goal_id } : {}), ...(l.pinned ? { pinned: true } : {}) }));
   const roles = new Map(state.categories.filter((c) => c.role).map((c) => [c.id, c.role]));
   const fit = fitToIncome({ rows, others, saved, income: income.amount, roles, buckets });
   return { ok: true, income, rows: fit.rows, others, saved, trimmed: fit.trimmed, unallocated: fit.unallocated, short: fit.short, history: r.history };

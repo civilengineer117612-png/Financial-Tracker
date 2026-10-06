@@ -9,7 +9,8 @@
 // than the income). The books always balance exactly, in centavos:  lines + unallocated - short = income.  No line is ever cut to fit.
 import { netPerPayday } from "./income.js";
 import { spendingByCategory, addMonths, monthOf } from "./reports.js";
-import { goalProgress, requiredPerMonth } from "./goals.js";
+import { goalProgress } from "./goals.js";
+import { splitSavings } from "./savings.js";
 import { UNLOGGED_CATEGORY_ID } from "./seed.js";
 import { dim, dayIn } from "./plan.js";
 import { resolveSettings } from "./suggest-settings.js";
@@ -212,26 +213,22 @@ export function suggestPlan(input) {
     saving = Math.max(S.savings_floor, Math.min(want, room));
     why = saving === S.savings_floor && S.savings_floor > Math.min(want, room) ? "Your savings floor; there is not enough room for more." : `A cautious start: what is left after your costs, up to ${pct(S.starter.savings)} of pay (a rule of thumb), never below your savings floor.`;
   }
-  const emergency = (state.goals ?? []).find((g) => g.role === "emergency");
-  const open = [...(state.goals ?? [])].sort((a, b) => (b === emergency) - (a === emergency)).map((g) => ({ g, p: goalProgress(state, g) })).filter((x) => x.p && !x.p.reached);
-  let left = saving;
-  const parts = [];
-  for (const { g, p } of open) {
-    const need = g.deadline ? requiredPerMonth(p, g.deadline.slice(0, 7), month) : null;
-    if (need && left > 0) { const give = Math.min(need.perMonth, left); parts.push({ name: g.name, amount: give, reason: `${why} Sized to reach its deadline.` }); left -= give; }
+  // The money set aside is shared between the goals by one rule (savings.js): typed amounts first, finish dates, the emergency fund until its target, then percentages.
+  const goals = state.goals ?? [], progress = new Map(goals.map((g) => [g.id, goalProgress(state, g)]));
+  const shared = splitSavings({ goals, progress, month, total: saving, pins: input.goalPins ?? {}, shares: input.goalShares ?? {} });
+  for (const part of shared.parts) {
+    const [a, b] = splitBy(part.amount, income[0], inc1);
+    put(part.name, "goal", [a, b], part.pinned ? part.why : `${why} ${part.why}`, input.ratchet || learn ? "history" : "starter");
+    const l = lines.get(part.name.trim().toLowerCase());
+    if (part.goal_id) l.goal_id = part.goal_id;
+    if (part.pinned) l.pinned = true;
   }
-  if (left > 0 || !parts.length) {
-    const first = open[0]?.g.name ?? "Savings";
-    const hit = parts.find((x) => x.name === first);
-    if (hit) { hit.amount += left; } else parts.push({ name: first, amount: left, reason: why });
-  }
-  for (const part of parts) { const [a, b] = splitBy(part.amount, income[0], inc1); put(part.name, "goal", [a, b], part.reason, input.ratchet || learn ? "history" : "starter"); }
   applyPins();
 
   // 7. Per payday: the lines, and the exact gap to the income. Nothing is cut.
   const rows = [...lines.values()];
   const out = paydays.map((p, i) => {
-    const key = i === 0 ? "first" : "second", list = rows.map((l) => ({ name: l.name, kind: l.kind, amount: l[key], reason: l.reason, source: l.source, ...(l.category_id ? { category_id: l.category_id } : {}), ...(l.pinned ? { pinned: true } : {}) })).filter((l) => l.amount > 0 || l.pinned);
+    const key = i === 0 ? "first" : "second", list = rows.map((l) => ({ name: l.name, kind: l.kind, amount: l[key], reason: l.reason, source: l.source, ...(l.category_id ? { category_id: l.category_id } : {}), ...(l.goal_id ? { goal_id: l.goal_id } : {}), ...(l.pinned ? { pinned: true } : {}) })).filter((l) => l.amount > 0 || l.pinned);
     const sum = list.reduce((n, l) => n + l.amount, 0);
     return { id: p.id ?? (i === 0 ? "first" : "second"), label: p.label ?? (i === 0 ? "1st payday" : "2nd payday"), day: p.day, income: income[i], incomeReason: incomeOf(i), lines: list, total: sum, unallocated: Math.max(0, income[i] - sum), short: Math.max(0, sum - income[i]) };
   });

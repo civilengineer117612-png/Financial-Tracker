@@ -73,3 +73,4 @@ export { EARNINGS, DEDUCTIONS, GOVERNMENT, LOST, SOURCES, OVERTIME_SHARE, linesO
 export { homeSummary } from "./summary.js";
 export { parseSpoken } from "./speech.js";
 export { BUCKETS, BUCKET_LABELS, BUCKET_BY_ROLE, INVESTED_LABEL, DEFAULT_TARGETS, TARGET_SOURCE, resolveTargets, parseTargets, bucketOf, bucketMap, unsorted, guessBucket, withBucket, starterFromTargets, bucketRows } from "./buckets.js";
+export { splitSavings, parseShares, shareableGoals, UNPLACED_NAME } from "./savings.js";

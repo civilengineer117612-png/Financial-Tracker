@@ -1363,7 +1363,10 @@ function viewBudgetNew() {
   const rows = expenseCategories().map((c) => ({ c, now: M.budgetFor(S().rules, c.id, month), later: M.budgetFor(S().rules, c.id, next), st: status.get(c.id) }));
   const spendTotal = rows.reduce((n, r) => n + (r.now ?? 0), 0);
   const sug = income && !plan ? runSuggest() : null;   // the same call as the Suggest sheet, so the rent you typed is used here too
-  const saved = M.savedRows({ plan, suggestion: sug?.ok ? sug : null }), savedTotal = saved.reduce((n, r) => n + r.amount, 0);
+  const savedAll = M.savedRows({ plan, suggestion: sug?.ok ? sug : null });
+  const saved = savedAll.filter((r) => r.kind !== "buffer"), bufferRows = savedAll.filter((r) => r.kind === "buffer");   // Saved counts Goals only: the overrun buffer is its own line
+  const savedTotal = saved.reduce((n, r) => n + r.amount, 0), bufferTotal = bufferRows.reduce((n, r) => n + r.amount, 0);
+  const shareable = M.shareableGoals(S().goals, new Map(S().goals.map((g) => [g.id, M.goalProgress(S(), g)])));
   const head = `<div class="card" id="bud-income"><dl><dt>Income (base)</dt><dd class="big">${income ? peso(income) + " a month" : "Not known yet"}</dd></dl>
     ${income ? `<p class="note">${esc(inc.text)}.${inc.source === "plan" ? " A plan is loaded, so its figure is used." : ""}</p>` : `<p class="note"><b>${esc(M.NO_INCOME_PROMPT)}</b></p>`}
     <p class="note"><button class="link" data-action="open-income-base">${set.income_base_pin ? "Change my figure" : "Type a different figure"}</button>${set.income_base_pin ? ` \u00b7 <button class="link" data-action="clear-income-pin">Use my payslips again</button>` : ""}</p>
@@ -1374,10 +1377,10 @@ function viewBudgetNew() {
     const change = r.later !== r.now ? `<small>${r.later === null ? "ends" : peso(r.later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "";
     return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}${change}${over ? `<small class="overnote">${glyph("critical")} Over budget by ${peso(r.st.spent - r.now)}</small>` : ""}</span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month" + share(r.now)}</span></button>`;
   }).join("");
-  const savedHtml = saved.length ? saved.map((r) => `<div class="row"><div>${esc(r.name)}<small>${esc(r.label)}</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}</div></div>`).join("")
+  const savedHtml = saved.length ? saved.map((r) => `<div class="row"><div>${esc(r.name)}<small>${esc(r.pinned ? "The amount you typed" : r.label)}</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}${r.goal_id && !plan ? `<button class="link" data-action="open-goal-monthly" data-id="${esc(r.goal_id)}">Change</button>` : ""}</div></div>`).join("")
     : `<p class="note">${plan ? "Your plan has no savings, goal or buffer lines." : income ? (sug?.code === "NEEDS_RENT" ? "Suggest a budget asks for your rent first, then shows what to set aside." : "Nothing suggested yet. Suggest a budget to see it.") : "Add income first."}</p>`;
   const bk = M.bucketRows({ categories: S().categories, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets, income: income ?? 0,
-    budgets: Object.fromEntries(rows.map((r) => [r.c.id, r.now ?? 0])), goals: saved.filter((r) => r.kind === "goal").reduce((n, r) => n + r.amount, 0), buffer: saved.filter((r) => r.kind === "buffer").reduce((n, r) => n + r.amount, 0) });
+    budgets: Object.fromEntries(rows.map((r) => [r.c.id, r.now ?? 0])), goals: savedTotal, buffer: bufferTotal });
   const bucketLine = (r) => `<div class="row" data-bucket="${r.bucket}"><div>${esc(r.label)}${r.target != null ? `<small>Target ${M.showTenths(r.target)}</small>` : ""}</div><div class="amt">${peso(r.amount)} a month${r.tenths != null ? `<small>${M.showTenths(r.tenths)} of income</small>` : ""}</div></div>
     ${r.tenths != null ? `<div class="meter goal" role="img" aria-label="${esc(r.label)}: ${M.showTenths(r.tenths)} of income${r.target != null ? ", target " + M.showTenths(r.target) : ""}"><span class="fill" style="width:${Math.min(100, r.tenths / 10)}%"></span></div>` : ""}`;
   const ask = M.unsorted(S().categories, set.bucket_overrides ?? {}, M.UNLOGGED_CATEGORY_ID);
@@ -1389,23 +1392,25 @@ function viewBudgetNew() {
     ${bk.buffer.amount > 0 ? `<div class="row" id="bud-buffer"><div>${esc(bk.buffer.label)}<small>Its own line. Not savings.</small></div><div class="amt">${peso(bk.buffer.amount)} a month${bk.buffer.tenths != null ? `<small>${M.showTenths(bk.buffer.tenths)} of income</small>` : ""}</div></div>` : ""}
     <p class="note"><button class="link" data-action="open-targets">Change the targets</button>${set.bucket_targets ? ` \u00b7 <button class="link" data-action="clear-targets">Use 50/30/20 again</button>` : ""}</p>${askHtml}` : "";
   let sum = "";
-  const sh = income ? M.shares(income, spendTotal, savedTotal) : null;   // the totals lines and the overall line use the SAME three numbers, so they always agree
+  const sh = income ? M.shares(income, spendTotal, savedTotal, bufferTotal) : null;   // the totals lines and the overall line use the SAME three numbers, so they always agree
   if (income) {
     const spentNow = M.spendingByCategory(S(), { month }).total;
-    const used = Math.max(0, Math.min(1000, M.tenths(spendTotal + savedTotal, income)));
+    const used = Math.max(0, Math.min(1000, M.tenths(spendTotal + savedTotal + bufferTotal, income)));
     sum = `<div class="meter goal" role="img" aria-label="Spending and saved together are ${M.showTenths(used)} of income"><span class="fill" style="width:${used / 10}%"></span></div>
-      <p class="note" id="bud-shares">Spending ${M.showTenths(sh.spending)}, Saved ${M.showTenths(sh.saved)}, ${sh.unallocated < 0 ? "Over income by " + peso(-sh.unallocated) : "Unallocated " + peso(sh.unallocated)}</p>
+      <p class="note" id="bud-shares">Spending ${M.showTenths(sh.spending)}, Saved ${M.showTenths(sh.saved)}, ${bufferTotal ? "Buffer " + M.showTenths(sh.buffer) + ", " : ""}${sh.unallocated < 0 ? "Over income by " + peso(-sh.unallocated) : "Unallocated " + peso(sh.unallocated)}</p>
       <p class="note" id="bud-spent">Spent so far: ${M.showTenths(M.tenths(Math.max(0, spentNow), income))} of income</p>`;
   }
   return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${head}
     <h2>Spending</h2>${spendRows}<p class="note" id="bud-spend-total">Total budgeted: ${peso(spendTotal)}${sh ? " \u00b7 " + M.showTenths(sh.spending) + " of income" : ""}</p>
-    <h2>Saved and set aside</h2>${savedHtml}${plan ? "" : `<details class="explain" id="bud-how"><summary>How saving is worked out</summary>${M.savingsExplained(M.resolveSettings(set.suggest_settings ?? {}).settings ?? M.SUGGEST_DEFAULTS).map((x) => `<p class="note">${esc(x)}</p>`).join("")}</details>`}<p class="note" id="bud-saved-total">Total: ${peso(savedTotal)}${sh ? " \u00b7 " + M.showTenths(sh.saved) + " of income" : ""}</p>${sum}
+    <h2>Saved and set aside</h2>${savedHtml}${plan ? "" : `<details class="explain" id="bud-how"><summary>How saving is worked out</summary>${M.savingsExplained(M.resolveSettings(set.suggest_settings ?? {}).settings ?? M.SUGGEST_DEFAULTS).map((x) => `<p class="note">${esc(x)}</p>`).join("")}</details>`}<p class="note" id="bud-saved-total">Total: ${peso(savedTotal)}${sh ? " \u00b7 " + M.showTenths(sh.saved) + " of income" : ""}</p>
+    ${bufferRows.map((r) => `<div class="row" id="bud-buffer-line"><div>${esc(r.name)}<small>Its own line. Not savings, so it is not in the total above.</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}</div></div>`).join("")}
+    <p><button data-action="open-savings" style="width:100%">Add a savings category</button></p>${!plan && shareable.length >= 2 ? `<p class="note"><button class="link" data-action="open-shares">Change the percentages</button> that share what is left between ${shareable.length} goals${set.goal_shares ? ` \u00b7 <button class="link" data-action="clear-shares">Share equally again</button>` : ""}</p>` : ""}${sum}
     ${bucketsHtml}
     ${byPaydaySection()}
     <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
 }
 
-const runSuggest = () => { const set = ledger.settings; return M.suggestBudgets({ state: S(), plan: planOf(), pin: set.income_base_pin ?? null, today: today(), month: M.monthOf(today()), settings: set.suggest_settings, pins: set.budget_pins ?? {}, rent: set.starter_rent ?? undefined, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets }); };
+const runSuggest = () => { const set = ledger.settings; return M.suggestBudgets({ state: S(), plan: planOf(), pin: set.income_base_pin ?? null, today: today(), month: M.monthOf(today()), settings: set.suggest_settings, pins: set.budget_pins ?? {}, rent: set.starter_rent ?? undefined, goalPins: set.goal_monthly ?? {}, goalShares: set.goal_shares ?? {}, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets }); };
 // What the "Yours" box shows: what was typed or taken from the suggestion, else the pinned figure, else the budget in force.
 const yoursOf = (x, f) => (f["y_" + x.category_id] !== undefined ? f["y_" + x.category_id] : ledger.settings.budget_pins?.[x.category_id] !== undefined ? (ledger.settings.budget_pins[x.category_id] / 100).toFixed(2) : x.current != null ? (x.current / 100).toFixed(2) : "");
 // The figures the owner has in the suggestion sheet, as {category_id: centavos}, plus which were TYPED (those become pins).
@@ -1617,7 +1622,7 @@ function renderSheet() {
       <div id="p-prev" role="status"></div>
       <p><button class="primary" id="f-save" data-action="save-plan" style="margin-top:10px" disabled>Use this plan</button></p>`;
   } else if (sh.type === "goal") {
-    body = `<h3>New goal</h3>
+    body = `<h3>${sh.savings ? "New savings category" : "New goal"}</h3>${sh.savings ? `<p class="note">Each savings category is a goal. It shares what you set aside each month, and you can type its own monthly amount.</p>` : ""}
       <label for="g-name">Name</label><input id="g-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
       <label for="f-amount">Target (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <label for="g-date">Finish by (optional)</label><input id="g-date" type="date" data-field="deadline" value="${esc(ui.form.deadline ?? "")}">
@@ -1665,6 +1670,18 @@ function renderSheet() {
     body = `<h3>Income (base)</h3><p class="note">The monthly figure every share is measured against. It stays until you choose "Use my payslips again".</p>
       <label for="f-amount">Per month (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <p><button class="primary" id="f-save" data-action="save-income-base" style="margin-top:6px" disabled>Use this figure</button></p>`;
+  } else if (sh.type === "goal-monthly") {
+    const g = S().goals.find((x) => x.id === sh.id), typed = ledger.settings.goal_monthly?.[sh.id] !== undefined;
+    body = `<h3>${esc(g.name)}: a month</h3><p class="note">Type how much to set aside for this goal each month. A typed amount is kept as it is, and the other goals share what is left.</p>
+      <label for="f-amount">Per month (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <p><button class="primary" id="f-save" data-action="save-goal-monthly" style="margin-top:6px" disabled>Use this amount</button></p>
+      ${typed ? `<p><button data-action="clear-goal-monthly" style="width:100%">Use the suggestion again</button></p>` : ""}`;
+  } else if (sh.type === "shares") {
+    const goals = sh.ids.map((id) => S().goals.find((g) => g.id === id)).filter(Boolean);
+    body = `<h3>Share what is left</h3><p class="note">After typed amounts, finish dates and the emergency fund, what is left is shared between these goals. Whole percents that add up to 100. Set once; it is remembered.</p>
+      ${goals.map((g) => `<label for="s-${esc(g.id)}">${esc(g.name)} (%)</label><input id="s-${esc(g.id)}" data-field="s_${esc(g.id)}" inputmode="numeric" value="${esc(ui.form["s_" + g.id] ?? "")}" autocomplete="off">`).join("")}
+      <p class="note" id="s-msg" role="status"></p>
+      <p><button class="primary" id="f-save" data-action="save-shares" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "targets") {
     const f = ui.form;
     body = `<h3>Bucket targets</h3><p class="note">${esc(M.TARGET_SOURCE)} Whole percents that add up to 100.</p>
@@ -1901,6 +1918,13 @@ function refreshSave() {
     btn.disabled = !((f.name ?? "").trim() && a.ok && Boolean(f.start) === Boolean(f.end));
   } else if (type === "trip-dates") {
     btn.disabled = !(f.start && f.end);
+  } else if (type === "goal-monthly") {
+    const a = M.parsePesos(f.amount ?? "");
+    btn.disabled = !(a.ok && a.centavos >= 0);
+  } else if (type === "shares") {
+    const r = M.parseShares(ui.sheet.ids, Object.fromEntries(ui.sheet.ids.map((id) => [id, f["s_" + id] ?? ""]))), msg = $("s-msg");
+    if (msg) msg.textContent = r.ok || ui.sheet.ids.some((id) => !(f["s_" + id] ?? "")) ? "" : r.message;
+    btn.disabled = !r.ok;
   } else if (type === "targets") {
     const r = M.parseTargets({ need: f.need ?? "", want: f.want ?? "", savings: f.savings ?? "" }), msg = $("t-msg");
     if (msg) msg.textContent = r.ok ? "" : (f.need && f.want && f.savings ? r.message : "");
@@ -2074,6 +2098,14 @@ async function onClick(el) {
     }
     case "toggle-new-budget": await commit(S(), { ...ledger.settings, try_new_budget: !ledger.settings.try_new_budget }); break;
     case "pick-bucket": await commit(S(), M.withBucket(ledger.settings, id, el.dataset.bucket), { quiet: false }); break;
+    case "open-savings": ui.sheet = { type: "goal", savings: true }; ui.form = { name: "", amount: "", deadline: "", account_id: null }; renderSheet(); break;
+    case "open-goal-monthly": { const cur = ledger.settings.goal_monthly?.[id], row = M.savedRows({ plan: planOf(), suggestion: runSuggest() }).find((r) => r.goal_id === id); ui.sheet = { type: "goal-monthly", id }; ui.form = { amount: cur !== undefined ? (cur / 100).toFixed(2) : row ? (row.amount / 100).toFixed(2) : "" }; renderSheet(); break; }
+    case "save-goal-monthly": { const a = M.parsePesos(ui.form.amount ?? ""); if (!a.ok || a.centavos < 0) break; const gid = ui.sheet.id; ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, goal_monthly: { ...(ledger.settings.goal_monthly ?? {}), [gid]: a.centavos } }); break; }
+    case "clear-goal-monthly": { const { [ui.sheet.id]: _gone, ...rest } = ledger.settings.goal_monthly ?? {}; ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, goal_monthly: rest }); break; }
+    case "open-shares": { const ids = M.shareableGoals(S().goals, new Map(S().goals.map((g) => [g.id, M.goalProgress(S(), g)]))).map((g) => g.id), cur = ledger.settings.goal_shares ?? {}, equal = Math.floor(100 / ids.length);
+      ui.sheet = { type: "shares", ids }; ui.form = Object.fromEntries(ids.map((gid, i) => ["s_" + gid, String(cur[gid] !== undefined ? cur[gid] / 100 : i === 0 ? 100 - equal * (ids.length - 1) : equal)])); renderSheet(); break; }
+    case "save-shares": { const r = M.parseShares(ui.sheet.ids, Object.fromEntries(ui.sheet.ids.map((gid) => [gid, ui.form["s_" + gid]]))); if (!r.ok) break; ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, goal_shares: r.shares }); break; }
+    case "clear-shares": { const { goal_shares, ...rest } = ledger.settings; await commit(S(), rest); break; }
     case "open-targets": { const t = M.resolveTargets(ledger.settings.bucket_targets); ui.sheet = { type: "targets" }; ui.form = { need: String(t.need / 100), want: String(t.want / 100), savings: String(t.savings / 100) }; renderSheet(); break; }
     case "save-targets": {
       const r = M.parseTargets({ need: ui.form.need, want: ui.form.want, savings: ui.form.savings }); if (!r.ok) break;

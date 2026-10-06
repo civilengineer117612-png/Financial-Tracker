@@ -2061,6 +2061,48 @@ console.log("Buckets");
   check(errors.length === 0, "no script errors in the buckets flow");
   await ctx.close(); }
 
+// ===== 5r. savings as goals =====
+console.log("Savings as goals");
+{ const acct = (id, name) => ({ id, name, class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-09-01" });
+  const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 2500000, starter_rent: 0, roles_notice_seen: "2026-10-01T08:00:00.000+08:00" },
+    state: { ...OWNER_STYLE.state, accounts: [acct("p1", "Pocket One"), acct("p2", "Pocket Two")], goals: [{ id: "ga", account_id: "p1", name: "Alpha", hidden_by_default: true }, { id: "gb", account_id: "p2", name: "Beta", hidden_by_default: true }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Budget");
+  check(await seen(page, "#screen", "Alpha") && (await text(page, "#screen")).includes("Beta"), "Saved and set aside lists each goal");
+  let t = await text(page, "#screen");
+  check(/overrun buffer/i.test(t) && /not savings/i.test(t), "the overrun buffer is its own line and says it is not savings");
+  check(await page.locator('#bud-buffer-line').count() === 1 && !(await text(page, "#bud-saved-total")).includes("buffer"), "the Saved total does not include the buffer");
+  const amountOf = async (name) => { const row = page.locator('#screen .row', { hasText: name }).filter({ has: page.locator('button[data-action="open-goal-monthly"]') }).first(); return (await row.innerText()).replace(/\s+/g, " "); };
+  const before = await amountOf("Alpha");
+  await page.click('.row:has-text("Alpha") button[data-action="open-goal-monthly"]');
+  await page.fill("#f-amount", "1234.50"); await page.click("#f-save");
+  check(await seen(page, "#screen", "The amount you typed") && /1,234\.50/.test(await amountOf("Alpha")), "a typed monthly amount for a goal is shown exactly and marked as typed");
+  let led = JSON.parse((await stored(page)).local);
+  check(led.settings.goal_monthly?.ga === 123450 && led.v === LEDGER_V, "it is kept in the settings, the data version unchanged");
+  await page.click('.row:has-text("Alpha") button[data-action="open-goal-monthly"]');
+  await page.click('button[data-action="clear-goal-monthly"]');
+  await page.waitForFunction(() => !JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.goal_monthly?.ga);
+  check((await amountOf("Alpha")) === before, "Use the suggestion again brings the suggested amount back");
+  await page.click('button[data-action="open-savings"]');
+  check((await text(page, "#sheet")).includes("savings category") && await page.locator('#sheet button[data-action="pick-goal-role"]').count() === 1, "Add a savings category opens the goal window");
+  await page.fill("#g-name", "Cushion"); await page.click("#f-save");
+  check(await seen(page, "#screen", "Cushion"), "the new savings category appears in Saved and set aside");
+  led = JSON.parse((await stored(page)).local);
+  const cush = led.state.goals.find((x) => x.name === "Cushion");
+  check(cush && cush.account_id === undefined && cush.target === undefined, "it is a goal with no account yet and no target");
+  await page.click('button[data-action="open-shares"]');
+  const ids = await page.locator('#sheet input[data-field^="s_"]').count();
+  check(ids === 3, "the percentages window lists the three goals that share what is left");
+  await page.fill('input[data-field="s_ga"]', "50"); await page.fill('input[data-field="s_gb"]', "30");
+  check(!(await page.locator("#f-save").isEnabled()), "percentages that do not add to 100 are refused");
+  await page.fill(`input[data-field="s_${cush.id}"]`, "20");
+  check(await page.locator("#f-save").isEnabled(), "percentages that add to 100 can be saved");
+  await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.goal_shares?.ga === 5000);
+  check(true, "and are kept");
+  check(errors.length === 0, "no script errors in the savings flow");
+  await ctx.close(); }
+
 // ===== 6. wrong phone, wrong place =====
 console.log("Wrong device");
 ({ ctx, page } = await open({ ua: ANDROID }));
