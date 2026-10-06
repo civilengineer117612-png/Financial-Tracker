@@ -109,3 +109,38 @@ test("a goal's target can be set, changed or removed; bad ones are refused", () 
   assert.equal(setGoalTarget(s, "g1", -1).violations[0].code, "BAD_TARGET");
   assert.equal(setGoalTarget(s, "zz", 5).violations[0].code, "UNKNOWN_GOAL");
 });
+
+// ----- a goal may have no account yet (data version 6) -----
+import { setGoalAccount, goalProgress as gp, planGoalDeposit as pgd, sweepOrderAccounts as soa, validateShape as vs, homeSummary } from "../src/model/index.js";
+import { makeState as ms, account as acc } from "./fixtures.js";
+const base6 = () => { const s = ms(); s.accounts.push(acc({ id: "pocket", name: "Test Pocket", class: "asset", opening_balance: 50000 })); s.goals = []; return s; };
+
+test("a goal can be made with no account, holds nothing, and cannot take a deposit until it has one", () => {
+  const s = base6();
+  const made = planGoal(s, { id: "g1", name: "Savings", hidden_by_default: false });
+  assert.equal(made.ok, true); assert.equal("account_id" in made.goal, false); assert.deepEqual(vs("Goal", made.goal), []);
+  const p = gp(made.state, made.goal);
+  assert.equal(p.balance, 0); assert.equal(p.target, null); assert.equal(p.remaining, null);
+  const dep = pgd(made.state, { transaction_id: "d", date: "2026-10-08", goal_id: "g1", from_account_id: "pocket", amount: 1000 });
+  assert.equal(dep.ok, false); assert.equal(dep.violations[0].code, "NO_ACCOUNT"); assert.match(dep.violations[0].message, /choose where this goal's money sits first/);
+  assert.equal(soa(made.state, [{ goal_id: "g1" }, ]).length, 0, "the sweep skips a goal with no account");
+  const withTarget = planGoal(s, { id: "g2", name: "Trip", target: 100000, deadline: "2027-01-31" });
+  assert.equal(gp(withTarget.state, withTarget.goal).remaining, 100000, "a target still counts from zero");
+});
+test("choosing an account later gives the goal that account's balance; a bad account is refused; a named account must exist", () => {
+  const s = planGoal(base6(), { id: "g1", name: "Savings", target: 100000 }).state;
+  const r = setGoalAccount(s, "g1", "pocket");
+  assert.equal(r.ok, true); assert.equal(gp(r.state, r.state.goals[0]).balance, 50000);
+  assert.equal(pgd(r.state, { transaction_id: "d", date: "2026-10-08", goal_id: "g1", from_account_id: "pocket", amount: 1 }).violations[0].code, "SAME_ACCOUNT", "now the deposit rules apply as before");
+  assert.equal(setGoalAccount(s, "g1", "nope").ok, false); assert.equal(setGoalAccount(s, "zzz", "pocket").ok, false);
+  const card = base6(); card.accounts.push(acc({ id: "cc", name: "Test Card", class: "liability" }));
+  assert.equal(setGoalAccount(planGoal(card, { id: "g1", name: "S" }).state, "g1", "cc").ok, false, "a card is not somewhere money sits");
+  assert.equal(planGoal(base6(), { id: "g3", name: "X", account_id: "nope" }).ok, false, "naming an account that does not exist is still refused");
+  assert.equal(planGoal(base6(), { id: "g3", name: "X", account_id: "pocket" }).goal.account_id, "pocket", "and naming one works as before");
+  assert.equal(gp(base6(), { id: "g9", account_id: "gone", name: "Lost", hidden_by_default: false }), null, "a goal whose account has vanished is still not shown");
+});
+test("a goal with no account does not change the home summary or the sweep order of the others", () => {
+  const s = planGoal(planGoal(base6(), { id: "g1", name: "A" }).state, { id: "g2", name: "B", account_id: "pocket" }).state;
+  assert.deepEqual(soa(s, [{ goal_id: "g1" }, { goal_id: "g2", target: 70000 }]), [{ account_id: "pocket", target: 70000 }]);
+  assert.doesNotThrow(() => homeSummary(s, { from: "2026-10-01", to: "2026-10-31" }));
+});

@@ -20,13 +20,13 @@ export function dropUnusedCardCategory(state) {
   return { ...state, categories: state.categories.filter((c) => c.id !== "cat-creditcard") };
 }
 
-// What a NEW install starts with: plain categories anyone can use, and no quick tiles (nobody's names or amounts). Six carry a ROLE so the scanner
+// What a NEW install starts with: plain categories anyone can use, and no quick tiles (nobody's names or amounts). Eight carry a ROLE so the scanner
 // and the voice guess can find them whatever they are renamed to. Existing ledgers are never touched (migrate.js gave them roles by name, once).
 export function defaultCategories() {
   const e = (id, name, role) => ({ id, name, kind: "expense", ...(role ? { role } : {}) });
   return [
     e("cat-food", "Food", "food"), e("cat-essentials", "Essentials", "essentials"), e("cat-transport", "Transport", "transport"), e("cat-rent", "Rent", "rent"),
-    e("cat-subscription", "Subscription", "subscription"), e("cat-shopping", "Shopping"), e("cat-health", "Health", "health"), e("cat-fun", "Fun"), e("cat-other", "Other"),
+    e("cat-subscription", "Subscription", "subscription"), e("cat-shopping", "Shopping", "shopping"), e("cat-health", "Health", "health"), e("cat-fun", "Fun", "fun"), e("cat-other", "Other"),
     e("cat-unlogged", "Unlogged"),
     ...INCOME_CATEGORIES,
   ];
@@ -63,5 +63,5 @@ export function renameCategory(state, id, name) {
   return { ok: true, violations: [], state: { ...state, categories: state.categories.map((x) => (x.id === id ? { ...x, name: v.name } : x)) } };
 }
 
-// The spending category that holds a role (food, essentials, subscription, rent, transport, health), or null. Nothing finds a category by its NAME.
+// The spending category that holds a role (food, essentials, subscription, rent, transport, health, utilities, debt, shopping, fun, dining, invest), or null. Nothing finds a category by its NAME.
 export const categoryByRole = (categories, role) => (categories ?? []).find((c) => c.kind === "expense" && c.role === role) ?? null;

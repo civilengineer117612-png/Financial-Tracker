@@ -10,7 +10,7 @@ import { phTimestamp } from "./util.js";
 
 // Version 2 is the first with named migrations. To change the data's shape: raise this number, add the step from the old number to MIGRATIONS,
 // add a backup fixture of the old version to tests/migrate.test.js, and add the new collection to COLLECTION_NAMES.
-export const LEDGER_VERSION = 5;
+export const LEDGER_VERSION = 6;
 export const COLLECTION_NAMES = ["accounts", "goals", "envelopes", "transactions", "entries", "categories", "categoryMaps", "rules",
   "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"];
 
@@ -42,6 +42,14 @@ export const MIGRATIONS = {
     if (c.role !== undefined || c.kind !== "expense") return c;
     const n = String(c.name).trim().toLowerCase();
     return /^transpo/.test(n) ? { ...c, role: "transport" } : /^health(care)?\b/.test(n) ? { ...c, role: "health" } : c;
+  }) } }),
+  // 5 to 6: more category roles, so a category's bucket (need, want, savings) can come from its role, and a goal may have no account yet.
+  //  - Roles are given ONCE, to expense categories that have no role, by the exact starter names: Shopping, Fun, Utilities (or Utility), Dining (or Dining out). Nothing else changes.
+  //  - Goals may now leave out account_id (a goal not tied to an account yet). Existing goals all have one, so nothing is converted; the step is the version.
+  5: (ledger) => ({ ...ledger, state: { ...ledger.state, categories: (ledger.state.categories ?? []).map((c) => {
+    if (c.role !== undefined || c.kind !== "expense") return c;
+    const n = String(c.name).trim().toLowerCase();
+    return n === "shopping" ? { ...c, role: "shopping" } : n === "fun" ? { ...c, role: "fun" } : n === "utilities" || n === "utility" ? { ...c, role: "utilities" } : n === "dining" || n === "dining out" ? { ...c, role: "dining" } : c;
   }) } }),
 };
 

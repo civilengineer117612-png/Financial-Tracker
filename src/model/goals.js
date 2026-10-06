@@ -7,9 +7,10 @@ import { validateShape } from "./schema.js";
 
 // A goal's balance is the balance of the account (pocket) it points at.
 export function goalProgress(state, goal) {
-  const account = state.accounts.find((a) => a.id === goal.account_id);
-  if (!account) return null;
-  const balance = naturalBalance(account, state.entries);
+  // A goal with no account yet holds nothing: its balance is zero. A goal that names an account the ledger does not have is not shown at all.
+  const account = goal.account_id ? state.accounts.find((a) => a.id === goal.account_id) : null;
+  if (goal.account_id && !account) return null;
+  const balance = account ? naturalBalance(account, state.entries) : 0;
   const { target } = goal;
   return {
     goal_id: goal.id, balance, target: target ?? null,
@@ -72,13 +73,13 @@ const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "er
 // input: {id, account_id, name, target?, deadline?, hidden_by_default?}. Hidden by default (spec 9).
 export function planGoal(state, input) {
   const name = (input.name ?? "").trim();
-  const account = state.accounts.find((a) => a.id === input.account_id);
+  const account = input.account_id ? state.accounts.find((a) => a.id === input.account_id) : null;
   if (!name) return fail("BAD_NAME", "give the goal a name");
   if (input.target != null && (!Number.isSafeInteger(input.target) || input.target < 0)) return fail("BAD_TARGET", "the target cannot be negative");
-  if (!account || account.class !== "asset") return fail("UNKNOWN_ACCOUNT", "a goal needs an account you hold money in");
+  if (input.account_id && (!account || account.class !== "asset")) return fail("UNKNOWN_ACCOUNT", "choose an account you hold money in, or leave it for later");
   if ((state.goals ?? []).some((g) => g.id === input.id)) return fail("DUPLICATE_ID", "that goal already exists");
   if ((state.goals ?? []).some((g) => g.name.toLowerCase() === name.toLowerCase())) return fail("DUPLICATE_NAME", "you already have a goal with that name");
-  const goal = { id: input.id, account_id: account.id, name, hidden_by_default: input.hidden_by_default ?? true,
+  const goal = { id: input.id, ...(account ? { account_id: account.id } : {}), name, hidden_by_default: input.hidden_by_default ?? true,
     ...(input.target != null ? { target: input.target } : {}), ...(input.deadline ? { deadline: input.deadline } : {}), ...(input.role ? { role: input.role } : {}) };
   const problems = validateShape("Goal", goal);
   if (problems.length) return { ok: false, violations: problems };
@@ -107,6 +108,7 @@ export function setGoalRole(state, goalId, role) {
 export function planGoalDeposit(state, input, now = new Date()) {
   const goal = state.goals.find((g) => g.id === input.goal_id);
   if (!goal) return fail("UNKNOWN_GOAL", "no goal " + input.goal_id);
+  if (!goal.account_id) return fail("NO_ACCOUNT", "choose where this goal's money sits first");
   if (!Number.isSafeInteger(input.amount) || input.amount <= 0) return fail("BAD_AMOUNT", "amount must be more than zero");
   if (input.from_account_id === goal.account_id) return fail("SAME_ACCOUNT", "choose a different account to take the money from");
   if (!state.accounts.some((a) => a.id === input.from_account_id)) return fail("UNKNOWN_ACCOUNT", "no account " + input.from_account_id);
@@ -129,4 +131,13 @@ export function setGoalTarget(state, goalId, target) {
   const problems = validateShape("Goal", next);
   if (problems.length) return { ok: false, violations: problems };
   return { ok: true, violations: [], state: { ...state, goals: state.goals.map((g) => (g.id === goalId ? next : g)) } };
+}
+
+// Tie a goal to the account where its money sits (a goal can be made without one and given one later). Only an account you hold money in.
+export function setGoalAccount(state, goalId, accountId) {
+  const goal = (state.goals ?? []).find((g) => g.id === goalId);
+  if (!goal) return fail("UNKNOWN_GOAL", "no goal " + goalId);
+  const account = state.accounts.find((a) => a.id === accountId);
+  if (!account || account.class !== "asset") return fail("UNKNOWN_ACCOUNT", "choose an account you hold money in");
+  return { ok: true, violations: [], state: { ...state, goals: state.goals.map((g) => (g.id === goalId ? { ...g, account_id: accountId } : g)) } };
 }

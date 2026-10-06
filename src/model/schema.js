@@ -26,7 +26,7 @@ export const SCHEMAS = {
     icon_url: optional({ type: "iconurl" }),   // ADDED: where a bank logo is shown from when it could not be copied onto the phone (allow-listed icon services only)
     icon: optional({ type: "icon" }),   // ADDED: a small picture the owner chose for this account, kept on the phone
   },
-  Goal: { id, account_id: id, name, target: optional(centavos), deadline: optional(date), hidden_by_default: bool,
+  Goal: { id, account_id: optional(id), name, target: optional(centavos), deadline: optional(date), hidden_by_default: bool,
     role: optional(oneOf("emergency")) },   // ADDED: what the goal is FOR, so nothing has to guess from its name (one goal at most holds a role)
   Envelope: { id, account_id: id, name, purpose: text },
   Transaction: {
@@ -47,7 +47,7 @@ export const SCHEMAS = {
     card_state: optional(oneOf("pending", "posted")),   // "Card entry state" row
   },
   Category: { id, name, kind: oneOf("income", "expense"),
-    role: optional(oneOf("food", "essentials", "subscription", "rent", "transport", "health")) },   // ADDED: what the category is FOR (the scanner guesses by role, so renaming cannot break a guess)
+    role: optional(oneOf("food", "essentials", "subscription", "rent", "transport", "health", "utilities", "debt", "shopping", "fun", "dining", "invest")) },   // ADDED: what the category is FOR (the scanner guesses by role, so renaming cannot break a guess)
   CategoryMap: { from: id, to: id, effective_from: date },
   // BudgetRule / SavingsRule / AllocationRule share one shape, told apart by `kind`.
   // Fields beyond id and effective_from are a placeholder; the append-only check

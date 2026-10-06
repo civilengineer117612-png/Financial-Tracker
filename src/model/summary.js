@@ -6,7 +6,7 @@
 // already were). Nothing asks the owner to classify an account as an asset or a liability.
 export function homeSummary(state, { from, to }) {
   const kind = new Map(state.categories.map((c) => [c.id, c.kind]));
-  const goalAccounts = new Set((state.goals ?? []).map((g) => g.account_id));
+  const goalAccounts = new Set((state.goals ?? []).map((g) => g.account_id).filter(Boolean));
   const byTx = new Map();
   for (const e of state.entries) { const l = byTx.get(e.transaction_id); if (l) l.push(e); else byTx.set(e.transaction_id, [e]); }
   let incoming = 0, spent = 0, saved = 0, drafts = 0;
