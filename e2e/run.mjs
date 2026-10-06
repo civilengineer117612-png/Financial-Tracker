@@ -1240,6 +1240,7 @@ check(/Gross\s*₱11,500\.00[\s\S]*Deductions\s*−₱1,200\.00[\s\S]*Net\s*₱1
 check(!incText.includes("Year to date") && !(await page.locator("#screen table.tbl").count()), "the Overview shows only the important things: no tables");
 await page.click('#screen .seg button:has-text("Deductions")');
 check((await text(page, "#screen")).includes("Went to government in this period: ₱1,200.00"), "Deductions: they add up");
+check(await page.locator(".mlist details.mrow").evaluateAll((els) => els.length >= 1 && els.every((d) => d.open)) && (await text(page, ".mlist")).includes("Withholding tax") && await page.locator(".mlist .mtotal").count() === 0, "Deductions: the month is open at once, with each kind listed, and no repeated total for one month");
 await page.click('#screen .seg button:has-text("Earnings")');
 check(await page.locator(".btrack.stack .bfill.ot").count() === 1 && !(await page.locator("#screen table.tbl th").allInnerTexts()).includes("Other"), "Earnings: the payday bar stacks base and overtime, and there is no Other column when nothing is in it");
 check(await page.locator('#screen .seg button:has-text("Pay history")').count() === 0 && await page.locator('#screen .seg button:has-text("Months")').count() === 0 && await page.locator('#screen .seg button').count() === 3, "the views are Overview, Earnings and Deductions: no Months, no Pay history");
@@ -1285,17 +1286,12 @@ check(await page.locator("#sheet details.earlier").count() === 1 && (await page.
 await page.click('#sheet button:has-text("Close")');
 // the Earnings view is a short list: one line per month, tap a month for where it came from
 await page.click('button[data-action="income-view"][data-view="earnings"]');
-check(await page.locator(".mlist details.mrow").count() >= 1 && await page.locator(".mlist .mtotal").count() === 1 && await page.locator("#screen table.tbl th:text-is('Month')").count() === 0, "Earnings is a short list with a total line, not a five-column table");
-await page.locator(".mlist details.mrow summary").first().click();
-{ const t = await page.locator(".mlist details.mrow").first().innerText();
-  check(t.includes("Basic salary") && t.includes("Rice subsidy") && t.includes("Overtime") && t.includes("Deductions") && !t.includes("Base pay"), "tapping a month shows each kind of earning, rice subsidy and overtime apart, then the deductions (" + t.replace(/\n/g, " | ") + ")"); }
-{ const m = await text(page, ".mlist:has(details.mrow)");
-  check(/Gross\s*₱11,500\.00[\s\S]*Deductions\s*−₱1,200\.00[\s\S]*Net, this month[\s\S]*₱10,300\.00/.test(m), "under the months: gross, the deductions, then net (" + m.replace(/\n/g, " | ").slice(-170) + ")");
-  { const e = await text(page, "#screen");
-    const el = e.toLowerCase(); check(el.indexOf("where it came from") !== -1 && el.indexOf("where it came from") < el.indexOf("earnings by month") && e.includes("Rice subsidy") && e.includes("Basic salary") && (await page.locator("#screen .mlist .mline").count()) >= 3, "the kinds of earning are plain text rows on the Earnings view, above the months"); }
-  { const edges = await page.evaluate(() => { const r = (el) => el.getBoundingClientRect(); const rows = [...document.querySelectorAll("#screen .mlist .mline")]; const net = document.querySelector("#screen .mtotal .mv");
-      return { ys: rows.map((row) => Math.round(r(row.querySelector(".mv")).right)), net: Math.round(r(net).right), labelRight: Math.round(r(rows[0].querySelector(".mn")).right), valueLeft: Math.round(r(rows[0].querySelector(".mv")).left) }; });
-    check(edges.ys.every((x) => Math.abs(x - edges.net) <= 1) && edges.valueLeft > edges.labelRight + 20, "the amounts sit at the right, lined up with the Net amount (" + JSON.stringify(edges) + ")"); }
+check(await page.locator(".mlist details.mrow").count() >= 1 && await page.locator(".mlist .mtotal").count() === 0 && await page.locator("#screen table.tbl th:text-is('Month')").count() === 0, "Earnings is a short list: one month, no repeated total line, not a five-column table");
+{ const open = await page.locator(".mlist details.mrow").evaluateAll((els) => els.every((d) => d.open));
+  const t = await page.locator(".mlist details.mrow").first().innerText();
+  check(open && /Sep\s*₱10,300\.00[\s\S]*Basic salary[\s\S]*Rice subsidy[\s\S]*Overtime[\s\S]*Gross\s*₱11,500\.00[\s\S]*Deductions\s*−₱1,200\.00/.test(t) && !t.includes("Base pay"), "the month is open at once: net at the top, each kind of earning with rice subsidy and overtime apart, then gross and deductions (" + t.replace(/\n/g, " | ").slice(0, 200) + ")"); }
+{ const e = (await text(page, "#screen")).toLowerCase();
+  check(!e.includes("where it came from") && !e.includes("net, this month"), "no 'where it came from' list and no second gross, deductions and net block under the month");
   const legend = await text(page, ".legend"), th = (await page.locator("#screen table.tbl th").allInnerTexts()).join(",");
   check(legend.includes("Regular pay") && !legend.includes("Base pay") && th.includes("Regular") && !th.includes("Base"), "the payday chart and table say Regular pay, not Base pay"); }
 await shot(page, "38-months");
@@ -1478,7 +1474,7 @@ check(ps.state.attachments.length === 1 && ps.state.attachments[0].transaction_i
 await menuGo(page, "Income");
 for (let g = 0; g < 12 && /^Payslips\s*0\b/.test(await text(page, 'button.choice[data-action="open-payslips"]')); g++) await page.click('button[aria-label="Earlier"]');   // the payslip counts in the month of its own period
 await page.click('#screen .seg button:has-text("Deductions")');
-check((await text(page, "#screen")).includes("Went to government in this period: ₱1,200.00") && (await text(page, ".mtotal")).includes("Total deductions"), "the Income screen counts the government deductions and shows a Total deductions line");
+check((await text(page, "#screen")).includes("Went to government in this period: ₱1,200.00") && (await text(page, ".mlist details.mrow summary")).includes("₱1,200.00"), "the Income screen counts the government deductions and shows the month's deductions total at the top of the month");
 await page.click('button.choice[data-action="open-payslips"]');
 check((await text(page, "#sheet")).includes("View the photo"), "and the Payslips window offers the photo");
 await page.click('#sheet button:has-text("Close")');
