@@ -2,13 +2,39 @@
 // Pure functions. Nothing here writes anything: the screen saves through the existing budget change (planBudgetChange), once per category.
 // Reused, not copied: payslip nets (income.js), the suggestion engine (suggest.js), budgetFor and planBudgetChange (budget.js).
 import { netPerPayday } from "./income.js";
-import { median, suggestPlan } from "./suggest.js";
+import { median, suggestPlan, NEEDS_ROLES } from "./suggest.js";
+import { formatPesos } from "./money.js";
 import { budgetFor, planBudgetChange } from "./budget.js";
 import { UNLOGGED_CATEGORY_ID } from "./seed.js";
 
 // Suggestions are shown rounded to the nearest 50 pesos (5,000 centavos), halves going up: 126 becomes 150, 124 becomes 100, 125 becomes 150.
 // Only what is SUGGESTED is rounded; a figure the owner typed is kept exactly as typed.
 export const toNearest50 = (centavos) => Math.floor((centavos + 2500) / 5000) * 5000;
+
+// Rounding up must never push the suggestion past the income. After every suggested line is rounded, any excess comes off the LARGEST unpinned "want"
+// line in 50-peso steps (then the next largest, and so on); with no want line left it comes off the largest unpinned spending line. Never the rent, never a
+// line the owner typed (pinned), never a saved line (goals and the buffer), never a fixed payment. What is still short after that is the owner's own doing.
+// rows: [{category_id, name, amount, suggested, pinned, ...}]; others: [{amount}] fixed payments; saved: [{amount}]; roles: Map(category_id -> role).
+export function fitToIncome({ rows, others = [], saved = [], income, roles = new Map() }) {
+  const out = rows.map((r) => ({ ...r })), trimmed = [];
+  const sum = (xs) => xs.reduce((n, x) => n + x.amount, 0), total = () => sum(out) + sum(others) + sum(saved);
+  const isNeed = (r) => NEEDS_ROLES.includes(roles.get(r.category_id)), isRent = (r) => roles.get(r.category_id) === "rent";
+  const cutFrom = (cands) => {
+    while (total() > income) {
+      const c = cands.filter((r) => r.amount > 0).sort((a, b) => b.amount - a.amount || (a.name < b.name ? -1 : 1))[0];
+      if (!c) return;
+      const take = Math.min(c.amount, Math.ceil((total() - income) / 5000) * 5000);
+      c.amount -= take; if (!c.pinned) c.suggested = c.amount;
+      const t = trimmed.find((x) => x.category_id === c.category_id);
+      if (t) t.by += take; else trimmed.push({ category_id: c.category_id, name: c.name, by: take });
+      c.reason = `${c.reason.replace(/ Lowered by .*$/, "")} Lowered by ${formatPesos(trimmed.find((x) => x.category_id === c.category_id).by)} so the total fits your income.`;
+    }
+  };
+  const free = out.filter((r) => !r.pinned && !isRent(r));
+  cutFrom(free.filter((r) => !isNeed(r)));   // the largest want first
+  cutFrom(free);                             // none left: the largest unpinned spending line
+  return { rows: out, trimmed, unallocated: income - total(), short: Math.max(0, total() - income) };
+}
 
 // How the "Saved and set aside" suggestion is worked out, in plain words, from the settings actually in use (so the words cannot drift from the rule).
 export function savingsExplained(settings) {
@@ -85,7 +111,9 @@ export function suggestBudgets({ state, plan = null, pin = null, today, month, s
   });
   const others = lines.filter((l) => !l.category_id && l.kind === "expense").map((l) => ({ name: l.name, amount: l.amount, reason: l.reason }));
   const saved = lines.filter((l) => l.kind === "goal" || l.kind === "buffer").map((l) => ({ name: l.name, kind: l.kind, amount: toNearest50(l.amount), reason: l.reason }));
-  return { ok: true, income, rows, others, saved, unallocated: r.paydays[0].unallocated, short: r.paydays[0].short, history: r.history };
+  const roles = new Map(state.categories.filter((c) => c.role).map((c) => [c.id, c.role]));
+  const fit = fitToIncome({ rows, others, saved, income: income.amount, roles });
+  return { ok: true, income, rows: fit.rows, others, saved, trimmed: fit.trimmed, unallocated: fit.unallocated, short: fit.short, history: r.history };
 }
 
 // What confirming would save: draft {category_id: centavos} against the budget now in effect. Each change goes through the existing append-only

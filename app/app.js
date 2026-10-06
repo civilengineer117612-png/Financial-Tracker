@@ -1659,6 +1659,7 @@ function renderSheet() {
         <p><button class="primary" data-action="save-sug"${f.changes.length ? "" : " disabled"}>Save budgets</button></p><p><button data-action="back-sug" style="width:100%">Back</button></p>`;
     } else {
       body = `<h3>Suggest a budget</h3><p class="note">Based on ${peso(r.income.amount)} a month (${esc(r.income.text.toLowerCase())}). Nothing is saved until you confirm. Suggestions are rounded to the nearest \u20B150. Typing a figure pins it as yours.${r.history.used === "starter" && ledger.settings.starter_rent != null ? ` Rent: ${peso(ledger.settings.starter_rent)} <button class="link" data-action="change-rent">Change</button>` : ""}</p>
+        <p class="note" id="sug-left">${r.short > 0 ? `Your own figures, the rent and the saved lines add up to ${peso(r.short)} more than your income.` : `Left unallocated if you use all of them: ${peso(r.unallocated)}.`}${r.trimmed.length ? ` Rounding would have gone over your income, so ${esc(r.trimmed.map((t) => `${t.name} was lowered by ${peso(t.by)}`).join(", "))}.` : ""}</p>
         <p><button data-action="use-all-sug" style="width:100%">Use all suggestions</button></p>
         ${r.rows.map((x) => `<div class="bcard"><div class="btop"><span class="bname">${esc(x.name)}</span><span class="bval">Suggested ${x.suggested === null ? "none" : peso(x.suggested)}</span></div>
           <p class="note">${esc(x.reason)}</p>

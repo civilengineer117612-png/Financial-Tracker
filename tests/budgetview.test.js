@@ -255,3 +255,76 @@ test("the Budget screen's Saved block uses the same suggestion as the sheet, so 
   const s = base(); slip(s, "2026-09-28", 2500000); logMonth(s, "2026-09");
   assert.equal(sug(s).code, "NEEDS_RENT"); assert.ok(sug(s, { rent: 300000 }).saved.length >= 1, "with the rent, the saved rows are there");
 });
+
+// ----- rounding must never cause "Short" -----
+import { fitToIncome } from "../src/model/index.js";
+const roles = new Map([["rent", "rent"], ["food", "food"], ["ess", "essentials"], ["fun", "fun-not-a-role"]]);
+const row = (id, name, amount, pinned = false) => ({ category_id: id, name, amount, suggested: amount, pinned, reason: "R." });
+const total = (f, others = [], saved = []) => f.rows.reduce((n, r) => n + r.amount, 0) + others.reduce((n, o) => n + o.amount, 0) + saved.reduce((n, o) => n + o.amount, 0);
+
+test("when rounding up pushes the total past income, the excess comes off the largest want in 50-peso steps, and what is left is Unallocated", () => {
+  // income 10,000.00; rent 4,000, food 3,000, fun 2,000, shopping 1,000, saved 100 = 10,100 after rounding: 100.00 too much
+  const rows = [row("rent", "Rent", 400000), row("food", "Food", 300000), row("fun", "Fun", 200000), row("shop", "Shopping", 100000)];
+  const f = fitToIncome({ rows, saved: [{ amount: 10000 }], income: 1000000, roles });
+  assert.equal(f.rows.find((r) => r.category_id === "fun").amount, 190000, "Fun is the largest want: 100 pesos off, in two 50-peso steps");
+  assert.deepEqual(f.rows.filter((r) => r.category_id !== "fun").map((r) => r.amount), [400000, 300000, 100000], "nothing else is touched");
+  assert.deepEqual(f.trimmed, [{ category_id: "fun", name: "Fun", by: 10000 }]);
+  assert.equal(f.short, 0); assert.equal(f.unallocated, 0);
+  assert.equal(f.rows.find((r) => r.category_id === "fun").suggested, 190000, '"Use this" would use the lowered figure');
+  assert.match(f.rows.find((r) => r.category_id === "fun").reason, /Lowered by ₱100\.00 so the total fits your income\./);
+  // an excess of 30 pesos still takes a whole 50, and the 20 left over shows as Unallocated
+  const g = fitToIncome({ rows, saved: [{ amount: 3000 }], income: 1000000, roles: new Map(roles) });
+  assert.equal(g.rows.find((r) => r.category_id === "fun").amount, 195000); assert.equal(g.unallocated, 2000); assert.equal(g.short, 0);
+  // already fitting: nothing is changed
+  const h = fitToIncome({ rows, income: 1100000, roles }); assert.deepEqual(h.rows, rows); assert.deepEqual(h.trimmed, []); assert.equal(h.unallocated, 100000);
+});
+
+test("a pinned line is never touched, nor the rent, nor a saved line, nor a fixed payment", () => {
+  const rows = [row("rent", "Rent", 500000), row("fun", "Fun", 400000, true), row("shop", "Shopping", 100000)];
+  const f = fitToIncome({ rows, others: [{ amount: 50000 }], saved: [{ amount: 100000 }], income: 1100000, roles });
+  // total 1,150,000: 500 pesos too much; Fun is the biggest want but typed, so Shopping (1,000) gives
+  assert.equal(f.rows.find((r) => r.category_id === "fun").amount, 400000); assert.equal(f.rows.find((r) => r.category_id === "rent").amount, 500000);
+  assert.equal(f.rows.find((r) => r.category_id === "shop").amount, 50000, "the excess of 500 pesos came off Shopping");
+  assert.equal(f.short, 0);
+  // the owner's own figures alone are more than the income: that, and only that, is Short, and nothing is cut to hide it
+  const over = fitToIncome({ rows: [row("rent", "Rent", 700000), row("fun", "Fun", 600000, true)], saved: [{ amount: 100000 }], income: 1000000, roles });
+  assert.equal(over.short, 400000); assert.equal(over.unallocated, -400000); assert.deepEqual(over.trimmed, []); assert.deepEqual(over.rows.map((r) => r.amount), [700000, 600000]);
+});
+
+test("with no want line the excess comes off the largest unpinned spending line, and a want is always preferred to a need", () => {
+  const needsOnly = [row("rent", "Rent", 300000), row("food", "Food", 400000), row("ess", "Essentials", 250000)];
+  const f = fitToIncome({ rows: needsOnly, income: 940000, roles });
+  assert.equal(f.rows.find((r) => r.category_id === "food").amount, 390000, "Food is the largest unpinned line: 100 pesos off"); assert.equal(f.rows.find((r) => r.category_id === "rent").amount, 300000);
+  assert.equal(f.short, 0);
+  const both = fitToIncome({ rows: [row("food", "Food", 900000), row("fun", "Fun", 200000)], income: 1050000, roles });
+  assert.equal(both.rows.find((r) => r.category_id === "fun").amount, 150000, "Fun is a want, so it gives even though Food is bigger"); assert.equal(both.rows.find((r) => r.category_id === "food").amount, 900000);
+  // wants run out: the rest comes off the largest need, never the rent
+  const run = fitToIncome({ rows: [row("rent", "Rent", 500000), row("food", "Food", 400000), row("fun", "Fun", 50000)], income: 800000, roles });
+  assert.equal(run.rows.find((r) => r.category_id === "fun").amount, 0); assert.equal(run.rows.find((r) => r.category_id === "food").amount, 300000, "50 from Fun, the other 100 from Food"); assert.equal(run.rows.find((r) => r.category_id === "rent").amount, 500000);
+  assert.equal(run.short, 0); assert.equal(total(run), 800000);
+  // rent plus fixed payments more than income, nothing else to cut: Short, and the rent is not touched
+  const rentOnly = fitToIncome({ rows: [row("rent", "Rent", 900000)], others: [{ amount: 300000 }], income: 1000000, roles });
+  assert.equal(rentOnly.short, 200000); assert.equal(rentOnly.rows[0].amount, 900000);
+});
+
+test("end to end: suggestions that round up past the income are brought back under it, so Short never comes from rounding", () => {
+  // a ledger whose six spending lines all round UP: income is just above the exact total
+  let found = 0;
+  for (let income = 3000100; income < 3000100 + 50000 && found < 3; income += 997) {
+    const s = base(); s.categories.push({ id: "shop", name: "Shopping", kind: "expense" }, { id: "tr", name: "Transpo", kind: "expense", role: "transport" }, { id: "hl", name: "Health", kind: "expense", role: "health" }, { id: "ess", name: "Essentials", kind: "expense", role: "essentials" });
+    slip(s, "2026-09-28", income);
+    const r = sug(s, { rent: 333333 });
+    assert.equal(r.ok, true);
+    const t = r.rows.reduce((a, x) => a + x.amount, 0) + r.others.reduce((a, x) => a + x.amount, 0) + r.saved.reduce((a, x) => a + x.amount, 0);
+    assert.ok(t <= income, `total ${t} is within income ${income}`); assert.equal(r.short, 0); assert.equal(r.unallocated, income - t);
+    for (const x of r.rows.filter((y) => !y.pinned)) assert.equal(x.amount % 5000, 0, "still multiples of 50 pesos");
+    if (r.trimmed.length) found++;
+  }
+  assert.ok(found >= 1, "at least one of these incomes needed the fix");
+});
+
+test("the Suggest sheet says what was lowered and what is left unallocated, in pesos", () => {
+  assert.match(app, /Left unallocated if you use all of them: \$\{peso\(r\.unallocated\)\}\./);
+  assert.match(app, /Rounding would have gone over your income, so/);
+  assert.match(app, /more than your income\./);
+});
