@@ -30,10 +30,11 @@ export function baseIncome(state, { plan = null, pin = null } = {}) {
   return { amount: kinds.reduce((n, list) => n + median(list.slice(-3), "low"), 0), source: "payslips", text: "From your last 3 payslips" };
 }
 
-// Tenths of a percent (1000 = 100.0%). The three shares add up to exactly 1000, with Unallocated the remainder (negative when the plan is over the income).
+// The summary of the month: Spending and Saved as a share of the income, each PLAINLY rounded to the nearest tenth of a percent (1000 = 100.0%), and
+// Unallocated in whole centavos (what is left of the income; negative when the budgets and savings are more than the income). The shares are not forced
+// to add up to 100.0%: each is what it is, rounded like every other percent on the screen.
 export function shares(income, spending, saved) {
-  const s = Math.floor((spending * 1000) / income), v = Math.floor((saved * 1000) / income);
-  return { spending: s, saved: v, unallocated: 1000 - s - v };
+  return { spending: tenths(spending, income), saved: tenths(saved, income), unallocated: income - spending - saved };
 }
 // One amount as tenths of a percent of the income, rounded to the nearest tenth (rows are shown on their own; only the three shares above must add up).
 export const tenths = (amount, income) => Math.floor((amount * 2000 + income) / (2 * income));

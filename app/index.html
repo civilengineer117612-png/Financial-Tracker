@@ -168,7 +168,7 @@
   .bars .brow.g-critical .bfill, .meter.g-critical .fill { background: var(--critical); }
   .bars .brow.g-none .bfill { background: var(--soft); }
   .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--mid); font-size: 13px; margin: 6px 0; }
-  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); opacity: 0; }
+  .sr { position: absolute; left: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); opacity: 0; }
   .passbox { font: 17px/1.5 ui-monospace, monospace; background: var(--wash); border: 1px solid var(--line); border-radius: 10px; padding: 12px; text-align: center; user-select: all; -webkit-user-select: all; word-break: break-all; }
   .overnote { display: flex; align-items: center; gap: 6px; color: var(--ink); }
   .notes.icons { list-style: none; padding: 0; } .notes.icons li { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; } .noteicon { flex: none; margin-top: 1px; color: var(--mid); }
@@ -185,7 +185,7 @@
   .bcard { padding: 10px 0; border-bottom: 1px solid var(--line); }
   .bcard .btop { margin-bottom: 0; }
   .choice { display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 0; min-height: 56px; }
-  .choice small { color: var(--mid); display: block; }
+  .choice small { color: var(--mid); display: block; } .choice .bval { text-align: right; }
   .chip { display: inline-flex; align-items: center; gap: 8px; }
   .icowrap { position: relative; display: inline-block; flex: none; vertical-align: middle; } .icowrap .ico.ov { position: absolute; inset: 0; } .icowrap .mono { position: absolute; inset: 0; width: 100%; height: 100%; }
   /* every picture sits in the same white framed tile, whatever shape or padding the logo came with, so a list of banks looks like one set */
@@ -232,6 +232,7 @@
   .tbl th, .tbl td { text-align: left; padding: 9px 4px; border-bottom: 1px solid var(--line); }
   .tbl th { color: var(--mid); font-weight: normal; }
   .tbl .n { text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 360px) { .tbl th, .tbl td { padding: 9px 3px; font-size: 14px; } }   /* four columns fit a 320 px phone */
   .tbl tr.total td { font-weight: bold; }
   .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   .row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
@@ -240,7 +241,7 @@
   .bigamt { font-size: 24px; font-weight: 700; margin: 4px 0 12px; font-variant-numeric: tabular-nums; }
   .txdl { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0 0 14px; } .txdl dt { color: var(--mid); } .txdl dd { margin: 0; text-align: right; } .txdl dd.who { justify-content: flex-end; }
   .row small { color: var(--mid); display: block; }
-  .row .amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .row .amt { white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }   /* the small line under an amount ("you owe", "Remove") lines up with the amount's right edge */
   .card { border: 1px solid var(--ink); border-radius: 12px; padding: 16px; margin: 10px 0; }
   .card .big { font-size: 26px; font-weight: bold; margin: 6px 0 10px; font-variant-numeric: tabular-nums; }
   .card .what { font-size: 17px; }
