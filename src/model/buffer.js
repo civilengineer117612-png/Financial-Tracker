@@ -4,7 +4,7 @@
 //
 // The spec does not say how a draw on a NON-GCash overrun works, so only GCash
 // spending and the month-end sweep are modelled here.
-import { naturalBalance } from "./balances.js";
+import { naturalBalance, countedEntries } from "./balances.js";
 import { checkTransactionSave } from "./index.js";
 import { phTimestamp } from "./util.js";
 
@@ -82,7 +82,7 @@ export function planSweep(state, input, now = new Date()) {
 
   let left = buffer;
   const parts = order.map((o, i) => {
-    const amount = i === order.length - 1 ? left : Math.min(left, Math.max(0, (o.target ?? 0) - naturalBalance(state.accounts.find((a) => a.id === o.account_id), state.entries)));
+    const amount = i === order.length - 1 ? left : Math.min(left, Math.max(0, (o.target ?? 0) - naturalBalance(state.accounts.find((a) => a.id === o.account_id), countedEntries(state))));
     left -= amount;
     return [o.account_id, amount];
   });
@@ -142,7 +142,7 @@ export function planEnvelopeSetup(state, input, now = new Date()) {
   if (!account || account.class !== "asset") return failv("UNKNOWN_ACCOUNT", "choose the GCash account");
   const ok = (n) => Number.isSafeInteger(n) && n >= 0;
   if (!ok(input.allowance_amount) || !ok(input.buffer_amount)) return failv("BAD_AMOUNT", "amounts must be whole centavos, zero or more");
-  const held = naturalBalance(account, state.entries);
+  const held = naturalBalance(account, countedEntries(state));
   if (input.allowance_amount + input.buffer_amount > held) return failv("MORE_THAN_HELD", "the envelopes cannot hold more than the account does");
   const ids = [input.allowance_envelope_id, input.buffer_envelope_id];
   if (ids.some((id) => (state.envelopes ?? []).some((e) => e.id === id))) return failv("DUPLICATE_ID", "the envelopes already exist");

@@ -915,7 +915,7 @@ function viewSetup() {
   const reserveExists = S().accounts.some((a) => a.reserve_for);
   const hosts = activeAccounts().filter((a) => a.class === "asset" && !a.reserve_for);
   const rows = cashFirst(S().accounts).map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? "Bank, wallet or cash" : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"}</small></div></div>
-      <div class="amt">${peso(M.naturalBalance(a, S().entries))}${used.has(a.id) ? "" : `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`}</div></div>`).join("");
+      <div class="amt">${peso(M.naturalBalance(a, M.countedEntries(S())))}${used.has(a.id) ? "" : `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`}</div></div>`).join("");
   // The form comes FIRST so it stays in the same place however many accounts there are: the
   // button never drifts down behind the keyboard. The list of accounts follows it.
   return `<h1>Setup</h1><p class="sub">Accounts. The ledger is on this phone only.</p>
@@ -927,6 +927,7 @@ function viewSetup() {
       : `<label for="a-name">Or type a name</label><input id="a-name" data-field="name" value="${esc(f.name)}" autocomplete="off" enterkeyhint="next">`}
     <label for="a-kind">Kind of account</label><select id="a-kind" data-field="kind"><option value="asset"${f.kind === "asset" ? " selected" : ""}>Bank, wallet or cash (money I have)</option><option value="liability"${f.kind === "liability" ? " selected" : ""}>Credit card (money I owe)</option></select>
     <label for="a-open">${f.kind === "asset" ? "How much is in it today" : "How much you owe on it today"} (₱)</label><input id="a-open" data-field="opening" inputmode="decimal" value="${esc(f.opening)}" placeholder="0.00" autocomplete="off">
+    <p class="note" id="a-open-note">Spending you log with an earlier date is history only: it does not come off this amount again. From today on, it does.</p>
     ${f.kind === "asset" && cards.length ? `<label for="a-covers">This account is a reserve for a card (optional)</label><select id="a-covers" data-field="covers"><option value="">No</option>${cards.map((c) => `<option value="${esc(c.id)}"${f.covers === c.id ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select>` : ""}
     ${ui.setupError ? `<p id="a-error" role="alert"><b>${esc(ui.setupError)}</b></p>` : ""}
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>
@@ -1235,9 +1236,9 @@ function viewTripDetail(id) {
 
 // ---------- checks: card reserve and the weekly Unlogged habit ----------
 function viewChecks() {
-  const rs = M.reserveShortfalls(S().accounts, S().entries);
+  const rs = M.reserveShortfalls(S().accounts, M.countedEntries(S()));
   const reserve = rs.length ? rs.map((r) => {
-    const card = S().accounts.find((a) => a.id === r.card_id), res = S().accounts.find((a) => a.id === r.reserve_id), o = M.cardOutstanding(card, S().entries);
+    const card = S().accounts.find((a) => a.id === r.card_id), res = S().accounts.find((a) => a.id === r.reserve_id), o = M.cardOutstanding(card, M.countedEntries(S()));
     const ok = r.shortfall === 0;
     return `<div class="bcard"><div class="btop"><span class="bname who">${iconOf(card, 24)}<span>${esc(card.name)}</span></span></div>
       <dl><dt>${esc(res.name)} holds</dt><dd>${peso(r.reserve)}</dd><dt>${esc(card.name)} owes</dt><dd>${peso(r.outstanding)}<small> (${peso(o.pending)} pending + ${peso(o.posted)} posted)</small></dd></dl>
@@ -1868,7 +1869,8 @@ function renderSheet() {
     const h = M.HOWTOS.find((x) => x.id === sh.id);
     body = `<h3>${esc(h.label)}</h3>${clipFor(h.id)}<p class="hwcap">${esc(h.caption)}</p>`;
   } else if (sh.type === "whatsnew") {
-    body = `<h3>What's new</h3><ul class="notes">${M.whatsNew({}, 3).map((c) => `<li><b>${esc(longDate(c.date))}</b> ${esc(c.text)}</li>`).join("")}</ul>
+    const moved = sh.changes?.length ? `<p class="note" id="wn-balances"><b>Balances that changed:</b> ${sh.changes.map((x) => `${esc(x.name)} ${x.by > 0 ? "+" : "\u2212"}${peso(Math.abs(x.by))}`).join(", ")}. Spending dated before the day you added these accounts was being taken off twice; it now stays as history only.</p>` : "";
+    body = `<h3>What's new</h3><ul class="notes">${M.whatsNew({}, 3).map((c) => `<li><b>${esc(longDate(c.date))}</b> ${esc(c.text)}</li>`).join("")}</ul>${moved}
       <p class="note">${esc(M.HOWTO_HINT)} Help keeps the full list.</p>
       <p><button class="primary" data-action="close-sheet">Got it</button></p>`;
   } else if (sh.type === "bucket-pick") {
@@ -1950,7 +1952,7 @@ function refreshSave() {
     btn.disabled = !(f.ease && /^\d{1,4}$/.test(c) && a.ok);
   } else if (type === "bufsetup") {
     const buf = f.buf ? M.parsePesos(f.buf) : { ok: true, centavos: 0 }, allow = f.allow ? M.parsePesos(f.allow) : { ok: true, centavos: 0 };
-    const acct = S().accounts.find((a) => a.id === f.account_id), held = acct ? M.naturalBalance(acct, S().entries) : 0;
+    const acct = S().accounts.find((a) => a.id === f.account_id), held = acct ? M.naturalBalance(acct, M.countedEntries(S())) : 0;
     const msg = $("f-msg"), note = $("b-held");
     if (note) note.textContent = acct ? acct.name + " holds " + peso(held) + "." : "";
     const over = buf.ok && allow.ok && buf.centavos + allow.centavos > held;
@@ -2803,6 +2805,9 @@ const enterArrange = () => {
   if (!ledger.settings.tile_hint_done) commit(S(), { ...ledger.settings, tile_hint_done: true }, { quiet: true });
 };
 document.addEventListener("click", (e) => { if (suppressClick) { suppressClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
+// A new touch is a new gesture: a click held back from the last one can no longer come (its button may have gone, as when holding a menu item closes the
+// menu, so the lift is never reported), so it must not swallow this tap.
+document.addEventListener("pointerdown", () => { suppressClick = false; }, true);
 document.addEventListener("pointerdown", (e) => {
   const t = e.target.closest(".tile[data-id]");
   if (!t || e.target.closest(".tminus") || ui.tab !== "log" || ui.sheet) return;
@@ -2948,7 +2953,7 @@ async function start() {
       ledger = u.ledger; ui.upgrade = u.ok ? { done: true } : { failed: u.failed }; boot = { ...boot, status: "OK" };   // both stores were just written
     }
     ledger.state = M.dropUnusedCardCategory(M.ensureIncomeCategories(ledger.state));   // older ledgers gain Interest, Refund and Other income (saved with the next save)
-    if (boot.status === "NONE") { ledger.state = { ...ledger.state, categories: M.defaultCategories(), presets: M.defaultPresets() }; ledger.settings = { ...ledger.settings, roles_notice_seen: M.phTimestamp(), whatsnew_seen: M.CHANGES[0].id }; }   // kept in memory until the first save
+    if (boot.status === "NONE") { ledger.state = { ...ledger.state, categories: M.defaultCategories(), presets: M.defaultPresets() }; ledger.settings = { ...ledger.settings, roles_notice_seen: M.phTimestamp(), whatsnew_seen: M.CHANGES[0].id, start_rule_seen: M.phTimestamp() }; }   // kept in memory until the first save
     // The two stores disagree on revision only (a save reached one and not the other): repair quietly from the newer.
     if (boot.status === "REPAIR" && local != null && idb != null && device.allowEntry) {
       await writeBoth(JSON.stringify(ledger), { local: boot.repairTo === "local", idb: boot.repairTo === "idb" });
@@ -2961,10 +2966,12 @@ async function start() {
   // A brand-new install shows the notice once: the moment is remembered in the settings, which are saved with the first save. Help shows it again on request.
   if (device.allowEntry && boot.status === "NONE" && !ledger.settings.notice_seen_at) { ledger.settings = { ...ledger.settings, notice_seen_at: M.phTimestamp() }; ui.sheet = { type: "notice" }; renderSheet(); }
   // After an update: the latest changes, once. "Got it" (or closing the window) remembers it, saved at once so it is not shown again.
-  if (device.allowEntry && boot.status === "OK" && !ui.sheet && !ui.upgrade?.failed && ledger.v === M.LEDGER_VERSION && M.whatsNew(ledger.settings).length) {
-    ui.sheet = { type: "whatsnew" }; renderSheet();
-    await commit(S(), { ...ledger.settings, whatsnew_seen: M.CHANGES[0].id }, { quiet: true });
-  }
+  // The start-date rule (balances skip spending dated before an account was added) is told once, with the accounts whose balance it changed.
+  const early = !ledger.settings.start_rule_seen && boot.status === "OK" ? M.earlyEntryChanges(S()) : [];
+  if (device.allowEntry && boot.status === "OK" && !ui.sheet && !ui.upgrade?.failed && ledger.v === M.LEDGER_VERSION && (M.whatsNew(ledger.settings).length || early.length)) {
+    ui.sheet = { type: "whatsnew", changes: early }; renderSheet();
+    await commit(S(), { ...ledger.settings, whatsnew_seen: M.CHANGES[0].id, start_rule_seen: M.phTimestamp() }, { quiet: true });
+  } else if (device.allowEntry && boot.status === "OK" && !ui.upgrade?.failed && !ledger.settings.start_rule_seen) ledger.settings = { ...ledger.settings, start_rule_seen: M.phTimestamp() };   // nothing changed: kept with the next save
   if (device.allowEntry && boot.status === "OK") {
     // Grey placeholder pictures saved by earlier versions are dropped at once, so a letter tile shows instead of a wrong one;
     // then the listed banks' logos are loaded in the background, so they are there from the start. (On a brand-new phone

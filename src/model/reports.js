@@ -5,7 +5,7 @@
 //   - Categories are grouped as of `asOf` (the day the report is run), so a merge regroups history.
 //   - Unlogged counts: it is real money that left and was never logged.
 import { reportingCategory } from "./rules.js";
-import { naturalBalance } from "./balances.js";
+import { naturalBalance, countedEntries } from "./balances.js";
 
 export const monthOf = (date) => date.slice(0, 7);
 
@@ -83,7 +83,7 @@ export function cardsSummary(state, { from, to }) {
       const t = txById.get(e.transaction_id);
       if (t && t.status === "verified" && t.date >= from && t.date <= to) paid += e.amount;
     }
-    return { account_id: a.id, name: a.name, spent: spent.get(a.id) ?? 0, paid, owe: naturalBalance(a, state.entries) };
+    return { account_id: a.id, name: a.name, spent: spent.get(a.id) ?? 0, paid, owe: naturalBalance(a, countedEntries(state)) };
   });
   return { cards, owe: cards.reduce((n, c) => n + c.owe, 0) };
 }
@@ -94,7 +94,7 @@ export function accountsOverview(state, { from, to }) {
   const { cards, owe } = cardsSummary(state, { from, to });
   const spent = new Map(spendingByAccount(state, { from, to }).rows.map((r) => [r.account_id, r.amount]));
   const money = state.accounts.filter((a) => a.class === "asset" && !a.archived)
-    .map((a) => ({ account_id: a.id, name: a.name, balance: naturalBalance(a, state.entries), spent: spent.get(a.id) ?? 0 }));
+    .map((a) => ({ account_id: a.id, name: a.name, balance: naturalBalance(a, countedEntries(state)), spent: spent.get(a.id) ?? 0 }));
   return { cards, money, owe, held: money.reduce((n, m) => n + m.balance, 0) };
 }
 

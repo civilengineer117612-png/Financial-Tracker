@@ -5,6 +5,25 @@
 //   asset:     opening + sum(entries)
 //   liability: opening - sum(entries)     (positive = amount owed)
 
+// What counts toward a balance: the opening balance is what the account held on the day it was added ("How much is in it today"), so an entry dated
+// BEFORE that day is already inside it and is not counted again. Entries on that day or later count (on the day itself they count: showing a little too
+// little is the safer mistake). History, reports and budgets still see every entry; only balances skip the early ones.
+const cache = new WeakMap();
+export function countedEntries(state) {
+  const entries = state.entries ?? [], hit = cache.get(entries);
+  if (hit && hit.tx === state.transactions && hit.accounts === state.accounts) return hit.out;
+  const dateOf = new Map((state.transactions ?? []).map((t) => [t.id, t.date])), start = new Map((state.accounts ?? []).map((a) => [a.id, a.opening_date]));
+  const out = entries.filter((e) => { if (e.account_id == null) return true; const d = dateOf.get(e.transaction_id), s = start.get(e.account_id); return !d || !s || d >= s; });
+  cache.set(entries, { tx: state.transactions, accounts: state.accounts, out });
+  return out;
+}
+
+// Accounts whose balance the rule above changes (entries dated before the account was added): [{account_id, name, by}], by = how much more it now shows.
+export function earlyEntryChanges(state) {
+  const counted = countedEntries(state);
+  return (state.accounts ?? []).map((a) => ({ account_id: a.id, name: a.name, by: naturalBalance(a, counted) - naturalBalance(a, state.entries ?? []) })).filter((x) => x.by !== 0);
+}
+
 export function naturalBalance(account, entries) {
   const sum = entries.filter((e) => e.account_id === account.id).reduce((s, e) => s + e.amount, 0);
   return account.class === "asset" ? account.opening_balance + sum : account.opening_balance - sum;
