@@ -11,7 +11,7 @@ test("amount, name, account, date and category from one sentence", () => {
   assert.equal(r.payee, "Sample Burger");
   assert.equal(r.bankId, "gcash");
   assert.equal(r.date, "2026-10-19");
-  assert.equal(r.categoryName, "Food");
+  assert.equal(r.categoryRole, "food"); assert.equal(r.categoryName, null, "nothing was said by category name");
   assert.equal(r.direction, "out");
   assert.deepEqual(r.notes, []);
 });
@@ -36,7 +36,7 @@ test("everyday Filipino words are understood", () => {
   assert.equal(r.amount, 25000);
   assert.equal(r.date, "2026-10-19");
   assert.equal(r.bankId, "gcash");
-  assert.equal(r.categoryName, "Essentials");
+  assert.equal(r.categoryRole, "essentials");
   assert.equal(say("pera 120 sa palengke").cash, true);
 });
 test("days: today by default, yesterday, days ago, and the last time a weekday came round", () => {

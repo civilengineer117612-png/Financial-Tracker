@@ -5,7 +5,7 @@ import { checkEntriesBalance, checkReferences, checkReserve, checkDuplicate, che
 
 export { SCHEMAS, validateShape } from "./schema.js";
 export { COLLECTION_NAMES, MIGRATIONS, selfCheck, fingerprint, upgradeLedger, rotateCopies, restorableCopy } from "./migrate.js";
-export { QUICK_NOTES, TOPICS as HELP_TOPICS, checklist } from "./help.js";
+export { QUICK_NOTES, FIRST_RUN_NOTICE, TOPICS as HELP_TOPICS, checklist } from "./help.js";
 export { APP_BUILD, APP_BUILT_ON, isDevBuild } from "./version.js";
 export { naturalBalance, cardOutstanding, reserveShortfalls } from "./balances.js";
 export { countsTowardBudget, splitByBudgetStatus } from "./invariants.js";
@@ -43,18 +43,18 @@ export function checkRulesSave(previousRules, nextRules) {
 export { ruleInEffect, rulesInEffect, reportingCategory, checkCategoryMapSave } from "./rules.js";
 export { validateRatchetParams, wasMet, nextRatchet, ratchetSchedule, splitRatchet } from "./ratchet.js";
 export { planCheckIn, ledgerBalanceFor, unloggedTotal } from "./checkin.js";
-export { envelopeBalance, planGcashSpend, splitSweep, planMonthEndSweep, underBudgetedCategories, planEnvelopeSetup, planBufferFunding, bufferSummary } from "./buffer.js";
+export { envelopeBalance, planGcashSpend, splitSweep, planMonthEndSweep, planSweep, sweepOrderAccounts, underBudgetedCategories, planEnvelopeSetup, planBufferFunding, bufferSummary } from "./buffer.js";
 export { parseSchedule, isDue, datesBetween, categoryForPayee, draftId, draftFromTemplate, draftsForRange, planReserveTransfer, updatePreset, addPreset, removePreset, reorderPresets, MAX_PRESETS } from "./templates.js";
 export { budgetStatus, budgetTrend, budgetGrade, GRADE_AT, monthElapsedPercent, suggestedBudgetStart, budgetFor, planBudgetChange } from "./budget.js";
 export { pendingDrafts, verifyTransaction } from "./inbox.js";
-export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit, setGoalTarget } from "./goals.js";
+export { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit, setGoalTarget, goalByRole, setGoalRole } from "./goals.js";
 export { validateState, encryptBackup, decryptBackup, encryptLedgerBackup, decryptLedgerBackup, MIN_PASSPHRASE } from "./backup.js";
 export { weekEndingOn, autoFillSurvey, planSurveyResponse, surveyReview, unloggedByWeek } from "./survey.js";
 export { editDraft } from "./inbox.js";
 export { detectPlatform, assessDevice, trialAllowed } from "./device.js";
 export { buildReminderCalendar, defaultReminders, validateReminder, foldLine } from "./reminders.js";
 export { parsePesos, formatPesos, formatPesosWhole } from "./money.js";
-export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID, ensureIncomeCategories, dropUnusedCardCategory, INCOME_CATEGORIES } from "./seed.js";
+export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID, categoryByRole, addCategory, renameCategory, ensureIncomeCategories, dropUnusedCardCategory, INCOME_CATEGORIES } from "./seed.js";
 export { applyDrafts, planExpense, discardDraft, verifyDraft, editDraftFields, setAccountIcon, planAttachment, attachmentsFor, planSplitExpense, splitCategoryEntry } from "./drafts.js";
 export { LEDGER_VERSION, emptyState, emptyLedger, nextLedger, parseLedger, chooseLedger, restoreLedger, summarizeLedger, backupFileName, daysSinceBackup } from "./persist.js";
 export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByRange, spendingByAccount, cardsSummary, accountsOverview, monthlySpending, dayTotal } from "./reports.js";

@@ -51,7 +51,7 @@ function payeeIn(text) {
 }
 
 // text: what was said. state: the ledger (for category names). today: "YYYY-MM-DD".
-// Returns {amount, date, payee, categoryGuess, categoryName, bankId, cash, direction, notes, heard}.
+// Returns {amount, date, payee, categoryName (a category the owner NAMED, or null), categoryRole (a guess by role: food, essentials, subscription, rent, or null), bankId, cash, direction, notes, heard}.
 export function parseSpoken(text, { today, categories = [] }) {
   const heard = String(text ?? "").trim(), lower = heard.toLowerCase(), notes = [];
   const amounts = amountsIn(heard);
@@ -62,5 +62,5 @@ export function parseSpoken(text, { today, categories = [] }) {
   if (direction === "in") notes.push("This sounds like money coming in. Choose where it goes.");
   const named = categories.filter((c) => c.kind === "expense").find((c) => new RegExp("\\b" + c.name.toLowerCase().replace(/[^a-z0-9]+/g, "\\s*") + "\\b").test(lower));
   const guess = categoryGuessFor(heard);
-  return { amount, date: dateIn(heard, today), payee: payeeIn(heard), categoryName: named?.name ?? guess, bankId: bankInText(heard), cash: /\b(cash|pera|bulsa)\b/.test(lower), direction, notes, heard };
+  return { amount, date: dateIn(heard, today), payee: payeeIn(heard), categoryName: named?.name ?? null, categoryRole: guess, bankId: bankInText(heard), cash: /\b(cash|pera|bulsa)\b/.test(lower), direction, notes, heard };
 }

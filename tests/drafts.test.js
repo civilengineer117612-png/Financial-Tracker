@@ -40,8 +40,11 @@ test("defaults form a valid ledger and contain no accounts or balances", () => {
   assert.deepEqual(validateState(s), []);
   assert.equal(s.accounts.length, 0);
   assert.ok(s.categories.some((c) => c.id === "cat-unlogged" && c.kind === "expense"));
-  assert.deepEqual(defaultPresets().map((p) => [p.name, p.amount]), [["Breakfast", 2000], ["Lunch", 9500], ["Dinner", 9500]]);
-  for (const p of defaultPresets()) assert.ok(defaultCategories().some((c) => c.id === p.category_id));
+  assert.deepEqual(defaultPresets(), [], "a new install has no quick tiles: nobody's names or amounts");
+  const names = defaultCategories().map((c) => c.name).join("|");
+  for (const owner of ["Lakat", "Family", "Upskill", "Breakfast", "Dinner"]) assert.ok(!names.includes(owner), owner + " is not a default");
+  const roles = Object.fromEntries(defaultCategories().filter((c) => c.role).map((c) => [c.role, c.id]));
+  assert.deepEqual(roles, { food: "cat-food", essentials: "cat-essentials", rent: "cat-rent", subscription: "cat-subscription" }, "the four roles the scanner looks for are all there");
 });
 
 // ---------- planExpense ----------

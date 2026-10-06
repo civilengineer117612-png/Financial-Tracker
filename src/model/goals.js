@@ -79,10 +79,27 @@ export function planGoal(state, input) {
   if ((state.goals ?? []).some((g) => g.id === input.id)) return fail("DUPLICATE_ID", "that goal already exists");
   if ((state.goals ?? []).some((g) => g.name.toLowerCase() === name.toLowerCase())) return fail("DUPLICATE_NAME", "you already have a goal with that name");
   const goal = { id: input.id, account_id: account.id, name, hidden_by_default: input.hidden_by_default ?? true,
-    ...(input.target != null ? { target: input.target } : {}), ...(input.deadline ? { deadline: input.deadline } : {}) };
+    ...(input.target != null ? { target: input.target } : {}), ...(input.deadline ? { deadline: input.deadline } : {}), ...(input.role ? { role: input.role } : {}) };
   const problems = validateShape("Goal", goal);
   if (problems.length) return { ok: false, violations: problems };
-  return { ok: true, violations: [], goal, state: { ...state, goals: [...(state.goals ?? []), goal] } };
+  // One goal at most holds a role: giving it to the new goal takes it away from the old one.
+  const others = (state.goals ?? []).map((g) => (input.role && g.role === input.role ? withoutRole(g) : g));
+  return { ok: true, violations: [], goal, state: { ...state, goals: [...others, goal] } };
+}
+
+const withoutRole = ({ role: _r, ...rest }) => rest;
+
+// The goal that holds a role (for example "emergency"), or null. Nothing finds a goal by its NAME.
+export const goalByRole = (state, role) => (state.goals ?? []).find((g) => g.role === role) ?? null;
+
+// Gives a goal a role, or takes it away (role null). One goal at most holds a role, so it moves from the goal that had it.
+export function setGoalRole(state, goalId, role) {
+  const goal = (state.goals ?? []).find((g) => g.id === goalId);
+  if (!goal) return fail("UNKNOWN_GOAL", "no goal " + goalId);
+  const next = (g) => (g.id === goalId ? (role ? { ...g, role } : withoutRole(g)) : role && g.role === role ? withoutRole(g) : g);
+  const goals = state.goals.map(next), problems = goals.flatMap((g) => validateShape("Goal", g));
+  if (problems.length) return { ok: false, violations: problems };
+  return { ok: true, violations: [], state: { ...state, goals } };
 }
 
 // Move money into a goal's account as a DRAFT transfer, verified later like any other entry.

@@ -19,7 +19,7 @@ Thank you`, TODAY);
   assert.equal(r.amount, 15000);
   assert.equal(r.date, "2026-10-18");
   assert.equal(r.payee, "SAMPLE BURGER HOUSE");
-  assert.equal(r.categoryGuess, "Food");
+  assert.equal(r.categoryGuess, "food");
   assert.equal(r.direction, "out");
 });
 test("the last Total wins and its amount may sit on the next line", () => {
@@ -71,7 +71,7 @@ test("a ride and a rent receipt are recognised", () => {
   const rent = readScan("ACKNOWLEDGMENT RECEIPT\nReceived from Sample Tenant the sum of Five thousand pesos (P5,000.00) for rent for the month of October\n10/05/2026", TODAY);
   assert.equal(rent.kind, "rent");
   assert.equal(rent.amount, 500000);
-  assert.equal(rent.categoryGuess, "Rent");
+  assert.equal(rent.categoryGuess, "rent");
 });
 test("amount in words is read, and a disagreement with the figures is flagged", () => {
   assert.equal(wordsToCentavos("Nine thousand five hundred pesos"), 950000);
