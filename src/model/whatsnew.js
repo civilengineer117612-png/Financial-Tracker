@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-09-howto-trips", date: "2026-10-09", text: "Hold Trips in the menu to watch how a trip keeps its spending apart, and the Verify clip now shows fixing an amount before tapping Correct." },
   { id: "2026-10-07-import", date: "2026-10-07", text: "Import old spending from a screenshot of your notes or a spreadsheet (CSV or Excel): tap the camera, then Import old spending. Every line waits in Verify." },
   { id: "2026-10-07-tips-yours", date: "2026-10-07", text: "Budgeting tips now show your own figures beside them, two Philippine tips were added, and notes are in italics everywhere." },
   { id: "2026-10-07-tips", date: "2026-10-07", text: "Suggest a budget is shorter: the repeated starter note is gone, and budgeting tips with their sources sit at the bottom." },

@@ -42,7 +42,8 @@ function clipFor(id) {
     const bk = set.try_new_budget ? M.bucketRows({ categories: S().categories, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets, income, budgets: Object.fromEntries(cats.map((x) => [x.c.id, x.amount])), skipId: M.UNLOGGED_CATEGORY_ID }).rows.filter((r) => r.bucket !== "other") : null;
     budget = { income, rows, buckets: bk };
   }
-  return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total, budget });
+  const trips = id === "trips" ? S().tags.map((t) => ({ name: t.name, days: M.tripDays(t), spent: M.tagSummary(S(), t.id, { categoryMaps: S().categoryMaps, asOf: today() }).spent })) : [];
+  return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total, budget, trips });
 }
 // The reason under a suggested figure. The starter share's long note was the same on every row, so it is said once, in the tips at the bottom; a row
 // keeps only what is its own (learned from history, pinned, or lowered to fit the income).
