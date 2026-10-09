@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-09-ledger", date: "2026-10-09", text: "A new quiet look: warm paper background, white cards, one green button per screen, a simpler number font, and Spending shows slim bars instead of a donut." },
   { id: "2026-10-09-sinking", date: "2026-10-09", text: "Saving up for a planned expense (insurance, Christmas) is now a switch on a category's budget: it carries over and is never counted as savings." },
   { id: "2026-10-09-setup-help", date: "2026-10-09", text: "Setup is now a short list of pages, Help runs in a clearer order with plainer guides, and What's new is smaller." },
   { id: "2026-10-09-howto-rest", date: "2026-10-09", text: "New how-to clips for Cards, Weekly review, Checks and Buffer: hold their menu rows to watch." },
