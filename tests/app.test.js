@@ -188,3 +188,12 @@ test("simple wording: the long notes were cut, and none of the old long sentence
   const long = [...js.matchAll(/<p class="(?:note|sub)[^"]*"[^>]*>([^<$`]{150,})<\/p>/g)].map((m) => m[1].slice(0, 50));
   assert.deepEqual(long, [], "no plain note is longer than 150 characters");
 });
+
+test("one thing, said once: the donut has no second total, Verify states its count once, a strip screen has one visible title", () => {
+  const js = read("app/app.js"), css = read("app/index.html");
+  assert.ok(!js.includes('class="dtotal"') && !js.includes('class="dsub"'), "the donut's centre does not repeat the headline total");
+  assert.match(js, /`\$\{list\.length\} to check`, due \? `\$\{due\} from before today` : "ready whenever you are"/, "Verify says how many once, in the line under the title");
+  assert.ok(!js.includes('<p class="note">1 of ${list.length}</p>'), "no second 'n of m'");
+  assert.match(js, /\(hub \? `<h1 class="sr">\$\{esc\(title\)\}<\/h1>` : titleOf\(title\)\)/, "on a strip screen the strip names the screen; the title is only read aloud");
+  assert.match(css, /\.sr \{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect\(0 0 0 0\); white-space: nowrap; \}/);
+});

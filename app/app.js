@@ -180,11 +180,12 @@ function titleOf(title) {
 }
 
 function renderTop(title) {
+  const hub = M.hubOf(ui.tab) && device.allowEntry && M.HUBS[M.hubOf(ui.tab)].filter((id) => !M.menuHidden(ledger.settings).has(id)).length > 1;
   const lines = `<svg width="24" height="16" viewBox="0 0 24 16" aria-hidden="true"><rect y="0" width="24" height="2.5" rx="1.25" fill="currentColor"/><rect y="6.75" width="17" height="2.5" rx="1.25" fill="currentColor"/><rect y="13.5" width="10" height="2.5" rx="1.25" fill="currentColor"/></svg>`;   // lines of falling length, no box
   // One scanner button: it opens the two choices, camera or photos/files.
   const camera = device.allowEntry && ui.tab === "log" ? `<button class="camicon" data-action="open-scan-pick" data-howto="scan" aria-label="Scan a receipt or payment screen: take a photo or choose from photos or files"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.scan}</svg></button>` : "";
   const mic = device.allowEntry && ui.tab === "log" ? `<button class="camicon micbtn" data-action="open-voice" aria-label="Say an entry out loud"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.mic}</svg></button>` : "";
-  $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + titleOf(title) + mic + camera;
+  $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + (hub ? `<h1 class="sr">${esc(title)}</h1>` : titleOf(title)) + mic + camera;
 }
 
 let menuTimer = null;
@@ -357,7 +358,7 @@ const allDrafts = () => M.pendingDrafts(S(), today()).filter((t) => !isGenerated
 function viewVerify() {
   const list = allDrafts();
   const due = dueDrafts().length, fresh = list.length - due;
-  const parts = [due && `${due} from before today`, fresh && `${fresh} from today, ready whenever you are`].filter(Boolean);
+  const parts = list.length ? [`${list.length} to check`, due ? `${due} from before today` : "ready whenever you are"] : [];
   const head = `<h1>Verify</h1><p class="sub">${parts.length ? parts.join(" · ") : "One at a time, look at each entry."}</p>`;
   if (!list.length) return head + `<p class="note">Nothing to verify.</p>`;
   const t = list[0], d = describe(t);
@@ -372,7 +373,7 @@ function viewVerify() {
   const shot = M.attachmentsFor(S(), t.id)[0];
   const fromPhoto = t.source === "photo" ? `<p class="note">Read from the photo. Compare each line with the paper before you tap Correct.</p>`
     : t.source === "voice" ? `<p class="note">Made from what you said${t.memo ? ": \u201C" + esc(t.memo) + "\u201D" : ""}. Check each line before you tap Correct.</p>` : "";
-  return `${head}<p class="note">1 of ${list.length}</p>
+  return `${head}
     <div class="card">${shot ? `<button class="shotbtn" data-action="open-photo" data-id="${esc(shot.id)}" aria-label="Open the photo full size"><img class="shot" data-photo="${esc(shot.id)}" alt="The photo this entry was read from" hidden></button>` : ""}${fromPhoto}<div class="what">${esc(d.title)}</div><div class="big">${peso(d.amount)}</div>
       <dl><dt>Date</dt><dd>${esc(longDate(t.date))}</dd>${fields}${reserve}</dl>
       <div class="actions">
@@ -1101,8 +1102,7 @@ function flipChart(rows, total, { shape = "donut" } = {}) {
     const colored = shown.map((r, i) => ({ ...r, color: r.fold ? "#999" : DONUT_BLUES[Math.min(i, DONUT_BLUES.length - 1)] }));
     const arcs = colored.map((r) => { const len = (r.amount / sum) * C, dash = Math.max(0.5, len - GAP); const c = `<circle class="slice" cx="100" cy="100" r="${R}" fill="none" stroke="${r.color}" stroke-width="30" stroke-dasharray="${dash.toFixed(2)} ${(C - dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 100 100)"/>`; offset += len; return c; }).join("");
     const legend = colored.map((r) => `<div class="lrow"><span class="swatch" style="background:${r.color}"></span><span class="lname">${r.label}</span><span class="lval">${peso(r.amount)} \u00b7 ${r.percent}%</span></div>`).join("");
-    return `<div class="flip" data-action="chart-mode" data-mode="list" role="button" tabindex="0" aria-label="Donut of where the money went. Tap to show the list."><svg class="donut" viewBox="0 0 200 200" aria-hidden="true">${arcs}
-      <text x="100" y="96" text-anchor="middle" class="dtotal">${esc(M.formatPesosWhole(total))}</text><text x="100" y="116" text-anchor="middle" class="dsub">spent</text></svg><div class="legendlist">${legend}</div></div>`;
+    return `<div class="flip" data-action="chart-mode" data-mode="list" role="button" tabindex="0" aria-label="Donut of where the money went. Tap to show the list."><svg class="donut" viewBox="0 0 200 200" aria-hidden="true">${arcs}</svg><div class="legendlist">${legend}</div></div>`;
   }
   const max = Math.max(...shown.map((r) => r.amount), 1);
   return `<div class="bars flip" data-action="chart-mode" data-mode="list" role="button" tabindex="0" aria-label="Bars of where the money went. Tap to show the list.">${shown.map((r) => `<div class="brow${r.grade ? " g-" + r.grade : ""}">

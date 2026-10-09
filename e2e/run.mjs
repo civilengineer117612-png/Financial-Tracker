@@ -264,10 +264,10 @@ check((await text(page, "#screen")).includes("3 entries from before today need v
 await page.click('#nav button:has-text("Verify")');
 await shot(page, "06-verify");
 let card = await text(page, ".card");
-check(/₱\d/.test(card) && (await text(page, "#screen")).includes("1 of 3"), "one card at a time, with its position");
+check(/₱\d/.test(card) && (await text(page, "#screen")).includes("3 to check"), "one card at a time, with its position");
 check(!(await text(page, "#screen")).toLowerCase().includes("all correct"), "there is no all-correct shortcut");
 await page.click('button:has-text("Correct")');
-check(await seen(page, "#screen", "1 of 2"), "verifying moves to the next entry");
+check(await seen(page, "#screen", "2 to check"), "verifying moves to the next entry");
 await page.click('button:has-text("Edit")');
 await shot(page, "07-edit");
 await page.fill("#f-amount", "100");
@@ -275,7 +275,7 @@ await page.click('#sheet .chip:has-text("Test Debit")');
 await page.click("#f-save");
 check(await seen(page, ".card", "₱100.00"), "editing keeps the card on screen to be verified, with the new amount");
 await page.click('button:has-text("Correct")');
-check(await seen(page, "#screen", "1 of 1"), "two verified, one left");
+check(await seen(page, "#screen", "1 to check"), "two verified, one left");
 await page.click('button:has-text("Delete")');
 check((await text(page, ".card")).length > 0 && (await text(page, ".card")).includes("Tap again to delete"), "delete asks for a second tap");
 await page.click('button:has-text("Tap again to delete")');
@@ -353,7 +353,7 @@ await seen(page, "#toast", "Saved Lunch");
 check(!(await text(page, "#nav")).includes("Verify ("), "today's entries do not nag from the Verify tab");
 check(!(await text(page, "#screen")).includes("need verifying"), "nor from the Log page");
 await page.click('#nav button:has-text("Verify")');
-check((await text(page, "#screen")).includes("1 from today, ready whenever you are") && (await text(page, "#screen")).includes("1 of 1"), "but today's entry is there to verify now");
+check((await text(page, "#screen")).includes("1 to check") && (await text(page, "#screen")).includes("ready whenever you are"), "but today's entry is there to verify now");
 await page.click('button:has-text("Correct")');
 check(await seen(page, "#screen", "Nothing to verify"), "verified the same day it was logged");
 led = JSON.parse((await stored(page)).local);
@@ -368,7 +368,7 @@ await page.click('button.tile:has-text("Dinner")'); await page.click('#sheet .ch
 await seen(page, "#toast", "Saved Dinner");
 check((await text(page, "#nav")).includes("Verify (1)"), "only yesterday's entry is counted as due");
 await page.click('#nav button:has-text("Verify")');
-check((await text(page, ".card")).includes("Breakfast") && (await text(page, "#screen")).includes("1 of 2"), "yesterday's comes first, today's after it");
+check((await text(page, ".card")).includes("Breakfast") && (await text(page, "#screen")).includes("2 to check"), "yesterday's comes first, today's after it");
 await ctx.close();
 
 // ===== 5d. backup and restore =====
@@ -529,9 +529,9 @@ const verifyAll = async () => {
   for (let guard = 0; guard < 20; guard++) {
     const t = await text(page, "#screen");
     if (t.includes("Nothing to verify")) return;
-    const n = Number(/1 of (\d+)/.exec(t)[1]);
+    const n = Number(/(\d+) to check/.exec(t)[1]);
     await page.click('button:has-text("Correct")');
-    await page.waitForFunction((k) => { const x = document.getElementById("screen").innerText; return x.includes("Nothing to verify") || x.includes("1 of " + (k - 1)); }, n);
+    await page.waitForFunction((k) => { const x = document.getElementById("screen").innerText; return x.includes("Nothing to verify") || x.includes((k - 1) + " to check"); }, n);
   }
 };
 await page.clock.setFixedTime(new Date("2026-08-14T04:00:00Z"));
@@ -1343,7 +1343,7 @@ check(!(await text(page, "#sheet")).includes("stays in the account the pay lande
 check((await text(page, "#sheet")).includes("Sep 16\u201330, 2026") && (await text(page, "#sheet")).includes("paid Oct 2, 2026"), "each payslip shows the period it pays for and the day it was paid");
 await page.click('#sheet button:has-text("Close")');
 await page.click('#nav button:has-text("Verify")');
-check((await text(page, "#screen")).includes("1 of 2"), "Verify now holds two drafts: the Emergency Fund part and the free part");
+check((await text(page, "#screen")).includes("2 to check"), "Verify now holds two drafts: the Emergency Fund part and the free part");
 // the title and the first line below it sit at the same height on Log and on Verify
 const barAt = () => page.evaluate(() => ({ h1: Math.round(document.querySelector("#top h1").getBoundingClientRect().top), below: Math.round(document.querySelector("#screen").getBoundingClientRect().top) }));
 const onVerify = await barAt(); await page.click('#nav button:has-text("Log")'); const onLog = await barAt(); await page.click('#nav button:has-text("Verify")');

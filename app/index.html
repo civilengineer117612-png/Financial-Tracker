@@ -210,6 +210,7 @@
   @media (prefers-reduced-motion: reduce) { .chev.up.flip, #entries-list.drop { animation: none; } button { transition: none; } }
   #entries-list[hidden] { display: none; } .amt.in { color: var(--ink); }
   .choice .meter { margin: 6px 0 2px; } .choice small { display: block; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .hub { display: flex; gap: 6px; margin: 0 0 14px; }
   .hub button { flex: 1; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 6px; padding: 6px 4px; min-height: 44px; font-size: 14px; background: var(--wash); border-color: transparent; transition: background-color .2s ease, color .2s ease; }
   .hub button[aria-current="page"] { background: var(--ink); color: var(--paper); }
