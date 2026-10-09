@@ -420,6 +420,18 @@
   .goalrow { display: flex; align-items: center; gap: 14px; margin: 8px 0 2px; } .goalrow .status { margin: 0; }
   .ring { width: 64px; height: 64px; flex: none; } .ring circle { fill: none; stroke-width: 4; } .ring .rt { stroke: var(--wash); } .ring .rf { stroke: var(--chart); stroke-linecap: round; } .ring text { font-size: 11px; font-weight: 700; fill: var(--ink); font-variant-numeric: tabular-nums; }
   details.why { margin: 8px 0; } details.why summary { color: var(--mid); font-size: 14px; cursor: pointer; list-style: none; text-decoration: underline; text-underline-offset: 3px; } details.why summary::-webkit-details-marker { display: none; } details.why .note { margin-top: 4px; }
+  /* ---- how-to clips: Cards, Weekly review, Checks, Buffer ---- */
+  .hw-month { display: flex; justify-content: space-between; align-items: center; margin: -2px 0 2px; } .hw-arrow { width: 34px; height: 30px; border-radius: 10px; background: var(--wash); display: grid; place-content: center; font-size: 18px; } .hw-dim { opacity: .4; }
+  .hw-ml { min-width: 120px; justify-items: center; font-weight: 700; font-size: 14px; } .hw-cnt { min-width: 0; justify-items: start; }
+  .hw-stat { display: grid; justify-items: start; margin-top: 4px; font-size: 13px; font-weight: 700; } .hw-stat > span { grid-area: 1 / 1; }
+  .hw-chip { justify-self: center; margin-top: 10px; padding: 7px 12px; border-radius: 16px; background: var(--wash); font-size: 12px; opacity: 0; }
+  .hw-cards .hw-finger { animation-name: hwCardFinger; } .hw-cards .hw-arrow:first-child { animation-name: hwPress; } .hw-cards .hw-t0 { animation-name: hwTapOld; } .hw-cards .hw-t1 { animation-name: hwTapNew; }
+  .hw-checkin .hw-finger { animation-name: hwBudFinger; } .hw-checkin .hw-bpick { animation-name: hwPress; } .hw-checkin .hw-sheet { animation-name: hwSheet; }
+  .hw-checkin .hw-type .hw-t0 { animation-name: hwTypeOld; } .hw-checkin .hw-type .hw-t1 { animation-name: hwTypeNew; } .hw-checkin .hw-bpick .hw-t0, .hw-checkin .hw-cnt .hw-t0 { animation-name: hwOld; } .hw-checkin .hw-bpick .hw-t1, .hw-checkin .hw-cnt .hw-t1 { animation-name: hwNew; }
+  .hw-checks .hw-t0, .hw-buffer .hw-t0 { animation-name: hwTapOld; } .hw-checks .hw-t1, .hw-buffer .hw-t1 { animation-name: hwTapNew; } .hw-checks .hw-chip, .hw-buffer .hw-chip { animation-name: hwChip; }
+  @keyframes hwCardFinger { 0%, 6% { opacity: 0; left: 40%; top: 40%; } 12% { opacity: 1; left: 25%; top: 24%; } 20%, 24% { opacity: 1; left: 12%; top: 19%; } 30%, 100% { opacity: 0; } }
+  @keyframes hwChip { 0%, 14% { opacity: 0; transform: translateY(-6px); } 20%, 62% { opacity: 1; transform: none; } 70%, 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .hw-checks .hw-chip, .hw-buffer .hw-chip { opacity: 1; } }
 </style>
 </head>
 <body>

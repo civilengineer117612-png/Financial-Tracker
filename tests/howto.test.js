@@ -45,7 +45,7 @@ test("names from the owner's screen are escaped, never run as markup", () => {
 });
 
 test("every clip has one caption; the hint names the buttons that hold a how-to, and the app wires exactly those", () => {
-  assert.deepEqual(HOWTOS.map((h) => h.id), ["log", "verify", "scan", "budget", "trips", "goals", "import", "backup"]);
+  assert.deepEqual(HOWTOS.map((h) => h.id), ["log", "verify", "scan", "budget", "trips", "cards", "checkin", "checks", "buffer", "goals", "import", "backup"]);
   for (const h of HOWTOS) assert.ok(h.caption && h.label && h.caption.length < 80, h.id);
   assert.match(HOWTO_HINT, /^Hold a button or a menu row for a moment to watch how it works\. Help lists every clip\.$/);
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8"), css = readFileSync(new URL("../app/index.html", import.meta.url), "utf8");
@@ -54,7 +54,7 @@ test("every clip has one caption; the hint names the buttons that hold a how-to,
   assert.match(app, /<button class="item" data-action="tab" data-tab="\$\{id\}" data-howto="\$\{id\}"/, "menu items carry their how-to");
 
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\n    \.hw \*/, "Reduce Motion stops every clip");
-  for (const k of ["hwLogFinger", "hwVerFinger", "hwScanFinger", "hwBudFinger", "hwTripFinger", "hwBackFinger", "hwGoalFinger", "hwGrow"]) assert.ok(css.includes(`@keyframes ${k}`), k);
+  for (const k of ["hwLogFinger", "hwVerFinger", "hwScanFinger", "hwBudFinger", "hwTripFinger", "hwBackFinger", "hwGoalFinger", "hwCardFinger", "hwChip", "hwGrow"]) assert.ok(css.includes(`@keyframes ${k}`), k);
 });
 
 const bud = { income: 2500000, rows: [{ name: "Groceries", amount: 500000, bucket: "need" }, { name: "Coffee", amount: 100000, bucket: "want" }, { name: "Misc", amount: 0, bucket: "other" }],
@@ -126,4 +126,29 @@ test("the goals clip explains the emergency fund's target and the no-account cas
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
   assert.match(app, /!x\.hidden_by_default \|\| ui\.reveal/, "a hidden goal is drawn only while balances are shown");
   for (const k of ["hwScanFinger"]) assert.ok(readFileSync(new URL("../app/index.html", import.meta.url), "utf8").includes(k));
+});
+
+const accts = [{ name: "Test Card", amount: 304800, owe: true, spent: [54900, 120000], picture: '<span class="ico mono">C</span>' }, { name: "Test Wallet", amount: 292600, spent: [39900, 85000] }];
+
+test("the Cards clip is drawn from the owner's accounts: balances stay, the month and what was spent change", () => {
+  const h = howtoClip("cards", { ...own, accounts: accts, months: ["October 2026", "September 2026"] });
+  for (const w of ["Test Card", "Test Wallet", "₱3,048.00", "you owe", "spent ₱549.00", "spent ₱1,200.00", "October 2026", "September 2026", "hw-cards"]) assert.ok(h.includes(w), w);
+  assert.ok(!h.includes("Example") && h.includes('class="ico mono"'), "own accounts, with their pictures");
+  assert.equal((h.match(/₱3,048\.00/g) ?? []).length, 2, "the balance is drawn before and after, unchanged");
+  assert.ok(howtoClip("cards", own).includes("Example"), "no accounts: a marked example");
+});
+
+test("the Weekly review clip counts the first account: not counted becomes its balance and the count goes up", () => {
+  const h = howtoClip("checkin", { ...own, accounts: accts });
+  for (const w of ["Weekly review", "0 of 2 counted", "1 of 2 counted", "Not counted", "₱3,048.00", "real balance", "Save", "hw-checkin"]) assert.ok(h.includes(w), w);
+  assert.ok(!h.includes("Example") && howtoClip("checkin", own).includes("Example"));
+  assert.ok(howtoClip("checkin", { ...own, accounts: [{ name: "<b>x</b>", amount: 1, spent: [0, 0] }] }).includes("&lt;b&gt;x") && !howtoClip("checkin", { ...own, accounts: [{ name: "<b>x</b>", amount: 1, spent: [0, 0] }] }).includes("<b>x</b>"), "names are escaped");
+});
+
+test("the Checks and Buffer clips are invented, marked examples that tell their story in words", () => {
+  const c = howtoClip("checks", own), b = howtoClip("buffer", own);
+  for (const w of ["Example", "Test Card owes", "Reserve holds", "Covered", "Short by ₱548.00", "Card purchase ₱2,500.00"]) assert.ok(c.includes(w), w);
+  for (const w of ["Example", "Over by ₱500.00", "Covered", "₱2,000.00", "₱1,500.00", "recorded against Food"]) assert.ok(b.includes(w), w);
+  assert.match(b, /aria-label="Food goes 500 pesos over its limit; the buffer pays the gap/);
+  assert.equal(HOWTOS.find((h) => h.id === "buffer").label, "Cover an overrun", "the screen keeps its name, Buffer; the clip says what it is for");
 });

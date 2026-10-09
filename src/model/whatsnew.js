@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-09-howto-rest", date: "2026-10-09", text: "New how-to clips for Cards, Weekly review, Checks and Buffer: hold their menu rows to watch." },
   { id: "2026-10-09-round3", date: "2026-10-09", text: "Cash flow views are quiet tabs, goals show a ring, swipe an entry right in Verify to mark it Correct, Setup keeps Add an account behind a button, and long notes fold under Why?." },
   { id: "2026-10-09-polish", date: "2026-10-09", text: "A calmer look: a slim bottom bar, lighter buttons and strips, new icons for Log and Weekly review, and how-to clips that fade between loops." },
   { id: "2026-10-09-signs", date: "2026-10-09", text: "Money out shows a minus and money in a plus, the day's entries stay folded until tapped, Budget rows have a bar, Cards is back in the menu, and Select date is the one date link." },

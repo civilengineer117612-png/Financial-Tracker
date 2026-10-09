@@ -43,6 +43,14 @@ function clipFor(id) {
     budget = { income, rows, buckets: bk };
   }
   const trips = id === "trips" ? S().tags.map((t) => ({ name: t.name, days: M.tripDays(t), spent: M.tagSummary(S(), t.id, { categoryMaps: S().categoryMaps, asOf: today() }).spent })) : [];
+  let accounts = [], months = ["This month", "Last month"];
+  if (id === "cards" || id === "checkin") {   // the accounts as the owner has them: cards first for Cards, cash first for the count
+    const month = M.monthOf(today()), prev = M.addMonths(month, -1), at = (m) => M.accountsOverview(S(), { from: m + "-01", to: periodBounds({ kind: "month", month: m })[1] });
+    const o0 = at(month), o1 = at(prev); months = [M.monthLabel(month), M.monthLabel(prev)];
+    const acct = (x) => S().accounts.find((a) => a.id === x.account_id), sp = (x, o) => (o.money.find((m) => m.account_id === x.account_id) ?? o.cards.find((c) => c.account_id === x.account_id))?.spent ?? 0;
+    if (id === "cards") accounts = [...o0.cards.slice(0, 1).map((c) => ({ name: acct(c).name, picture: iconOf(acct(c), 20), amount: c.owe, owe: true, spent: [c.spent, sp(c, o1)] })), ...o0.money.slice(0, 2).map((m) => ({ name: m.name, picture: iconOf(acct(m), 20), amount: m.balance, spent: [m.spent, sp(m, o1)] }))];
+    else accounts = cashFirst(activeAccounts()).slice(0, 3).map((a) => ({ name: a.name, picture: iconOf(a, 20), amount: Math.max(0, M.naturalBalance(a, M.countedEntries(S()))), spent: [0, 0] }));
+  }
   let goal = null;
   if (id === "goals") {   // the first goal with a target that is not hidden by default (hidden goals are never drawn)
     const shown = (x) => !x.hidden_by_default || ui.reveal;   // a hidden goal is drawn only while "Show balances" is on
@@ -53,7 +61,7 @@ function clipFor(id) {
       if (e && st?.target > 0) goal = { name: e.name, balance: st.balance, target: st.target, ef: true, months: st.months, account: ea ? { name: ea.name, picture: iconOf(ea, 20) } : null };
     }
   }
-  return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total, budget, trips, goal });
+  return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total, budget, trips, goal, accounts, months });
 }
 // The reason under a suggested figure. The starter share's long note was the same on every row, so it is said once, in the tips at the bottom; a row
 // keeps only what is its own (learned from history, pinned, or lowered to fit the income).

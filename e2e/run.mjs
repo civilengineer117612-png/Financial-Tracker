@@ -2187,6 +2187,16 @@ console.log("What's new and how-tos");
   await holdOn('#screen .hub button[data-tab="goals"]');
   check(await seen(page, "#sheet", "Save toward a goal") && (await text(page, "#sheet")).includes("Put money in") && /example/i.test(await text(page, "#sheet")) && (await text(page, "#sheet")).includes("Tap Put money in on a goal"), "holding Goals in the menu plays the goals how-to (an example while there is no goal with a target)");
   await page.click('#sheet button:has-text("Close")');
+  for (const [id, title, phrase] of [["cards", "See what you owe", "Cards shows each account"], ["checkin", "Count your accounts", "Tap an account, type its real balance"], ["buffer", "Cover an overrun", "the buffer pays the gap"]]) {
+    await page.click("#menuBtn"); await page.waitForSelector("#menu .item"); await page.waitForTimeout(500);
+    await holdOn(`#menu .item[data-tab="${id}"]`);
+    check(await seen(page, "#sheet", title) && (await text(page, "#sheet")).includes(phrase), `holding ${id} in the menu plays its how-to`);
+    await page.click('#sheet button:has-text("Close")');
+  }
+  await page.click("#menuBtn"); await page.click('#menu .item[data-tab="checkin"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
+  await holdOn('#screen .hub button[data-tab="checks"]');
+  check(await seen(page, "#sheet", "Check your card reserve") && /example/i.test(await text(page, "#sheet")), "holding Checks in its strip plays the card reserve how-to (a marked example)");
+  await page.click('#sheet button:has-text("Close")');
   await menuGo(page, "Setup");
   await holdOn('button[data-action="open-backup"][data-howto="backup"]');
   check(await seen(page, "#sheet", "Back up your data") && (await text(page, "#sheet")).includes("Save the file") && !(await page.locator("#sheet #f-pass").count()), "holding Back up now plays the backup how-to and does not open the backup window");
