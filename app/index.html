@@ -347,6 +347,10 @@
   .hw-backup .hw-finger { animation-name: hwBackFinger; } .hw-backup .hw-go { animation-name: hwPress; } .hw-backup .hw-sheet { animation-name: hwSheet; }
   .hw-backup .hw-last .hw-t0 { animation-name: hwOld; } .hw-backup .hw-last .hw-t1 { animation-name: hwNew; }
   @keyframes hwBackFinger { 0%, 6% { opacity: 0; left: 70%; top: 60%; } 12% { opacity: 1; left: 60%; top: 42%; } 20%, 24% { opacity: 1; left: 50%; top: 34%; } 30% { opacity: 0; } 38% { opacity: 0; left: 50%; top: 90%; } 44%, 49% { opacity: 1; left: 50%; top: 90%; } 54%, 100% { opacity: 0; } }
+  .hw-gval { display: grid; justify-items: start; font-variant-numeric: tabular-nums; } .hw-gval > span { grid-area: 1 / 1; display: grid; } .hw-gval small { font-size: 10px; color: var(--mid); }
+  .hw-goals .hw-finger { animation-name: hwGoalFinger; } .hw-goals .hw-go { animation-name: hwPress; } .hw-goals .hw-sheet { animation-name: hwSheet; }
+  .hw-goals .hw-gval .hw-t0 { animation-name: hwOld; } .hw-goals .hw-gval .hw-t1 { animation-name: hwNew; } .hw-goals .hw-grow { animation-name: hwGrow; }
+  @keyframes hwGoalFinger { 0%, 6% { opacity: 0; left: 70%; top: 70%; } 12% { opacity: 1; left: 60%; top: 52%; } 20%, 24% { opacity: 1; left: 50%; top: 44%; } 30% { opacity: 0; } 38% { opacity: 0; left: 50%; top: 90%; } 44%, 49% { opacity: 1; left: 50%; top: 90%; } 54%, 100% { opacity: 0; } }
   .hw-trips .hw-finger { animation-name: hwTripFinger; } .hw-trips .hw-tag { animation-name: hwPress; }
   .hw-trips .hw-tag .hw-t0 { animation-name: hwTapOld; } .hw-trips .hw-tag .hw-t1 { animation-name: hwTapNew; }
   .hw-trips .hw-bpick .hw-t0 { animation-name: hwOld; } .hw-trips .hw-bpick .hw-t1 { animation-name: hwNew; }
@@ -360,7 +364,7 @@
     .hw *, .hw-finger::after { animation: none !important; }
     .hw .hw-finger, .hw .hw-done { opacity: 0; } .hw .hw-t0 { opacity: 0; } .hw .hw-t1 { opacity: 1; }
     .hw-scan .hw-receipt { opacity: 1; } .hw-verify .hw-card { opacity: 0; } .hw-verify .hw-empty { opacity: 1; }
-    .hw-budget .hw-grow { width: var(--w1); }
+    .hw-budget .hw-grow, .hw-goals .hw-grow { width: var(--w1); }
   }
   .hwcap { text-align: center; margin: 10px 0 0; }
   .tips { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 10px; } .tips h4 { margin: 0 0 6px; font-size: 15px; }

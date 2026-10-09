@@ -10,9 +10,10 @@ export const HOWTOS = [
   { id: "scan", label: "Scan a receipt", caption: "Tap the camera, take the receipt, and it waits in Verify." },
   { id: "budget", label: "Set a budget", caption: "Tap a category, type its monthly limit, Save: the bucket bars follow." },
   { id: "trips", label: "Keep a trip apart", caption: "Tag new entries on a trip, or give it dates: its spending stays apart." },
+  { id: "goals", label: "Save toward a goal", caption: "Tap Put money in on a goal, type the amount, Save: its bar grows." },
   { id: "backup", label: "Back up your data", caption: "Back up now, set a password, save the file off this phone." },
 ];
-export const HOWTO_HINT = "Hold Log, Verify, the camera, Budget or Trips in the menu, or Back up now in Setup, for a moment to watch how it works.";
+export const HOWTO_HINT = "Hold Log, Verify, the camera, Budget, Goals or Trips in the menu, or Back up now in Setup, for a moment to watch how it works.";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const EXAMPLE_TILES = [{ name: "Coffee", amount: 15000, category: "Food" }, { name: "Jeep", amount: 1300, category: "Transport" }, { name: "Lunch", amount: 9500, category: "Food" }];
@@ -28,10 +29,13 @@ const pctText = (t) => (t / 10).toFixed(1) + "%";
 // data: {date: "Tue, 7 Oct", tiles: [{name, amount (centavos), category}], account: {name, picture?: html for its picture}, total: centavos logged today}
 const EXAMPLE_TRIPS = [{ name: "Beach weekend", days: "3 Oct 2026 to 5 Oct 2026", spent: 450000 }, { name: "Family visit", days: null, spent: 0 }];
 
-export function clipData({ date, tiles = [], account = null, total = 0, budget = null, trips = [] }) {
+// The Goals clip's data: {name, balance, target (centavos), account?: {name, picture?}}: one goal that has a target and is not hidden by default.
+const EXAMPLE_GOAL = { name: "New phone", balance: 800000, target: 2000000, account: { name: "Savings" } };
+
+export function clipData({ date, tiles = [], account = null, total = 0, budget = null, trips = [], goal = null }) {
   const own = tiles.slice(0, 3), b = budget?.income > 0 && budget.rows?.length ? budget : null;
   return { date, total, example: own.length === 0 || !account, tiles: own.length ? own : EXAMPLE_TILES, account: account ?? { name: "Wallet" },
-    budget: b ? { ...b, rows: b.rows.slice(0, 3) } : EXAMPLE_BUDGET, budgetExample: !b,
+    budget: b ? { ...b, rows: b.rows.slice(0, 3) } : EXAMPLE_BUDGET, budgetExample: !b, goal: goal?.target > 0 ? goal : EXAMPLE_GOAL, goalExample: !(goal?.target > 0),
     trips: trips.length ? trips.slice(0, 2) : EXAMPLE_TRIPS, tripsExample: trips.length === 0 };
 }
 
@@ -77,6 +81,19 @@ export function howtoClip(id, raw) {
       <div class="hw-blist">${rows}</div>${bars ? `<div class="hw-bars">${bars}</div>` : ""}</div>
       ${sheet(`<div class="hw-row"><span>${esc(pick.name)}</span><span>a month</span></div><div class="hw-amt hw-type"><span class="hw-t0">${esc(formatPesos(pick.amount))}</span><span class="hw-t1">${esc(formatPesos(next))}</span></div>`, "Save")}${tick}`,
       `A finger taps ${pick.name}, types ${formatPesos(next)} a month and taps Save; ${pick.name} shows the new limit${bars ? " and its bucket bar grows" : ""}.`);
+  }
+  if (id === "goals") {   // "Put money in" on the first goal: its balance and bar grow by an example P1,000 (or what is left), in the picture only
+    const g = d.goal, left = Math.max(0, g.target - g.balance), add = left > 0 ? Math.min(100000, left) : 100000, after = g.balance + add;
+    const t0 = tenthsOf(g.balance, g.target), t1 = tenthsOf(after, g.target);
+    const val = (bal, t) => `<span class="hw-gv">${esc(formatPesos(bal))} of ${esc(formatPesos(g.target))}</span><small>${pctText(t)}</small>`;
+    const into = g.account ?? { name: "Savings" };
+    return phone("goals", `<div class="hw-screen">${d.goalExample ? `<div class="hw-ex">Example</div>` : ""}<div class="hw-h">Goals</div><div class="hw-date">Savings you are building</div>
+      <div class="hw-card"><div class="hw-row"><span class="hw-acct">${into.picture ?? ""}<b>${esc(g.name)}</b></span></div>
+      <div class="hw-gval"><span class="hw-t0">${val(g.balance, t0)}</span><span class="hw-t1">${val(after, t1)}</span></div>
+      <div class="hw-meter"><span class="hw-fill hw-grow" style="--w0:${t0 / 10}%;--w1:${t1 / 10}%"></span></div>
+      <div class="hw-btn hw-go">Put money in</div></div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>
+      ${sheet(`<div class="hw-amt">${esc(formatPesos(add))}</div><div class="hw-row"><span>Into</span>${acct(into)}</div>`, "Save")}${tick}`,
+      `A finger taps Put money in on ${g.name}, the window shows ${formatPesos(add)} going into ${into.name}, the finger taps Save, and the bar grows from ${pctText(t0)} to ${pctText(t1)}.`);
   }
   if (id === "backup") {   // Setup's Backup block: tap Back up now, set a password, save the file off the phone; "Last backup" turns to today
     const last = (c) => `<span class="${c}">${c === "hw-t0" ? "No backup yet" : "Last backup today"}</span>`;
