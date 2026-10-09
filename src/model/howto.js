@@ -6,11 +6,12 @@ import { formatPesos } from "./money.js";
 
 export const HOWTOS = [
   { id: "log", label: "Log an expense", caption: "Tap a tile, check it, Save: logged in two taps." },
-  { id: "verify", label: "Verify an entry", caption: "Open Verify, look at one entry, tap Correct." },
+  { id: "verify", label: "Verify an entry", caption: "Open Verify, fix anything that is wrong, then tap Correct." },
   { id: "scan", label: "Scan a receipt", caption: "Tap the camera, take the receipt, and it waits in Verify." },
   { id: "budget", label: "Set a budget", caption: "Tap a category, type its monthly limit, Save: the bucket bars follow." },
+  { id: "trips", label: "Keep a trip apart", caption: "Tap Tag new entries on a trip: its spending stays apart from everyday spending." },
 ];
-export const HOWTO_HINT = "Hold Log, Verify, the camera or Budget in the menu for a moment to watch how it works.";
+export const HOWTO_HINT = "Hold Log, Verify, the camera, Budget or Trips in the menu for a moment to watch how it works.";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const EXAMPLE_TILES = [{ name: "Coffee", amount: 15000, category: "Food" }, { name: "Jeep", amount: 1300, category: "Transport" }, { name: "Lunch", amount: 9500, category: "Food" }];
@@ -24,10 +25,13 @@ const tenthsOf = (a, income) => (income > 0 ? Math.min(1000, Math.floor((a * 200
 const pctText = (t) => (t / 10).toFixed(1) + "%";
 
 // data: {date: "Tue, 7 Oct", tiles: [{name, amount (centavos), category}], account: {name, picture?: html for its picture}, total: centavos logged today}
-export function clipData({ date, tiles = [], account = null, total = 0, budget = null }) {
+const EXAMPLE_TRIPS = [{ name: "Beach weekend", days: "3 Oct 2026 to 5 Oct 2026", spent: 450000 }, { name: "Family visit", days: null, spent: 0 }];
+
+export function clipData({ date, tiles = [], account = null, total = 0, budget = null, trips = [] }) {
   const own = tiles.slice(0, 3), b = budget?.income > 0 && budget.rows?.length ? budget : null;
   return { date, total, example: own.length === 0 || !account, tiles: own.length ? own : EXAMPLE_TILES, account: account ?? { name: "Wallet" },
-    budget: b ? { ...b, rows: b.rows.slice(0, 3) } : EXAMPLE_BUDGET, budgetExample: !b };
+    budget: b ? { ...b, rows: b.rows.slice(0, 3) } : EXAMPLE_BUDGET, budgetExample: !b,
+    trips: trips.length ? trips.slice(0, 2) : EXAMPLE_TRIPS, tripsExample: trips.length === 0 };
 }
 
 const phone = (id, inner, label) => `<div class="hw hw-${id}" role="img" aria-label="${esc(label)}">${inner}<div class="hw-finger" aria-hidden="true"></div></div>`;
@@ -45,12 +49,13 @@ export function howtoClip(id, raw) {
       ${sheet(`<div class="hw-amt">${esc(formatPesos(pick.amount))}</div><div class="hw-row"><span>${esc(pick.name)}</span><span>${esc(pick.category)}</span></div><div class="hw-row"><span>Paid from</span>${acct(d.account)}</div>`, "Save")}${tick}`,
       `A finger taps the ${pick.name} tile, the window shows ${formatPesos(pick.amount)} paid from ${d.account.name}, the finger taps Save, a tick appears and today's total goes up.`);
   }
-  if (id === "verify") {
+  if (id === "verify") {   // the logged amount is wrong by P10; the finger fixes it, then taps Correct (a clip logs nothing)
+    const wrong = pick.amount + 1000;
     return phone("verify", `<div class="hw-screen">${ex}<div class="hw-h">Verify</div><div class="hw-date">One at a time</div>
-      <div class="hw-card"><div class="hw-amt">${esc(formatPesos(pick.amount))}</div><div class="hw-row"><span>${esc(pick.name)}</span><span>${esc(pick.category)}</span></div>
+      <div class="hw-card"><div class="hw-amt hw-type"><span class="hw-t0">${esc(formatPesos(wrong))}</span><span class="hw-t1">${esc(formatPesos(pick.amount))}</span></div><div class="hw-row"><span>${esc(pick.name)}</span><span>${esc(pick.category)}</span></div>
       <div class="hw-row"><span>Paid from</span>${acct(d.account)}</div><div class="hw-row"><span>Date</span><span>${esc(d.date)}</span></div><div class="hw-btn hw-ok">Correct</div></div>
       <div class="hw-empty">All checked</div></div><div class="hw-nav"><div>Log</div><div class="hw-on">Verify</div></div>${tick}`,
-      `A finger opens Verify, the entry ${pick.name} ${formatPesos(pick.amount)} from ${d.account.name} is shown, the finger taps Correct and a tick appears.`);
+      `A finger opens Verify, the entry ${pick.name} shows ${formatPesos(wrong)} from ${d.account.name}, the finger edits the amount to ${formatPesos(pick.amount)}, taps Correct and a tick appears.`);
   }
   if (id === "scan") {
     const receipt = `<div class="hw-receipt"><b>SAMPLE STORE</b><span>Bread<em>85.00</em></span><span>Eggs<em>110.00</em></span><span>Milk<em>50.00</em></span><span class="hw-rt">TOTAL<em>245.00</em></span><div class="hw-scanline"></div></div>`;
@@ -71,6 +76,15 @@ export function howtoClip(id, raw) {
       <div class="hw-blist">${rows}</div>${bars ? `<div class="hw-bars">${bars}</div>` : ""}</div>
       ${sheet(`<div class="hw-row"><span>${esc(pick.name)}</span><span>a month</span></div><div class="hw-amt hw-type"><span class="hw-t0">${esc(formatPesos(pick.amount))}</span><span class="hw-t1">${esc(formatPesos(next))}</span></div>`, "Save")}${tick}`,
       `A finger taps ${pick.name}, types ${formatPesos(next)} a month and taps Save; ${pick.name} shows the new limit${bars ? " and its bucket bar grows" : ""}.`);
+  }
+  if (id === "trips") {   // the first trip's tag button is tapped: the button turns to "Tagging", and its total grows by an example P950 in the picture only
+    const t0 = d.trips[0], add = 95000;
+    const cards = d.trips.map((t, i) => `<div class="hw-brow hw-trip${i === 0 ? " hw-bpick" : ""}"><span><b>${esc(t.name)}</b><small>${esc(t.days ?? "No dates yet")}</small></span><span class="hw-bval">${i === 0
+      ? `<span class="hw-t0">${esc(formatPesos(t.spent))}</span><span class="hw-t1">${esc(formatPesos(t.spent + add))}</span>` : `<span>${esc(formatPesos(t.spent))}</span>`}</span></div>`).join("");
+    return phone("trips", `<div class="hw-screen">${d.tripsExample ? `<div class="hw-ex">Example</div>` : ""}<div class="hw-h">Trips</div><div class="hw-date">Kept apart from everyday spending</div>
+      <div class="hw-blist">${cards}</div><div class="hw-btn hw-tag"><span class="hw-t0">Tag new entries with this trip</span><span class="hw-t1">Tagging new entries \u2713</span></div></div>
+      <div class="hw-nav"><div>Log</div><div>Verify</div></div>${tick}`,
+      `A finger taps Tag new entries on ${t0.name}; the button turns to Tagging and the trip's total grows when a new entry is logged, apart from everyday spending.`);
   }
   return "";
 }

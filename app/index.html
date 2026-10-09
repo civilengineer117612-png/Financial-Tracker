@@ -314,7 +314,7 @@
   .hw-scan .hw-finger { animation-name: hwScanFinger; } .hw-scan .hw-receipt { animation-name: hwReceipt; } .hw-scan .hw-scanline { animation-name: hwScanline; } .hw-scan .hw-sheet { animation-name: hwSheet; }
   @keyframes hwRipple { 0%, 21% { opacity: 0; transform: scale(1); } 22% { opacity: .9; } 28% { opacity: 0; transform: scale(2.2); } 29%, 45% { opacity: 0; transform: scale(1); } 46% { opacity: .9; } 52% { opacity: 0; transform: scale(2.2); } 100% { opacity: 0; } }
   @keyframes hwLogFinger { 0%, 6% { opacity: 0; left: 80%; top: 92%; } 12% { opacity: 1; left: 78%; top: 66%; } 20%, 24% { opacity: 1; left: 50%; top: 47%; } 30% { opacity: 0; } 38% { opacity: 0; left: 50%; top: 90%; } 44%, 49% { opacity: 1; left: 50%; top: 90%; } 54%, 100% { opacity: 0; left: 52%; top: 94%; } }
-  @keyframes hwVerFinger { 0%, 6% { opacity: 0; left: 80%; top: 98%; } 12% { opacity: 1; left: 75%; top: 95%; } 20%, 24% { opacity: 1; left: 75%; top: 95%; } 30% { opacity: 0; } 38% { opacity: 0; left: 50%; top: 66%; } 44%, 49% { opacity: 1; left: 50%; top: 64%; } 54%, 100% { opacity: 0; } }
+  @keyframes hwVerFinger { 0%, 6% { opacity: 0; left: 80%; top: 98%; } 12% { opacity: 1; left: 75%; top: 95%; } 20%, 24% { opacity: 1; left: 75%; top: 95%; } 30% { opacity: 1; left: 60%; top: 50%; } 36%, 40% { opacity: 1; left: 50%; top: 29%; } 46%, 50% { opacity: 1; left: 50%; top: 64%; } 54%, 100% { opacity: 0; } }
   @keyframes hwScanFinger { 0%, 6% { opacity: 0; left: 60%; top: 30%; } 12% { opacity: 1; left: 80%; top: 14%; } 20%, 24% { opacity: 1; left: 86%; top: 8%; } 30% { opacity: 0; } 38% { opacity: 0; left: 50%; top: 90%; } 44%, 49% { opacity: 1; left: 50%; top: 90%; } 54%, 100% { opacity: 0; } }
   @keyframes hwPress { 0%, 21% { transform: scale(1); } 23% { transform: scale(.94); } 26%, 100% { transform: scale(1); } }
   @keyframes hwPressLate { 0%, 45% { transform: scale(1); } 47% { transform: scale(.95); } 50%, 100% { transform: scale(1); } }
@@ -338,6 +338,14 @@
   .hw-budget .hw-type .hw-t0 { animation-name: hwTypeOld; } .hw-budget .hw-type .hw-t1 { animation-name: hwTypeNew; }
   .hw-budget .hw-bpick .hw-t0, .hw-budget .hw-tip .hw-t0 { animation-name: hwOld; } .hw-budget .hw-bpick .hw-t1, .hw-budget .hw-tip .hw-t1 { animation-name: hwNew; } .hw-budget .hw-grow { animation-name: hwGrow; }
   @keyframes hwBudFinger { 0%, 6% { opacity: 0; left: 70%; top: 70%; } 12% { opacity: 1; left: 60%; top: 40%; } 20%, 24% { opacity: 1; left: 50%; top: 27%; } 30% { opacity: 0; } 38% { opacity: 0; left: 50%; top: 90%; } 44%, 49% { opacity: 1; left: 50%; top: 90%; } 54%, 100% { opacity: 0; } }
+  .hw-verify .hw-type .hw-t0 { animation-name: hwTypeOld; } .hw-verify .hw-type .hw-t1 { animation-name: hwTypeNew; } .hw-verify .hw-finger { animation-name: hwVerFinger; }
+  .hw-trip small { display: block; font-size: 10px; color: var(--mid); } .hw-tag { position: relative; height: 40px; padding: 0; margin-top: 8px; } .hw-tag span { position: absolute; inset: 0; display: grid; place-content: center; }
+  .hw-trips .hw-finger { animation-name: hwTripFinger; } .hw-trips .hw-tag { animation-name: hwPress; }
+  .hw-trips .hw-tag .hw-t0 { animation-name: hwTapOld; } .hw-trips .hw-tag .hw-t1 { animation-name: hwTapNew; }
+  .hw-trips .hw-bpick .hw-t0 { animation-name: hwOld; } .hw-trips .hw-bpick .hw-t1 { animation-name: hwNew; }
+  @keyframes hwTripFinger { 0%, 6% { opacity: 0; left: 70%; top: 80%; } 12% { opacity: 1; left: 60%; top: 62%; } 20%, 24% { opacity: 1; left: 50%; top: 56%; } 30%, 100% { opacity: 0; } }
+  @keyframes hwTapOld { 0%, 24% { opacity: 1; } 28%, 94% { opacity: 0; } 100% { opacity: 1; } }
+  @keyframes hwTapNew { 0%, 24% { opacity: 0; } 28%, 94% { opacity: 1; } 100% { opacity: 0; } }
   @keyframes hwTypeOld { 0%, 36% { opacity: 1; } 40%, 100% { opacity: 0; } }
   @keyframes hwTypeNew { 0%, 36% { opacity: 0; } 40%, 100% { opacity: 1; } }
   @keyframes hwGrow { 0%, 70% { width: var(--w0); } 80%, 94% { width: var(--w1); } 100% { width: var(--w0); } }

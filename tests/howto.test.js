@@ -45,16 +45,16 @@ test("names from the owner's screen are escaped, never run as markup", () => {
 });
 
 test("every clip has one caption; the hint names the buttons that hold a how-to, and the app wires exactly those", () => {
-  assert.deepEqual(HOWTOS.map((h) => h.id), ["log", "verify", "scan", "budget"]);
+  assert.deepEqual(HOWTOS.map((h) => h.id), ["log", "verify", "scan", "budget", "trips"]);
   for (const h of HOWTOS) assert.ok(h.caption && h.label && h.caption.length < 80, h.id);
-  assert.match(HOWTO_HINT, /^Hold Log, Verify, the camera or Budget in the menu/);
+  assert.match(HOWTO_HINT, /^Hold Log, Verify, the camera, Budget or Trips in the menu/);
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8"), css = readFileSync(new URL("../app/index.html", import.meta.url), "utf8");
   assert.match(app, /data-tab="\$\{id\}" data-howto="\$\{id\}"/); assert.match(app, /class="camicon" data-action="open-scan-pick" data-howto="scan"/);
   assert.match(app, /class="tile addtile" data-action="add-tile" data-howto="log"/);
   assert.match(app, /<button class="item" data-action="tab" data-tab="\$\{id\}" data-howto="\$\{id\}"/, "menu items carry their how-to");
 
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\n    \.hw \*/, "Reduce Motion stops every clip");
-  for (const k of ["hwLogFinger", "hwVerFinger", "hwScanFinger", "hwBudFinger", "hwGrow"]) assert.ok(css.includes(`@keyframes ${k}`), k);
+  for (const k of ["hwLogFinger", "hwVerFinger", "hwScanFinger", "hwBudFinger", "hwTripFinger", "hwGrow"]) assert.ok(css.includes(`@keyframes ${k}`), k);
 });
 
 const bud = { income: 2500000, rows: [{ name: "Groceries", amount: 500000, bucket: "need" }, { name: "Coffee", amount: 100000, bucket: "want" }, { name: "Misc", amount: 0, bucket: "other" }],
@@ -78,4 +78,20 @@ test("a category with no budget yet is shown going to P3,000; with the new Budge
   assert.ok(!off.includes("hw-bars") && off.includes("Groceries"));
   assert.ok(howtoClip("budget", { ...own, budget: { income: 0, rows: [] } }).includes("Example"));
   assert.ok(howtoClip("budget", { ...own, budget: null }).includes("Example"));
+});
+
+test("the verify clip shows the amount being fixed before Correct is tapped", () => {
+  const v = howtoClip("verify", own);
+  assert.match(v, /hw-amt hw-type"><span class="hw-t0">₱40\.00<\/span><span class="hw-t1">₱30\.00<\/span>/, "the logged amount is P10 off and is edited to the right one");
+  assert.ok(v.indexOf("hw-type") < v.indexOf("hw-ok"), "the edit comes before Correct");
+  assert.match(v, /edits the amount to ₱30\.00, taps Correct/);
+  assert.match(HOWTOS.find((h) => h.id === "verify").caption, /fix anything that is wrong/);
+});
+
+test("the trips clip is drawn from the owner's own trips; with none, a marked example; names are escaped", () => {
+  const t = howtoClip("trips", { ...own, trips: [{ name: "Test Island", days: "3 Oct 2026 to 5 Oct 2026", spent: 120000 }, { name: "<b>x</b>", days: null, spent: 0 }] });
+  for (const w of ["Test Island", "3 Oct 2026 to 5 Oct 2026", "₱1,200.00", "₱2,150.00", "No dates yet", "Tag new entries with this trip", "Tagging new entries ✓", "hw-trips"]) assert.ok(t.includes(w), w);
+  assert.ok(!t.includes("Example") && !t.includes("<b>x</b>") && t.includes("&lt;b&gt;x"));
+  assert.ok(howtoClip("trips", own).includes("Example"), "no trips yet: a marked example");
+  assert.equal(clipData({ date: "x", trips: [{}, {}, {}] }).trips.length, 2, "at most two trips");
 });
