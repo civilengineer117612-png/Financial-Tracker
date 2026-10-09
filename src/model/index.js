@@ -6,7 +6,7 @@ import { checkEntriesBalance, checkReferences, checkReserve, checkDuplicate, che
 export { SCHEMAS, validateShape } from "./schema.js";
 export { COLLECTION_NAMES, MIGRATIONS, selfCheck, fingerprint, upgradeLedger, rotateCopies, restorableCopy } from "./migrate.js";
 export { QUICK_NOTES, FIRST_RUN_NOTICE, TOPICS as HELP_TOPICS, checklist } from "./help.js";
-export { SCREEN_NAMES, MENU_GROUPS, TERMS, menuHidden } from "./names.js";
+export { SCREEN_NAMES, MENU_GROUPS, TERMS, menuHidden, HUBS, hubOf, menuRows, STRIP_NAMES } from "./names.js";
 export { drawing, DRAWING_IDS, NOTE_ICONS } from "./helpart.js";
 export { suggestPlan, median, paydayDays, usableMonths, NO_PAYSLIP_MESSAGE } from "./suggest.js";
 export { budgetMonthFor, planBudgetRows, planBudgetMismatches, planWithBudgets } from "./planwrite.js";

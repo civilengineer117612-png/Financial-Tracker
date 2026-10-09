@@ -1,7 +1,8 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
-  { id: "2026-10-09-tidy", date: "2026-10-09", text: "Budget now shows Spending, Saved and Buckets one at a time under the overview, the menu has two groups, and the day total says what it is." },
+  { id: "2026-10-09-simpler", date: "2026-10-09", text: "A shorter menu: Cards sits in Cash flow, Goals in Budget, Checks in Weekly review, and Log shows this month at a glance." },
+  { id: "2026-10-09-tidy", date: "2026-10-09", text: "Budget now shows Spending, Saved and Buckets one at a time under the overview, and the day total says what it is." },
   { id: "2026-10-09-howto-more", date: "2026-10-09", text: "A new how-to for Import old spending (in Help), the Goals clip covers the emergency fund, and the hold hint is now one short line." },
   { id: "2026-10-09-howto-goals", date: "2026-10-09", text: "Hold Goals in the menu to watch how putting money toward a goal grows its bar, drawn from your own goal." },
   { id: "2026-10-09-howto-backup", date: "2026-10-09", text: "Hold Back up now in Setup to watch how to back up; the menu now says rows can be held, and the Trips and Verify clips show more." },

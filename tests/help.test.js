@@ -85,7 +85,7 @@ test("Stage C: the Pay plan menu entry is hidden only when the new Budget is on;
   assert.equal(menuHidden({}).size, 0); assert.equal(menuHidden(undefined).size, 0); assert.equal(menuHidden({ try_new_budget: false }).size, 0, "off: nothing is hidden");
   assert.deepEqual([...menuHidden({ try_new_budget: true })], ["plan"]);
   assert.ok(MENU_GROUPS.some(([, ids]) => ids.includes("plan")), "the entry is still part of the menu list, so Help keeps its topic");
-  assert.match(app, /items\.filter\(\(\[id\]\) => !hidden\.has\(id\)\)/); assert.match(app, /const hidden = M\.menuHidden\(ledger\.settings\)/);
+  assert.match(app, /items\.filter\(\(\[id\]\) => !hidden\.has\(id\) && M\.menuRows\(\[id\]\)\.length\)/); assert.match(app, /const hidden = M\.menuHidden\(ledger\.settings\)/);
   assert.match(app, /data-tab="\$\{ledger\.settings\.try_new_budget \? "budget" : "plan"\}"/, "Setup points at Budget when the new Budget is on");
   assert.ok(app.includes('ui.tab === "plan" ? viewPlan()'), "the old Pay plan screen is still routed for one more release");
 });

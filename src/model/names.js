@@ -6,7 +6,15 @@ export const SCREEN_NAMES = {
 };
 
 // The menu, in order: [group, [screen ids]]. Setup and Help are pinned at the bottom of the menu by the app.
-export const MENU_GROUPS = [["Your money", ["money", "cards", "budget", "goals", "plan"]], ["Tools", ["checkin", "scan", "checks", "trips", "buffer"]]];   // no one-row groups
+export const MENU_GROUPS = [["Your money", ["money", "cards", "budget", "goals", "plan"]], ["Tools", ["checkin", "checks", "scan", "trips", "buffer"]]];   // every screen, for Help; no one-row groups
+
+// Screens that belong together share ONE menu row (the first id). On each of them a strip of pictures along the top switches between them, so the menu
+// stays short: Cash flow holds Cards, Budget holds Goals and the pay plan, Weekly review holds Checks.
+export const HUBS = { money: ["money", "cards"], budget: ["budget", "goals", "plan"], checkin: ["checkin", "checks"] };
+export const hubOf = (id) => Object.keys(HUBS).find((h) => HUBS[h].includes(id) || (h === "money" && id === "income")) ?? null;
+export const menuRows = (ids) => ids.filter((id) => !Object.values(HUBS).some((m) => m.slice(1).includes(id)));   // the menu shows the first screen of each hub
+// Short names for the strip (the long one stays in the menu and Help).
+export const STRIP_NAMES = { money: "Cash flow", cards: "Cards", budget: "Budget", goals: "Goals", plan: "Pay plan", checkin: "Weekly review", checks: "Checks" };
 
 // Menu entries hidden when the owner has switched on the new Budget (Setup, "Try the new Budget"): the pay plan lives inside Budget, under By payday.
 // With the switch off nothing is hidden. The screen itself still exists for one more release (and Help still has its topic).

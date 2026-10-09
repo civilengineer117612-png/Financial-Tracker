@@ -200,13 +200,13 @@ function renderMenu() {
   }
   const opening = !el.firstChild || el.classList.contains("leaving");
   clearTimeout(menuTimer); el.classList.remove("leaving");
-  const current = (id) => ui.tab === id || (id === "money" && ui.tab === "income");   // Money holds Spending and Income
+  const current = (id) => ui.tab === id || M.hubOf(ui.tab) === id;   // a hub row stays marked on every screen it holds
   const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}" data-howto="${id}"${current(id) ? ' aria-current="page"' : ""}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span></button>`;
   const hidden = M.menuHidden(ledger.settings);   // the new Budget holds the pay plan, so its menu entry is not shown
   const age = M.daysSinceBackup(ledger.settings, today());
   const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
   el.innerHTML = `<div class="scrim${opening ? " enter" : ""}" data-action="close-menu"></div><aside class="drawer${opening ? " enter" : ""}" role="dialog" aria-label="Menu">
-    <div class="groups">${MENU.map(([group, items]) => `<p class="glabel">${group}</p>${items.filter(([id]) => !hidden.has(id)).map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
+    <div class="groups">${MENU.map(([group, items]) => `<p class="glabel">${group}</p>${items.filter(([id]) => !hidden.has(id) && M.menuRows([id]).length).map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
     <div class="foot"><p class="note"><button class="link" data-action="open-backup" id="menu-backup">${backup}</button></p><p class="note">Hold a row or Back up now to watch how it works.</p>${item("help", M.SCREEN_NAMES.help)}${item("setup", M.SCREEN_NAMES.setup)}</div></aside>`;
 }
 
@@ -225,8 +225,18 @@ function renderBanner() {
 
 function renderNav() {
   const n = device.allowEntry ? dueDrafts().length : 0;
-  const tab = (id, label) => `<button data-action="tab" data-tab="${id}" data-howto="${id}"${ui.tab === id ? ' aria-current="page"' : ""}>${label}</button>`;   // hold for its how-to
+  const pic = { log: '<path d="M12 5v14M5 12h14"/>', verify: '<path d="M20 6 9 17l-5-5"/>' };
+  const tab = (id, label) => `<button data-action="tab" data-tab="${id}" data-howto="${id}"${ui.tab === id ? ' aria-current="page"' : ""}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${pic[id]}</svg>${label}</button>`;   // hold for its how-to
   $("nav").innerHTML = tab("log", M.SCREEN_NAMES.log) + tab("verify", n ? `${M.SCREEN_NAMES.verify} (${n})` : M.SCREEN_NAMES.verify);   // photo and audio will join these two
+}
+
+// The picture strip at the top of a hub's screens: one tap moves between screens that belong together (see HUBS in names.js).
+function hubStrip() {
+  const h = M.hubOf(ui.tab); if (!h || !device.allowEntry) return "";
+  const hidden = M.menuHidden(ledger.settings), ids = M.HUBS[h].filter((id) => !hidden.has(id));
+  if (ids.length < 2) return "";
+  const on = (id) => ui.tab === id || (id === "money" && ui.tab === "income");
+  return `<nav class="hub" aria-label="Screens here">${ids.map((id) => `<button data-action="tab" data-tab="${id}" data-howto="${id}"${on(id) ? ' aria-current="page"' : ""}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${esc(M.STRIP_NAMES[id])}</span></button>`).join("")}</nav>`;
 }
 
 let lastTabSig = null, lastViewSig = null, swapTimer = null;
@@ -238,7 +248,7 @@ function renderScreen() {
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   const scr0 = $("screen"), sameTab = ui.tab === lastTabSig, oldBar = scr0.querySelector(".modebar, .viewmark"), barWas = oldBar?.getBoundingClientRect().top, bodyWas = scr0.querySelector(".viewbody")?.offsetHeight ?? 0;
-  $("screen").innerHTML = m ? html.slice(m[0].length) : html;
+  $("screen").innerHTML = hubStrip() + (m ? html.slice(m[0].length) : html);
   // Changing screen fades the whole screen in; changing the view (category, budget...) or chart/list fades in ONLY what is under the view
   // buttons, so the top (month, total, buttons) stays perfectly still. Fade only, nothing slides.
   const tabSig = ui.tab, viewSig = [ui.view, ui.asList, ui.period?.kind, ui.incomeView, ui.budgetView].join(), scr = $("screen");
@@ -272,6 +282,18 @@ function dayCard() {
     : `<p class="center"><button class="link datelink" data-action="open-cal">Select date</button></p>`}`;
 }
 
+// This month at a glance on Log: verified spending against the month's budgets, one bar, the figure at its tip. Tap it for Budget.
+function monthGlance() {
+  const month = M.monthOf(today()), spent = Math.max(0, M.spendingByCategory(S(), { month }).total);
+  const budget = expenseCategories().filter((c) => c.id !== M.UNLOGGED_CATEGORY_ID).reduce((n, c) => n + (M.budgetFor(S().rules, c.id, month) ?? 0), 0);
+  const t = budget > 0 ? M.tenths(spent, budget) : null, w = t === null ? 0 : Math.min(100, t / 10);
+  const words = budget > 0 ? (spent > budget ? `Over the month's budget by ${peso(spent - budget)}` : `${peso(budget - spent)} left of ${peso(budget)}`) : "No budget set yet";
+  return `<button class="glance" id="glance" data-action="tab" data-tab="budget" aria-label="This month: ${esc(peso(spent))} spent. ${esc(words)}. Tap for Budget.">
+    <span class="gl-top"><span>This month</span><b>${peso(spent)}</b></span>
+    ${budget > 0 ? `<span class="meter goal"><span class="fill" style="width:${w}%"></span></span>` : ""}
+    <span class="gl-sub">${esc(words)}${t !== null ? ` · ${M.showTenths(t)}` : ""}</span></button>`;
+}
+
 function viewLog() {
   if (activeAccounts().length === 0) {
     const empty = device.status === "EMPTY" ? `<div class="card" id="first-run"><p>${esc(device.message)}</p><p><button data-action="open-restore" style="width:100%">Restore from a backup</button></p></div>` : "";
@@ -296,6 +318,7 @@ function viewLog() {
     ${dayCard()}
     ${tilesHtml()}
     <p><button class="primary compact" data-action="open-other">Add expense</button></p>
+    ${monthGlance()}
     <h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
 }
 
@@ -554,8 +577,8 @@ async function savePayslip() {
   const hasOvertime = r.lines.some((l) => l.kind === "overtime");
   if (hasOvertime) {
     const emerg = M.goalByRole(S(), "emergency");
-    if (!emerg) note = " Choose which goal is your emergency fund (Menu, Goals) to get the overtime draft.";
-    else if (!emerg.account_id) note = " Choose an account for your emergency fund (Menu, Goals) to get the overtime draft.";
+    if (!emerg) note = " Choose which goal is your emergency fund (Menu, Budget, Goals) to get the overtime draft.";
+    else if (!emerg.account_id) note = " Choose an account for your emergency fund (Menu, Budget, Goals) to get the overtime draft.";
     else if (!next.transactions.some((t) => t.id === "ot-" + id)) { const d = M.overtimeDraft(next, id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date()); if (d?.ok && d.transaction) { next = M.applyDrafts(next, [d]); note = " The Emergency Fund draft is waiting in Verify."; } }
   }
   ui.sheet = null; renderSheet();
@@ -1965,7 +1988,7 @@ function renderSheet() {
     body = `<h3>Where the leftover goes</h3>
       <p class="note">At month end, what is left in the buffer fills your goals in the order you tap them. Each one except the last is filled up to its target; the last one takes the rest.</p>
       ${goals.length ? `<div class="chips">${goals.map((g) => `<button class="chip" data-action="pick-sweep" data-id="${esc(g.id)}" aria-pressed="${picked.includes(g.id)}">${picked.includes(g.id) ? picked.indexOf(g.id) + 1 + " \u00b7 " : ""}${esc(g.name)}</button>`).join("")}</div>`
-        : `<p class="note">Add goals first (Menu, Goals).</p>`}
+        : `<p class="note">Add goals first (Menu, Budget, Goals).</p>`}
       ${picked.slice(0, -1).map((id) => { const g = goals.find((x) => x.id === id); return `<label for="t_${esc(id)}">Fill ${esc(g.name)} up to (\u20B1). Empty: its own target${g.target != null ? ", " + peso(g.target) : ", none"}</label><input id="t_${esc(id)}" data-field="t_${esc(id)}" inputmode="decimal" value="${esc(f["t_" + id] ?? "")}" autocomplete="off">`; }).join("")}
       <p class="note" id="sweep-msg" role="status"></p>
       <p><button class="primary" id="f-save" data-action="save-sweep" style="margin-top:14px" disabled>Save</button></p>`;
@@ -2628,8 +2651,8 @@ async function onClick(el) {
     }
     case "ot-draft": {
       const emerg = M.goalByRole(S(), "emergency");
-      if (!emerg) { showToast("Choose which goal is your emergency fund first (Menu, Goals)."); break; }
-      if (!emerg.account_id) { showToast("Choose an account for your emergency fund first (Menu, Goals)."); break; }
+      if (!emerg) { showToast("Choose which goal is your emergency fund first (Menu, Budget, Goals)."); break; }
+      if (!emerg.account_id) { showToast("Choose an account for your emergency fund first (Menu, Budget, Goals)."); break; }
       const d = M.overtimeDraft(S(), id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date());
       if (!d?.ok || !d.transaction) { showToast("Could not make the draft."); break; }
       await commit(M.applyDrafts(S(), [d])); showToast("The Emergency Fund draft is waiting in Verify."); break;

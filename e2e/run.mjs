@@ -71,11 +71,14 @@ async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BAS
 const text = (page, sel = "body") => page.locator(sel).innerText();
 // Money, Budget and Setup live in the menu at the upper left; only Log and Verify are on the bottom bar.
 const addPayslipFlow = async (page) => { await page.click('button:has-text("Add income")'); };   // the Add income window offers the payslip ways straight away
+// Screens that belong together share one menu row; the picture strip on top of them switches between them (HUBS in names.js).
+const HUB_OF = { Cards: "Cash flow", Goals: "Budget", "Pay plan": "Budget", Checks: "Weekly review" };
 const menuGo = async (page, name) => {   // Spending and Income are one menu item, Cash flow, with a switch inside
   await page.click("#menuBtn");
   const money = name === "Spending" || name === "Income";
-  await page.click(`#menu .item:has-text("${money ? "Cash flow" : name}")`);
+  await page.click(`#menu .item:has-text("${money ? "Cash flow" : HUB_OF[name] ?? name}")`);
   await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
+  if (HUB_OF[name]) await page.click(`#screen .hub button:has-text("${name}")`);
   if (name === "Income") await page.click("#top .titleswitch");
 };
 // Saving is asynchronous (it writes two stores), so checks wait for the text to appear instead of racing it.
@@ -602,7 +605,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3 && (await page.locator("#menuBtn").evaluate((b) => getComputedStyle(b).borderTopWidth === "0px" && getComputedStyle(b).backgroundColor === "rgba(0, 0, 0, 0)")), "it is just three lines, without a box around it");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Cards,Budget,Goals,Pay plan (optional),Weekly review,Scan,Checks,Trips,Buffer,Help,Setup", "the menu lists Cash flow (Spending and Income together), Cards, Budget, Goals, Pay plan, then Weekly review, Scan, Checks, Trips, Buffer, then Help and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Budget,Weekly review,Scan,Trips,Buffer,Help,Setup", "the menu lists Cash flow (with Cards), Budget (with Goals and the pay plan), Weekly review (with Checks), Scan, Trips, Buffer, then Help and Setup");
 check(await page.locator("#menu .drawer").evaluate((d) => d.scrollHeight <= d.clientHeight + 1), "everything fits without scrolling");
 check(await page.locator("#menu .drawer").evaluate((d) => getComputedStyle(d).borderRightWidth === "0px"), "there is no hard black line at the panel's edge");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
@@ -1063,7 +1066,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 // ---- the pay plan ----
 await menuGo(page, "Pay plan");
 check((await text(page, "#screen")).includes("You can skip it. Budget works without it."), "the pay plan starts empty");
-check((await page.locator('button:has-text("Load a plan")').count()) === 0 && (await page.locator("#screen button").count()) === 0, "there is no Load a plan button anywhere: nobody has a plan file yet");
+check((await page.locator('button:has-text("Load a plan")').count()) === 0 && (await page.locator("#screen button").count()) === (await page.locator("#screen .hub button").count()), "there is no Load a plan button anywhere (only the picture strip): nobody has a plan file yet");
 const plan = { schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-10-01",
   paydays: [{ id: "first", day: 15, expected_income: 5100 }, { id: "second", day: "last", expected_income: 7100 }],
   lines: [{ name: "Food", first: 3000, second: 3000 }, { name: "Shopping", first: 1000, second: 1000 }, { name: "Rent", first: 0, second: 2000 },
@@ -1754,7 +1757,7 @@ console.log("The new Budget");
   // switching off again restores the old screen, and the data is as it was
   await menuGo(page, "Setup"); await page.click('button:has-text("On (tap to turn off)")'); await menuGo(page, "Budget");
   check((await text(page, "#screen")).includes("Tap one to set it.") && !(await text(page, "#screen")).includes("Income (base)"), "turned off again, it is the old Budget");
-  await page.click("#menuBtn"); check((await page.locator("#menu .item").allInnerTexts()).join().includes("Pay plan (optional)"), "turned off, the Pay plan entry is back in the menu"); await page.click(".scrim, #menu .scrim").catch(() => {});
+  await page.click("#menuBtn"); await page.click(".scrim, #menu .scrim").catch(() => {}); check((await text(page, "#screen .hub")).includes("Pay plan"), "turned off, Pay plan is back in Budget's strip");
   await ctx.close(); }
 
 // Budget Stage B: By payday (the plan inside Budget) and the plan and its budgets agreeing. A plan cannot be loaded in the app any more, so the phone is
@@ -1794,7 +1797,7 @@ console.log("The new Budget");
   // Stage C: with the new Budget on, the menu has no Pay plan entry; the screen is still reachable from Help, and Setup points at Budget
   await page.click("#menuBtn");
   const menuOn = (await page.locator("#menu .item").allInnerTexts()).join();
-  check(!menuOn.includes("Pay plan") && menuOn.includes("Budget") && menuOn.includes("Goals") && menuOn.includes("Help") && menuOn.includes("Setup"), "with the new Budget on, the menu has no Pay plan entry and keeps every other entry");
+  check(!menuOn.includes("Pay plan") && menuOn.includes("Budget") && menuOn.includes("Help") && menuOn.includes("Setup"), "with the new Budget on, the menu has no Pay plan entry and keeps every other entry");
   await page.click('#menu button[data-tab="setup"]');
   check((await text(page, "#screen")).includes("Open it in Budget"), "Setup points at Budget for the plan");
   await menuGo(page, "Help"); await page.locator("#screen details.mrow summary", { hasText: "Pay plan" }).click();
@@ -2173,7 +2176,8 @@ console.log("What's new and how-tos");
   check(await seen(page, "#sheet", "Keep a trip apart") && (await text(page, "#sheet")).includes("Tag new entries with this trip") && /example/i.test(await text(page, "#sheet")), "holding Trips in the menu plays the trips how-to (an example while there are no trips)");
   await page.click('#sheet button:has-text("Close")');
   await page.click("#menuBtn"); await page.waitForSelector("#menu .item"); await page.waitForTimeout(500);
-  await holdOn('#menu .item[data-tab="goals"]');
+  await page.click('#menu .item[data-tab="budget"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
+  await holdOn('#screen .hub button[data-tab="goals"]');
   check(await seen(page, "#sheet", "Save toward a goal") && (await text(page, "#sheet")).includes("Put money in") && /example/i.test(await text(page, "#sheet")) && (await text(page, "#sheet")).includes("Tap Put money in on a goal"), "holding Goals in the menu plays the goals how-to (an example while there is no goal with a target)");
   await page.click('#sheet button:has-text("Close")');
   await menuGo(page, "Setup");
@@ -2186,6 +2190,11 @@ console.log("What's new and how-tos");
   check(await page.locator(".mn.wn small").count() === CHANGES.length && (await page.locator(".mn.wn small").first().boundingBox()).height < 24, "each change shows its date on one short line of its own");
   await page.click('#nav button[data-tab="log"]');
   check((await text(page, "#screen")).includes("spent today"), "the big number on Log says what it is");
+  check((await text(page, "#glance")).includes("This month") && (await text(page, "#glance")).includes("left of"), "Log shows this month against the budgets");
+  await page.click("#glance"); await page.waitForTimeout(400);
+  check((await text(page, "#top")).includes("Budget") && (await page.locator("#screen .hub button").allInnerTexts()).join() === "Budget,Goals,Pay plan", "tapping it opens Budget, with Goals and Pay plan in the strip on top");
+  await page.click('#screen .hub button[data-tab="goals"]'); await page.waitForTimeout(400);
+  check((await text(page, "#top")).includes("Goals") && await page.getAttribute('#screen .hub button[data-tab="goals"]', "aria-current") === "page", "one tap on the strip moves to Goals");
   await page.click("#menuBtn"); await page.waitForSelector("#menu .item"); await page.waitForTimeout(500);
   check((await page.locator("#menu .glabel").allInnerTexts()).join("|") === "Your money|Tools", "the menu has two groups");
   await page.click("#menu-backup");
@@ -2259,7 +2268,7 @@ console.log("Import old spending");
   check(await seen(page, "#toast", "1 draft is waiting in Verify"), "added too");
   await page.click('button[data-action="open-scan-pick"]');
   await page.setInputFiles('input[data-import]', { name: "tracker.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: xlsx });
-  check(await seen(page, "#sheet", "2 already logged, left out"), "importing the same file again adds nothing twice");
+  check(await seen(page, "#sheet", "2 already logged, left out", 10000), "importing the same file again adds nothing twice");   // reading the file can take a few seconds on a busy machine
   check(errors.length === 0, "no script errors while importing");
   await ctx.close(); }
 
