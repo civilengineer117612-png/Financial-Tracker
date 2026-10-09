@@ -197,7 +197,7 @@ function renderMenu() {
   const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
   el.innerHTML = `<div class="scrim${opening ? " enter" : ""}" data-action="close-menu"></div><aside class="drawer${opening ? " enter" : ""}" role="dialog" aria-label="Menu">
     <div class="groups">${MENU.map(([group, items]) => `<p class="glabel">${group}</p>${items.filter(([id]) => !hidden.has(id)).map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
-    <div class="foot"><p class="note">${backup}</p>${item("help", M.SCREEN_NAMES.help)}${item("setup", M.SCREEN_NAMES.setup)}</div></aside>`;
+    <div class="foot"><p class="note">${backup}</p><p class="note">Hold a row or Back up now to watch how it works.</p>${item("help", M.SCREEN_NAMES.help)}${item("setup", M.SCREEN_NAMES.setup)}</div></aside>`;
 }
 
 function renderBanner() {
@@ -979,7 +979,7 @@ function viewSetup() {
     <p><button data-action="toggle-new-budget" aria-pressed="${Boolean(ledger.settings.try_new_budget)}" style="width:100%">${ledger.settings.try_new_budget ? "On (tap to turn off)" : "Off (tap to turn on)"}</button></p>
     <h2>Backup</h2>
     <p class="note">${backupAgeText()}</p>
-    <p><button class="primary" data-action="open-backup">Back up now</button></p>
+    <p><button class="primary" data-action="open-backup" data-howto="backup">Back up now</button></p>
     <p><button data-action="open-restore" style="width:100%">Restore from a backup</button></p>
     <p><button data-action="open-check-backup" style="width:100%">Check a backup file</button></p>
     <p class="note">The file is encrypted, so it is safe in more than one place. Keep a second copy off this phone, for example in iCloud Drive or on a computer: a backup that only sits on a lost phone is lost too.</p>

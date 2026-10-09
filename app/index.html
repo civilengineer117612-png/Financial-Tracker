@@ -340,6 +340,13 @@
   @keyframes hwBudFinger { 0%, 6% { opacity: 0; left: 70%; top: 70%; } 12% { opacity: 1; left: 60%; top: 40%; } 20%, 24% { opacity: 1; left: 50%; top: 27%; } 30% { opacity: 0; } 38% { opacity: 0; left: 50%; top: 90%; } 44%, 49% { opacity: 1; left: 50%; top: 90%; } 54%, 100% { opacity: 0; } }
   .hw-verify .hw-type .hw-t0 { animation-name: hwTypeOld; } .hw-verify .hw-type .hw-t1 { animation-name: hwTypeNew; } .hw-verify .hw-finger { animation-name: hwVerFinger; }
   .hw-trip small { display: block; font-size: 10px; color: var(--mid); } .hw-tag { position: relative; height: 40px; padding: 0; margin-top: 8px; } .hw-tag span { position: absolute; inset: 0; display: grid; place-content: center; }
+  .hw-note { font-size: 11px; color: var(--mid); font-style: italic; text-align: center; }
+  .hw-cat { position: relative; min-width: 70px; text-align: right; } .hw-cat span { position: absolute; right: 0; top: 0; }
+  .hw-verify .hw-cat .hw-t0 { animation-name: hwTypeOld; } .hw-verify .hw-cat .hw-t1 { animation-name: hwTypeNew; }
+  .hw-last { position: relative; height: 34px; font-size: 24px; font-weight: 700; text-align: center; } .hw-last span { position: absolute; inset: 0; display: grid; place-content: center; font-size: 22px; }
+  .hw-backup .hw-finger { animation-name: hwBackFinger; } .hw-backup .hw-go { animation-name: hwPress; } .hw-backup .hw-sheet { animation-name: hwSheet; }
+  .hw-backup .hw-last .hw-t0 { animation-name: hwOld; } .hw-backup .hw-last .hw-t1 { animation-name: hwNew; }
+  @keyframes hwBackFinger { 0%, 6% { opacity: 0; left: 70%; top: 60%; } 12% { opacity: 1; left: 60%; top: 42%; } 20%, 24% { opacity: 1; left: 50%; top: 34%; } 30% { opacity: 0; } 38% { opacity: 0; left: 50%; top: 90%; } 44%, 49% { opacity: 1; left: 50%; top: 90%; } 54%, 100% { opacity: 0; } }
   .hw-trips .hw-finger { animation-name: hwTripFinger; } .hw-trips .hw-tag { animation-name: hwPress; }
   .hw-trips .hw-tag .hw-t0 { animation-name: hwTapOld; } .hw-trips .hw-tag .hw-t1 { animation-name: hwTapNew; }
   .hw-trips .hw-bpick .hw-t0 { animation-name: hwOld; } .hw-trips .hw-bpick .hw-t1 { animation-name: hwNew; }
