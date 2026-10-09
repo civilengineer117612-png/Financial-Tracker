@@ -6,7 +6,7 @@ export const SCREEN_NAMES = {
 };
 
 // The menu, in order: [group, [screen ids]]. Setup and Help are pinned at the bottom of the menu by the app.
-export const MENU_GROUPS = [["Overview", ["money", "cards", "budget", "goals", "plan", "checks", "trips", "buffer"]], ["Capture", ["scan"]], ["Weekly", ["checkin"]]];
+export const MENU_GROUPS = [["Your money", ["money", "cards", "budget", "goals", "plan"]], ["Tools", ["checkin", "scan", "checks", "trips", "buffer"]]];   // no one-row groups
 
 // Menu entries hidden when the owner has switched on the new Budget (Setup, "Try the new Budget"): the pay plan lives inside Budget, under By payday.
 // With the switch off nothing is hidden. The screen itself still exists for one more release (and Help still has its topic).

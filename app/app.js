@@ -207,14 +207,14 @@ function renderMenu() {
   const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
   el.innerHTML = `<div class="scrim${opening ? " enter" : ""}" data-action="close-menu"></div><aside class="drawer${opening ? " enter" : ""}" role="dialog" aria-label="Menu">
     <div class="groups">${MENU.map(([group, items]) => `<p class="glabel">${group}</p>${items.filter(([id]) => !hidden.has(id)).map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
-    <div class="foot"><p class="note">${backup}</p><p class="note">Hold a row or Back up now to watch how it works.</p>${item("help", M.SCREEN_NAMES.help)}${item("setup", M.SCREEN_NAMES.setup)}</div></aside>`;
+    <div class="foot"><p class="note"><button class="link" data-action="open-backup" id="menu-backup">${backup}</button></p><p class="note">Hold a row or Back up now to watch how it works.</p>${item("help", M.SCREEN_NAMES.help)}${item("setup", M.SCREEN_NAMES.setup)}</div></aside>`;
 }
 
 function renderBanner() {
   const bars = [];
   if (ui.error) bars.push(`<div class="bar" role="alert">${esc(ui.error)}</div>`);
   if (ui.upgrade?.failed) bars.push(`<div class="bar" role="alert">${esc(ui.upgrade.failed)}</div>`);
-  const showDevice = device.status === "TRIAL" || (device.status !== "OK" && !(device.status === "EMPTY" && S().accounts.length > 0));
+  const showDevice = device.status === "TRIAL" || (device.status !== "OK" && device.status !== "EMPTY");   // an empty phone is explained on Log, next to its Restore button
   if (showDevice) {
     const repair = device.status === "PARTIAL_LOSS" && boot.ledger ? `<p><button data-action="repair">Copy the surviving data into the empty store</button></p>` : "";
     const trial = device.status === "TRIAL" ? `<p><button data-action="reset-trial">${ui.confirmTrial ? "Tap again to erase the trial copy" : "Start the trial over"}</button></p>` : "";
@@ -265,7 +265,7 @@ function dayCard() {
   const d = M.dayTotal(S(), picked ?? today());
   const words = (picked ? longDate(picked) : "Today") + " " + peso(d.total) + (d.drafts ? ", including " + d.drafts + " not yet verified" : "");
   // One quiet link at a time: "Select date" on today; on another day the date itself (tap it to pick another) and a single "Today".
-  return `<div class="daytotal" role="status" aria-label="${esc(words)}">${peso(d.total)}</div>
+  return `<div class="daytotal" role="status" aria-label="${esc(words)}">${peso(d.total)}</div><p class="center daylabel" aria-hidden="true">${picked ? "spent that day" : "spent today"}</p>
     ${picked ? `<p class="center daycap"><button class="daycapbtn datelink" data-action="open-cal" aria-label="${esc(longDate(picked))}, tap to choose another day">${esc(longDate(picked))}</button></p>
     <p class="note center small">New entries go on this day.</p>
     <p class="center"><button class="link" data-action="reset-day">Today</button></p>`
@@ -274,7 +274,8 @@ function dayCard() {
 
 function viewLog() {
   if (activeAccounts().length === 0) {
-    return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p><p class="note">Add the accounts you pay from first.</p>
+    const empty = device.status === "EMPTY" ? `<div class="card" id="first-run"><p>${esc(device.message)}</p><p><button data-action="open-restore" style="width:100%">Restore from a backup</button></p></div>` : "";
+    return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${empty}<p class="note">Add the accounts you pay from first.</p>
       <button class="primary" data-action="tab" data-tab="setup">Add accounts</button>
       <p class="note">New here? <button class="link" data-action="tab" data-tab="help">Read the quick notes first</button>.</p>`;
   }
@@ -600,7 +601,7 @@ function viewScan() {
     <p class="note">This phone reads the photo itself. The photo is never sent anywhere. It guesses what the paper is, the amount and the date. You check each guess, and the entry waits in Verify with the photo beside it.</p>
     ${photoButtons("1", busy)}
     ${status}
-    <p class="note">The first photo downloads the reader (about 7 MB) while you are online. After that it works with no internet. For the best reading hold the phone straight above the paper, in good light, with the whole page in view. Handwriting is read poorly, so check every number on a handwritten receipt. Photos stay on this phone and are not in the backup file.</p>`;
+    <p class="note">The first photo downloads the reader (about 30 MB) while you are online. After that it works with no internet. For the best reading hold the phone straight above the paper, in good light, with the whole page in view. Handwriting is read poorly, so check every number on a handwritten receipt. Photos stay on this phone and are not in the backup file.</p>`;
 }
 
 const incomeCategories = () => S().categories.filter((c) => c.kind === "income");
@@ -948,7 +949,7 @@ function viewHelp() {
     <h2>How-tos</h2><p class="note">${esc(M.HOWTO_HINT)}</p>
     <div class="mlist">${M.HOWTOS.map((h) => `<div class="mrow mline"><span class="mn">${esc(h.label)}</span><span class="mv"><button class="link" data-action="open-howto" data-id="${h.id}">Watch</button></span></div>`).join("")}</div>
     <h2>What's new</h2>
-    <div class="mlist">${M.CHANGES.map((c) => `<div class="mrow mline"><span class="mn">${esc(c.text)}</span><span class="mv">${esc(longDate(c.date))}</span></div>`).join("")}</div>
+    <div class="mlist">${M.CHANGES.map((c) => `<div class="mrow mline"><span class="mn wn"><small>${esc(longDate(c.date))}</small>${esc(c.text)}</span></div>`).join("")}</div>
     <h2>Each screen</h2>
     <div class="mlist">${M.HELP_TOPICS.map((t) => `<details class="mrow"><summary><span class="mn">${esc(t.label)}</span><span class="tchev" aria-hidden="true">\u203A</span></summary>${figure(t.drawing)}${t.lines.map((l) => `<div class="mpart"><span>${esc(l)}</span></div>`).join("")}<div class="mpart"><button class="link" data-action="tab" data-tab="${t.tab}">Open ${esc(t.label)}</button></div></details>`).join("")}</div>
     <p class="note">This guide is kept up to date as the app changes.</p>`;
@@ -1222,7 +1223,7 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
 const gcashOf = () => (ledger.settings.gcash && S().accounts.some((a) => a.id === ledger.settings.gcash.account_id) ? ledger.settings.gcash : null);
 function viewBuffer() {
   const g = gcashOf();
-  if (!g) return `<h1>Buffer</h1><p class="note">The overrun buffer is money you set aside inside one of your accounts (you choose which), apart from your everyday allowance in that same account. It is only used when a category overruns, and every draw is recorded against that category.</p>
+  if (!g) return `<h1>Buffer</h1><p class="note">Money kept aside in one of your accounts for when a category runs over its budget. Every draw is recorded against that category, so you see where it went.</p>
     <p><button class="primary" data-action="open-bufsetup">Set up the buffer</button></p>`;
   const month = M.monthOf(today());
   const sum = M.bufferSummary(S(), { allowance_envelope_id: g.allowance_id, buffer_envelope_id: g.buffer_id, month });
@@ -1992,7 +1993,8 @@ function renderSheet() {
       <p class="note">Anything entered on this phone since the backup was made will be gone. Pictures are not in the backup: an entry with a picture will show "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}" role="dialog">${body}<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" ? "Close" : "Cancel"}</button></p></div>`;
+  const closer = sh.type === "notice" ? "" : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
   refreshSave();
@@ -2713,7 +2715,7 @@ async function onClick(el) {
       await writeBoth(JSON.stringify(M.restorableCopy(c, ledger.rev)));
       location.reload(); break;   // the app starts again, upgrades the copy (keeping a copy of it first) and carries on
     }
-    case "open-backup": ui.sheet = { type: "backup" }; ui.form = {}; renderSheet(); break;
+    case "open-backup": if (ui.menu) { ui.menu = false; renderMenu(); } ui.sheet = { type: "backup" }; ui.form = {}; renderSheet(); break;   // from the menu: it steps aside
     case "open-restore": ui.sheet = { type: "restore" }; ui.form = {}; renderSheet(); break;
     case "open-check-backup": ui.sheet = { type: "restore", check: true }; ui.form = {}; renderSheet(); break;
     case "make-backup": await makeBackup(); break;

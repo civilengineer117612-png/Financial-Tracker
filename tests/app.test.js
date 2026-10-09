@@ -126,3 +126,15 @@ test("listening is one round per tap: no restart loop, no language buttons, the 
   assert.match(js, /ui\.form\.lang = other\(lang\)/);
 });
 
+
+test("tidy-up: the menu has no one-row groups, the notice has one answer, an empty phone is explained on Log with a Restore button", async () => {
+  const js = read("app/app.js"), { MENU_GROUPS } = await import("../src/model/names.js");
+  assert.ok(MENU_GROUPS.length >= 2 && MENU_GROUPS.every(([, ids]) => ids.length >= 2), "every menu group has at least two rows");
+  assert.match(js, /const closer = sh\.type === "notice" \? "" :/, "the first-run notice has no Cancel");
+  assert.match(js, /device\.status !== "OK" && device\.status !== "EMPTY"/, "an empty phone is not a banner");
+  assert.match(js, /device\.status === "EMPTY" \? `<div class="card" id="first-run"><p>\$\{esc\(device\.message\)\}<\/p><p><button data-action="open-restore"/, "it is said on Log, with Restore");
+  assert.match(js, /"spent that day" : "spent today"/, "the big number says what it is");
+  assert.match(js, /data-action="open-backup" id="menu-backup">\$\{backup\}/, "the menu's backup line opens Back up now");
+  assert.match(js, /<span class="mn wn"><small>\$\{esc\(longDate\(c\.date\)\)\}<\/small>/, "a change's date sits on its own line");
+  assert.ok(js.includes("downloads the reader (about 30 MB)") && !js.includes("about 7 MB"), "the reader's size is stated once, correctly");
+});
