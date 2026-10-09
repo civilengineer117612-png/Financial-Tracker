@@ -202,7 +202,9 @@ test("the new screen adds only the amount and the share to a row, one totals lin
   for (const id of ["bud-income", "bud-shares", "bud-spent", "bud-spend-total", "bud-saved-total"]) assert.ok(view.includes(`id="${id}"`), id);
   assert.match(view, /Spending \$\{M\.showTenths\(sh\.spending\)\}, Saved \$\{M\.showTenths\(sh\.saved\)\}, \$\{bufferTotal \? "Buffer " \+ M\.showTenths\(sh\.buffer\) \+ ", " : ""\}\$\{sh\.unallocated < 0 \? "Over income by " \+ peso\(-sh\.unallocated\) : "Unallocated " \+ peso\(sh\.unallocated\)\}/);
   assert.match(view, /Spent so far: \$\{M\.showTenths/);
-  assert.ok(view.indexOf("<h2>Spending</h2>") < view.indexOf("<h2>Saved and set aside</h2>"), "Spending first, then Saved and set aside");
+  assert.match(view, /\[\["spending", "Spending"\], \["saved", "Saved"\], \["buckets", "Buckets"\]\]/, "one switch, like Cash flow: Spending first, then Saved, then Buckets");
+  assert.match(view, /const bview = ui\.budgetView \?\? "spending";/, "Spending shows first");
+  assert.match(view, /\$\{head\}\$\{sum\}\n    \$\{views\}<div class="viewbody">\$\{part\}<\/div>/, "the overview stays on top, one part at a time below it");
 });
 
 test("no data version bump is needed: the new settings keys are additive, a ledger with or without them loads and passes the self-check", async () => {

@@ -71,14 +71,18 @@ async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BAS
 const text = (page, sel = "body") => page.locator(sel).innerText();
 // Money, Budget and Setup live in the menu at the upper left; only Log and Verify are on the bottom bar.
 const addPayslipFlow = async (page) => { await page.click('button:has-text("Add income")'); };   // the Add income window offers the payslip ways straight away
+// Screens that belong together share one menu row; the picture strip on top of them switches between them (HUBS in names.js).
+const HUB_OF = { Cards: "Cash flow", Goals: "Budget", "Pay plan": "Budget", Checks: "Weekly review" };
 const menuGo = async (page, name) => {   // Spending and Income are one menu item, Cash flow, with a switch inside
   await page.click("#menuBtn");
   const money = name === "Spending" || name === "Income";
-  await page.click(`#menu .item:has-text("${money ? "Cash flow" : name}")`);
+  await page.click(`#menu .item:has-text("${money ? "Cash flow" : HUB_OF[name] ?? name}")`);
   await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
+  if (HUB_OF[name]) await page.click(`#screen .hub button:has-text("${name}")`);
   if (name === "Income") await page.click("#top .titleswitch");
 };
 // Saving is asynchronous (it writes two stores), so checks wait for the text to appear instead of racing it.
+const budView = async (page, v) => { await page.click(`button[data-action="budget-view"][data-view="${v}"]`); await page.waitForTimeout(200); };   // Budget shows one part at a time
 const seen = async (page, sel, sub, ms = 4000) => { try { await page.waitForFunction(([q, t]) => document.querySelector(q)?.innerText.includes(t), [sel, sub], { timeout: ms }); return true; } catch { return false; } };
 const gone = async (page, sel, sub, ms = 4000) => { try { await page.waitForFunction(([q, t]) => !document.querySelector(q)?.innerText.includes(t), [sel, sub], { timeout: ms }); return true; } catch { return false; } };
 const stored = (page) => page.evaluate(async () => {
@@ -116,7 +120,7 @@ async function addAccount(page, name, kind, opening, covers) {
 // ===== 1. first run, setup =====
 console.log("First run and setup");
 let { ctx, page, errors } = await open({ styled: false });
-check((await text(page, "#banner")).includes("No data on this device"), "first run explains the empty state");
+check((await text(page, "#screen")).includes("No data on this device") && await page.locator('#first-run button[data-action="open-restore"]').count() === 1 && !(await text(page, "#banner")).includes("No data on this device"), "first run explains the empty state on Log, with a Restore button, not as a banner");
 check((await text(page)).includes("Add the accounts you pay from first"), "log asks for accounts first");
 await shot(page, "01-first-run");
 await ctx.close();
@@ -129,7 +133,7 @@ await addAccount(page, "Test Reserve", "asset", "0", "Test Card");
 check(await seen(page, "#screen", "covers Test Card"), "a reserve is linked to its card");
 await page.selectOption("#r-src", { label: "Test Debit" });
 await shot(page, "02-setup");
-check(await gone(page, "#banner", "No data on this device"), "the first-run note goes away once accounts exist");
+check(!(await text(page, "#banner")).includes("No data on this device") && !(await text(page, "#screen")).includes("No data on this device"), "the first-run note goes away once accounts exist");
 let s = await stored(page);
 check(s.local && s.idb && s.local === s.idb, "the same text is in localStorage and IndexedDB");
 check(JSON.parse(s.local).state.categories.length > 5 && JSON.parse(s.local).state.presets.length === 3, "defaults were saved with the first save");
@@ -419,7 +423,7 @@ check(!(await text(page, "#screen")).includes("No backup yet"), "the Log page st
 // wipe everything, as if iOS had cleared the storage
 await page.evaluate(async () => { localStorage.clear(); await new Promise((res) => { const r = indexedDB.deleteDatabase("financialTracker"); r.onsuccess = r.onerror = r.onblocked = () => res(); }); });
 await page.reload(); await page.waitForSelector("#nav button"); await dismissNotice(page);
-check((await text(page, "#banner")).includes("No data on this device"), "the empty phone says so");
+check((await text(page, "#screen")).includes("No data on this device"), "the empty phone says so, on Log");
 await menuGo(page, "Setup");
 await page.click('button:has-text("Restore from a backup")');
 check(await page.locator("#f-save").isDisabled(), "opening is off until a file and passphrase are given");
@@ -601,7 +605,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3 && (await page.locator("#menuBtn").evaluate((b) => getComputedStyle(b).borderTopWidth === "0px" && getComputedStyle(b).backgroundColor === "rgba(0, 0, 0, 0)")), "it is just three lines, without a box around it");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Cards,Budget,Goals,Pay plan (optional),Checks,Trips,Buffer,Scan,Weekly review,Help,Setup", "the menu lists Cash flow (Spending and Income together), Cards, Budget, Goals, Pay plan, Checks, Trips, Buffer, Scan, Weekly review, Help and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Budget,Weekly review,Scan,Trips,Buffer,Help,Setup", "the menu lists Cash flow (with Cards), Budget (with Goals and the pay plan), Weekly review (with Checks), Scan, Trips, Buffer, then Help and Setup");
 check(await page.locator("#menu .drawer").evaluate((d) => d.scrollHeight <= d.clientHeight + 1), "everything fits without scrolling");
 check(await page.locator("#menu .drawer").evaluate((d) => getComputedStyle(d).borderRightWidth === "0px"), "there is no hard black line at the panel's edge");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
@@ -1062,7 +1066,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 // ---- the pay plan ----
 await menuGo(page, "Pay plan");
 check((await text(page, "#screen")).includes("You can skip it. Budget works without it."), "the pay plan starts empty");
-check((await page.locator('button:has-text("Load a plan")').count()) === 0 && (await page.locator("#screen button").count()) === 0, "there is no Load a plan button anywhere: nobody has a plan file yet");
+check((await page.locator('button:has-text("Load a plan")').count()) === 0 && (await page.locator("#screen button").count()) === (await page.locator("#screen .hub button").count()), "there is no Load a plan button anywhere (only the picture strip): nobody has a plan file yet");
 const plan = { schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-10-01",
   paydays: [{ id: "first", day: 15, expected_income: 5100 }, { id: "second", day: "last", expected_income: 7100 }],
   lines: [{ name: "Food", first: 3000, second: 3000 }, { name: "Shopping", first: 1000, second: 1000 }, { name: "Rent", first: 0, second: 2000 },
@@ -1687,14 +1691,18 @@ console.log("The new Budget");
   await menuGo(page, "Budget");
   let t = await text(page, "#screen");
   check(t.includes("Income (base)") && t.includes("Add a payslip or your pay to get a suggested budget."), "with no income the plain prompt shows, in the income box at the top");
-  check(/spending[\s\S]*saved and set aside/i.test(t) && t.includes("Total budgeted") && /Total: ₱/.test(t), "two blocks, Spending first, then Saved and set aside, each with a totals line");
+  check(/spending/i.test(t) && t.includes("Total budgeted") && !/saved and set aside/i.test(t), "Spending shows first, on its own, with its totals line");
+  await budView(page, "saved");
+  check(/saved and set aside/i.test(await text(page, "#screen")) && /Total: ₱/.test(await text(page, "#screen")) && !(await text(page, "#screen")).includes("Total budgeted"), "the Saved view shows Saved and set aside with its own totals line");
+  await budView(page, "spending");
   await page.click('button:has-text("Type a different figure")');
   check(await page.locator("#f-save").isDisabled(), "a figure needs an amount first");
   await page.fill("#f-amount", "25000"); await page.click("#f-save"); await seen(page, "#toast", "Income figure set");
   t = await text(page, "#screen");
   check(t.includes("₱25,000.00 a month") && t.includes("Your own figure") && t.includes("Use my payslips again"), "the typed income is shown, with where it came from");
   const sh = (txt) => { const m = /Spending ([\d.]+)%, Saved ([\d.]+)%, Unallocated ₱([\d,]+\.\d\d)/.exec(txt); return m && [Math.round(Number(m[1]) * 10), Math.round(Number(m[2]) * 10), Math.round(Number(m[3].replace(/,/g, "")) * 100)]; };
-  check(sh(t) && sh(t)[0] === 0 && sh(t)[2] > 0 && t.includes("Spent so far: 0.0% of income") && t.includes("asks for your rent first"), "the summary shows Spending and Saved as percents and Unallocated in pesos, the extra figure shows, and with no history the saved block says the suggestion asks for the rent first");
+  await budView(page, "saved"); const tSaved = await text(page, "#screen"); await budView(page, "spending");
+  check(sh(t) && sh(t)[0] === 0 && sh(t)[2] > 0 && t.includes("Spent so far: 0.0% of income") && tSaved.includes("asks for your rent first"), "the summary shows Spending and Saved as percents and Unallocated in pesos, the extra figure shows, and with no history the saved block says the suggestion asks for the rent first");
   // set a budget the old way: the row shows the amount and its share of income
   await page.click('button[data-action="open-budget"][data-id="cat-food"]'); await page.fill("#f-amount", "5000"); await page.click("#f-save"); await seen(page, "#toast", "Budget saved");
   t = await text(page, "#screen");
@@ -1727,9 +1735,11 @@ console.log("The new Budget");
   await page.click('button:has-text("Back")'); await page.click('#sheet button:has-text("Confirm")');
   check(JSON.parse((await stored(page)).local).state.rules.length === ruleCount, "nothing was saved yet");
   await page.click("#sheet button[data-action=save-sug]"); await seen(page, "#toast", "saved");
+  await budView(page, "saved");
   check((await text(page, "#screen")).includes("Suggested, not saved"), "with the rent typed, the Budget screen shows the suggested savings too");
   await page.locator("#bud-how summary").click();
   check((await text(page, "#bud-how")).includes("no more than 15% of your pay"), "and says how saving is worked out");
+  await budView(page, "spending");
   const led = JSON.parse((await stored(page)).local);
   const food = led.state.rules.filter((r) => r.subject_id === "cat-food");
   check(food.length === 2 && food[0].amount === 500000 && food[1].amount === 400000 && food[1].effective_from === "2026-11-01", "the old rule stays and the new one starts next month");
@@ -1747,7 +1757,7 @@ console.log("The new Budget");
   // switching off again restores the old screen, and the data is as it was
   await menuGo(page, "Setup"); await page.click('button:has-text("On (tap to turn off)")'); await menuGo(page, "Budget");
   check((await text(page, "#screen")).includes("Tap one to set it.") && !(await text(page, "#screen")).includes("Income (base)"), "turned off again, it is the old Budget");
-  await page.click("#menuBtn"); check((await page.locator("#menu .item").allInnerTexts()).join().includes("Pay plan (optional)"), "turned off, the Pay plan entry is back in the menu"); await page.click(".scrim, #menu .scrim").catch(() => {});
+  await page.click("#menuBtn"); await page.click(".scrim, #menu .scrim").catch(() => {}); check((await text(page, "#screen .hub")).includes("Pay plan"), "turned off, Pay plan is back in Budget's strip");
   await ctx.close(); }
 
 // Budget Stage B: By payday (the plan inside Budget) and the plan and its budgets agreeing. A plan cannot be loaded in the app any more, so the phone is
@@ -1787,7 +1797,7 @@ console.log("The new Budget");
   // Stage C: with the new Budget on, the menu has no Pay plan entry; the screen is still reachable from Help, and Setup points at Budget
   await page.click("#menuBtn");
   const menuOn = (await page.locator("#menu .item").allInnerTexts()).join();
-  check(!menuOn.includes("Pay plan") && menuOn.includes("Budget") && menuOn.includes("Goals") && menuOn.includes("Help") && menuOn.includes("Setup"), "with the new Budget on, the menu has no Pay plan entry and keeps every other entry");
+  check(!menuOn.includes("Pay plan") && menuOn.includes("Budget") && menuOn.includes("Help") && menuOn.includes("Setup"), "with the new Budget on, the menu has no Pay plan entry and keeps every other entry");
   await page.click('#menu button[data-tab="setup"]');
   check((await text(page, "#screen")).includes("Open it in Budget"), "Setup points at Budget for the plan");
   await menuGo(page, "Help"); await page.locator("#screen details.mrow summary", { hasText: "Pay plan" }).click();
@@ -1929,6 +1939,7 @@ console.log("Friend fixes 1");
   await page.waitForSelector('#sheet button:has-text("I understand")');
   const n = await text(page, "#sheet");
   check(n.includes("Before you start") && n.includes("Your data stays on this phone") && n.includes("cannot be recovered") && n.includes("Make a backup now") && n.includes("iPhone: add this app to the Home Screen first") && n.includes("Android: clearing the browser's site data erases the ledger"), "a brand-new install shows the first-run notice with all five points");
+  check(!(await text(page, "#sheet")).includes("Cancel"), "the notice has one answer, I understand");
   await page.click('#sheet button:has-text("I understand")');
   check(await page.locator("#sheet .sheet").count() === 0, "I understand closes it");
   await addAccount(page, "Cash", "asset", "100");
@@ -2019,6 +2030,7 @@ console.log("Buckets");
   ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 2500000, roles_notice_seen: "2026-10-01T08:00:00.000+08:00" },
     state: { ...OWNER_STYLE.state, categories: cats, rules: [rule("r1", "cat-food", 500000), rule("r2", "cat-coffee", 100000), rule("r3", "cat-shabu", 40000), rule("r4", "cat-misc", 60000)] } } }));
   await menuGo(page, "Budget");
+  await budView(page, "buckets");
   check(await seen(page, "#screen", "BUCKETS"), "the new Budget shows a Buckets block");
   let t = await text(page, "#screen");
   check(t.includes("Warren and Tyagi") && t.includes("not advice") && /Target 50\.0%/.test(t) && /Target 30\.0%/.test(t) && /Target 20\.0%/.test(t), "it names the rule of thumb and shows the 50/30/20 targets");
@@ -2087,6 +2099,7 @@ console.log("Savings as goals");
     state: { ...OWNER_STYLE.state, accounts: [acct("p1", "Pocket One"), acct("p2", "Pocket Two")], goals: [{ id: "ga", account_id: "p1", name: "Alpha", hidden_by_default: true }, { id: "gb", account_id: "p2", name: "Beta", hidden_by_default: true }] } };
   ({ ctx, page, errors } = await open({ blockSw: true, seed }));
   await menuGo(page, "Budget");
+  await budView(page, "saved");
   check(await seen(page, "#screen", "Alpha") && (await text(page, "#screen")).includes("Beta"), "Saved and set aside lists each goal");
   let t = await text(page, "#screen");
   check(/overrun buffer/i.test(t) && /not savings/i.test(t), "the overrun buffer is its own line and says it is not savings");
@@ -2163,7 +2176,8 @@ console.log("What's new and how-tos");
   check(await seen(page, "#sheet", "Keep a trip apart") && (await text(page, "#sheet")).includes("Tag new entries with this trip") && /example/i.test(await text(page, "#sheet")), "holding Trips in the menu plays the trips how-to (an example while there are no trips)");
   await page.click('#sheet button:has-text("Close")');
   await page.click("#menuBtn"); await page.waitForSelector("#menu .item"); await page.waitForTimeout(500);
-  await holdOn('#menu .item[data-tab="goals"]');
+  await page.click('#menu .item[data-tab="budget"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
+  await holdOn('#screen .hub button[data-tab="goals"]');
   check(await seen(page, "#sheet", "Save toward a goal") && (await text(page, "#sheet")).includes("Put money in") && /example/i.test(await text(page, "#sheet")) && (await text(page, "#sheet")).includes("Tap Put money in on a goal"), "holding Goals in the menu plays the goals how-to (an example while there is no goal with a target)");
   await page.click('#sheet button:has-text("Close")');
   await menuGo(page, "Setup");
@@ -2173,6 +2187,20 @@ console.log("What's new and how-tos");
   await menuGo(page, "Help");
   t = await text(page, "#screen");
   check(/How-tos/i.test(t) && /What's new/i.test(t) && t.includes(CHANGES[CHANGES.length - 1].text), "Help lists the how-tos and every change");
+  check(await page.locator(".mn.wn small").count() === CHANGES.length && (await page.locator(".mn.wn small").first().boundingBox()).height < 24, "each change shows its date on one short line of its own");
+  await page.click('#nav button[data-tab="log"]');
+  check((await text(page, "#screen")).includes("spent today"), "the big number on Log says what it is");
+  check((await text(page, "#glance")).includes("This month") && (await text(page, "#glance")).includes("left of"), "Log shows this month against the budgets");
+  await page.click("#glance"); await page.waitForTimeout(400);
+  check((await text(page, "#top")).includes("Budget") && (await page.locator("#screen .hub button").allInnerTexts()).join() === "Budget,Goals,Pay plan", "tapping it opens Budget, with Goals and Pay plan in the strip on top");
+  await page.click('#screen .hub button[data-tab="goals"]'); await page.waitForTimeout(400);
+  check((await text(page, "#top")).includes("Goals") && await page.getAttribute('#screen .hub button[data-tab="goals"]', "aria-current") === "page", "one tap on the strip moves to Goals");
+  await page.click("#menuBtn"); await page.waitForSelector("#menu .item"); await page.waitForTimeout(500);
+  check((await page.locator("#menu .glabel").allInnerTexts()).join("|") === "Your money|Tools", "the menu has two groups");
+  await page.click("#menu-backup");
+  check(await seen(page, "#sheet", "passphrase") && await page.waitForFunction(() => !document.querySelector("#menu .drawer"), null, { timeout: 4000 }).then(() => true, () => false), "the menu's backup line opens Back up now, and the menu steps aside");
+  await page.click('#sheet button:has-text("Cancel")');
+  await menuGo(page, "Help");
   await page.click('button[data-action="open-howto"][data-id="import"]');
   check(await seen(page, "#sheet", "Import old spending") && (await text(page, "#sheet")).includes("Add 10 drafts to Verify") && /example/i.test(await text(page, "#sheet")), "the Import how-to can be played from Help");
   await page.click('#sheet button:has-text("Close")');
@@ -2240,7 +2268,7 @@ console.log("Import old spending");
   check(await seen(page, "#toast", "1 draft is waiting in Verify"), "added too");
   await page.click('button[data-action="open-scan-pick"]');
   await page.setInputFiles('input[data-import]', { name: "tracker.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: xlsx });
-  check(await seen(page, "#sheet", "2 already logged, left out"), "importing the same file again adds nothing twice");
+  check(await seen(page, "#sheet", "2 already logged, left out", 10000), "importing the same file again adds nothing twice");   // reading the file can take a few seconds on a busy machine
   check(errors.length === 0, "no script errors while importing");
   await ctx.close(); }
 

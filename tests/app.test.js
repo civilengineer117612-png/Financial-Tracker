@@ -126,3 +126,30 @@ test("listening is one round per tap: no restart loop, no language buttons, the 
   assert.match(js, /ui\.form\.lang = other\(lang\)/);
 });
 
+
+test("tidy-up: the menu has no one-row groups, the notice has one answer, an empty phone is explained on Log with a Restore button", async () => {
+  const js = read("app/app.js"), { MENU_GROUPS } = await import("../src/model/names.js");
+  const { menuRows } = await import("../src/model/names.js");
+  assert.ok(MENU_GROUPS.length >= 2 && MENU_GROUPS.every(([, ids]) => menuRows(ids).length >= 2), "every menu group shows at least two rows");
+  assert.match(js, /const closer = sh\.type === "notice" \? "" :/, "the first-run notice has no Cancel");
+  assert.match(js, /device\.status !== "OK" && device\.status !== "EMPTY"/, "an empty phone is not a banner");
+  assert.match(js, /device\.status === "EMPTY" \? `<div class="card" id="first-run"><p>\$\{esc\(device\.message\)\}<\/p><p><button data-action="open-restore"/, "it is said on Log, with Restore");
+  assert.match(js, /"spent that day" : "spent today"/, "the big number says what it is");
+  assert.match(js, /data-action="open-backup" id="menu-backup">\$\{backup\}/, "the menu's backup line opens Back up now");
+  assert.match(js, /<span class="mn wn"><small>\$\{esc\(longDate\(c\.date\)\)\}<\/small>/, "a change's date sits on its own line");
+  assert.ok(js.includes("downloads the reader (about 30 MB)") && !js.includes("about 7 MB"), "the reader's size is stated once, correctly");
+});
+
+test("hubs: screens that belong together share one menu row and a picture strip; Log shows this month at a glance", async () => {
+  const { HUBS, hubOf, menuRows, MENU_GROUPS, STRIP_NAMES } = await import("../src/model/names.js");
+  const all = MENU_GROUPS.flatMap(([, ids]) => ids);
+  assert.deepEqual(menuRows(all), ["money", "budget", "checkin", "scan", "trips", "buffer"], "the menu shows six rows");
+  for (const [h, ids] of Object.entries(HUBS)) { assert.equal(ids[0], h); for (const id of ids) { assert.equal(hubOf(id), h); assert.ok(STRIP_NAMES[id], id); assert.ok(all.includes(id), id + " still has its Help topic"); } }
+  assert.equal(hubOf("income"), "money", "Income is part of Cash flow"); assert.equal(hubOf("trips"), null);
+  const js = read("app/app.js");
+  assert.match(js, /\$\("screen"\)\.innerHTML = hubStrip\(\) \+/, "the strip is drawn on every hub screen");
+  assert.match(js, /const current = \(id\) => ui\.tab === id \|\| M\.hubOf\(ui\.tab\) === id;/, "the hub's menu row stays marked");
+  assert.match(js, /\$\{monthGlance\(\)\}/, "Log shows this month");
+  assert.match(js, /budget > 0 \? \(spent > budget \? `Over the month's budget by \$\{peso\(spent - budget\)\}` : `\$\{peso\(budget - spent\)\} left of \$\{peso\(budget\)\}`\)/, "the glance states over or left in words");
+  assert.match(js, /const t = budget > 0 \? M\.tenths\(spent, budget\) : null, w = t === null \? 0 : Math\.min\(100, t \/ 10\);/, "the bar never runs past full");
+});
