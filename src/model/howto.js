@@ -16,6 +16,7 @@ export const HOWTOS = [
   { id: "buffer", label: "Cover an overrun", caption: "When a category runs over, the buffer pays the gap and records it." },
   { id: "goals", label: "Save toward a goal", caption: "Tap Put money in on a goal, type the amount, Save: its bar grows." },
   { id: "import", label: "Import old spending", caption: "Tap the camera, Import old spending, pick a file: every line waits in Verify." },
+  { id: "scheduled", label: "Schedule a payment", caption: "A due payment waits in Verify as a draft: check it, then tap Correct." },
   { id: "backup", label: "Back up your data", caption: "Back up now, set a password, save the file off this phone." },
 ];
 export const HOWTO_HINT = "Hold a button or a menu row for a moment to watch how it works. Help lists every clip.";
@@ -41,11 +42,15 @@ const EXAMPLE_GOAL = { name: "New phone", balance: 800000, target: 2000000, acco
 // The Cards and Weekly review clips' accounts: [{name, picture?, amount (centavos), owe?: true for a credit card, spent: [this month, last month]}]; months: [this, last].
 const EXAMPLE_ACCOUNTS = [{ name: "Test Card", amount: 304800, owe: true, spent: [54900, 120000] }, { name: "Wallet", amount: 292600, spent: [39900, 85000] }, { name: "Savings", amount: 4500000, spent: [0, 0] }];
 
-export function clipData({ date, tiles = [], account = null, total = 0, budget = null, trips = [], goal = null, accounts = [], months = ["This month", "Last month"] }) {
+// The Scheduled clip: [{name, amount (centavos), due: "Oct 5"}]: the first one is the one that becomes a draft.
+const EXAMPLE_SCHEDULES = [{ name: "Rent", amount: 650000, due: "Oct 5" }, { name: "Phone plan", amount: 200000, due: "Oct 12" }];
+
+export function clipData({ date, tiles = [], account = null, total = 0, budget = null, trips = [], goal = null, accounts = [], months = ["This month", "Last month"], schedules = [] }) {
   const own = tiles.slice(0, 3), b = budget?.income > 0 && budget.rows?.length ? budget : null;
   return { date, total, example: own.length === 0 || !account, tiles: own.length ? own : EXAMPLE_TILES, account: account ?? { name: "Wallet" },
     budget: b ? { ...b, rows: b.rows.slice(0, 3) } : EXAMPLE_BUDGET, budgetExample: !b, goal: goal?.target > 0 ? goal : EXAMPLE_GOAL, goalExample: !(goal?.target > 0), months, accounts: accounts.length ? accounts.slice(0, 3) : EXAMPLE_ACCOUNTS, accountsExample: accounts.length === 0,
-    trips: trips.length ? trips.slice(0, 2) : EXAMPLE_TRIPS, tripsExample: trips.length === 0 };
+    trips: trips.length ? trips.slice(0, 2) : EXAMPLE_TRIPS, tripsExample: trips.length === 0,
+    schedules: schedules.length ? schedules.slice(0, 2) : EXAMPLE_SCHEDULES, schedulesExample: schedules.length === 0 };
 }
 
 const phone = (id, inner, label) => `<div class="hw hw-${id}" role="img" aria-label="${esc(label)}">${inner}<div class="hw-finger" aria-hidden="true"></div></div>`;
@@ -113,6 +118,12 @@ export function howtoClip(id, raw) {
       <div class="hw-month"><span class="hw-arrow">\u2039</span><span class="hw-bval hw-ml"><span class="hw-t0">${esc(d.months[0])}</span><span class="hw-t1">${esc(d.months[1])}</span></span><span class="hw-arrow hw-dim">\u203a</span></div>
       <div class="hw-blist">${rows}</div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>`,
       `A finger taps the back arrow, the month changes from ${d.months[0]} to ${d.months[1]} and what each account spent changes with it; the balances stay.`);
+  }
+  if (id === "scheduled") {   // the first payment reaches its due day: its row turns into a draft waiting in Verify; nothing is confirmed
+    const rows = d.schedules.map((r, i) => `<div class="hw-brow${i === 0 ? " hw-bpick" : ""}"><span><b>${esc(r.name)}</b></span><span class="hw-bval">${i === 0
+      ? `<span class="hw-t0">${esc(formatPesos(r.amount))}<small>due ${esc(r.due)}</small></span><span class="hw-t1">${esc(formatPesos(r.amount))}<small>draft in Verify</small></span>` : `<span>${esc(formatPesos(r.amount))}<small>due ${esc(r.due)}</small></span>`}</span></div>`).join("");
+    return phone("scheduled", `<div class="hw-screen">${d.schedulesExample ? `<div class="hw-ex">Example</div>` : ""}<div class="hw-h">Scheduled</div><div class="hw-blist">${rows}</div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>`,
+      `Your scheduled payments are listed with their due dates; on the due day the first one becomes a draft waiting in Verify, and nothing is confirmed for you.`);
   }
   if (id === "checkin") {   // tap an account, type its real balance, Save: the row says Counted and the count goes up
     const a = d.accounts[0], n = d.accounts.length;

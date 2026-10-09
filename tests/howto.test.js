@@ -45,7 +45,7 @@ test("names from the owner's screen are escaped, never run as markup", () => {
 });
 
 test("every clip has one caption; the hint names the buttons that hold a how-to, and the app wires exactly those", () => {
-  assert.deepEqual(HOWTOS.map((h) => h.id), ["log", "verify", "scan", "budget", "trips", "cards", "checkin", "checks", "buffer", "goals", "import", "backup"]);
+  assert.deepEqual(HOWTOS.map((h) => h.id), ["log", "verify", "scan", "budget", "trips", "cards", "checkin", "checks", "buffer", "goals", "import", "scheduled", "backup"]);
   for (const h of HOWTOS) assert.ok(h.caption && h.label && h.caption.length < 80, h.id);
   assert.match(HOWTO_HINT, /^Hold a button or a menu row for a moment to watch how it works\. Help lists every clip\.$/);
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8"), css = readFileSync(new URL("../app/index.html", import.meta.url), "utf8");
@@ -152,4 +152,16 @@ test("the Checks and Buffer clips are invented, marked examples that tell their 
   for (const w of ["Example", "Over by ₱500.00", "Covered", "₱2,000.00", "₱1,500.00", "recorded against Food"]) assert.ok(b.includes(w), w);
   assert.match(b, /aria-label="Food goes 500 pesos over its limit; the buffer pays the gap/);
   assert.equal(HOWTOS.find((h) => h.id === "buffer").label, "Cover an overrun", "the screen keeps its name, Buffer; the clip says what it is for");
+});
+
+test("the Scheduled clip is drawn from the owner's own schedules: the first row turns into a draft waiting in Verify; nothing is confirmed", () => {
+  const own = { date: "Sat, 3 Oct", tiles: [], account: null, total: 0 };
+  const h = howtoClip("scheduled", { ...own, schedules: [{ name: "Test Rent", amount: 500000, due: "Oct 5" }, { name: "Test Phone", amount: 200000, due: "Oct 12" }] });
+  for (const w of ["Test Rent", "Test Phone", "\u20B15,000.00", "due Oct 5", "draft in Verify", "hw-scheduled", "hw-t0", "hw-t1"]) assert.ok(h.includes(w), w);
+  assert.ok(!h.includes("Example"), "their own: not marked as an example");
+  assert.equal((h.match(/draft in Verify/g) ?? []).length, 1, "only the first row changes");
+  assert.ok(howtoClip("scheduled", own).includes("Example"), "none yet: a marked example");
+  assert.match(h, /aria-label="[^"]*nothing is confirmed for you/);
+  const css = readFileSync(new URL("../app/index.html", import.meta.url), "utf8");
+  assert.match(css, /\.hw-scheduled \.hw-t0 \{ animation-name: hwTapOld; \} \.hw-scheduled \.hw-t1 \{ animation-name: hwTapNew; \}/, "its motion is defined");
 });

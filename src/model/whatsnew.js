@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-10-scheduled-more", date: "2026-10-10", text: "Scheduled: a skipped payment can be brought back, a plan on a credit card sets its reserve aside once, and there is a how-to clip (hold its menu row)." },
   { id: "2026-10-10-scheduled", date: "2026-10-10", text: "New Scheduled screen: repeating payments and installment plans become drafts in Verify on their due day, Log shows what is due soon, and a payment you log yourself is linked, not doubled." },
   { id: "2026-10-10-move-money", date: "2026-10-10", text: "Log can move money between your accounts by hand, Cards shows each account's last 4 digits, a foreign withdrawal hints at your last rate, and Bank fees counts as a need." },
   { id: "2026-10-09-transfers", date: "2026-10-09", text: "A payment screenshot between your own accounts, or a cash withdrawal, now becomes a Transfer with its fee, not spending: add each account's last 4 digits in Setup." },
