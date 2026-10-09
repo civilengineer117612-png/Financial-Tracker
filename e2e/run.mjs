@@ -2220,7 +2220,7 @@ console.log("Signs and folded entries");
   ({ ctx, page, errors } = await open({ blockSw: true, seed, logOpen: false }));
   check(await page.locator("#entries-toggle").count() === 1 && await page.locator("#entries-list").isHidden(), "the day's entries are folded away until you tap the heading");
   check((await text(page, "#entries-toggle")).includes("2 entries") && !(await text(page, "#entries-toggle")).includes("\u20B1"), "the heading says only how many; the day's total is the big number above");
-  check(!(await text(page, "#nav button[data-tab='log']")).includes("+") && await page.locator("#nav button[data-tab='log'] svg path").first().getAttribute("d") === "M5 12h14", "the Log icon is a minus, not a plus");
+  check(!(await text(page, "#nav button[data-tab='log']")).includes("+") && await page.locator("#nav button[data-tab='log'] svg path").first().getAttribute("d") === "M7 17 17 7M8 7h9v9", "the Log icon is an arrow out, not a plus");
   await page.click("#entries-toggle");
   check(await page.locator("#entries-list").isVisible() && await page.getAttribute("#entries-toggle", "aria-expanded") === "true", "one tap shows them");
   const t = await text(page, "#entries-list");

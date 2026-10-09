@@ -152,6 +152,7 @@ test("hubs: screens that belong together share one menu row and a picture strip;
   assert.match(js, /\$\("screen"\)\.innerHTML = hubStrip\(\) \+/, "the strip is drawn on every hub screen");
   assert.match(js, /const current = \(id\) => ui\.tab === id \|\| M\.hubOf\(ui\.tab\) === id \|\| \(id === "money" && ui\.tab === "income"\);/, "the hub's menu row stays marked");
   assert.match(js, /\$\{monthGlance\(\)\}/, "Log shows this month");
+  assert.match(js, /<span class="gl-sub">\$\{esc\(words\)\}<\/span><\/button>`;/, "the line says what is left, with no second percent");
   assert.match(js, /budget > 0 \? \(spent > budget \? `Over the month's budget by \$\{peso\(spent - budget\)\}` : `\$\{peso\(budget - spent\)\} left of \$\{peso\(budget\)\}`\)/, "the glance states over or left in words");
   assert.match(js, /const t = budget > 0 \? M\.tenths\(spent, budget\) : null, w = t === null \? 0 : Math\.min\(100, t \/ 10\);/, "the bar never runs past full");
 });
@@ -164,7 +165,7 @@ test("signs, folded entries, Budget bars, one date link: money out has a minus, 
   assert.match(js, /<div id="entries-list"\$\{open \? "" : " hidden"\}\$\{anim && open/, "the list is hidden unless opened");
   assert.match(js, /const logOpen = \(\) => \{ try \{ return sessionStorage\.getItem\("logOpen"\) === "1"; \} catch \{ return false; \} \};/, "closed by default, even if storage fails");
   assert.match(js, /case "toggle-entries":/);
-  assert.match(js, /pic = \{ log: '<path d="M5 12h14"\/>'/, "the Log icon is a minus, not a plus");
+  assert.match(js, /pic = \{ log: '<path d="M7 17 17 7M8 7h9v9"\/>'/, "the Log icon is an arrow going out (money out), not a plus");
   assert.ok(js.includes('data-action="open-cal">Select date</button>') && js.includes('<p class="sub">${esc(longDate(today()))}</p>`}${photoNote}') && !js.includes('class="link topdate"'), "one date link (Select date); the date at the top is plain text");
   assert.match(js, /const sp = Math\.max\(0, r\.st\?\.spent \?\? 0\), t = Math\.min\(1000, M\.tenths\(sp, r\.now\)\);/, "a budget row's bar is spent over budget and never runs past full");
   assert.match(js, /\$\{peso\(sp\)\} spent \\u00b7 \$\{M\.showTenths\(t\)\}/, "with the figure written beside it");
@@ -196,4 +197,22 @@ test("one thing, said once: the donut has no second total, Verify states its cou
   assert.ok(!js.includes('<p class="note">1 of ${list.length}</p>'), "no second 'n of m'");
   assert.match(js, /\(hub \? `<h1 class="sr">\$\{esc\(title\)\}<\/h1>` : titleOf\(title\)\)/, "on a strip screen the strip names the screen; the title is only read aloud");
   assert.match(css, /\.sr \{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect\(0 0 0 0\); white-space: nowrap; \}/);
+});
+
+test("polish: a slim bottom bar with a quiet marker, themed focus and selection, clips fade at their loop point and the Verify clip shows its edit", () => {
+  const css = read("app/index.html");
+  assert.match(css, /#nav button\[aria-current="page"\]::after \{ content: ""; position: absolute; top: 0;/, "the current tab has a small marker, not a filled box");
+  assert.match(css, /#nav button \{ position: relative; flex-direction: column; gap: 2px; min-height: 50px;/, "the bar is slim");
+  assert.match(css, /padding: max\(12px, env\(safe-area-inset-top\)\) 16px calc\(72px/, "less room kept for the bar");
+  assert.match(css, /::selection \{ background: var\(--ink\); color: var\(--paper\); \}/);
+  assert.match(css, /\.hw \{ animation: hwLoop 8s infinite linear; \}/, "every clip fades out and in at the loop point");
+  assert.match(css, /\.hw-verify \.hw-type \{ border-radius: 8px; animation-name: hwEdit; \}/, "the amount is outlined while it is edited");
+  assert.match(css, /\.hw-verify \.hw-card \{ opacity: 1; \} \.hw-verify \.hw-empty \{ opacity: 0; \} \.hw \{ animation: none; \}/, "with Reduce Motion the Verify clip shows the corrected card, not an empty screen");
+});
+
+test("polish: the strip matches the bottom bar (marker, no filled box), budget bars span the row, the income figure does not wrap", () => {
+  const css = read("app/index.html");
+  assert.match(css, /\.hub button\[aria-current="page"\]::after \{ content: ""; position: absolute; bottom: -1px;/);
+  assert.match(css, /\.choice > span:first-child \{ flex: 1; min-width: 0; \} \.choice \.meter \{ width: 100%; \}/);
+  assert.match(css, /\.card dd\.big \{ font-size: 20px; overflow-wrap: normal; \}/);
 });

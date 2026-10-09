@@ -165,7 +165,7 @@ const ICONS = {
   mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/>',
   scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/>',
   buffer: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
-  checkin: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  checkin: '<path d="M17 2l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/>',
   help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/>',
   setup: '<path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/>',
 };
@@ -224,8 +224,8 @@ function renderBanner() {
 
 function renderNav() {
   const n = device.allowEntry ? dueDrafts().length : 0;
-  const pic = { log: '<path d="M5 12h14"/>', verify: '<path d="M20 6 9 17l-5-5"/>' };
-  const tab = (id, label) => `<button data-action="tab" data-tab="${id}" data-howto="${id}"${ui.tab === id ? ' aria-current="page"' : ""}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${pic[id]}</svg>${label}</button>`;   // hold for its how-to
+  const pic = { log: '<path d="M7 17 17 7M8 7h9v9"/>', verify: '<path d="M20 6 9 17l-5-5"/>' };   // out and a tick
+  const tab = (id, label) => `<button data-action="tab" data-tab="${id}" data-howto="${id}"${ui.tab === id ? ' aria-current="page"' : ""}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${pic[id]}</svg>${label}</button>`;   // hold for its how-to
   $("nav").innerHTML = tab("log", M.SCREEN_NAMES.log) + tab("verify", n ? `${M.SCREEN_NAMES.verify} (${n})` : M.SCREEN_NAMES.verify);   // photo and audio will join these two
 }
 
@@ -290,7 +290,7 @@ function monthGlance() {
   return `<button class="glance" id="glance" data-action="tab" data-tab="budget" aria-label="This month: ${esc(peso(spent))} spent. ${esc(words)}. Tap for Budget.">
     <span class="gl-top"><span>This month</span><b>${peso(spent)}</b></span>
     ${budget > 0 ? `<span class="meter goal"><span class="fill" style="width:${w}%"></span></span>` : ""}
-    <span class="gl-sub">${esc(words)}${t !== null ? ` · ${M.showTenths(t)}` : ""}</span></button>`;
+    <span class="gl-sub">${esc(words)}</span></button>`;
 }
 
 // The day's entries stay out of sight until you tap the heading (less on the screen, nothing to scroll past). The choice is kept until the app is closed.
