@@ -167,7 +167,7 @@ test("signs, folded entries, Budget bars, one date link: money out has a minus, 
   assert.match(js, /pic = \{ log: '<path d="M7 17 17 7M8 7h9v9"\/>'/, "the Log icon is an arrow going out (money out), not a plus");
   assert.ok(js.includes('data-action="open-cal">Select date</button>') && js.includes('<div class="logmeta"><span class="sub">${ui.dayPick && ui.dayPick !== today() ? "" : esc(longDate(today()))}</span>${backupLink}</div>') && !js.includes('class="link topdate"'), "one date link (Select date); the date at the top is plain text");
   assert.match(js, /const sp = Math\.max\(0, r\.st\?\.spent \?\? 0\), t = Math\.min\(1000, M\.tenths\(sp, r\.now\)\);/, "a budget row's bar is spent over budget and never runs past full");
-  assert.match(js, /\$\{peso\(sp\)\} spent \\u00b7 \$\{M\.showTenths\(t\)\}/, "with the figure written beside it");
+  assert.match(js, /\$\{flow\(true, sp\)\}\$\{M\.showTenths\(t\)\}/, "with the figure written beside it, an arrow standing for spent");
 });
 
 test("motion and icons: taps press, bars grow, the folded list drops in only on the tap, everything stops for Reduce Motion; Goals is a flag", () => {

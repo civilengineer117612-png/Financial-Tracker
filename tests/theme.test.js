@@ -63,3 +63,7 @@ test("Spending: month switcher, large total with what is left, four segments, on
   assert.match(css, /\.catrow \.catbar span \{ display: block; height: 100%; background: var\(--accent\);/);
   assert.ok(/` \\u00b7 \$\{peso\(budgeted - cat\.total\)\} left`/.test(m), "spent in <month> · X left");
 });
+
+test("the how-to clips wear the same look: the clip's button is the accent, its text is white", () => {
+  assert.match(css, /\.hw-btn \{ background: var\(--accent\); color: var\(--surface\);/);
+});
