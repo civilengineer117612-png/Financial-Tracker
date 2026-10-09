@@ -9,9 +9,10 @@ export const HOWTOS = [
   { id: "verify", label: "Verify an entry", caption: "Open Verify, fix anything that is wrong, then tap Correct." },
   { id: "scan", label: "Scan a receipt", caption: "Tap the camera, take the receipt, and it waits in Verify." },
   { id: "budget", label: "Set a budget", caption: "Tap a category, type its monthly limit, Save: the bucket bars follow." },
-  { id: "trips", label: "Keep a trip apart", caption: "Tap Tag new entries on a trip: its spending stays apart from everyday spending." },
+  { id: "trips", label: "Keep a trip apart", caption: "Tag new entries on a trip, or give it dates: its spending stays apart." },
+  { id: "backup", label: "Back up your data", caption: "Back up now, set a password, save the file off this phone." },
 ];
-export const HOWTO_HINT = "Hold Log, Verify, the camera, Budget or Trips in the menu for a moment to watch how it works.";
+export const HOWTO_HINT = "Hold Log, Verify, the camera, Budget or Trips in the menu, or Back up now in Setup, for a moment to watch how it works.";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const EXAMPLE_TILES = [{ name: "Coffee", amount: 15000, category: "Food" }, { name: "Jeep", amount: 1300, category: "Transport" }, { name: "Lunch", amount: 9500, category: "Food" }];
@@ -52,10 +53,10 @@ export function howtoClip(id, raw) {
   if (id === "verify") {   // the logged amount is wrong by P10; the finger fixes it, then taps Correct (a clip logs nothing)
     const wrong = pick.amount + 1000;
     return phone("verify", `<div class="hw-screen">${ex}<div class="hw-h">Verify</div><div class="hw-date">One at a time</div>
-      <div class="hw-card"><div class="hw-amt hw-type"><span class="hw-t0">${esc(formatPesos(wrong))}</span><span class="hw-t1">${esc(formatPesos(pick.amount))}</span></div><div class="hw-row"><span>${esc(pick.name)}</span><span>${esc(pick.category)}</span></div>
-      <div class="hw-row"><span>Paid from</span>${acct(d.account)}</div><div class="hw-row"><span>Date</span><span>${esc(d.date)}</span></div><div class="hw-btn hw-ok">Correct</div></div>
+      <div class="hw-card"><div class="hw-amt hw-type"><span class="hw-t0">${esc(formatPesos(wrong))}</span><span class="hw-t1">${esc(formatPesos(pick.amount))}</span></div><div class="hw-row"><span>${esc(pick.name)}</span><span class="hw-cat"><span class="hw-t0">Other</span><span class="hw-t1">${esc(pick.category)}</span></span></div>
+      <div class="hw-row"><span>Paid from</span>${acct(d.account)}</div><div class="hw-row"><span>Date</span><span>${esc(d.date)}</span></div><div class="hw-note">Tap any field to fix it</div><div class="hw-btn hw-ok">Correct</div></div>
       <div class="hw-empty">All checked</div></div><div class="hw-nav"><div>Log</div><div class="hw-on">Verify</div></div>${tick}`,
-      `A finger opens Verify, the entry ${pick.name} shows ${formatPesos(wrong)} from ${d.account.name}, the finger edits the amount to ${formatPesos(pick.amount)}, taps Correct and a tick appears.`);
+      `A finger opens Verify, the entry ${pick.name} shows ${formatPesos(wrong)} from ${d.account.name}, the finger edits the amount to ${formatPesos(pick.amount)} and the category from Other to ${pick.category}, taps Correct and a tick appears.`);
   }
   if (id === "scan") {
     const receipt = `<div class="hw-receipt"><b>SAMPLE STORE</b><span>Bread<em>85.00</em></span><span>Eggs<em>110.00</em></span><span>Milk<em>50.00</em></span><span class="hw-rt">TOTAL<em>245.00</em></span><div class="hw-scanline"></div></div>`;
@@ -77,12 +78,20 @@ export function howtoClip(id, raw) {
       ${sheet(`<div class="hw-row"><span>${esc(pick.name)}</span><span>a month</span></div><div class="hw-amt hw-type"><span class="hw-t0">${esc(formatPesos(pick.amount))}</span><span class="hw-t1">${esc(formatPesos(next))}</span></div>`, "Save")}${tick}`,
       `A finger taps ${pick.name}, types ${formatPesos(next)} a month and taps Save; ${pick.name} shows the new limit${bars ? " and its bucket bar grows" : ""}.`);
   }
+  if (id === "backup") {   // Setup's Backup block: tap Back up now, set a password, save the file off the phone; "Last backup" turns to today
+    const last = (c) => `<span class="${c}">${c === "hw-t0" ? "No backup yet" : "Last backup today"}</span>`;
+    return phone("backup", `<div class="hw-screen"><div class="hw-h">Setup</div><div class="hw-date">Backup</div>
+      <div class="hw-bval hw-last">${last("hw-t0")}${last("hw-t1")}</div><div class="hw-btn hw-go">Back up now</div>
+      <div class="hw-note">Your data lives only on this phone. A file kept elsewhere is the only way back if it is lost.</div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>
+      ${sheet(`<div class="hw-row"><span>Password</span><span>\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022</span></div><div class="hw-row"><span>Save to</span><span>Files \u00b7 iCloud Drive</span></div>`, "Save the file")}${tick}`,
+      "A finger taps Back up now, a password is set, the encrypted file is saved to Files or iCloud Drive off the phone, a tick appears and the line changes to Last backup today.");
+  }
   if (id === "trips") {   // the first trip's tag button is tapped: the button turns to "Tagging", and its total grows by an example P950 in the picture only
     const t0 = d.trips[0], add = 95000;
     const cards = d.trips.map((t, i) => `<div class="hw-brow hw-trip${i === 0 ? " hw-bpick" : ""}"><span><b>${esc(t.name)}</b><small>${esc(t.days ?? "No dates yet")}</small></span><span class="hw-bval">${i === 0
       ? `<span class="hw-t0">${esc(formatPesos(t.spent))}</span><span class="hw-t1">${esc(formatPesos(t.spent + add))}</span>` : `<span>${esc(formatPesos(t.spent))}</span>`}</span></div>`).join("");
     return phone("trips", `<div class="hw-screen">${d.tripsExample ? `<div class="hw-ex">Example</div>` : ""}<div class="hw-h">Trips</div><div class="hw-date">Kept apart from everyday spending</div>
-      <div class="hw-blist">${cards}</div><div class="hw-btn hw-tag"><span class="hw-t0">Tag new entries with this trip</span><span class="hw-t1">Tagging new entries \u2713</span></div></div>
+      <div class="hw-blist">${cards}</div><div class="hw-note">Or give the trip dates: entries on those days join by themselves.</div><div class="hw-btn hw-tag"><span class="hw-t0">Tag new entries with this trip</span><span class="hw-t1">Tagging new entries \u2713</span></div></div>
       <div class="hw-nav"><div>Log</div><div>Verify</div></div>${tick}`,
       `A finger taps Tag new entries on ${t0.name}; the button turns to Tagging and the trip's total grows when a new entry is logged, apart from everyday spending.`);
   }
