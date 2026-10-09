@@ -1278,6 +1278,27 @@ await page.click('button:has-text("Delete")'); await page.click('button:has-text
   check(led4.state.transactions.find((t) => t.id === mv.id).status === "verified" && led4.state.transactions.find((t) => t.id === "fee:" + mv.id).status === "verified", "verifying the transfer verifies its fee with it");
 }
 
+// ----- Log: move money between accounts by hand, and Cards shows the last 4 -----
+{
+  const led = JSON.parse((await stored(page)).local), mine = led.state.accounts.filter((a) => a.class === "asset" && !a.reserve_for && !a.archived && a.last4);
+  const [a1, a2] = mine;
+  await page.click('#nav button:has-text("Log")');
+  await page.click('button[data-action="open-move"]');
+  check(await page.locator("#f-save").isDisabled() && (await text(page, "#scan-why")).includes("Enter the amount"), "Move money starts greyed and says what it waits for");
+  await page.fill("#f-amount", "250"); await page.click(`#sheet [data-action="pick-from"][data-id="${a1.id}"]`); await page.click(`#sheet [data-action="pick-to"][data-id="${a1.id}"]`);
+  check(await page.locator("#f-save").isDisabled() && (await text(page, "#scan-why")).includes("two different accounts"), "the same account on both sides is refused");
+  await page.click(`#sheet [data-action="pick-to"][data-id="${a2.id}"]`); await page.fill("#f-fee", "10");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "set as a transfer"), "it is saved as a draft transfer");
+  const l2 = JSON.parse((await stored(page)).local), mt = l2.state.transactions.find((t) => t.source === "manual" && t.payee === "Transfer" && t.status === "draft");
+  check(mt && !("edited_before_verify" in mt) && l2.state.entries.filter((e) => e.transaction_id === mt.id).map((e) => e.amount).sort((x, y) => x - y).join() === "-25000,25000" && l2.state.transactions.some((t) => t.id === "fee:" + mt.id && t.source === "manual"), "a typed transfer and its fee, no photo flags, no spending");
+  await page.click('#nav button:has-text("Verify")');
+  check((await text(page, "#screen")).includes("\u20B1250.00") && (await text(page, "#screen")).includes("Fee"), "Verify shows it with its fee");
+  await page.click('#screen button:has-text("Correct")'); await page.waitForTimeout(400);
+  await menuGo(page, "Cards");
+  check((await text(page, "#screen")).includes("\u00b7\u00b74821") || (await text(page, "#screen")).includes("\u00b7\u00b77305"), "Cards shows each account's last 4 beside its name");
+}
+
 // ----- quick capture from the scanner button on the Log screen -----
 await page.click('#nav button:has-text("Log")');
 check(await page.locator('#top button[data-action="open-scan-pick"]').count() === 1, "the Log screen has one scanner button");

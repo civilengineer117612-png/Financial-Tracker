@@ -365,6 +365,7 @@ function viewLog() {
     ${dayCard()}
     ${tilesHtml()}
     <p><button class="primary compact" data-action="open-other">Add expense</button></p>
+    <p class="movelink"><button class="link" data-action="open-move">Move money between accounts</button></p>
     ${monthGlance()}
     ${todays.length ? entriesBlock(todays, shown === today() ? "Today" : longDate(shown)) : `<h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2><p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
 }
@@ -1261,7 +1262,7 @@ function viewCards() {
   const p = period(), [from, to] = periodBounds(p), o = M.accountsOverview(S(), { from, to });
   const acct = (id) => S().accounts.find((a) => a.id === id);
   // Pictures and signs say what words used to: a small arrow up is spent, an arrow down is paid in; a card's debt has a minus.
-  const row = (a, main, small) => `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}${small ? `<small>${small}</small>` : ""}</div></div><div class="amt">${main}</div></div>`;
+  const row = (a, main, small) => `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}${small ? `<small>${small}</small>` : ""}</div></div><div class="amt">${main}</div></div>`;
   const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), `${c.owe > 0 ? "\u2212" : ""}${peso(c.owe)}<span class="sr"> you owe</span>`, [c.spent > 0 ? flow(true, c.spent) : "", c.paid > 0 ? flow(false, c.paid) : ""].filter(Boolean).join(" ")) ).join("") : `<p class="note">No credit cards yet. In Setup, add an account and choose "Credit card".</p>`;
   const money = o.money.length ? [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))).map((m) => row(acct(m.account_id), peso(m.balance), m.spent > 0 ? flow(true, m.spent) : "")).join("") : `<p class="note">No accounts yet.</p>`;
   return `<h1>Cards</h1>${periodStepper(p)}
@@ -1751,7 +1752,12 @@ function moveFields(f) {
   const trips = f.foreign && S().tags.length ? `<label>Tag a trip (optional)</label><div class="chips">${S().tags.map((t) => `<button class="chip" data-action="pick-trip" data-id="${esc(t.id)}" aria-pressed="${f.trip_id === t.id}">${esc(t.name)}</button>`).join("")}</div>` : "";
   return `${ask}<label>From</label>${chips(accountsFor(null), f.from_id, "pick-from")}<label>To</label>${chips(accountsFor(null), f.to_id, "pick-to")}
       <label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(f.fee ?? "")}" autocomplete="off">
-      ${f.foreign ? `<p class="note">The paper shows ${esc(f.foreign.currency)} ${(f.foreign.amount / 100).toFixed(2)}. Type the peso amount your bank took; you can fix it again in Verify.</p>${trips}` : ""}`;
+      ${f.foreign ? `<p class="note">The paper shows ${esc(f.foreign.currency)} ${(f.foreign.amount / 100).toFixed(2)}. Type the peso amount your bank took; you can fix it again in Verify.</p>${rateHint(f.foreign)}${trips}` : ""}`;
+}
+// A hint, never a default: what the foreign amount comes to at the rate of your last one in that currency.
+function rateHint(fx) {
+  const r = M.lastRate(S(), fx.currency); if (r === null) return "";
+  return `<p class="note">At your last rate (${peso(Math.round(r * 100))} per ${esc(fx.currency)}) that is about ${peso(Math.round(r * fx.amount))}.</p>`;
 }
 // The same payment shown twice: offer to link the photo to the entry already there. Never refused, never a second entry by default.
 function dupBlock(otherId) {
@@ -1800,6 +1806,15 @@ function renderSheet() {
       <label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}
       <label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
       <p><button class="primary" id="f-save" data-action="save-other" style="margin-top:14px" disabled>Save</button></p>`;
+  } else if (sh.type === "move") {
+    body = `<h3>Move money</h3>
+      <label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label>From</label>${chips(accountsFor(null), ui.form.from_id, "pick-from")}
+      <label>To</label>${chips(accountsFor(null), ui.form.to_id, "pick-to")}
+      <label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">
+      <p class="note" id="scan-why" role="status"></p>
+      <p><button class="primary" id="f-save" data-action="save-move" style="margin-top:6px" disabled>Save</button></p>
+      <p class="note">It is a draft transfer, not spending. Verify it to count it.</p>`;
   } else if (sh.type === "edit") {
     const t = S().transactions.find((x) => x.id === sh.id), d = describe(t);
     body = `<h3>Edit entry</h3>
@@ -1807,7 +1822,7 @@ function renderSheet() {
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}">
       <label for="f-payee">Name (optional)</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
-      ${d.kind === "transfer" && t.source === "photo" ? `<label>From</label>${chips(accountsFor(null), ui.form.from_id, "pick-from")}<label>To</label>${chips(accountsFor(null), ui.form.to_id, "pick-to")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
+      ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${chips(accountsFor(null), ui.form.from_id, "pick-from")}<label>To</label>${chips(accountsFor(null), ui.form.to_id, "pick-to")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
   if (sh.type === "banks") {
@@ -2289,6 +2304,11 @@ function refreshSave() {
         : `<p class="note">You already saved ${same.length === 1 ? "a payslip" : same.length + " payslips"} from ${esc(f.employer.trim())} for this period (net ${peso(same[0].deposit)}). Saving adds another one.</p>`;
       out.innerHTML = repeat + (lines.length ? `<p class="note">The lines add to gross ${peso(t.gross)}; minus deductions, net ${peso(t.net)}.</p>` : "") + (p.errors.length ? `<p class="note flag">\u25B2 Check the amount typed for: ${esc(p.errors.join(", "))}.</p>` : "") + flags.map(flagLine).join("");
     }
+  } else if (type === "move") {
+    const a = M.parsePesos(f.amount), fee = (f.fee ?? "").trim() ? M.parsePesos(f.fee) : { ok: true, centavos: 0 };
+    const why = !(a.ok && a.centavos > 0) ? "Enter the amount to save." : !f.from_id ? "Choose where the money comes from." : !f.to_id ? "Choose where it goes." : f.from_id === f.to_id ? "Choose two different accounts." : !(fee.ok && fee.centavos >= 0) ? "Enter the fee like 15 or 15.50, or leave it empty." : "";
+    btn.disabled = why !== "";
+    const w = $("scan-why"); if (w) w.textContent = why;
   } else if (type === "voice") {
     btn.disabled = !(f.spoken ?? "").trim();
   } else if (type === "scan" && (f.kind === "choose" || isMoveKind(f.kind))) {
@@ -2803,6 +2823,15 @@ async function onClick(el) {
       await logExpense({ transaction_id: newId("tx"), payee: p.name, category_id: p.category_id, amount: p.amount, account_id: id, source: "preset", preset_id: p.id }, p.name + " " + peso(p.amount));
       break;
     }
+    case "open-move": ui.sheet = { type: "move" }; ui.form = { amount: "", from_id: ledger.settings.last_account_id ?? null, to_id: null, fee: "" }; renderSheet(); break;
+    case "save-move": {
+      const f = ui.form, a = M.parsePesos(f.amount), fee = (f.fee ?? "").trim() ? M.parsePesos(f.fee) : { ok: true, centavos: 0 };
+      const p = M.planTransfer(S(), { transaction_id: newId("tx"), date: logDay(), from_account_id: f.from_id, to_account_id: f.to_id, amount: a.centavos, fee: fee.centavos, payee: "Transfer", source: "manual" }, new Date());
+      if (!p.ok) { showToast("Could not save: " + p.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      if (await commit(p.state, { ...ledger.settings, last_account_id: f.from_id })) showToast(peso(a.centavos) + " set as a transfer. Verify it to count it.");
+      break;
+    }
     case "open-other": ui.sheet = { type: "other" }; ui.form = { amount: "", category_id: null, account_id: accountsFor(null)[0]?.id }; renderSheet(); break;
     case "pick-cat": form.category_id = id; if (form.split_cat === id) form.split_cat = null; renderSheet(); break;
     case "toggle-split": form.split = !form.split; renderSheet(); break;
@@ -2930,7 +2959,7 @@ async function onClick(el) {
       const t = S().transactions.find((x) => x.id === id), d = describe(t);
       const fee = d.kind === "transfer" ? M.feeOf(S(), t.id).amount : 0;
       ui.form = { date: t.date, payee: t.payee, category_id: d.category_id, account_id: d.account_id,
-        ...(d.kind === "transfer" && t.source === "photo" ? { from_id: d.from_id, to_id: d.to_id, fee: fee ? (fee / 100).toFixed(2) : "" } : {}),
+        ...(d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? { from_id: d.from_id, to_id: d.to_id, fee: fee ? (fee / 100).toFixed(2) : "" } : {}),
         ...(d.editable || d.kind === "transfer" || d.kind === "income" ? { amount: (d.amount / 100).toFixed(2) } : {}) };
       ui.sheet = { type: "edit", id }; renderSheet(); break;
     }

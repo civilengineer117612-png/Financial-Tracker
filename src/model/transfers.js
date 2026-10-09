@@ -164,13 +164,15 @@ export function ensureBankFees(state) {
 // Returns {ok, violations, state}: the transfer draft (source "photo"), its fee draft when there is a fee, and the foreign amount when there is one.
 // The caller attaches the photo to the transfer.
 export function planTransfer(state, input, now = new Date()) {
-  const { transaction_id: id, date, from_account_id: from, to_account_id: to, amount, fee = 0, payee = "", reference_no = "", shot_time = "", foreign = null, trip_id = null } = input;
+  const { transaction_id: id, date, from_account_id: from, to_account_id: to, amount, fee = 0, payee = "", reference_no = "", shot_time = "", foreign = null, trip_id = null, source = "photo" } = input;
+  if (source !== "photo" && source !== "manual") return fail("BAD_SOURCE", "unsupported source " + source);
+  const captured = source === "photo";   // only a photo draft records whether it was fixed before verifying (survey Q4)
   if (trip_id != null && !(state.tags ?? []).some((t) => t.id === trip_id)) return fail("UNKNOWN_TAG", "no trip " + trip_id);
   if (!Number.isSafeInteger(amount) || amount <= 0) return fail("BAD_AMOUNT", "amount must be more than zero");
   if (!Number.isSafeInteger(fee) || fee < 0) return fail("BAD_FEE", "the fee cannot be negative");
   if (from === to) return fail("SAME_ACCOUNT", "choose two different accounts");
   if (!state.accounts.some((a) => a.id === from) || !state.accounts.some((a) => a.id === to)) return fail("UNKNOWN_ACCOUNT", "choose both accounts");
-  const transaction = { id, date, payee, memo: "", status: "draft", source: "photo", edited_before_verify: false, created_at: phTimestamp(now),
+  const transaction = { id, date, payee, memo: "", status: "draft", source, ...(captured ? { edited_before_verify: false } : {}), created_at: phTimestamp(now),
     ...(reference_no ? { reference_no } : {}), ...(shot_time ? { shot_time } : {}), ...(trip_id != null ? { trip_add: trip_id } : {}) };
   const entries = [{ transaction_id: id, account_id: to, amount }, { transaction_id: id, account_id: from, amount: -amount }];
   const check = checkTransactionSave(state, { transaction, entries });
@@ -178,7 +180,7 @@ export function planTransfer(state, input, now = new Date()) {
   let next = { ...state, transactions: [...state.transactions.filter((t) => t.id !== id), transaction], entries: [...state.entries.filter((e) => e.transaction_id !== id), ...entries] };
   if (fee > 0) {
     const made = ensureBankFees(next); next = made.state;
-    const fid = feeIdOf(id), ft = { id: fid, date, payee: "Fee", memo: "", status: "draft", source: "photo", edited_before_verify: false, created_at: phTimestamp(now), ...(trip_id != null ? { trip_add: trip_id } : {}) };
+    const fid = feeIdOf(id), ft = { id: fid, date, payee: "Fee", memo: "", status: "draft", source, ...(captured ? { edited_before_verify: false } : {}), created_at: phTimestamp(now), ...(trip_id != null ? { trip_add: trip_id } : {}) };
     const fes = [{ transaction_id: fid, category_id: made.category_id, amount: fee }, { transaction_id: fid, account_id: from, amount: -fee }];
     const fc = checkTransactionSave(next, { transaction: ft, entries: fes });
     if (!fc.ok) return { ok: false, violations: fc.violations, state };
@@ -196,6 +198,11 @@ export const feeOf = (state, id) => {
   const e = t ? state.entries.find((x) => x.transaction_id === t.id && x.category_id != null) : null;
   return { transaction: t ?? null, amount: e?.amount ?? 0 };
 };
+// The peso rate of the newest foreign amount in this currency (pesos per unit), or null: shown as a hint when the paper has no peso figure. Never filled in for you.
+export function lastRate(state, currency) {
+  const dated = (state.foreignAmounts ?? []).filter((f) => f.currency === currency).map((f) => ({ f, date: state.transactions.find((t) => t.id === f.transaction_id)?.date ?? "" })).sort((a, b) => (a.date < b.date ? 1 : -1));
+  return dated.length ? dated[0].f.rate : null;
+}
 export const foreignOf = (state, id) => (state.foreignAmounts ?? []).find((f) => f.transaction_id === id) ?? null;
 
 // Edit a transfer draft before it is verified: both accounts, the amount, the fee, the date, the name. The peso amount of a foreign one is
@@ -207,21 +214,22 @@ export function editTransfer(state, id, changes, now = new Date()) {
   if (t.status !== "draft") return fail("NOT_A_DRAFT", id + " is already verified");
   const es = state.entries.filter((e) => e.transaction_id === id);
   if (es.length !== 2 || es.some((e) => e.account_id == null)) return fail("NOT_A_TRANSFER", "this entry is not a transfer");
+  if (t.source !== "photo" && t.source !== "manual") return fail("NOT_EDITABLE", "only a photo or typed transfer can be changed here");
   const old = { from: es.find((e) => e.amount < 0), to: es.find((e) => e.amount > 0) };
   const edited = (changes.amount !== undefined && changes.amount !== old.to.amount) || (changes.from_account_id ?? old.from.account_id) !== old.from.account_id
     || (changes.to_account_id ?? old.to.account_id) !== old.to.account_id || (changes.date ?? t.date) !== t.date || (changes.payee ?? t.payee) !== t.payee || (changes.fee !== undefined && changes.fee !== feeOf(state, id).amount);
   const amount = changes.amount ?? old.to.amount;
   const base = { ...state, transactions: state.transactions.filter((x) => x.id !== id && x.id !== feeIdOf(id)), entries: state.entries.filter((e) => e.transaction_id !== id && e.transaction_id !== feeIdOf(id)) };
   const planned = planTransfer(base, { transaction_id: id, date: changes.date ?? t.date, from_account_id: changes.from_account_id ?? old.from.account_id, to_account_id: changes.to_account_id ?? old.to.account_id,
-    amount, fee: changes.fee ?? feeOf(state, id).amount, payee: changes.payee ?? t.payee, reference_no: t.reference_no ?? "", shot_time: t.shot_time ?? "", foreign: null, trip_id: t.trip_add ?? null }, now);
+    amount, fee: changes.fee ?? feeOf(state, id).amount, payee: changes.payee ?? t.payee, reference_no: t.reference_no ?? "", shot_time: t.shot_time ?? "", foreign: null, trip_id: t.trip_add ?? null, source: t.source === "manual" ? "manual" : "photo" }, now);
   if (!planned.ok) return { ok: false, violations: planned.violations, state };
   const kept = (state.foreignAmounts ?? []).find((f) => f.transaction_id === id);
   const tx = planned.state.transactions.find((x) => x.id === id);
   tx.created_at = t.created_at;
-  tx.edited_before_verify = t.edited_before_verify === true || edited;
+  if (tx.source === "photo") tx.edited_before_verify = t.edited_before_verify === true || edited;
   const ftx = planned.state.transactions.find((x) => x.id === feeIdOf(id));
   const ft0 = state.transactions.find((x) => x.id === feeIdOf(id));
-  if (ftx && ft0) { ftx.created_at = ft0.created_at; ftx.edited_before_verify = ft0.edited_before_verify === true || edited; }
+  if (ftx && ft0) { ftx.created_at = ft0.created_at; if (ftx.source === "photo") ftx.edited_before_verify = ft0.edited_before_verify === true || edited; }
   const foreignAmounts = [...(state.foreignAmounts ?? []).filter((f) => f.transaction_id !== id), ...(kept ? [{ ...kept, rate: amount / kept.foreign_amount }] : [])];
   return { ok: true, violations: planned.violations, state: { ...planned.state, foreignAmounts, attachments: state.attachments ?? [] } };
 }

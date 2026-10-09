@@ -191,3 +191,47 @@ test("the screens: the Setup row, the scan window, Verify and the restore note u
   const sw = readFileSync(new URL("../app/sw.js", import.meta.url), "utf8");
   assert.ok(sw.includes("../src/model/transfers.js"), "works offline");
 });
+
+// ----- the follow-ups: typed transfers, a rate hint, last 4 on Cards, Bank fees as a need -----
+import { lastRate, readBucket } from "../src/model/index.js";
+
+test("a transfer typed on Log is a manual draft: no photo flags, its fee follows, it verifies and edits like the scanned one", () => {
+  const p = planTransfer(base(), { transaction_id: "m1", date: "2026-10-03", from_account_id: "bank", to_account_id: "wallet", amount: 50000, fee: 1500, payee: "Transfer", source: "manual" }, NOW);
+  assert.equal(p.ok, true, JSON.stringify(p.violations));
+  for (const id of ["m1", "fee:m1"]) {
+    const t = p.state.transactions.find((x) => x.id === id);
+    assert.deepEqual([t.source, t.status, "edited_before_verify" in t], ["manual", "draft", false], id + ": a typed entry has no photo flag");
+    assert.deepEqual(validateShape("Transaction", t), [], id);
+  }
+  assert.equal(planTransfer(base(), { transaction_id: "m2", date: "2026-10-03", from_account_id: "bank", to_account_id: "wallet", amount: 100, source: "voice" }).ok, false, "only photo or manual");
+  const e = editTransfer(p.state, "m1", { to_account_id: "cash", amount: 40000, fee: 0 }, NOW);
+  assert.equal(e.ok, true, JSON.stringify(e.violations));
+  assert.equal(e.state.transactions.find((x) => x.id === "m1").source, "manual"); assert.equal("edited_before_verify" in e.state.transactions.find((x) => x.id === "m1"), false);
+  assert.equal(feeOf(e.state, "m1").transaction, null);
+  const v = verifyDraft(p.state, "m1", NOW);
+  assert.deepEqual(v.state.transactions.filter((x) => x.id.endsWith("m1")).map((x) => x.status), ["verified", "verified"]);
+  const other = { ...p.state, transactions: p.state.transactions.map((x) => (x.id === "m1" ? { ...x, source: "template" } : x)) };
+  assert.equal(editTransfer(other, "m1", { amount: 1 }).ok, false, "a sweep or reserve transfer is not edited here");
+});
+
+test("the last rate for a currency is a hint taken from the newest foreign amount, never a default", () => {
+  assert.equal(lastRate(base(), "USD"), null);
+  let s = base();
+  for (const [id, date, pesos] of [["f1", "2026-09-01", 560000], ["f2", "2026-10-02", 570000]]) s = planTransfer(s, { transaction_id: id, date, from_account_id: "bank", to_account_id: "cash", amount: pesos, foreign: { currency: "USD", amount: 10000 } }, NOW).state;
+  s = planTransfer(s, { transaction_id: "f3", date: "2026-10-03", from_account_id: "bank", to_account_id: "cash", amount: 90000, foreign: { currency: "JPY", amount: 250000 } }, NOW).state;
+  assert.equal(lastRate(s, "USD"), 57, "the newest USD one, not the oldest");
+  assert.equal(lastRate(s, "JPY"), 0.36); assert.equal(lastRate(s, "EUR"), null);
+});
+
+test("Bank fees reads as a need from its name, so it is not asked", () => {
+  for (const n of ["Bank fees", "Bank fee", "ATM fee", "Service fee"]) assert.equal(readBucket(n).bucket, "need", n);
+  assert.equal(readBucket("Family").bucket, null, "the ask words are untouched");
+});
+
+test("the screens: Move money on Log, last 4 beside an account on Cards, a rate hint in the scan window", () => {
+  const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
+  assert.ok(app.includes('data-action="open-move">Move money between accounts</button>') && app.includes('case "save-move"') && app.includes('source: "manual"'), "Log can type a transfer");
+  assert.ok(/class="l4" aria-label="ends in/.test(app), "Cards shows the last 4 beside the name");
+  assert.ok(app.includes("function rateHint") && app.includes("M.lastRate(S(), fx.currency)") && app.includes("${rateHint(f.foreign)}"), "a hint, shown under the foreign note");
+  assert.ok(app.includes('(t.source === "photo" || t.source === "manual")'), "Verify edits both ends of a typed transfer too");
+});
