@@ -143,13 +143,27 @@ test("tidy-up: the menu has no one-row groups, the notice has one answer, an emp
 test("hubs: screens that belong together share one menu row and a picture strip; Log shows this month at a glance", async () => {
   const { HUBS, hubOf, menuRows, MENU_GROUPS, STRIP_NAMES } = await import("../src/model/names.js");
   const all = MENU_GROUPS.flatMap(([, ids]) => ids);
-  assert.deepEqual(menuRows(all), ["money", "budget", "checkin", "scan", "trips", "buffer"], "the menu shows six rows");
+  assert.deepEqual(menuRows(all), ["money", "cards", "budget", "checkin", "scan", "trips", "buffer"], "the menu shows seven rows");
   for (const [h, ids] of Object.entries(HUBS)) { assert.equal(ids[0], h); for (const id of ids) { assert.equal(hubOf(id), h); assert.ok(STRIP_NAMES[id], id); assert.ok(all.includes(id), id + " still has its Help topic"); } }
-  assert.equal(hubOf("income"), "money", "Income is part of Cash flow"); assert.equal(hubOf("trips"), null);
+  assert.equal(hubOf("cards"), null, "Cards has its own menu row"); assert.equal(hubOf("trips"), null);
   const js = read("app/app.js");
   assert.match(js, /\$\("screen"\)\.innerHTML = hubStrip\(\) \+/, "the strip is drawn on every hub screen");
-  assert.match(js, /const current = \(id\) => ui\.tab === id \|\| M\.hubOf\(ui\.tab\) === id;/, "the hub's menu row stays marked");
+  assert.match(js, /const current = \(id\) => ui\.tab === id \|\| M\.hubOf\(ui\.tab\) === id \|\| \(id === "money" && ui\.tab === "income"\);/, "the hub's menu row stays marked");
   assert.match(js, /\$\{monthGlance\(\)\}/, "Log shows this month");
   assert.match(js, /budget > 0 \? \(spent > budget \? `Over the month's budget by \$\{peso\(spent - budget\)\}` : `\$\{peso\(budget - spent\)\} left of \$\{peso\(budget\)\}`\)/, "the glance states over or left in words");
   assert.match(js, /const t = budget > 0 \? M\.tenths\(spent, budget\) : null, w = t === null \? 0 : Math\.min\(100, t \/ 10\);/, "the bar never runs past full");
+});
+
+test("signs, folded entries, Budget bars, one date link: money out has a minus, money in a plus; the day's entries are hidden until the heading is tapped", () => {
+  const js = read("app/app.js");
+  assert.match(js, /const signed = \(d\) => \(d\.kind === "income" \? "\+" : d\.kind === "expense" \|\| d\.kind === "split" \? "\\u2212" : ""\) \+ peso\(d\.amount\);/, "out is minus, in is plus, a move between your accounts has neither");
+  assert.match(js, /<div class="amt\$\{d\.kind === "income" \? " in" : ""\}">\$\{signed\(d\)\}<\/div>/, "rows show the sign");
+  assert.ok(js.includes('"money in "') && js.includes('"money out "'), "a screen reader hears the direction in words");
+  assert.match(js, /<div id="entries-list"\$\{open \? "" : " hidden"\}>/, "the list is hidden unless opened");
+  assert.match(js, /const logOpen = \(\) => \{ try \{ return sessionStorage\.getItem\("logOpen"\) === "1"; \} catch \{ return false; \} \};/, "closed by default, even if storage fails");
+  assert.match(js, /case "toggle-entries":/);
+  assert.match(js, /pic = \{ log: '<path d="M5 12h14"\/>'/, "the Log icon is a minus, not a plus");
+  assert.ok(js.includes('data-action="open-cal">Select date</button>') && js.includes('<p class="sub">${esc(longDate(today()))}</p>${photoNote}') && !js.includes('class="link topdate"'), "one date link (Select date); the date at the top is plain text");
+  assert.match(js, /const sp = Math\.max\(0, r\.st\?\.spent \?\? 0\), t = Math\.min\(1000, M\.tenths\(sp, r\.now\)\);/, "a budget row's bar is spent over budget and never runs past full");
+  assert.match(js, /\$\{peso\(sp\)\} spent \\u00b7 \$\{M\.showTenths\(t\)\}/, "with the figure written beside it");
 });

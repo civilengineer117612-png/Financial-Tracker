@@ -200,7 +200,7 @@ function renderMenu() {
   }
   const opening = !el.firstChild || el.classList.contains("leaving");
   clearTimeout(menuTimer); el.classList.remove("leaving");
-  const current = (id) => ui.tab === id || M.hubOf(ui.tab) === id;   // a hub row stays marked on every screen it holds
+  const current = (id) => ui.tab === id || M.hubOf(ui.tab) === id || (id === "money" && ui.tab === "income");   // a hub row stays marked on every screen it holds; Cash flow holds Spending and Income
   const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}" data-howto="${id}"${current(id) ? ' aria-current="page"' : ""}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span></button>`;
   const hidden = M.menuHidden(ledger.settings);   // the new Budget holds the pay plan, so its menu entry is not shown
   const age = M.daysSinceBackup(ledger.settings, today());
@@ -225,7 +225,7 @@ function renderBanner() {
 
 function renderNav() {
   const n = device.allowEntry ? dueDrafts().length : 0;
-  const pic = { log: '<path d="M12 5v14M5 12h14"/>', verify: '<path d="M20 6 9 17l-5-5"/>' };
+  const pic = { log: '<path d="M5 12h14"/>', verify: '<path d="M20 6 9 17l-5-5"/>' };
   const tab = (id, label) => `<button data-action="tab" data-tab="${id}" data-howto="${id}"${ui.tab === id ? ' aria-current="page"' : ""}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${pic[id]}</svg>${label}</button>`;   // hold for its how-to
   $("nav").innerHTML = tab("log", M.SCREEN_NAMES.log) + tab("verify", n ? `${M.SCREEN_NAMES.verify} (${n})` : M.SCREEN_NAMES.verify);   // photo and audio will join these two
 }
@@ -235,7 +235,7 @@ function hubStrip() {
   const h = M.hubOf(ui.tab); if (!h || !device.allowEntry) return "";
   const hidden = M.menuHidden(ledger.settings), ids = M.HUBS[h].filter((id) => !hidden.has(id));
   if (ids.length < 2) return "";
-  const on = (id) => ui.tab === id || (id === "money" && ui.tab === "income");
+  const on = (id) => ui.tab === id;
   return `<nav class="hub" aria-label="Screens here">${ids.map((id) => `<button data-action="tab" data-tab="${id}" data-howto="${id}"${on(id) ? ' aria-current="page"' : ""}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${esc(M.STRIP_NAMES[id])}</span></button>`).join("")}</nav>`;
 }
 
@@ -294,6 +294,15 @@ function monthGlance() {
     <span class="gl-sub">${esc(words)}${t !== null ? ` · ${M.showTenths(t)}` : ""}</span></button>`;
 }
 
+// The day's entries stay out of sight until you tap the heading (less on the screen, nothing to scroll past). The choice is kept until the app is closed.
+const logOpen = () => { try { return sessionStorage.getItem("logOpen") === "1"; } catch { return false; } };
+function entriesBlock(list, label) {
+  const open = logOpen(), net = list.reduce((n, t) => { const d = describe(t); return n + (d.kind === "income" ? d.amount : d.kind === "expense" || d.kind === "split" ? -d.amount : 0); }, 0);
+  const total = (net < 0 ? "\u2212" : net > 0 ? "+" : "") + peso(Math.abs(net));
+  return `<button class="entrieshead" id="entries-toggle" data-action="toggle-entries" aria-expanded="${open}" aria-controls="entries-list"><span>${esc(label)} \u00b7 ${list.length} ${list.length === 1 ? "entry" : "entries"}</span><span class="eh-r"><b>${total}</b><svg class="chev${open ? " up" : ""}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></button>
+    <div id="entries-list"${open ? "" : " hidden"}>${list.map(rowFor).join("")}</div>`;
+}
+
 function viewLog() {
   if (activeAccounts().length === 0) {
     const empty = device.status === "EMPTY" ? `<div class="card" id="first-run"><p>${esc(device.message)}</p><p><button data-action="open-restore" style="width:100%">Restore from a backup</button></p></div>` : "";
@@ -314,12 +323,12 @@ function viewLog() {
   const photoNote = (ui.scan?.busy ? `<p class="note" id="scan-msg" role="status">${esc(ui.scan.msg)}</p>` : ui.scan?.error ? `<p class="note" role="alert">${esc(ui.scan.error)}</p>` : "")
     + (needLook ? `<p class="note"><button class="link" data-action="open-queue">${needLook} photo${needLook === 1 ? " needs" : "s need"} a look</button></p>` : "")
     + (waitingPhotos && !ui.scan?.busy ? `<p class="note">${waitingPhotos} photo${waitingPhotos === 1 ? " is" : "s are"} kept, waiting to be read. <button class="link" data-action="read-queue">Read now</button></p>` : "");
-  return `<h1>Log</h1><p class="sub"><button class="link topdate" data-action="open-cal" aria-label="Choose another day: look at it, or add entries you did not log then">${esc(longDate(today()))}</button></p>${photoNote}${dueNote}${backupNote}${tripNote}
+  return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${photoNote}${dueNote}${backupNote}${tripNote}
     ${dayCard()}
     ${tilesHtml()}
     <p><button class="primary compact" data-action="open-other">Add expense</button></p>
     ${monthGlance()}
-    <h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2>${todays.length ? todays.map(rowFor).join("") : `<p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
+    ${todays.length ? entriesBlock(todays, shown === today() ? "Today" : longDate(shown)) : `<h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2><p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
 }
 
 // The quick tiles. Tap one to log it. Hold one to arrange: drag to move, tap to change, "+" to add, Done to finish.
@@ -335,10 +344,12 @@ function tilesHtml() {
   return `<div class="tiles arranging">${S().presets.map((p) => tile(p, true)).join("")}${add}</div><p class="center"><button class="link" data-action="arrange-done">Done</button></p>`;
 }
 
+// Money going out is shown with a minus, money coming in with a plus; a move between your own accounts has neither.
+const signed = (d) => (d.kind === "income" ? "+" : d.kind === "expense" || d.kind === "split" ? "\u2212" : "") + peso(d.amount);
 function rowFor(t) {
   const d = describe(t);
   const acct = d.kind === "expense" ? S().accounts.find((a) => a.id === d.account_id) : null;
-  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}</span></small></div><div class="amt">${peso(d.amount)}</div></button>`;
+  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${signed(d)}</div></button>`;
 }
 
 // Everything waiting, oldest first. Nothing has to wait for tomorrow: verify whenever you have the time.
@@ -1471,7 +1482,8 @@ function viewBudgetNew() {
   const spendRows = rows.map((r) => {
     const over = r.st?.over && r.now !== null;
     const change = r.later !== r.now ? `<small>${r.later === null ? "ends" : peso(r.later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "";
-    return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}${change}${over ? `<small class="overnote">${glyph("critical")} Over budget by ${peso(r.st.spent - r.now)}</small>` : ""}</span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month" + share(r.now)}</span></button>`;
+    const bar = r.now > 0 ? (() => { const sp = Math.max(0, r.st?.spent ?? 0), t = Math.min(1000, M.tenths(sp, r.now)); return `<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${t / 10}%"></span></span><small>${peso(sp)} spent \u00b7 ${M.showTenths(t)}</small>`; })() : "";
+    return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}${bar}${change}${over ? `<small class="overnote">${glyph("critical")} Over budget by ${peso(r.st.spent - r.now)}</small>` : ""}</span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month" + share(r.now)}</span></button>`;
   }).join("");
   const savedHtml = saved.length ? saved.map((r) => `<div class="row"><div>${esc(r.name)}<small>${esc(r.pinned ? "The amount you typed" : r.label)}</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}${r.goal_id && !plan ? `<button class="link" data-action="open-goal-monthly" data-id="${esc(r.goal_id)}">Change</button>` : ""}</div></div>`).join("")
     : `<p class="note">${plan ? "Your plan has no savings, goal or buffer lines." : income ? (sug?.code === "NEEDS_RENT" ? "Suggest a budget asks for your rent first, then shows what to set aside." : "Nothing suggested yet. Suggest a budget to see it.") : "Add income first."}</p>`;
@@ -2228,6 +2240,7 @@ async function onClick(el) {
       ui.period = { kind: "range", ...r }; ui.sheet = null; ui.sel = null; renderAll(); break;
     }
     case "chart-view": ui.view = el.dataset.view; ui.sel = null; renderScreen(); break;
+    case "toggle-entries": try { sessionStorage.setItem("logOpen", logOpen() ? "0" : "1"); } catch { /* private mode: it just stays closed */ } renderScreen(); break;
     case "budget-view": ui.budgetView = el.dataset.view; renderScreen(); break;
     case "bucket-mode": ui.bucketsAsList = !ui.bucketsAsList; renderScreen(); break;
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
