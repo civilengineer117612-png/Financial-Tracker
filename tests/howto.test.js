@@ -103,7 +103,7 @@ test("the verify clip also fixes the category; the trips clip says dates work to
   for (const w of ["Back up now", "Save the file", "No backup yet", "Last backup today", "lives only on this phone", "hw-backup"]) assert.ok(b.includes(w), w);
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
   assert.match(app, /data-action="open-backup" data-howto="backup"/, "Back up now carries its clip");
-  assert.match(app, /Hold a row or Back up now to watch how it works/, "the menu says rows can be held");
+  assert.ok(!app.includes("Hold a row or Back up now to watch how it works"), "the hold hint lives in Help, not on the menu");
 });
 
 test("the goals clip is drawn from the owner's own goal; the bar and the figures grow together; with none, a marked example", () => {

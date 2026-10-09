@@ -264,10 +264,10 @@ check((await text(page, "#screen")).includes("3 entries from before today need v
 await page.click('#nav button:has-text("Verify")');
 await shot(page, "06-verify");
 let card = await text(page, ".card");
-check(/₱\d/.test(card) && (await text(page, "#screen")).includes("1 of 3"), "one card at a time, with its position");
+check(/₱\d/.test(card) && (await text(page, "#screen")).includes("3 to check"), "one card at a time, with its position");
 check(!(await text(page, "#screen")).toLowerCase().includes("all correct"), "there is no all-correct shortcut");
 await page.click('button:has-text("Correct")');
-check(await seen(page, "#screen", "1 of 2"), "verifying moves to the next entry");
+check(await seen(page, "#screen", "2 to check"), "verifying moves to the next entry");
 await page.click('button:has-text("Edit")');
 await shot(page, "07-edit");
 await page.fill("#f-amount", "100");
@@ -275,7 +275,7 @@ await page.click('#sheet .chip:has-text("Test Debit")');
 await page.click("#f-save");
 check(await seen(page, ".card", "₱100.00"), "editing keeps the card on screen to be verified, with the new amount");
 await page.click('button:has-text("Correct")');
-check(await seen(page, "#screen", "1 of 1"), "two verified, one left");
+check(await seen(page, "#screen", "1 to check"), "two verified, one left");
 await page.click('button:has-text("Delete")');
 check((await text(page, ".card")).length > 0 && (await text(page, ".card")).includes("Tap again to delete"), "delete asks for a second tap");
 await page.click('button:has-text("Tap again to delete")');
@@ -353,7 +353,7 @@ await seen(page, "#toast", "Saved Lunch");
 check(!(await text(page, "#nav")).includes("Verify ("), "today's entries do not nag from the Verify tab");
 check(!(await text(page, "#screen")).includes("need verifying"), "nor from the Log page");
 await page.click('#nav button:has-text("Verify")');
-check((await text(page, "#screen")).includes("1 from today, ready whenever you are") && (await text(page, "#screen")).includes("1 of 1"), "but today's entry is there to verify now");
+check((await text(page, "#screen")).includes("1 to check") && (await text(page, "#screen")).includes("ready whenever you are"), "but today's entry is there to verify now");
 await page.click('button:has-text("Correct")');
 check(await seen(page, "#screen", "Nothing to verify"), "verified the same day it was logged");
 led = JSON.parse((await stored(page)).local);
@@ -368,7 +368,7 @@ await page.click('button.tile:has-text("Dinner")'); await page.click('#sheet .ch
 await seen(page, "#toast", "Saved Dinner");
 check((await text(page, "#nav")).includes("Verify (1)"), "only yesterday's entry is counted as due");
 await page.click('#nav button:has-text("Verify")');
-check((await text(page, ".card")).includes("Breakfast") && (await text(page, "#screen")).includes("1 of 2"), "yesterday's comes first, today's after it");
+check((await text(page, ".card")).includes("Breakfast") && (await text(page, "#screen")).includes("2 to check"), "yesterday's comes first, today's after it");
 await ctx.close();
 
 // ===== 5d. backup and restore =====
@@ -529,9 +529,9 @@ const verifyAll = async () => {
   for (let guard = 0; guard < 20; guard++) {
     const t = await text(page, "#screen");
     if (t.includes("Nothing to verify")) return;
-    const n = Number(/1 of (\d+)/.exec(t)[1]);
+    const n = Number(/(\d+) to check/.exec(t)[1]);
     await page.click('button:has-text("Correct")');
-    await page.waitForFunction((k) => { const x = document.getElementById("screen").innerText; return x.includes("Nothing to verify") || x.includes("1 of " + (k - 1)); }, n);
+    await page.waitForFunction((k) => { const x = document.getElementById("screen").innerText; return x.includes("Nothing to verify") || x.includes((k - 1) + " to check"); }, n);
   }
 };
 await page.clock.setFixedTime(new Date("2026-08-14T04:00:00Z"));
@@ -856,7 +856,7 @@ check((await text(page, "h2.today")).toLowerCase().includes("jan") && (await tex
 await shot(page, "23-day-totals");
 await page.click('button[data-action="reset-day"]');
 check((await text(page, ".daytotal")) === todayTotal && (await page.locator(".daycap").count()) === 0, "Today shows today's total again");
-check((await text(page, "#entries-toggle")).toLowerCase().startsWith("today") && !(await text(page, "#screen")).includes("Nothing logged that day"), "and today's entries");
+check((await text(page, "#entries-toggle")).includes("entr") && !(await text(page, "#screen")).includes("Nothing logged that day"), "and today's entries");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- checks: card reserve and the Unlogged habit ----
@@ -1130,7 +1130,7 @@ const receiptPng = await page.evaluate(() => {
   return c.toDataURL("image/png").split(",")[1];
 });
 await menuGo(page, "Scan");
-check((await text(page, "#screen")).includes("never sent anywhere"), "the Scan screen says the photo never leaves the phone");
+check((await text(page, "#screen")).includes("Nothing is sent anywhere"), "the Scan screen says the photo never leaves the phone");
 check(await page.locator('#screen input[data-scan="1"][capture="environment"]').count() === 1 && await page.locator('#screen input[data-scan="1"]:not([capture])').count() === 1 && (await text(page, "#screen")).includes("Take a photo") && (await text(page, "#screen")).includes("Choose from photos or files"), "the Scan screen offers both the camera and photos or files");
 await page.setInputFiles("input[data-scan]:not([capture])", { name: "receipt.png", mimeType: "image/png", buffer: Buffer.from(receiptPng, "base64") });
 check(await seen(page, "#sheet", "Check what I read", 180000), "a photo is read on the phone and a window opens to check the guess");
@@ -1343,7 +1343,7 @@ check(!(await text(page, "#sheet")).includes("stays in the account the pay lande
 check((await text(page, "#sheet")).includes("Sep 16\u201330, 2026") && (await text(page, "#sheet")).includes("paid Oct 2, 2026"), "each payslip shows the period it pays for and the day it was paid");
 await page.click('#sheet button:has-text("Close")');
 await page.click('#nav button:has-text("Verify")');
-check((await text(page, "#screen")).includes("1 of 2"), "Verify now holds two drafts: the Emergency Fund part and the free part");
+check((await text(page, "#screen")).includes("2 to check"), "Verify now holds two drafts: the Emergency Fund part and the free part");
 // the title and the first line below it sit at the same height on Log and on Verify
 const barAt = () => page.evaluate(() => ({ h1: Math.round(document.querySelector("#top h1").getBoundingClientRect().top), below: Math.round(document.querySelector("#screen").getBoundingClientRect().top) }));
 const onVerify = await barAt(); await page.click('#nav button:has-text("Log")'); const onLog = await barAt(); await page.click('#nav button:has-text("Verify")');
@@ -1437,7 +1437,7 @@ await addAccount(page, "GCash", "asset", "500");
 await page.click('#nav button:has-text("Log")');
 check(await page.locator('#top button[aria-label="Say an entry out loud"]').count() === 1, "the Log screen has a microphone button beside the scanner button");
 await page.click('#top button[aria-label="Say an entry out loud"]');
-check((await text(page, "#sheet")).includes("Speech is not available in this browser") && await page.locator("#f-save").isDisabled(), "where speech is not available it says so and offers the box, and Use this waits for words");
+check((await text(page, "#sheet")).includes("Speech is not available here") && await page.locator("#f-save").isDisabled(), "where speech is not available it says so and offers the box, and Use this waits for words");
 check((await text(page, "#sheet")).includes("audio leaves your phone") , "the window says plainly that the audio leaves the phone while speaking");
 await page.fill("#v-text", "lunch 95 pesos at Sample Burger using GCash yesterday");
 await page.click("#f-save");
@@ -1534,7 +1534,8 @@ check(order, "the order is totals, landed in, employer, then the dates");
 const tv = await page.evaluate(() => parseFloat(getComputedStyle(document.getElementById("p-tot-e")).fontSize));
 check(tv >= 22, "the totals are the largest figures in the window (" + tv + "px)");
 check(await page.locator("#sheet .chip[data-action='pick-employer']").count() === 0, "no saved-employer suggestions are offered");
-const sheetBox = await page.locator("#sheet").boundingBox(), totBox = await page.locator("#p-tot-d").boundingBox();
+await page.waitForTimeout(450);   // the window slides up first; measure after it has settled
+const sheetBox = await page.locator("#sheet .sheet").boundingBox(), totBox = await page.locator("#p-tot-d").boundingBox();   // the window itself, not the empty box that holds it
 check(totBox && totBox.y + totBox.height < sheetBox.y + sheetBox.height, "the totals are on screen without scrolling");
 check(await page.locator("#p-fold").isVisible() && await page.locator("#p-lines").isVisible() && !(await page.locator("#p-match").isVisible()), "a photo's figures stay open, with a line to fold them once the owner has checked them against the photo");
 await page.click("#p-fold button");
@@ -1658,7 +1659,7 @@ console.log("Log date and Cash first");
   await page.click('#sheet .cal button[data-id="2026-10-01"]');
   check((await text(page, "#screen")).includes("New entries go on this day."), "choosing an earlier day says new entries go on that day");
   await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "33"); await page.click('#sheet .chip:has-text("Food")'); await page.click('#sheet .chip:has-text("Test Debit")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
-  check((await text(page, "#entries-toggle")).toLowerCase().includes("oct 1") && (await text(page, "#screen")).includes("33.00"), "the new entry shows under the day chosen");
+  check((await text(page, ".daycap")).includes("Oct 1") && (await text(page, "#entries-toggle")).includes("1 entry") && (await text(page, "#screen")).includes("33.00"), "the new entry shows under the day chosen");
   const led = JSON.parse((await stored(page)).local);
   check(led.state.transactions.length === 1 && led.state.transactions[0].date === "2026-10-01", "and it is dated that day in the ledger");
   await page.click('button[data-action="reset-day"]');
@@ -1980,7 +1981,7 @@ const FIX = { v: 3, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings:
   await page.click('#nav button:has-text("Verify")');
   check(await seen(page, "#screen", "Picture not on this phone"), "an entry whose picture is missing says \"picture not on this phone\"");
   await menuGo(page, "Setup"); await page.click('button:has-text("Restore from a backup")');
-  check((await text(page, "#sheet")).includes("Pictures of receipts and payslips are not in a backup"), "Restore says plainly that pictures are not in the backup");
+  check((await text(page, "#sheet")).includes("Receipt and payslip pictures are not in a backup"), "Restore says plainly that pictures are not in the backup");
   await page.click('#sheet button:has-text("Cancel")').catch(() => {});
   // goals by role: nothing is found by name
   await menuGo(page, "Goals"); await page.click('button[data-action="toggle-reveal"]');
@@ -1989,7 +1990,7 @@ const FIX = { v: 3, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings:
   await page.locator('button[data-action="goal-role"]').nth(1).click(); await seen(page, "#toast", "is your emergency fund");
   check(await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1 && JSON.parse((await stored(page)).local).state.goals.filter((g) => g.role === "emergency").length === 1, "the role moves: one goal at most is the emergency fund");
   await page.locator('button[data-action="goal-role"]').nth(2).click(); await seen(page, "#screen", "worked out from your budgets");
-  check((await text(page, "#screen")).includes("worked out from your budgets") && await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1, "choosing the goal makes it the emergency fund: its status card appears");
+  check((await text(page, "#screen")).includes("from your budgets") && await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1, "choosing the goal makes it the emergency fund: its status card appears");
   await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').click(); await seen(page, "#screen", "Make this my emergency fund");
   // overtime with no emergency fund chosen: the message says to choose, never a name
   await menuGo(page, "Income"); await addPayslipFlow(page); await page.click('#sheet button:has-text("Type a payslip")');
@@ -2198,10 +2199,8 @@ console.log("What's new and how-tos");
   check((await text(page, "#top")).includes("Goals") && await page.getAttribute('#screen .hub button[data-tab="goals"]', "aria-current") === "page", "one tap on the strip moves to Goals");
   await page.click("#menuBtn"); await page.waitForSelector("#menu .item"); await page.waitForTimeout(500);
   check((await page.locator("#menu .glabel").allInnerTexts()).join("|") === "Your money|Tools", "the menu has two groups");
-  await page.click("#menu-backup");
-  check(await seen(page, "#sheet", "passphrase") && await page.waitForFunction(() => !document.querySelector("#menu .drawer"), null, { timeout: 4000 }).then(() => true, () => false), "the menu's backup line opens Back up now, and the menu steps aside");
-  await page.click('#sheet button:has-text("Cancel")');
-  await menuGo(page, "Help");
+  check(await page.locator("#menu-backup").count() === 0, "the menu does not repeat the backup line");
+  await page.click('#menu .item[data-tab="help"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
   await page.click('button[data-action="open-howto"][data-id="import"]');
   check(await seen(page, "#sheet", "Import old spending") && (await text(page, "#sheet")).includes("Add 10 drafts to Verify") && /example/i.test(await text(page, "#sheet")), "the Import how-to can be played from Help");
   await page.click('#sheet button:has-text("Close")');
@@ -2220,7 +2219,7 @@ console.log("Signs and folded entries");
     rules: [{ id: "r1", kind: "budget", subject_id: "cat-food", amount: 100000, effective_from: "2026-10-01", created_at: TS }] } };
   ({ ctx, page, errors } = await open({ blockSw: true, seed, logOpen: false }));
   check(await page.locator("#entries-toggle").count() === 1 && await page.locator("#entries-list").isHidden(), "the day's entries are folded away until you tap the heading");
-  check((await text(page, "#entries-toggle")).includes("2 entries") && (await text(page, "#entries-toggle")).includes("+\u20B1105.00"), "the heading says how many, and the day's net with its sign (200 in, 95 out)");
+  check((await text(page, "#entries-toggle")).includes("2 entries") && !(await text(page, "#entries-toggle")).includes("\u20B1"), "the heading says only how many; the day's total is the big number above");
   check(!(await text(page, "#nav button[data-tab='log']")).includes("+") && await page.locator("#nav button[data-tab='log'] svg path").first().getAttribute("d") === "M5 12h14", "the Log icon is a minus, not a plus");
   await page.click("#entries-toggle");
   check(await page.locator("#entries-list").isVisible() && await page.getAttribute("#entries-toggle", "aria-expanded") === "true", "one tap shows them");
@@ -2246,7 +2245,7 @@ console.log("Start date of an account");
   await page.click('#sheet button:has-text("Got it")');
   await menuGo(page, "Setup");
   check(await seen(page, "#screen", "\u20B1970.00"), "the balance is what was in it when added, less only spending from that day on");
-  check((await text(page, "#a-open-note")).includes("history only"), "adding an account says earlier spending is history only");
+  check((await text(page, "#a-open-note")).includes("does not change this amount"), "adding an account says earlier spending is history only");
   await page.reload(); await page.waitForSelector("#nav button"); await page.waitForTimeout(600);
   check(!(await text(page, "#sheet")).includes("Balances that changed"), "the note is not shown again");
   check(errors.length === 0, "no script errors around the start date");

@@ -135,7 +135,9 @@ test("tidy-up: the menu has no one-row groups, the notice has one answer, an emp
   assert.match(js, /device\.status !== "OK" && device\.status !== "EMPTY"/, "an empty phone is not a banner");
   assert.match(js, /device\.status === "EMPTY" \? `<div class="card" id="first-run"><p>\$\{esc\(device\.message\)\}<\/p><p><button data-action="open-restore"/, "it is said on Log, with Restore");
   assert.match(js, /"spent that day" : "spent today"/, "the big number says what it is");
-  assert.match(js, /data-action="open-backup" id="menu-backup">\$\{backup\}/, "the menu's backup line opens Back up now");
+  assert.ok(!js.includes('id="menu-backup"'), "the backup line is not repeated in the menu: Log says it when it is due, Setup has the button");
+  assert.match(js, /<span>\$\{list\.length\} \$\{list\.length === 1 \? "entry" : "entries"\}<\/span>/, "the folded heading says only how many: the day's total is the big number above");
+  assert.match(js, /\$\{ui\.dayPick && ui\.dayPick !== today\(\) \? "" : `<p class="sub">/, "the date is written once: the top date hides when another day is picked");
   assert.match(js, /<span class="mn wn"><small>\$\{esc\(longDate\(c\.date\)\)\}<\/small>/, "a change's date sits on its own line");
   assert.ok(js.includes("downloads the reader (about 30 MB)") && !js.includes("about 7 MB"), "the reader's size is stated once, correctly");
 });
@@ -159,11 +161,39 @@ test("signs, folded entries, Budget bars, one date link: money out has a minus, 
   assert.match(js, /const signed = \(d\) => \(d\.kind === "income" \? "\+" : d\.kind === "expense" \|\| d\.kind === "split" \? "\\u2212" : ""\) \+ peso\(d\.amount\);/, "out is minus, in is plus, a move between your accounts has neither");
   assert.match(js, /<div class="amt\$\{d\.kind === "income" \? " in" : ""\}">\$\{signed\(d\)\}<\/div>/, "rows show the sign");
   assert.ok(js.includes('"money in "') && js.includes('"money out "'), "a screen reader hears the direction in words");
-  assert.match(js, /<div id="entries-list"\$\{open \? "" : " hidden"\}>/, "the list is hidden unless opened");
+  assert.match(js, /<div id="entries-list"\$\{open \? "" : " hidden"\}\$\{anim && open/, "the list is hidden unless opened");
   assert.match(js, /const logOpen = \(\) => \{ try \{ return sessionStorage\.getItem\("logOpen"\) === "1"; \} catch \{ return false; \} \};/, "closed by default, even if storage fails");
   assert.match(js, /case "toggle-entries":/);
   assert.match(js, /pic = \{ log: '<path d="M5 12h14"\/>'/, "the Log icon is a minus, not a plus");
-  assert.ok(js.includes('data-action="open-cal">Select date</button>') && js.includes('<p class="sub">${esc(longDate(today()))}</p>${photoNote}') && !js.includes('class="link topdate"'), "one date link (Select date); the date at the top is plain text");
+  assert.ok(js.includes('data-action="open-cal">Select date</button>') && js.includes('<p class="sub">${esc(longDate(today()))}</p>`}${photoNote}') && !js.includes('class="link topdate"'), "one date link (Select date); the date at the top is plain text");
   assert.match(js, /const sp = Math\.max\(0, r\.st\?\.spent \?\? 0\), t = Math\.min\(1000, M\.tenths\(sp, r\.now\)\);/, "a budget row's bar is spent over budget and never runs past full");
   assert.match(js, /\$\{peso\(sp\)\} spent \\u00b7 \$\{M\.showTenths\(t\)\}/, "with the figure written beside it");
+});
+
+test("motion and icons: taps press, bars grow, the folded list drops in only on the tap, everything stops for Reduce Motion; Goals is a flag", () => {
+  const js = read("app/app.js"), css = read("app/index.html");
+  assert.match(js, /goals: '<path d="M5 21V4M5 4h12l-2\.5 4 2\.5 4H5"\/>'/, "Goals is a flag, not a target");
+  assert.match(js, /const anim = ui\.entriesAnim; ui\.entriesAnim = false;/, "only the tap animates, not every redraw");
+  assert.match(js, /case "toggle-entries": ui\.entriesAnim = true;/);
+  for (const k of ["flipchev", "dropin"]) assert.ok(css.includes("@keyframes " + k + " {"), k);
+  assert.match(css, /\.hub button:active, \.glance:active, \.entrieshead:active, \.choice:active \{ transform: scale\(\.99\); \}/, "every tappable thing gives a small press");
+  assert.match(css, /-webkit-tap-highlight-color: transparent; touch-action: manipulation;/, "no grey flash, no tap delay");
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.chev\.up\.flip, #entries-list\.drop \{ animation: none; \} button \{ transition: none; \} \}/, "Reduce Motion stops the new motion");
+  assert.ok(!css.includes("@keyframes growbar") && !css.includes("@keyframes popin"), "bars do not animate while they are measured; nothing pops");
+});
+
+test("simple wording: the long notes were cut, and none of the old long sentences is left", () => {
+  const js = read("app/app.js");
+  for (const old of ["This phone reads the photo itself. The photo is never sent anywhere.", "while you are online. After that it works with no internet", "a backup that only sits on a lost phone is lost too", "Hidden by default so they do not tempt you", "Speech is not available in this browser. Type below, or tap the box"]) assert.ok(!js.includes(old), old);
+  const long = [...js.matchAll(/<p class="(?:note|sub)[^"]*"[^>]*>([^<$`]{150,})<\/p>/g)].map((m) => m[1].slice(0, 50));
+  assert.deepEqual(long, [], "no plain note is longer than 150 characters");
+});
+
+test("one thing, said once: the donut has no second total, Verify states its count once, a strip screen has one visible title", () => {
+  const js = read("app/app.js"), css = read("app/index.html");
+  assert.ok(!js.includes('class="dtotal"') && !js.includes('class="dsub"'), "the donut's centre does not repeat the headline total");
+  assert.match(js, /`\$\{list\.length\} to check`, due \? `\$\{due\} from before today` : "ready whenever you are"/, "Verify says how many once, in the line under the title");
+  assert.ok(!js.includes('<p class="note">1 of ${list.length}</p>'), "no second 'n of m'");
+  assert.match(js, /\(hub \? `<h1 class="sr">\$\{esc\(title\)\}<\/h1>` : titleOf\(title\)\)/, "on a strip screen the strip names the screen; the title is only read aloud");
+  assert.match(css, /\.sr \{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect\(0 0 0 0\); white-space: nowrap; \}/);
 });

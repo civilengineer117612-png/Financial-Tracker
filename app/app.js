@@ -156,7 +156,7 @@ const ICONS = {
   cards: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
   money: '<path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3"/>',
   budget: '<path d="M21 12c.55 0 1-.45.95-1a10 10 0 0 0-8.95-8.95c-.55-.05-1 .4-1 .95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>',
-  goals: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  goals: '<path d="M5 21V4M5 4h12l-2.5 4 2.5 4H5"/>',
   plan: '<path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/>',
   checks: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   trips: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
@@ -180,11 +180,12 @@ function titleOf(title) {
 }
 
 function renderTop(title) {
+  const hub = M.hubOf(ui.tab) && device.allowEntry && M.HUBS[M.hubOf(ui.tab)].filter((id) => !M.menuHidden(ledger.settings).has(id)).length > 1;
   const lines = `<svg width="24" height="16" viewBox="0 0 24 16" aria-hidden="true"><rect y="0" width="24" height="2.5" rx="1.25" fill="currentColor"/><rect y="6.75" width="17" height="2.5" rx="1.25" fill="currentColor"/><rect y="13.5" width="10" height="2.5" rx="1.25" fill="currentColor"/></svg>`;   // lines of falling length, no box
   // One scanner button: it opens the two choices, camera or photos/files.
   const camera = device.allowEntry && ui.tab === "log" ? `<button class="camicon" data-action="open-scan-pick" data-howto="scan" aria-label="Scan a receipt or payment screen: take a photo or choose from photos or files"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.scan}</svg></button>` : "";
   const mic = device.allowEntry && ui.tab === "log" ? `<button class="camicon micbtn" data-action="open-voice" aria-label="Say an entry out loud"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.mic}</svg></button>` : "";
-  $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + titleOf(title) + mic + camera;
+  $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + (hub ? `<h1 class="sr">${esc(title)}</h1>` : titleOf(title)) + mic + camera;
 }
 
 let menuTimer = null;
@@ -203,11 +204,9 @@ function renderMenu() {
   const current = (id) => ui.tab === id || M.hubOf(ui.tab) === id || (id === "money" && ui.tab === "income");   // a hub row stays marked on every screen it holds; Cash flow holds Spending and Income
   const item = (id, label) => `<button class="item" data-action="tab" data-tab="${id}" data-howto="${id}"${current(id) ? ' aria-current="page"' : ""}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span></button>`;
   const hidden = M.menuHidden(ledger.settings);   // the new Budget holds the pay plan, so its menu entry is not shown
-  const age = M.daysSinceBackup(ledger.settings, today());
-  const backup = age === null ? "No backup yet" : "Last backup " + age + (age === 1 ? " day ago" : " days ago");
   el.innerHTML = `<div class="scrim${opening ? " enter" : ""}" data-action="close-menu"></div><aside class="drawer${opening ? " enter" : ""}" role="dialog" aria-label="Menu">
     <div class="groups">${MENU.map(([group, items]) => `<p class="glabel">${group}</p>${items.filter(([id]) => !hidden.has(id) && M.menuRows([id]).length).map(([id, label]) => item(id, label)).join("")}`).join("")}</div>
-    <div class="foot"><p class="note"><button class="link" data-action="open-backup" id="menu-backup">${backup}</button></p><p class="note">Hold a row or Back up now to watch how it works.</p>${item("help", M.SCREEN_NAMES.help)}${item("setup", M.SCREEN_NAMES.setup)}</div></aside>`;
+    <div class="foot">${item("help", M.SCREEN_NAMES.help)}${item("setup", M.SCREEN_NAMES.setup)}</div></aside>`;
 }
 
 function renderBanner() {
@@ -236,7 +235,7 @@ function hubStrip() {
   const hidden = M.menuHidden(ledger.settings), ids = M.HUBS[h].filter((id) => !hidden.has(id));
   if (ids.length < 2) return "";
   const on = (id) => ui.tab === id;
-  return `<nav class="hub" aria-label="Screens here">${ids.map((id) => `<button data-action="tab" data-tab="${id}" data-howto="${id}"${on(id) ? ' aria-current="page"' : ""}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${esc(M.STRIP_NAMES[id])}</span></button>`).join("")}</nav>`;
+  return `<nav class="hub" aria-label="Screens here">${ids.map((id) => `<button data-action="tab" data-tab="${id}" data-howto="${id}"${on(id) ? ' aria-current="page"' : ""}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${esc(M.STRIP_NAMES[id])}</span></button>`).join("")}</nav>`;
 }
 
 let lastTabSig = null, lastViewSig = null, swapTimer = null;
@@ -297,10 +296,10 @@ function monthGlance() {
 // The day's entries stay out of sight until you tap the heading (less on the screen, nothing to scroll past). The choice is kept until the app is closed.
 const logOpen = () => { try { return sessionStorage.getItem("logOpen") === "1"; } catch { return false; } };
 function entriesBlock(list, label) {
-  const open = logOpen(), net = list.reduce((n, t) => { const d = describe(t); return n + (d.kind === "income" ? d.amount : d.kind === "expense" || d.kind === "split" ? -d.amount : 0); }, 0);
-  const total = (net < 0 ? "\u2212" : net > 0 ? "+" : "") + peso(Math.abs(net));
-  return `<button class="entrieshead" id="entries-toggle" data-action="toggle-entries" aria-expanded="${open}" aria-controls="entries-list"><span>${esc(label)} \u00b7 ${list.length} ${list.length === 1 ? "entry" : "entries"}</span><span class="eh-r"><b>${total}</b><svg class="chev${open ? " up" : ""}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></button>
-    <div id="entries-list"${open ? "" : " hidden"}>${list.map(rowFor).join("")}</div>`;
+  const anim = ui.entriesAnim; ui.entriesAnim = false;   // only the tap itself animates, not every redraw
+  const open = logOpen();
+  return `<button class="entrieshead" id="entries-toggle" data-action="toggle-entries" aria-expanded="${open}" aria-controls="entries-list"><span>${list.length} ${list.length === 1 ? "entry" : "entries"}</span><span class="eh-r"><svg class="chev${open ? " up" : ""}${anim ? " flip" : ""}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></button>
+    <div id="entries-list"${open ? "" : " hidden"}${anim && open ? ' class="drop"' : ""}>${list.map(rowFor).join("")}</div>`;
 }
 
 function viewLog() {
@@ -323,7 +322,7 @@ function viewLog() {
   const photoNote = (ui.scan?.busy ? `<p class="note" id="scan-msg" role="status">${esc(ui.scan.msg)}</p>` : ui.scan?.error ? `<p class="note" role="alert">${esc(ui.scan.error)}</p>` : "")
     + (needLook ? `<p class="note"><button class="link" data-action="open-queue">${needLook} photo${needLook === 1 ? " needs" : "s need"} a look</button></p>` : "")
     + (waitingPhotos && !ui.scan?.busy ? `<p class="note">${waitingPhotos} photo${waitingPhotos === 1 ? " is" : "s are"} kept, waiting to be read. <button class="link" data-action="read-queue">Read now</button></p>` : "");
-  return `<h1>Log</h1><p class="sub">${esc(longDate(today()))}</p>${photoNote}${dueNote}${backupNote}${tripNote}
+  return `<h1>Log</h1>${ui.dayPick && ui.dayPick !== today() ? "" : `<p class="sub">${esc(longDate(today()))}</p>`}${photoNote}${dueNote}${backupNote}${tripNote}
     ${dayCard()}
     ${tilesHtml()}
     <p><button class="primary compact" data-action="open-other">Add expense</button></p>
@@ -359,7 +358,7 @@ const allDrafts = () => M.pendingDrafts(S(), today()).filter((t) => !isGenerated
 function viewVerify() {
   const list = allDrafts();
   const due = dueDrafts().length, fresh = list.length - due;
-  const parts = [due && `${due} from before today`, fresh && `${fresh} from today, ready whenever you are`].filter(Boolean);
+  const parts = list.length ? [`${list.length} to check`, due ? `${due} from before today` : "ready whenever you are"] : [];
   const head = `<h1>Verify</h1><p class="sub">${parts.length ? parts.join(" · ") : "One at a time, look at each entry."}</p>`;
   if (!list.length) return head + `<p class="note">Nothing to verify.</p>`;
   const t = list[0], d = describe(t);
@@ -374,7 +373,7 @@ function viewVerify() {
   const shot = M.attachmentsFor(S(), t.id)[0];
   const fromPhoto = t.source === "photo" ? `<p class="note">Read from the photo. Compare each line with the paper before you tap Correct.</p>`
     : t.source === "voice" ? `<p class="note">Made from what you said${t.memo ? ": \u201C" + esc(t.memo) + "\u201D" : ""}. Check each line before you tap Correct.</p>` : "";
-  return `${head}<p class="note">1 of ${list.length}</p>
+  return `${head}
     <div class="card">${shot ? `<button class="shotbtn" data-action="open-photo" data-id="${esc(shot.id)}" aria-label="Open the photo full size"><img class="shot" data-photo="${esc(shot.id)}" alt="The photo this entry was read from" hidden></button>` : ""}${fromPhoto}<div class="what">${esc(d.title)}</div><div class="big">${peso(d.amount)}</div>
       <dl><dt>Date</dt><dd>${esc(longDate(t.date))}</dd>${fields}${reserve}</dl>
       <div class="actions">
@@ -632,10 +631,10 @@ function viewScan() {
   const s = ui.scan, busy = s?.busy === true;
   const status = busy ? `<p class="note" id="scan-msg" role="status">${esc(s.msg)}</p>` : s?.error ? `<p class="note" role="alert">${esc(s.error)}</p>` : s?.done ? `<p class="note" role="status">${esc(s.done)} <button class="link" data-action="tab" data-tab="verify">Go to Verify</button></p>` : "";
   return `<h1>Scan</h1><p class="sub">A receipt, payslip or payment screenshot</p>
-    <p class="note">This phone reads the photo itself. The photo is never sent anywhere. It guesses what the paper is, the amount and the date. You check each guess, and the entry waits in Verify with the photo beside it.</p>
+    <p class="note">This phone reads the photo. Nothing is sent anywhere. You check each guess in Verify, with the photo beside it.</p>
     ${photoButtons("1", busy)}
     ${status}
-    <p class="note">The first photo downloads the reader (about 30 MB) while you are online. After that it works with no internet. For the best reading hold the phone straight above the paper, in good light, with the whole page in view. Handwriting is read poorly, so check every number on a handwritten receipt. Photos stay on this phone and are not in the backup file.</p>`;
+    <p class="note">The first photo downloads the reader (about 30 MB), then it works offline. Handwriting is read poorly: check the numbers. Photos stay on this phone.</p>`;
 }
 
 const incomeCategories = () => S().categories.filter((c) => c.kind === "income");
@@ -1008,7 +1007,7 @@ function viewSetup() {
       : `<label for="a-name">Or type a name</label><input id="a-name" data-field="name" value="${esc(f.name)}" autocomplete="off" enterkeyhint="next">`}
     <label for="a-kind">Kind of account</label><select id="a-kind" data-field="kind"><option value="asset"${f.kind === "asset" ? " selected" : ""}>Bank, wallet or cash (money I have)</option><option value="liability"${f.kind === "liability" ? " selected" : ""}>Credit card (money I owe)</option></select>
     <label for="a-open">${f.kind === "asset" ? "How much is in it today" : "How much you owe on it today"} (₱)</label><input id="a-open" data-field="opening" inputmode="decimal" value="${esc(f.opening)}" placeholder="0.00" autocomplete="off">
-    <p class="note" id="a-open-note">Spending you log with an earlier date is history only: it does not come off this amount again. From today on, it does.</p>
+    <p class="note" id="a-open-note">Spending logged with an earlier date does not change this amount. From today on, it does.</p>
     ${f.kind === "asset" && cards.length ? `<label for="a-covers">This account is a reserve for a card (optional)</label><select id="a-covers" data-field="covers"><option value="">No</option>${cards.map((c) => `<option value="${esc(c.id)}"${f.covers === c.id ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select>` : ""}
     ${ui.setupError ? `<p id="a-error" role="alert"><b>${esc(ui.setupError)}</b></p>` : ""}
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>
@@ -1020,14 +1019,14 @@ function viewSetup() {
     ${planOf() ? `<h2>Pay plan</h2>
     <p class="note">A plan is in effect. <button class="link" data-action="tab" data-tab="${ledger.settings.try_new_budget ? "budget" : "plan"}">${ledger.settings.try_new_budget ? "Open it in Budget" : "Open it"}</button></p>` : ""}
     <h2>Try the new Budget</h2>
-    <p class="note">Shows your income, every limit as a share of it, and what you save, with a way to suggest a budget. Off by default; turn it off and everything is as before.</p>
+    <p class="note">Shows your income, each limit as a share of it, and what you save. Off by default.</p>
     <p><button data-action="toggle-new-budget" aria-pressed="${Boolean(ledger.settings.try_new_budget)}" style="width:100%">${ledger.settings.try_new_budget ? "On (tap to turn off)" : "Off (tap to turn on)"}</button></p>
     <h2>Backup</h2>
     <p class="note">${backupAgeText()}</p>
     <p><button class="primary" data-action="open-backup" data-howto="backup">Back up now</button></p>
     <p><button data-action="open-restore" style="width:100%">Restore from a backup</button></p>
     <p><button data-action="open-check-backup" style="width:100%">Check a backup file</button></p>
-    <p class="note">The file is encrypted, so it is safe in more than one place. Keep a second copy off this phone, for example in iCloud Drive or on a computer: a backup that only sits on a lost phone is lost too.</p>
+    <p class="note">The file is encrypted. Keep a second copy off this phone, like iCloud Drive or a computer.</p>
     <h2>This app</h2>
     <p class="note">${M.isDevBuild() ? "Version: a development copy." : "Version " + esc(M.APP_BUILD) + ", updated " + esc(fullDate(M.APP_BUILT_ON)) + "."} Your data format: ${ledger.v}.</p>
     ${(ui.copies ?? []).map((c, i) => `<p><button data-action="restore-copy" data-id="${i}" style="width:100%">${ui.confirmCopy === i ? "Tap again to restore. Entries made since then will be lost." : i === 0 ? "Restore the copy from before the last update" : "Restore the copy from before the update before that"}</button></p><p class="note small">Saved ${esc(fullDate(c.at.slice(0, 10)))}, before your data was updated from format ${c.from_version}.</p>`).join("")}
@@ -1103,8 +1102,7 @@ function flipChart(rows, total, { shape = "donut" } = {}) {
     const colored = shown.map((r, i) => ({ ...r, color: r.fold ? "#999" : DONUT_BLUES[Math.min(i, DONUT_BLUES.length - 1)] }));
     const arcs = colored.map((r) => { const len = (r.amount / sum) * C, dash = Math.max(0.5, len - GAP); const c = `<circle class="slice" cx="100" cy="100" r="${R}" fill="none" stroke="${r.color}" stroke-width="30" stroke-dasharray="${dash.toFixed(2)} ${(C - dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 100 100)"/>`; offset += len; return c; }).join("");
     const legend = colored.map((r) => `<div class="lrow"><span class="swatch" style="background:${r.color}"></span><span class="lname">${r.label}</span><span class="lval">${peso(r.amount)} \u00b7 ${r.percent}%</span></div>`).join("");
-    return `<div class="flip" data-action="chart-mode" data-mode="list" role="button" tabindex="0" aria-label="Donut of where the money went. Tap to show the list."><svg class="donut" viewBox="0 0 200 200" aria-hidden="true">${arcs}
-      <text x="100" y="96" text-anchor="middle" class="dtotal">${esc(M.formatPesosWhole(total))}</text><text x="100" y="116" text-anchor="middle" class="dsub">spent</text></svg><div class="legendlist">${legend}</div></div>`;
+    return `<div class="flip" data-action="chart-mode" data-mode="list" role="button" tabindex="0" aria-label="Donut of where the money went. Tap to show the list."><svg class="donut" viewBox="0 0 200 200" aria-hidden="true">${arcs}</svg><div class="legendlist">${legend}</div></div>`;
   }
   const max = Math.max(...shown.map((r) => r.amount), 1);
   return `<div class="bars flip" data-action="chart-mode" data-mode="list" role="button" tabindex="0" aria-label="Bars of where the money went. Tap to show the list.">${shown.map((r) => `<div class="brow${r.grade ? " g-" + r.grade : ""}">
@@ -1118,7 +1116,7 @@ function viewCards() {
   const p = period(), [from, to] = periodBounds(p), o = M.accountsOverview(S(), { from, to });
   const acct = (id) => S().accounts.find((a) => a.id === id);
   const row = (a, main, small) => `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}<small>${small}</small></div></div><div class="amt">${main}</div></div>`;
-  const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), `${peso(c.owe)}<small>you owe</small>`, `spent ${peso(c.spent)} \u00b7 paid ${peso(c.paid)}`)).join("") : `<p class="note">No credit cards yet. Add one in Setup: choose the bank, then "Credit card" as the kind.</p>`;
+  const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), `${peso(c.owe)}<small>you owe</small>`, `spent ${peso(c.spent)} \u00b7 paid ${peso(c.paid)}`)).join("") : `<p class="note">No credit cards yet. In Setup, add an account and choose "Credit card".</p>`;
   const money = o.money.length ? [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))).map((m) => row(acct(m.account_id), `${peso(m.balance)}<small>in it</small>`, `spent ${peso(m.spent)}`)).join("") : `<p class="note">No accounts yet.</p>`;
   return `<h1>Cards</h1>${periodStepper(p)}
     <div class="tiles two"><div class="tile"><b>${peso(o.held)}</b><span>in your accounts</span></div><div class="tile"><b>${peso(o.owe)}</b><span>owed on cards</span></div></div>
@@ -1222,7 +1220,7 @@ function trendChart(trend) {
   return `<svg class="trend" viewBox="0 0 ${W} ${H}" role="img" aria-label="Budget and actual spending for the last ${n} months. The table below has the same numbers.">${line("budget", "tb")}${line("actual", "ta")}</svg>
     <div class="tlabs">${labels}</div>
     <p class="legend"><span><svg width="22" height="10" aria-hidden="true"><line x1="0" y1="5" x2="22" y2="5" class="tb" stroke-width="2" stroke-dasharray="4 3"/></svg>Budget</span><span><svg width="22" height="10" aria-hidden="true"><line x1="0" y1="5" x2="22" y2="5" class="ta" stroke-width="2"/></svg>Actual</span></p>
-    <p class="note">A missing point means nothing was budgeted or logged that month. Tap a month to open it.</p>`;
+    <p class="note">A gap means nothing was budgeted or logged. Tap a month to open it.</p>`;
 }
 function trendTable(trend) {
   const cell = (v) => v == null ? "No data" : peso(v);
@@ -1257,7 +1255,7 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
 const gcashOf = () => (ledger.settings.gcash && S().accounts.some((a) => a.id === ledger.settings.gcash.account_id) ? ledger.settings.gcash : null);
 function viewBuffer() {
   const g = gcashOf();
-  if (!g) return `<h1>Buffer</h1><p class="note">Money kept aside in one of your accounts for when a category runs over its budget. Every draw is recorded against that category, so you see where it went.</p>
+  if (!g) return `<h1>Buffer</h1><p class="note">Money kept aside for when a category goes over budget. Every draw is recorded against that category.</p>
     <p><button class="primary" data-action="open-bufsetup">Set up the buffer</button></p>`;
   const month = M.monthOf(today());
   const sum = M.bufferSummary(S(), { allowance_envelope_id: g.allowance_id, buffer_envelope_id: g.buffer_id, month });
@@ -1298,7 +1296,7 @@ function viewTrips() {
       <p><button data-action="open-trip-detail" data-id="${esc(t.id)}">See the entries</button></p>
       <p><button data-action="use-trip" data-id="${esc(t.id)}" aria-pressed="${on}">${on ? "Tagging new entries \u2713 (tap to stop)" : "Tag new entries with this trip"}</button></p></div>`;
   }).join("");
-  return `<h1>Trips</h1><p class="sub">Spending for a trip, kept apart from everyday spending. Give a trip dates and the entries on those days join it by themselves.</p>${cards || `<p class="note">No trips yet.</p>`}
+  return `<h1>Trips</h1><p class="sub">Spending for a trip, kept apart from daily spending. Give a trip dates and entries on those days join it.</p>${cards || `<p class="note">No trips yet.</p>`}
     <p><button class="primary" data-action="open-trip" style="margin-top:8px">Add a trip</button></p>`;
 }
 
@@ -1381,7 +1379,7 @@ function planBody(plan, all) {
   return `<table class="tbl"><tr><th>Line</th><th class="n">${esc(p1.label)}</th>${two ? `<th class="n">${esc(p2.label)}</th>` : ""}<th class="n">Monthly</th></tr>${lines}
       <tr class="total"><td>Total (= income)</td><td class="n">${peso(t.first)}</td>${two ? `<td class="n">${peso(t.second)}</td>` : ""}<td class="n">${peso(t.month)}</td></tr></table>
     <h2>Income</h2><table class="tbl"><tr><th>Payday</th><th class="n">Plan</th><th class="n">Received</th><th class="n">Difference</th></tr>${incomeRows}</table>
-    <p class="note">The plan holds planning income. Real pay, from your payslip, is recorded below and the gap is only shown here, never changed in the plan.</p>
+    <p class="note">The plan holds planned income. Your real pay is recorded below. The gap is shown, never changed.</p>
     <p><button data-action="open-income" style="width:100%">Record pay received</button></p>
     <h2>This cutoff</h2><p class="note">${esc(which.label)} to the day before the next: ${esc(longDate(prog.period.start))} to ${esc(longDate(prog.period.end))}. Only verified spending counts.</p>
     ${mine.length ? `<table class="tbl"><tr><th>Line</th><th class="n">Plan</th><th class="n">Spent</th><th class="n">Left</th></tr>${rem}</table>` : `<p class="note">No plan line matches one of your categories yet.</p>`}
@@ -1414,7 +1412,7 @@ function viewGoals() {
         <p class="note">Target = ${ef.months} months of ${esc(ef.basis.join(", "))} from ${ef.source === "budgets" ? "your budgets" : "your plan"} (${peso(ef.monthlyBasis)} a month). It changes when ${ef.source === "budgets" ? "your budgets do" : "your plan does"}.${ef.missing.length ? " Your plan has no line named " + esc(ef.missing.join(", ")) + "." : ""}</p>`;
     const body = hidden ? `<p class="note">Hidden. Tap Show balances above.</p>`
       : ef ? efBody
-      : isEf ? `<div class="btop"><span class="bval">${peso(p.balance)}</span></div><p class="note">The target for your emergency fund is worked out from your budgets: 3 months of your rent, food and essentials. Set those budgets (Menu, Budget) and it appears here.</p>`
+      : isEf ? `<div class="btop"><span class="bval">${peso(p.balance)}</span></div><p class="note">The target is 3 months of your rent, food and essentials, from your budgets. Set those budgets (Menu, Budget) and it appears here.</p>`
       : `<div class="btop"><span class="bval">${peso(p.balance)}${p.target != null ? " of " + peso(p.target) : ""}</span></div>
          ${p.target != null ? `<div class="meter goal" role="img" aria-label="${p.percent}% of the goal"><span class="fill" style="width:${p.percent}%"></span></div>
          <div class="status">${p.reached ? "Goal reached" : p.percent + "% \u00b7 " + peso(p.remaining) + " to go"}${eta ? " \u00b7 about " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : ""}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div>` : `<div class="status">No target, just a place to build up.</div>`}`;
@@ -1422,7 +1420,7 @@ function viewGoals() {
       <p>${g.account_id ? `<button data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button>` : `<span class="note">No account yet. </span><button data-action="open-goal-account" data-id="${esc(g.id)}">Choose an account</button>`}</p>
       <p class="note"><button class="link" data-action="goal-role" data-id="${esc(g.id)}">${g.role === "emergency" ? "This is your emergency fund (tap to undo)" : "Make this my emergency fund"}</button></p></div>`;
   }).join("");
-  return `<h1>Goals</h1><p class="sub">Savings you are building. Hidden by default so they do not tempt you.</p>${toggle}${cards || `<p class="note">No goals yet.</p>`}
+  return `<h1>Goals</h1><p class="sub">Your savings goals. Balances stay hidden until you show them.</p>${toggle}${cards || `<p class="note">No goals yet.</p>`}
     <p><button class="primary" data-action="open-goal" style="margin-top:8px">Add a goal</button></p>`;
 }
 
@@ -1492,7 +1490,7 @@ function viewBudgetNew() {
   const bucketLine = (r) => `<div class="row" data-bucket="${r.bucket}"><div>${esc(r.label)}${r.target != null ? `<small>Target ${M.showTenths(r.target)}</small>` : ""}</div><div class="amt">${peso(r.amount)} a month${r.tenths != null ? `<small>${M.showTenths(r.tenths)} of income</small>` : ""}</div></div>
     ${r.tenths != null ? `<div class="meter goal" role="img" aria-label="${esc(r.label)}: ${M.showTenths(r.tenths)} of income${r.target != null ? ", target " + M.showTenths(r.target) : ""}"><span class="fill" style="width:${Math.min(100, r.tenths / 10)}%"></span></div>` : ""}`;
   const unsure = M.unclear(S().categories, set.bucket_overrides ?? {}, M.UNLOGGED_CATEGORY_ID);
-  const confirmHtml = unsure.length ? `<h3 id="bud-confirm">Which bucket?</h3><p class="note">The name does not say clearly, so these wait in Other. Tap once for each; the answer is remembered, and you can change it in Setup.</p>${unsure.map((c) =>
+  const confirmHtml = unsure.length ? `<h3 id="bud-confirm">Which bucket?</h3><p class="note">These names are unclear, so they wait in Other. Tap one answer for each. You can change it in Setup.</p>${unsure.map((c) =>
     `<div class="row"><div>${esc(c.name)}</div></div><div class="chips">${bucketChips(c.id, null)}</div>`).join("")}` : "";
   // The list twin of the bucket bars: the same rows and numbers as a table (tap either one to switch; the choice stays while the app is open).
   const pctOf = (a) => (income ? M.showTenths(M.tenths(a, income)) : "");
@@ -1529,7 +1527,7 @@ function viewBudgetNew() {
   return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${head}${sum}
     ${views}<div class="viewbody">${part}</div>
     ${byPaydaySection()}
-    <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
+    <p class="note">A budget never changes the past. A change starts next month unless you choose otherwise.</p>`;
 }
 const runSuggest = () => { const set = ledger.settings; return M.suggestBudgets({ state: S(), plan: planOf(), pin: set.income_base_pin ?? null, today: today(), month: M.monthOf(today()), settings: set.suggest_settings, pins: set.budget_pins ?? {}, rent: set.starter_rent ?? undefined, goalPins: set.goal_monthly ?? {}, goalShares: set.goal_shares ?? {}, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets }); };
 // What the "Yours" box shows: what was typed or taken from the suggestion, else the pinned figure, else the budget in force.
@@ -1693,7 +1691,7 @@ function renderSheet() {
       <p class="note" id="b-held"></p>
       <label for="b-buf">Overrun buffer (\u20B1)</label><input id="b-buf" data-field="buf" inputmode="decimal" value="${esc(ui.form.buf ?? "")}" autocomplete="off">
       <label for="b-allow">Everyday allowance (\u20B1)</label><input id="b-allow" data-field="allow" inputmode="decimal" value="${esc(ui.form.allow ?? "")}" autocomplete="off">
-      <p class="note">Together they cannot be more than the wallet holds. The wallet's total does not change; it is only split into two parts.</p>
+      <p class="note">Together they cannot be more than the wallet holds. Its total stays the same.</p>
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="save-bufsetup" style="margin-top:6px" disabled>Split the wallet</button></p>`;
   } else if (sh.type === "bufund") {
@@ -1708,7 +1706,7 @@ function renderSheet() {
       <label for="f-amount">Trip budget (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <label for="t-start">First day (optional)</label><input id="t-start" data-field="start" type="date" value="${esc(ui.form.start ?? "")}">
       <label for="t-end">Last day (optional, included)</label><input id="t-end" data-field="end" type="date" value="${esc(ui.form.end ?? "")}">
-      <p class="note">With dates, entries on those days join the trip by themselves. Without, you start and stop it by hand.</p>
+      <p class="note">With dates, entries on those days join by themselves. Without, you start and stop it by hand.</p>
       ${ui.form.error ? `<p id="f-msg" role="alert"><b>${esc(ui.form.error)}</b></p>` : ""}
       <p><button class="primary" id="f-save" data-action="save-trip" style="margin-top:14px" disabled>Save trip</button></p>`;
   } else if (sh.type === "trip-dates") {
@@ -1716,7 +1714,7 @@ function renderSheet() {
     body = `<h3>${esc(t?.name ?? "Trip")}: dates</h3>
       <label for="t-start">First day</label><input id="t-start" data-field="start" type="date" value="${esc(ui.form.start ?? "")}">
       <label for="t-end">Last day (included)</label><input id="t-end" data-field="end" type="date" value="${esc(ui.form.end ?? "")}">
-      <p class="note">Entries on these days join the trip by themselves, except moves between your own accounts, card bill payments and entries made from templates. You can add or take off single entries by hand.</p>
+      <p class="note">Entries on these days join the trip, except moves between your accounts, card bill payments and templates. You can add or remove entries by hand.</p>
       ${ui.form.error ? `<p id="f-msg" role="alert"><b>${esc(ui.form.error)}</b></p>` : ""}
       <p><button class="primary" id="f-save" data-action="save-trip-dates" style="margin-top:14px" disabled>Save dates</button></p>
       ${t?.start ? `<p><button class="link" data-action="clear-trip-dates">Take the dates off (start and stop by hand)</button></p>` : ""}`;
@@ -1733,17 +1731,17 @@ function renderSheet() {
       <label for="f-date">Date it arrived</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}" max="${esc(today())}">
       <label>What it is</label>${chips(incomeCategories(), ui.form.category_id, "pick-cat")}
       <label>Arrived in</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
-      <p class="note">Pay, interest or a refund. For a full payslip with its lines, use Add a payslip on the Income screen. Saved as verified, because you are copying it from paper or a statement.</p>
+      <p class="note">Pay, interest or a refund. For a full payslip, use Add a payslip in Income. Saved as verified, since you copy it from paper.</p>
       <p><button class="primary" id="f-save" data-action="save-income" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "plan") {
     body = `<h3>Load a pay plan</h3>
-      <p class="note">Choose the plan file, or paste its text. It stays on this phone and in your encrypted backups.</p>
+      <p class="note">Choose the plan file or paste its text. It stays on this phone and in your backups.</p>
       <label for="p-file">Plan file</label><input id="p-file" type="file" data-field="file" accept=".json,application/json,text/plain">
       <label for="p-text">Or paste it here</label><textarea id="p-text" data-field="text" rows="5" autocomplete="off" autocapitalize="off" spellcheck="false">${esc(ui.form.text ?? "")}</textarea>
       <div id="p-prev" role="status"></div>
       <p><button class="primary" id="f-save" data-action="save-plan" style="margin-top:10px" disabled>Use this plan</button></p>`;
   } else if (sh.type === "goal") {
-    body = `<h3>${sh.savings ? "New savings category" : "New goal"}</h3>${sh.savings ? `<p class="note">Each savings category is a goal. It shares what you set aside each month, and you can type its own monthly amount.</p>` : ""}
+    body = `<h3>${sh.savings ? "New savings category" : "New goal"}</h3>${sh.savings ? `<p class="note">Each savings category is a goal. It shares what you set aside each month. You can type its own amount.</p>` : ""}
       <label for="g-name">Name</label><input id="g-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
       <label for="f-amount">Target (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <label for="g-date">Finish by (optional)</label><input id="g-date" type="date" data-field="deadline" value="${esc(ui.form.deadline ?? "")}">
@@ -1752,7 +1750,7 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-goal" style="margin-top:14px" disabled>Save goal</button></p>`;
   } else if (sh.type === "goal-account") {
     const g = S().goals.find((x) => x.id === sh.id);
-    body = `<h3>Where does ${esc(g.name)} sit?</h3><p class="note">Choose the account that holds this goal's money. Its balance is that account's balance.</p>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+    body = `<h3>Where does ${esc(g.name)} sit?</h3><p class="note">Choose the account that holds this goal's money. Its balance is the goal's balance.</p>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
       <p><button class="primary" id="f-save" data-action="save-goal-account" style="margin-top:14px" disabled>Use this account</button></p>`;
   } else if (sh.type === "deposit") {
     const g = S().goals.find((x) => x.id === sh.id);
@@ -1771,7 +1769,7 @@ function renderSheet() {
   } else if (sh.type === "survey") {
     const w = thisWeek(), auto = M.autoFillSurvey(S(), { unlogged_category_id: M.UNLOGGED_CATEGORY_ID, week_start: w.week_start, week_end: w.week_end });
     body = `<h3>This week</h3>
-      <p class="note">1. Transactions you missed. Filled in from this week's counts; change it if it is wrong.</p>
+      <p class="note">1. Entries you missed. Filled in from this week's counts; change it if wrong.</p>
       <label for="q-count">How many</label><input id="q-count" data-field="q1c" inputmode="numeric" value="${esc(ui.form.q1c ?? "")}" autocomplete="off">
       <label for="q-amount">Worth about (\u20B1)</label><input id="q-amount" data-field="q1a" inputmode="decimal" value="${esc(ui.form.q1a ?? "")}" autocomplete="off">
       <label>2. Compared with the spreadsheet, was logging easier or harder this week? (1 much harder, 5 much easier)</label>
@@ -1788,18 +1786,18 @@ function renderSheet() {
       <p class="note">${esc(M.monthLabel(ui.form.start))}. Enter 0 to remove the budget.</p>
       <p><button class="primary" id="f-save" data-action="save-budget" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "budget-income") {
-    body = `<h3>Income (base)</h3><p class="note">The monthly figure every share is measured against. It stays until you choose "Use my payslips again".</p>
+    body = `<h3>Income (base)</h3><p class="note">The monthly figure every share is measured against. It stays until you tap "Use my payslips again".</p>
       <label for="f-amount">Per month (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <p><button class="primary" id="f-save" data-action="save-income-base" style="margin-top:6px" disabled>Use this figure</button></p>`;
   } else if (sh.type === "goal-monthly") {
     const g = S().goals.find((x) => x.id === sh.id), typed = ledger.settings.goal_monthly?.[sh.id] !== undefined;
-    body = `<h3>${esc(g.name)}: a month</h3><p class="note">Type how much to set aside for this goal each month. A typed amount is kept as it is, and the other goals share what is left.</p>
+    body = `<h3>${esc(g.name)}: a month</h3><p class="note">Type how much to set aside for this goal each month. Other goals share what is left.</p>
       <label for="f-amount">Per month (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <p><button class="primary" id="f-save" data-action="save-goal-monthly" style="margin-top:6px" disabled>Use this amount</button></p>
       ${typed ? `<p><button data-action="clear-goal-monthly" style="width:100%">Use the suggestion again</button></p>` : ""}`;
   } else if (sh.type === "shares") {
     const goals = sh.ids.map((id) => S().goals.find((g) => g.id === id)).filter(Boolean);
-    body = `<h3>Share what is left</h3><p class="note">After typed amounts, finish dates and the emergency fund, what is left is shared between these goals. Whole percents that add up to 100. Set once; it is remembered.</p>
+    body = `<h3>Share what is left</h3><p class="note">What is left after typed amounts, finish dates and the emergency fund is shared by these goals. Whole percents adding to 100.</p>
       ${goals.map((g) => `<label for="s-${esc(g.id)}">${esc(g.name)} (%)</label><input id="s-${esc(g.id)}" data-field="s_${esc(g.id)}" inputmode="numeric" value="${esc(ui.form["s_" + g.id] ?? "")}" autocomplete="off">`).join("")}
       <p class="note" id="s-msg" role="status"></p>
       <p><button class="primary" id="f-save" data-action="save-shares" style="margin-top:6px" disabled>Save</button></p>`;
@@ -1811,7 +1809,7 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-targets" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "budget-suggest") {
     const f = ui.form, r = f.sug, month = M.monthOf(today());
-    if (r?.code === "NEEDS_RENT") body = `<h3>Suggest a budget</h3><p class="note">There is not enough history to learn from yet, so I start from common shares of your pay. Your rent is the biggest fixed figure and I cannot guess it.</p>
+    if (r?.code === "NEEDS_RENT") body = `<h3>Suggest a budget</h3><p class="note">Not enough history yet, so I start from common shares of your pay. I cannot guess your rent.</p>
       <label for="s-rent">What is your monthly rent? (\u20B1, 0 if you pay none)</label><input id="s-rent" data-field="rent" inputmode="decimal" value="${esc(f.rent ?? "")}" autocomplete="off">
       <p><button class="primary" data-action="save-rent" style="margin-top:10px">Continue</button></p>`;
     else if (!r?.ok) body = `<h3>Suggest a budget</h3><p class="note"><b>${esc(r?.message ?? M.NO_INCOME_PROMPT)}</b></p>`;
@@ -1873,8 +1871,8 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>${sh.editId ? "Save changes" : "Save payslip"}</button></p>
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
   } else if (sh.type === "scanpick") {
-    body = `<h3>Scan</h3><p class="note">A receipt, a payment screen or a payslip. Take a photo now, or choose one you already have. If the app is sure of everything it saves a draft by itself; otherwise it asks.</p>${photoButtons("quick")}
-      <p class="note">Old spending you kept somewhere else: a screenshot of your notes, or a spreadsheet saved as CSV or Excel (.xlsx). Every line waits in Verify.</p>
+    body = `<h3>Scan</h3><p class="note">A receipt, payment screen or payslip. Take a photo or choose one. If the app is sure, it saves a draft; otherwise it asks.</p>${photoButtons("quick")}
+      <p class="note">Old spending from somewhere else: a screenshot of your notes, or a CSV or Excel (.xlsx) file. Every line waits in Verify.</p>
       <label class="filebtn alt" id="imp-pick">Import old spending<input type="file" accept="image/*,.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-import="1" hidden></label>`;
   } else if (sh.type === "import") {
     const f = ui.form;
@@ -1902,12 +1900,12 @@ function renderSheet() {
       <p><button data-action="open-income" style="width:100%">Other income</button></p>`;
   } else if (sh.type === "voice") {
     body = `<h3>Say it</h3>
-      <p class="note">One sentence, for example: lunch 95 at Sample Burger using GCash. You can say the day (yesterday, last Friday) too.</p>
-      ${speechSupported() ? `<p><button class="primary micmain" id="v-mic" data-action="voice-toggle" style="margin-top:12px">${micLabel("Tap and speak")}</button><div class="wave" id="v-wave" aria-hidden="true">${"<i></i>".repeat(13)}</div></p>` : `<p class="note">Speech is not available in this browser. Type below, or tap the box and use your keyboard's microphone key.</p>`}
+      <p class="note">One sentence, like: lunch 95 at Sample Burger using GCash. You can say the day too, like yesterday.</p>
+      ${speechSupported() ? `<p><button class="primary micmain" id="v-mic" data-action="voice-toggle" style="margin-top:12px">${micLabel("Tap and speak")}</button><div class="wave" id="v-wave" aria-hidden="true">${"<i></i>".repeat(13)}</div></p>` : `<p class="note">Speech is not available here. Type below, or use your keyboard's microphone key.</p>`}
       <label for="v-text">What I heard (fix it, type it, or use the keyboard's microphone key)</label>
       <textarea id="v-text" data-field="spoken" rows="3" autocomplete="off" autocapitalize="sentences">${esc(ui.form.spoken ?? "")}</textarea>
       <p id="v-msg" class="note" role="status"></p>
-      <p class="note">Speech is turned into words by Apple's or Google's service, so the audio leaves your phone while you speak. Your ledger and photos never do.</p>
+      <p class="note">Apple's or Google's service turns speech into words, so the audio leaves your phone while you speak. Your ledger and photos never do.</p>
       <p><button class="primary" id="f-save" data-action="use-spoken" style="margin-top:6px" disabled>Use this</button></p>`;
   } else if (sh.type === "scan") {
     const f = ui.form, kind = M.kindById(f.kind), into = kind.direction === "in";
@@ -1945,7 +1943,7 @@ function renderSheet() {
   } else if (sh.type === "payslips") {
     const [pf, pt] = periodBounds(period());
     const loose = M.incomeWithoutPayslip(S(), { from: pf, to: pt });
-    body = `<h3>Payslips, ${esc(periodLabel(period()))}</h3>${payslipRows({ from: pf, to: pt })}${loose.length ? `<h3>Added without a payslip</h3><p class="note">These count in your income but no payslip is behind them, for example a payslip photo saved as plain pay received. If one is a double, remove it.</p>${loose.map((r) => `<div class="row"><div>${esc(r.payee || "Pay received")}<small>${esc(fullDate(r.date))}${r.account_id ? " · into " + esc(accountName(r.account_id)) : ""}</small></div><div class="amt">${peso(r.amount)}</div></div>${ui.confirmDelInc === r.transaction_id ? `<p class="note">Remove this entry? ${peso(r.amount)} also comes out of ${esc(r.account_id ? accountName(r.account_id) : "the account")}. <button class="link" data-action="del-inc-yes" data-id="${esc(r.transaction_id)}">Yes, remove it</button></p>` : `<p class="note"><button class="link" data-action="del-inc" data-id="${esc(r.transaction_id)}">Remove this entry</button></p>`}`).join("")}` : ""}`;
+    body = `<h3>Payslips, ${esc(periodLabel(period()))}</h3>${payslipRows({ from: pf, to: pt })}${loose.length ? `<h3>Added without a payslip</h3><p class="note">These count as income but have no payslip, for example a payslip photo saved as plain pay. Remove one if it is a double.</p>${loose.map((r) => `<div class="row"><div>${esc(r.payee || "Pay received")}<small>${esc(fullDate(r.date))}${r.account_id ? " · into " + esc(accountName(r.account_id)) : ""}</small></div><div class="amt">${peso(r.amount)}</div></div>${ui.confirmDelInc === r.transaction_id ? `<p class="note">Remove this entry? ${peso(r.amount)} also comes out of ${esc(r.account_id ? accountName(r.account_id) : "the account")}. <button class="link" data-action="del-inc-yes" data-id="${esc(r.transaction_id)}">Yes, remove it</button></p>` : `<p class="note"><button class="link" data-action="del-inc" data-id="${esc(r.transaction_id)}">Remove this entry</button></p>`}`).join("")}` : ""}`;
   } else if (sh.type === "photo") {
     body = `<h3>Photo</h3><img class="shotfull" data-photo="${esc(sh.id)}" alt="The photo this entry was read from" hidden>`;
   } else if (sh.type === "icon") {
@@ -1953,7 +1951,7 @@ function renderSheet() {
     body = `<h3>Picture for ${esc(a.name)}</h3>
       <label for="i-bank">Which bank is it?</label>
       <button id="i-bank" class="bankpick" data-action="open-banks" data-for="${esc(a.id)}">${a.bank ? `${iconOf({ name: M.bankById(a.bank).name, bank: a.bank }, 28)}<span>${esc(M.bankById(a.bank).name)}</span>` : `<span class="muted">Not linked to a bank</span>`}<span class="chev" aria-hidden="true">\u203A</span></button>
-      <p class="note">Accounts of one bank share the picture. Take a screenshot of the app's icon, choose it here, then zoom and drag until only the icon fills the square.</p>
+      <p class="note">Accounts of one bank share the picture. Screenshot the app's icon, choose it here, then zoom and drag until it fills the square.</p>
       <input id="i-file" type="file" accept="image/*" data-field="file" aria-label="Choose a picture">
       <div id="i-stage" class="stage"><img id="i-img" alt="" hidden></div>
       <label for="i-zoom">Zoom</label><input id="i-zoom" data-field="zoom" type="range" min="1" max="4" step="0.01" value="1" disabled>
@@ -1967,10 +1965,10 @@ function renderSheet() {
       <label for="b-pass">Passphrase</label><input id="b-pass" data-field="pass" name="password" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" value="${esc(ui.form.pass ?? "")}">
       <label for="b-pass2">Passphrase again</label><input id="b-pass2" data-field="pass2" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" value="${esc(ui.form.pass2 ?? "")}">
       <p><button data-action="make-passphrase" style="width:100%">Make one for me</button></p>
-      ${ui.form.made ? `<p class="note">Your passphrase. Save it now in Passwords (Add Password, name it Finance backup), or write it on paper:</p><p class="passbox" id="b-made">${esc(ui.form.made)}</p><p><button data-action="copy-passphrase" style="width:100%">Copy it</button></p>` : ""}
+      ${ui.form.made ? `<p class="note">Your passphrase. Save it in Passwords (name it Finance backup), or write it on paper:</p><p class="passbox" id="b-made">${esc(ui.form.made)}</p><p><button data-action="copy-passphrase" style="width:100%">Copy it</button></p>` : ""}
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="make-backup" disabled>Create backup file</button></p>
-      <p class="note">Next you choose where to keep the file, for example Save to Files. It is encrypted, so it is safe in iCloud Drive or on a flash drive.</p>`;
+      <p class="note">Next, choose where to keep the file, like Save to Files. It is encrypted, so iCloud Drive or a flash drive is safe.</p>`;
   } else if (sh.type === "howto") {
     const h = M.HOWTOS.find((x) => x.id === sh.id);
     body = `<h3>${esc(h.label)}</h3>${clipFor(h.id)}<p class="hwcap">${esc(h.caption)}</p>`;
@@ -1998,7 +1996,7 @@ function renderSheet() {
   } else if (sh.type === "sweeporder") {
     const f = ui.form, goals = S().goals, picked = f.order ?? [];
     body = `<h3>Where the leftover goes</h3>
-      <p class="note">At month end, what is left in the buffer fills your goals in the order you tap them. Each one except the last is filled up to its target; the last one takes the rest.</p>
+      <p class="note">At month end, what is left in the buffer fills your goals in the order you tap. Each is filled to its target; the last takes the rest.</p>
       ${goals.length ? `<div class="chips">${goals.map((g) => `<button class="chip" data-action="pick-sweep" data-id="${esc(g.id)}" aria-pressed="${picked.includes(g.id)}">${picked.includes(g.id) ? picked.indexOf(g.id) + 1 + " \u00b7 " : ""}${esc(g.name)}</button>`).join("")}</div>`
         : `<p class="note">Add goals first (Menu, Budget, Goals).</p>`}
       ${picked.slice(0, -1).map((id) => { const g = goals.find((x) => x.id === id); return `<label for="t_${esc(id)}">Fill ${esc(g.name)} up to (\u20B1). Empty: its own target${g.target != null ? ", " + peso(g.target) : ", none"}</label><input id="t_${esc(id)}" data-field="t_${esc(id)}" inputmode="decimal" value="${esc(f["t_" + id] ?? "")}" autocomplete="off">`; }).join("")}
@@ -2010,7 +2008,7 @@ function renderSheet() {
   } else if (sh.type === "restore" && !ui.form.restored) {
     body = `<h3>${sh.check ? "Check a backup file" : "Restore from a backup"}</h3>
       ${sh.check ? `<p class="note">This opens the file to prove the passphrase works. Nothing on this phone changes.</p>` : `<p class="note">This replaces everything on this phone with the backup.</p>
-      <p class="note">Pictures of receipts and payslips are not in a backup. Entries come back without their pictures.</p>`}
+      <p class="note">Receipt and payslip pictures are not in a backup. Entries come back without them.</p>`}
       <label for="r-file">Backup file</label><input id="r-file" data-field="file" type="file" accept=".json,application/json">
       <input class="sr" type="text" name="username" autocomplete="username" value="Finance backup" readonly tabindex="-1" aria-hidden="true">
       <label for="r-pass">Passphrase</label><input id="r-pass" data-field="pass" name="password" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false">
@@ -2025,7 +2023,7 @@ function renderSheet() {
       <p class="note">The passphrase works. Nothing on this phone was changed.</p>`;
     else body = `<h3>Replace this phone's data?</h3>
       <div class="card" style="border:0;padding:0"><dl><dt>The backup</dt><dd>${esc(line(b))}${b.saved_at ? "<br>saved " + esc(longDate(b.saved_at.slice(0, 10))) : ""}</dd><dt>This phone</dt><dd>${esc(line(now))}</dd></dl></div>
-      <p class="note">Anything entered on this phone since the backup was made will be gone. Pictures are not in the backup: an entry with a picture will show "picture not on this phone".</p>
+      <p class="note">Anything entered since this backup was made will be gone. Pictures are not in a backup, so those entries will say "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
   const closer = sh.type === "notice" ? "" : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
@@ -2240,7 +2238,7 @@ async function onClick(el) {
       ui.period = { kind: "range", ...r }; ui.sheet = null; ui.sel = null; renderAll(); break;
     }
     case "chart-view": ui.view = el.dataset.view; ui.sel = null; renderScreen(); break;
-    case "toggle-entries": try { sessionStorage.setItem("logOpen", logOpen() ? "0" : "1"); } catch { /* private mode: it just stays closed */ } renderScreen(); break;
+    case "toggle-entries": ui.entriesAnim = true; try { sessionStorage.setItem("logOpen", logOpen() ? "0" : "1"); } catch { /* private mode: it just stays closed */ } renderScreen(); break;
     case "budget-view": ui.budgetView = el.dataset.view; renderScreen(); break;
     case "bucket-mode": ui.bucketsAsList = !ui.bucketsAsList; renderScreen(); break;
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
