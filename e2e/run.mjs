@@ -34,10 +34,11 @@ const browser = await chromium.launch();
 let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
 const dismissNotice = async (page) => { try { await page.waitForSelector('#sheet button:has-text("I understand")', { timeout: 2500 }); await page.click('#sheet button:has-text("I understand")'); } catch { /* an old ledger shows no notice */ } };
-async function open({ ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false } = {}) {
+async function open({ logOpen = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false } = {}) {
   if (seed === undefined) seed = styled ? OWNER_STYLE : null;
   if (seed && !whatsNew) seed = { ...seed, settings: { ...(seed.settings ?? {}), whatsnew_seen: seed.settings?.whatsnew_seen ?? CHANGES[0].id, start_rule_seen: seed.settings?.start_rule_seen ?? "2026-10-01T08:00:00.000+08:00" } };   // the What's new pop-up is tested on its own
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await ctx.addInitScript((o) => { try { if (o) sessionStorage.setItem("logOpen", "1"); } catch {} }, logOpen);   // the day's entries are folded away until tapped; most tests read them, so they start unfolded
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
   // A pretend phone speech service that, like the real ones, listens once and closes the microphone when you pause: the first try hears
   // nothing, the second hears the sentence. It records the language it was asked for.
@@ -72,7 +73,7 @@ const text = (page, sel = "body") => page.locator(sel).innerText();
 // Money, Budget and Setup live in the menu at the upper left; only Log and Verify are on the bottom bar.
 const addPayslipFlow = async (page) => { await page.click('button:has-text("Add income")'); };   // the Add income window offers the payslip ways straight away
 // Screens that belong together share one menu row; the picture strip on top of them switches between them (HUBS in names.js).
-const HUB_OF = { Cards: "Cash flow", Goals: "Budget", "Pay plan": "Budget", Checks: "Weekly review" };
+const HUB_OF = { Goals: "Budget", "Pay plan": "Budget", Checks: "Weekly review" };
 const menuGo = async (page, name) => {   // Spending and Income are one menu item, Cash flow, with a switch inside
   await page.click("#menuBtn");
   const money = name === "Spending" || name === "Income";
@@ -605,7 +606,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3 && (await page.locator("#menuBtn").evaluate((b) => getComputedStyle(b).borderTopWidth === "0px" && getComputedStyle(b).backgroundColor === "rgba(0, 0, 0, 0)")), "it is just three lines, without a box around it");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Budget,Weekly review,Scan,Trips,Buffer,Help,Setup", "the menu lists Cash flow (with Cards), Budget (with Goals and the pay plan), Weekly review (with Checks), Scan, Trips, Buffer, then Help and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Cards,Budget,Weekly review,Scan,Trips,Buffer,Help,Setup", "the menu lists Cash flow, Cards, Budget (with Goals and the pay plan), Weekly review (with Checks), Scan, Trips, Buffer, then Help and Setup");
 check(await page.locator("#menu .drawer").evaluate((d) => d.scrollHeight <= d.clientHeight + 1), "everything fits without scrolling");
 check(await page.locator("#menu .drawer").evaluate((d) => getComputedStyle(d).borderRightWidth === "0px"), "there is no hard black line at the panel's edge");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
@@ -839,7 +840,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 await page.click('#nav button:has-text("Log")');
 const todayTotal = await text(page, ".daytotal");
 check(/^₱\d/.test(todayTotal) && !(await text(page, "#screen")).includes("Spent today") && (await page.locator(".daycap").count()) === 0, "today's total is centered on the Log screen with no label");
-check((await text(page, ".datelink")).includes("Select date") && (await page.locator(".datelink").boundingBox()).height < 50, "a small 'Select date' link replaces the open date box");
+check((await text(page, ".datelink")).includes("Select date") && (await page.locator(".datelink").boundingBox()).height < 50 && await page.locator(".topdate").count() === 0, "one small 'Select date' link replaces the open date box; the date at the top is plain text");
 await page.click(".datelink");
 check((await page.locator("#sheet .cal").count()) === 1 && (await text(page, "#sheet")).includes("October 2026"), "it opens our own small calendar, not the phone's wheel, so it cannot close itself");
 check(await page.locator('#sheet .cal button[data-id="2026-10-04"]').isDisabled() && !(await page.locator('#sheet .cal button[data-id="2026-10-03"]').isDisabled()), "days after today cannot be chosen");
@@ -855,7 +856,7 @@ check((await text(page, "h2.today")).toLowerCase().includes("jan") && (await tex
 await shot(page, "23-day-totals");
 await page.click('button[data-action="reset-day"]');
 check((await text(page, ".daytotal")) === todayTotal && (await page.locator(".daycap").count()) === 0, "Today shows today's total again");
-check((await text(page, "h2.today")).toLowerCase() === "today" && !(await text(page, "#screen")).includes("Nothing logged that day"), "and today's entries");
+check((await text(page, "#entries-toggle")).toLowerCase().startsWith("today") && !(await text(page, "#screen")).includes("Nothing logged that day"), "and today's entries");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 
 // ---- checks: card reserve and the Unlogged habit ----
@@ -1651,13 +1652,13 @@ console.log("Log date and Cash first");
 { ({ ctx, page, errors } = await open({ blockSw: true }));
   await addAccount(page, "Test Debit", "asset", "1000"); await addAccount(page, "Cash", "asset", "500");
   await page.click('#nav button:has-text("Log")');
-  check(await page.locator("button.topdate").count() === 1 && (await text(page, "button.topdate")).includes("Oct 3"), "the date under the Log title is a tappable link");
-  await page.click("button.topdate");
+  check(await page.locator("button.topdate").count() === 0 && (await text(page, "#screen .sub")).includes("Oct 3"), "the date under the Log title is plain text; Select date is the one link");
+  await page.click(".datelink");
   check((await page.locator("#sheet .cal").count()) === 1, "tapping it opens the calendar");
   await page.click('#sheet .cal button[data-id="2026-10-01"]');
   check((await text(page, "#screen")).includes("New entries go on this day."), "choosing an earlier day says new entries go on that day");
   await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "33"); await page.click('#sheet .chip:has-text("Food")'); await page.click('#sheet .chip:has-text("Test Debit")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
-  check((await text(page, "h2.today")).toLowerCase().includes("oct 1") && (await text(page, "#screen")).includes("₱33.00"), "the new entry shows under the day chosen");
+  check((await text(page, "#entries-toggle")).toLowerCase().includes("oct 1") && (await text(page, "#screen")).includes("33.00"), "the new entry shows under the day chosen");
   const led = JSON.parse((await stored(page)).local);
   check(led.state.transactions.length === 1 && led.state.transactions[0].date === "2026-10-01", "and it is dated that day in the ledger");
   await page.click('button[data-action="reset-day"]');
@@ -2207,6 +2208,29 @@ console.log("What's new and how-tos");
   await page.click('button[data-action="open-howto"][data-id="scan"]');
   check(await seen(page, "#sheet", "Scan a receipt"), "a how-to can be played from Help too");
   check(errors.length === 0, "no script errors with the pop-up and the clips");
+  await ctx.close(); }
+
+// ===== 5s2. signs, folded entries, Budget bars =====
+console.log("Signs and folded entries");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-10-01" };
+  const TS = "2026-10-03T09:00:00.000+08:00";
+  const tx = (id, payee, catId, sign, amount) => [{ id, date: "2026-10-03", payee, memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS }, [{ transaction_id: id, category_id: catId, amount: sign * amount }, { transaction_id: id, account_id: "w", amount: -sign * amount }]];
+  const rows = [tx("a", "Lunch", "cat-food", 1, 9500), tx("b", "Bonus", "cat-other-income", -1, 20000)];
+  const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 2500000 }, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: rows.map((r) => r[0]), entries: rows.flatMap((r) => r[1]),
+    rules: [{ id: "r1", kind: "budget", subject_id: "cat-food", amount: 100000, effective_from: "2026-10-01", created_at: TS }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed, logOpen: false }));
+  check(await page.locator("#entries-toggle").count() === 1 && await page.locator("#entries-list").isHidden(), "the day's entries are folded away until you tap the heading");
+  check((await text(page, "#entries-toggle")).includes("2 entries") && (await text(page, "#entries-toggle")).includes("+\u20B1105.00"), "the heading says how many, and the day's net with its sign (200 in, 95 out)");
+  check(!(await text(page, "#nav button[data-tab='log']")).includes("+") && await page.locator("#nav button[data-tab='log'] svg path").first().getAttribute("d") === "M5 12h14", "the Log icon is a minus, not a plus");
+  await page.click("#entries-toggle");
+  check(await page.locator("#entries-list").isVisible() && await page.getAttribute("#entries-toggle", "aria-expanded") === "true", "one tap shows them");
+  const t = await text(page, "#entries-list");
+  check(t.includes("\u2212\u20B195.00") && t.includes("+\u20B1200.00"), "money out has a minus, money in a plus");
+  await page.click("#entries-toggle");
+  check(await page.locator("#entries-list").isHidden(), "and a second tap folds them again");
+  await menuGo(page, "Budget");
+  check((await text(page, "#screen")).includes("\u20B195.00 spent") && await page.locator(".choice .meter .fill").count() >= 1, "Budget rows draw a bar of spent against the limit, with the figure beside it");
+  check(errors.length === 0, "no script errors with signs and folded entries");
   await ctx.close(); }
 
 // ===== 5t. spending dated before an account was added is history only =====

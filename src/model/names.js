@@ -9,9 +9,9 @@ export const SCREEN_NAMES = {
 export const MENU_GROUPS = [["Your money", ["money", "cards", "budget", "goals", "plan"]], ["Tools", ["checkin", "checks", "scan", "trips", "buffer"]]];   // every screen, for Help; no one-row groups
 
 // Screens that belong together share ONE menu row (the first id). On each of them a strip of pictures along the top switches between them, so the menu
-// stays short: Cash flow holds Cards, Budget holds Goals and the pay plan, Weekly review holds Checks.
-export const HUBS = { money: ["money", "cards"], budget: ["budget", "goals", "plan"], checkin: ["checkin", "checks"] };
-export const hubOf = (id) => Object.keys(HUBS).find((h) => HUBS[h].includes(id) || (h === "money" && id === "income")) ?? null;
+// stays short: Budget holds Goals and the pay plan, Weekly review holds Checks. (Cards has its own row: it shows where your money is, not where it went.)
+export const HUBS = { budget: ["budget", "goals", "plan"], checkin: ["checkin", "checks"] };
+export const hubOf = (id) => Object.keys(HUBS).find((h) => HUBS[h].includes(id)) ?? null;
 export const menuRows = (ids) => ids.filter((id) => !Object.values(HUBS).some((m) => m.slice(1).includes(id)));   // the menu shows the first screen of each hub
 // Short names for the strip (the long one stays in the menu and Help).
 export const STRIP_NAMES = { money: "Cash flow", cards: "Cards", budget: "Budget", goals: "Goals", plan: "Pay plan", checkin: "Weekly review", checks: "Checks" };
