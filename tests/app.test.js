@@ -24,7 +24,7 @@ test("the worker carries a version placeholder that the deploy replaces", () => 
 });
 test("the deploy publishes the app and the model, and leaves the probe at the root", () => {
   const wf = read(".github/workflows/pages.yml");
-  assert.match(wf, /cp app\/\* _site\/app\//);
+  assert.match(wf, /cp -r app\/\* _site\/app\//);
   assert.match(wf, /cp -r src\/model _site\/src\/model/);
   assert.match(wf, /cp index\.html manifest\.json sw\.js icon-180\.png icon-512\.png _site\//);
 });

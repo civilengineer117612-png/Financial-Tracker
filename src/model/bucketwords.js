@@ -27,7 +27,7 @@ export const BUCKET_WORDS = {
     "phic", "hmo", "insurance", "vitamin", "pharmacy", "botika", "mercury drug",
     // must-pay and basics
     "essentials", "essential", "toiletries", "hygiene", "laundry", "labada", "sabon", "household", "sss", "gsis", "pag ibig", "pagibig", "hdmf", "tax",
-    "buwis", "bir", "tuition", "school", "eskwela", "matrikula", "school supplies", "damit", "clothes", "clothing", "uniform",
+    "bank fee", "bank charge", "atm fee", "service fee", "buwis", "bir", "tuition", "school", "eskwela", "matrikula", "school supplies", "damit", "clothes", "clothing", "uniform",
   ],
   want: [
     // eating out

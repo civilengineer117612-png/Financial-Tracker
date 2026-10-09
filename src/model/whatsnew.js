@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-10-move-money", date: "2026-10-10", text: "Log can move money between your accounts by hand, Cards shows each account's last 4 digits, a foreign withdrawal hints at your last rate, and Bank fees counts as a need." },
   { id: "2026-10-09-transfers", date: "2026-10-09", text: "A payment screenshot between your own accounts, or a cash withdrawal, now becomes a Transfer with its fee, not spending: add each account's last 4 digits in Setup." },
   { id: "2026-10-09-quiet-figures", date: "2026-10-09", text: "Budget rows and the Cards clip use small arrows and percents instead of little sentences, and clip buttons are green like the app." },
   { id: "2026-10-09-ledger", date: "2026-10-09", text: "A new quiet look: warm paper background, white cards, one green button per screen, a simpler number font, and Spending shows slim bars instead of a donut." },

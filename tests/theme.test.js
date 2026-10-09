@@ -67,3 +67,10 @@ test("Spending: month switcher, large total with what is left, four segments, on
 test("the how-to clips wear the same look: the clip's button is the accent, its text is white", () => {
   assert.match(css, /\.hw-btn \{ background: var\(--accent\); color: var\(--surface\);/);
 });
+
+test("the deploy copies folders inside app/ (the fonts): a plain cp stops at a folder, the site is never published, and the phone keeps the old look", () => {
+  const wf = read(".github/workflows/pages.yml");
+  assert.match(wf, /^\s*cp -r app\/\* _site\/app\/\s*$/m, "app/ is copied with its folders");
+  assert.ok(!/^\s*cp app\/\* _site\/app\/\s*$/m.test(wf), "never the flat copy");
+  assert.ok(readdirSync(new URL("../app", import.meta.url), { withFileTypes: true }).some((d) => d.isDirectory() && d.name === "fonts"), "there is a folder in app/, which is why");
+});
