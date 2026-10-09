@@ -99,6 +99,6 @@ test("Check a backup file only opens it: its own sheet, no replace button, no wr
   assert.match(appJs, /case "open-check-backup": ui\.sheet = \{ type: "restore", check: true \}/);
   const block = appJs.slice(appJs.indexOf("if (sh.check) body = `<h3>This backup opens"), appJs.indexOf("else body = `<h3>Replace this phone's data?"));
   assert.ok(block.includes("Nothing on this phone was changed") && !/restore-now|commit\(|writeBoth/.test(block), "the result has no replace button and writes nothing");
-  assert.match(appJs, /Keep a second copy off this phone, for example in iCloud Drive/);
+  assert.match(appJs, /Keep a second copy off this phone, like iCloud Drive/);
   assert.match(appJs, /keep a second copy off this phone\."\)/);
 });

@@ -22,7 +22,9 @@
   .sub { color: var(--mid); margin: 0 0 12px; }
   .note { color: var(--mid); }
   button { font: inherit; color: var(--ink); background: var(--wash); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-height: 48px; }
-  button { transition: transform .12s ease, background-color .12s ease; }
+  button { transition: transform .12s ease, background-color .12s ease; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .hub button:active, .glance:active, .entrieshead:active, .choice:active { transform: scale(.99); }
+  .row.rowbtn:active { background: var(--wash); }
   button:active { background: var(--line); transform: scale(.98); }
   button.rowbtn:active, .brow:active, .choice:active, .bankrow:active, #nav button:active, button.link:active { transform: none; }
   button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); width: 100%; font-size: 16px; min-height: 52px; }
@@ -201,16 +203,19 @@
   .stepper button:not(.ptitle) { width: 48px; font-size: 22px; padding: 0; } .stepper .ptitle { padding: 0; }
   .hero { font-size: 32px; font-weight: bold; line-height: 1.1; margin: 6px 0 2px; }
   .seg { display: flex; gap: 6px; margin: 8px 0; }
-  .entrieshead { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 12px; padding: 14px 4px; background: transparent; border: 0; border-top: 1px solid var(--line); border-radius: 0; font-size: 15px; font-weight: 700; text-align: left; letter-spacing: .02em; color: var(--mid); }
+  button.entrieshead { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; min-height: 44px; margin-top: 10px; padding: 10px 0; background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0; font-size: 14px; font-weight: 400; text-align: left; color: var(--mid); }
   .entrieshead .eh-r { display: flex; align-items: center; gap: 8px; color: var(--ink); font-variant-numeric: tabular-nums; } .chev { transition: transform .2s ease; } .chev.up { transform: rotate(180deg); }
+  @keyframes flipchev { from { transform: rotate(0); } to { transform: rotate(180deg); } } .chev.up.flip { animation: flipchev .15s ease-out; }
+  @keyframes dropin { from { opacity: 0; } to { opacity: 1; } } #entries-list.drop { animation: dropin .15s ease-out; }
+  @media (prefers-reduced-motion: reduce) { .chev.up.flip, #entries-list.drop { animation: none; } button { transition: none; } }
   #entries-list[hidden] { display: none; } .amt.in { color: var(--ink); }
   .choice .meter { margin: 6px 0 2px; } .choice small { display: block; }
   .hub { display: flex; gap: 6px; margin: 0 0 14px; }
-  .hub button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px; min-height: 58px; font-size: 13px; background: var(--wash); border-color: transparent; transition: background-color .2s ease, color .2s ease; }
+  .hub button { flex: 1; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 6px; padding: 6px 4px; min-height: 44px; font-size: 14px; background: var(--wash); border-color: transparent; transition: background-color .2s ease, color .2s ease; }
   .hub button[aria-current="page"] { background: var(--ink); color: var(--paper); }
-  .glance { display: grid; gap: 6px; width: 100%; text-align: left; margin: 16px 0 4px; padding: 14px 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; }
-  .glance .gl-top { display: flex; justify-content: space-between; align-items: baseline; color: var(--mid); font-size: 14px; } .glance .gl-top b { color: var(--ink); font-size: 20px; font-variant-numeric: tabular-nums; }
-  .glance .gl-sub { color: var(--mid); font-size: 13px; } .glance .meter { margin: 0; }
+  button.glance { display: grid; gap: 4px; width: 100%; text-align: left; margin: 14px 0 2px; padding: 0; background: none; border: 0; border-radius: 0; min-height: 0; }
+  .glance .gl-top { display: flex; justify-content: space-between; align-items: baseline; color: var(--mid); font-size: 14px; } .glance .gl-top b { color: var(--ink); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .glance .gl-sub { color: var(--mid); font-size: 13px; } .glance .meter { margin: 0; height: 6px; border-radius: 3px; } .glance .meter .fill { height: 6px; border-radius: 3px; }
   .seg button { flex: 1; padding: 10px 4px; min-height: 44px; font-size: 14px; }
   .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   .bars { margin: 12px 0 4px; }
