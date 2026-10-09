@@ -80,3 +80,4 @@ export { CHANGES, whatsNew } from "./whatsnew.js";
 export { HOWTOS, HOWTO_HINT, clipData, howtoClip } from "./howto.js";
 export { BUDGET_TIPS, TIPS_NOTE, tipsYours } from "./tips.js";
 export { readDate, dateOrder, readAmount, parseNotes, linesByRow, parseTable, parseCsv, readXlsx, categoryFor, previewImport, planImport } from "./importer.js";
+export { SINKING_LABEL, SINKING_NOTE, SINKING_HELP, sinkingStart, sinkingBalance, sinkingFunds, setAsideForSpending, toggleSinking } from "./sinking.js";

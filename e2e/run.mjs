@@ -2310,6 +2310,36 @@ console.log("Setup as pages");
   check((await text(page, "#top")).includes("Accounts") && await page.locator("#a-bank").count() === 1, "on a new phone, Add accounts goes straight to the Accounts page with its form");
   await ctx.close(); }
 
+// ===== 5s5. saving up for a planned expense (a sinking fund) is spending, not savings =====
+console.log("Sinking funds");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 900000, opening_date: "2026-08-01" };
+  const TS = "2026-09-10T09:00:00.000+08:00";
+  const pay = [{ id: "p1", date: "2026-09-10", payee: "Insurer", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS }];
+  const ent = [{ transaction_id: "p1", category_id: "cat-ins", amount: 250000 }, { transaction_id: "p1", account_id: "w", amount: -250000 }];
+  const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 3000000, sinking_funds: { "cat-ins": "2026-08" } },
+    state: { ...OWNER_STYLE.state, accounts: [acct], categories: [...OWNER_STYLE.state.categories, { id: "cat-ins", name: "Insurance", kind: "expense" }], transactions: pay, entries: ent,
+      rules: [{ id: "r1", kind: "budget", subject_id: "cat-ins", amount: 100000, effective_from: "2026-08-01", created_at: TS }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Budget");
+  let row = await text(page, '.choice:has-text("Insurance")');
+  check(row.includes("\u20B15.00 saved up to spend") || row.includes("\u20B1500.00 saved up to spend"), "a category being saved up for shows what is saved up to spend (3 months at P1,000, P2,500 paid: P500): " + row.replace(/\n/g, " | "));
+  check(row.includes("saving up") && !row.includes("Over"), "a payment that was saved for is not flagged over budget");
+  await page.click('#screen .seg button:has-text("Saved")');
+  const saved = await text(page, "#screen");
+  check(saved.includes("Set aside for spending") && saved.includes("not saved") && saved.includes("Insurance") && saved.includes("\u20B1500.00"), "the Saved view lists it apart, under words that say it is not savings");
+  await menuGo(page, "Cards");
+  check((await text(page, "#cards-setaside")).includes("\u20B1500.00 of this is set aside for planned spending, not savings"), "Cards says how much of 'in your accounts' is waiting to be spent");
+  await menuGo(page, "Budget"); await page.click('#screen .seg button:has-text("Spending")');
+  await page.click('.choice:has-text("Insurance")');
+  check(await page.locator('#sheet button[data-action="toggle-sinking"][aria-pressed="true"]').count() === 1, "the budget window shows the switch on");
+  await page.click('#sheet button[data-action="toggle-sinking"]'); await page.waitForTimeout(400);
+  check(await page.locator('#sheet button[data-action="toggle-sinking"][aria-pressed="false"]').count() === 1 && !JSON.parse((await stored(page)).local).settings.sinking_funds?.["cat-ins"], "turning it off removes it from the settings");
+  await page.click('#sheet button[data-action="toggle-sinking"]'); await page.waitForTimeout(400);
+  check(JSON.parse((await stored(page)).local).settings.sinking_funds?.["cat-ins"] === "2026-10", "turning it on starts it this month");
+  check(JSON.parse((await stored(page)).local).v === 6, "no data version change");
+  check(errors.length === 0, "no script errors with sinking funds");
+  await ctx.close(); }
+
 // ===== 5t. spending dated before an account was added is history only =====
 console.log("Start date of an account");
 { const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-10-03" };

@@ -1162,6 +1162,7 @@ function viewCards() {
   const money = o.money.length ? [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))).map((m) => row(acct(m.account_id), `${peso(m.balance)}<small>in it</small>`, `spent ${peso(m.spent)}`)).join("") : `<p class="note">No accounts yet.</p>`;
   return `<h1>Cards</h1>${periodStepper(p)}
     <div class="tiles two"><div class="tile"><b>${peso(o.held)}</b><span>in your accounts</span></div><div class="tile"><b>${peso(o.owe)}</b><span>owed on cards</span></div></div>
+    ${(() => { const w = M.setAsideForSpending(M.sinkingFunds(S(), ledger.settings, { month: M.monthOf(today()), asOf: today() })); return w > 0 ? `<p class="note" id="cards-setaside">${peso(w)} of this is set aside for planned spending, not savings.</p>` : ""; })()}
     <h2>Credit cards</h2>${cards}
     <h2>Debit, savings and cash</h2>${money}
     ${why(`Paying a card bill is not spending: the purchases were counted when you made them. The amounts spent and paid are for ${esc(periodLabel(p))}.`)}
@@ -1517,7 +1518,13 @@ function viewBudgetNew() {
     <p class="note"><button class="link" data-action="open-income-base">${set.income_base_pin ? "Change my figure" : "Type a different figure"}</button>${set.income_base_pin ? ` \u00b7 <button class="link" data-action="clear-income-pin">Use my payslips again</button>` : ""}</p>
     ${M.incomeChanged(set.budget_income_seen ?? null, income) ? `<p class="note" id="bud-changed">Income changed: review.</p>` : ""}</div>
     <p><button class="primary" data-action="open-suggest">Suggest a budget</button></p>`;
+  const funds = new Map(M.sinkingFunds(S(), set, { month, asOf: today() }).map((f) => [f.category_id, f]));
   const spendRows = rows.map((r) => {
+    const sf = funds.get(r.c.id);   // saving up: the bar and "over" use what was set aside since it began, not just this month
+    if (sf) {
+      const t = Math.min(1000, sf.setAside > 0 ? M.tenths(Math.max(0, sf.spent), sf.setAside) : 0);
+      return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${t / 10}%"></span></span><small>${sf.over ? glyph("critical") + " Over by " + peso(sf.spent - sf.setAside) : peso(sf.available) + " saved up to spend"} \u00b7 ${peso(sf.spent)} spent</small></span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month"}<small>saving up</small></span></button>`;
+    }
     const over = r.st?.over && r.now !== null;
     const change = r.later !== r.now ? `<small>${r.later === null ? "ends" : peso(r.later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "";
     const bar = r.now > 0 ? (() => { const sp = Math.max(0, r.st?.spent ?? 0), t = Math.min(1000, M.tenths(sp, r.now)); return `<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${t / 10}%"></span></span><small>${peso(sp)} spent \u00b7 ${M.showTenths(t)}</small>`; })() : "";
@@ -1559,10 +1566,12 @@ function viewBudgetNew() {
   // Like Cash flow: the overview stays on top, and a switch shows one part at a time (Spending, Saved, Buckets). The choice stays while the app is open.
   const bview = ui.budgetView ?? "spending";
   const views = `<div class="seg" role="group" aria-label="What to show">${[["spending", "Spending"], ["saved", "Saved"], ["buckets", "Buckets"]].map(([v, t]) => `<button data-action="budget-view" data-view="${v}" aria-pressed="${bview === v}">${t}</button>`).join("")}</div><div class="viewmark"></div>`;
+  const fundList = [...funds.values()];
+  const setAsideHtml = fundList.length ? `<h2>Set aside for spending</h2><p class="note">${esc(M.SINKING_NOTE)}</p>${fundList.map((f) => `<div class="row"><div>${esc(f.name)}<small>${peso(f.setAside)} set aside \u00b7 ${peso(f.spent)} spent</small></div><div class="amt">${peso(Math.max(0, f.available))}</div></div>`).join("")}` : "";
   const part = bview === "saved" ? `
     <h2>Saved and set aside</h2>${savedHtml}${plan ? "" : `<details class="explain" id="bud-how"><summary>How saving is worked out</summary>${M.savingsExplained(M.resolveSettings(set.suggest_settings ?? {}).settings ?? M.SUGGEST_DEFAULTS).map((x) => `<p class="note">${esc(x)}</p>`).join("")}</details>`}<p class="note" id="bud-saved-total">Total: ${peso(savedTotal)}${sh ? " \u00b7 " + M.showTenths(sh.saved) + " of income" : ""}</p>
     ${bufferRows.map((r) => `<div class="row" id="bud-buffer-line"><div>${esc(r.name)}<small>Its own line. Not savings, so it is not in the total above.</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}</div></div>`).join("")}
-    <p><button data-action="open-savings" style="width:100%">Add a savings category</button></p>${!plan && shareable.length >= 2 ? `<p class="note"><button class="link" data-action="open-shares">Change the percentages</button> that share what is left between ${shareable.length} goals${set.goal_shares ? ` \u00b7 <button class="link" data-action="clear-shares">Share equally again</button>` : ""}</p>` : ""}` : bview === "buckets" ? (bucketsHtml || `<p class="note">Add your income first: the buckets are shares of it.</p>`) : `
+    <p><button data-action="open-savings" style="width:100%">Add a savings category</button></p>${!plan && shareable.length >= 2 ? `<p class="note"><button class="link" data-action="open-shares">Change the percentages</button> that share what is left between ${shareable.length} goals${set.goal_shares ? ` \u00b7 <button class="link" data-action="clear-shares">Share equally again</button>` : ""}</p>` : ""}${setAsideHtml}` : bview === "buckets" ? (bucketsHtml || `<p class="note">Add your income first: the buckets are shares of it.</p>`) : `
     <h2>Spending</h2>${spendRows}<p class="note" id="bud-spend-total">Total budgeted: ${peso(spendTotal)}${sh ? " \u00b7 " + M.showTenths(sh.spending) + " of income" : ""}</p>`;
   return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${head}${sum}
     ${views}<div class="viewbody">${part}</div>
@@ -1824,6 +1833,8 @@ function renderSheet() {
       <label>Starts</label>
       <div class="seg" role="group" aria-label="When it starts">${[[thisM, "This month"], [nextM, "Next month"]].map(([m, t]) => `<button data-action="budget-start" data-month="${m}" aria-pressed="${ui.form.start === m}">${t}</button>`).join("")}</div>
       <p class="note">${esc(M.monthLabel(ui.form.start))}. Enter 0 to remove the budget.</p>
+      <p><button class="chip" data-action="toggle-sinking" aria-pressed="${Boolean(M.sinkingStart(ledger.settings, sh.id))}">${esc(M.SINKING_LABEL)}</button></p>
+      <p class="note">${esc(M.SINKING_HELP)}</p>
       <p><button class="primary" id="f-save" data-action="save-budget" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "budget-income") {
     body = `<h3>Income (base)</h3><p class="note">The monthly figure every share is measured against. It stays until you tap "Use my payslips again".</p>
@@ -2347,6 +2358,7 @@ async function onClick(el) {
       ui.form = { amount: cur === null ? "" : (cur / 100).toFixed(2), start: M.suggestedBudgetStart(S().rules, id, today()) };
       renderSheet(); break;
     }
+    case "toggle-sinking": { const next = M.toggleSinking(ledger.settings, ui.sheet.id, M.monthOf(today())); await commit(S(), { ...ledger.settings, sinking_funds: next }, { quiet: true }); renderSheet(); break; }
     case "budget-start": ui.form.start = el.dataset.month; renderSheet(); break;
     case "save-budget": {
       const amount = M.parsePesos(ui.form.amount);
