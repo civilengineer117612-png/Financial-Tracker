@@ -43,7 +43,12 @@ function clipFor(id) {
     budget = { income, rows, buckets: bk };
   }
   const trips = id === "trips" ? S().tags.map((t) => ({ name: t.name, days: M.tripDays(t), spent: M.tagSummary(S(), t.id, { categoryMaps: S().categoryMaps, asOf: today() }).spent })) : [];
-  return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total, budget, trips });
+  let goal = null;
+  if (id === "goals") {   // the first goal with a target that is not hidden by default (hidden goals are never drawn)
+    const g = S().goals.find((x) => x.target > 0 && !x.hidden_by_default && x.role !== "emergency"), p = g ? M.goalProgress(S(), g) : null, ga = g?.account_id ? S().accounts.find((a) => a.id === g.account_id) : null;
+    if (g && p) goal = { name: g.name, balance: p.balance, target: g.target, account: ga ? { name: ga.name, picture: iconOf(ga, 20) } : null };
+  }
+  return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total, budget, trips, goal });
 }
 // The reason under a suggested figure. The starter share's long note was the same on every row, so it is said once, in the tips at the bottom; a row
 // keeps only what is its own (learned from history, pinned, or lowered to fit the income).
