@@ -34,11 +34,12 @@ const browser = await chromium.launch();
 let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
 const dismissNotice = async (page) => { try { await page.waitForSelector('#sheet button:has-text("I understand")', { timeout: 2500 }); await page.click('#sheet button:has-text("I understand")'); } catch { /* an old ledger shows no notice */ } };
-async function open({ logOpen = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false } = {}) {
+async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false } = {}) {
   if (seed === undefined) seed = styled ? OWNER_STYLE : null;
   if (seed && !whatsNew) seed = { ...seed, settings: { ...(seed.settings ?? {}), whatsnew_seen: seed.settings?.whatsnew_seen ?? CHANGES[0].id, start_rule_seen: seed.settings?.start_rule_seen ?? "2026-10-01T08:00:00.000+08:00" } };   // the What's new pop-up is tested on its own
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-  await ctx.addInitScript((o) => { try { if (o) sessionStorage.setItem("logOpen", "1"); } catch {} }, logOpen);   // the day's entries are folded away until tapped; most tests read them, so they start unfolded
+  await ctx.addInitScript((o) => { try { if (o) sessionStorage.setItem("logOpen", "1"); } catch {} }, logOpen);
+  await ctx.addInitScript((o) => { try { if (o) sessionStorage.setItem("setupFlat", "1"); } catch {} }, setupFlat);   // most tests read the old one long Setup page; the real list of pages has its own test   // the day's entries are folded away until tapped; most tests read them, so they start unfolded
   await ctx.addInitScript((s) => { if (s) Object.defineProperty(navigator, "standalone", { get: () => true }); }, standalone);
   // A pretend phone speech service that, like the real ones, listens once and closes the microphone when you pause: the first try hears
   // nothing, the second hears the sentence. It records the language it was asked for.
@@ -1854,12 +1855,12 @@ console.log("Help and upgrade safety");
   check(menuText.includes("Help") && menuText.indexOf("Help") < menuText.indexOf("Setup"), "the menu has Help, just above Setup");
   await page.click('#menu button[data-tab="help"]');
   const h = await text(page, "#screen");
-  check(/Quick notes/i.test(h) && h.includes("It's still being built, so don't rely on it fully yet.") && h.includes("Your data lives only on your phone. No one else can see it or recover it.") && h.includes("Setup, then Backup") && h.includes("If you forget it, the backup can't be opened.") && h.includes("use it from the Home Screen icon, not a Safari tab") && h.includes("Never send your backup file."), "Help starts with the five quick notes, in full");
+  check(/Good to know/i.test(h) && h.includes("It's still being built, so don't rely on it fully yet.") && h.includes("Your data lives only on your phone. No one else can see it or recover it.") && h.includes("Setup, then Backup") && h.includes("If you forget it, the backup can't be opened.") && h.includes("use it from the Home Screen icon, not a Safari tab") && h.includes("Never send your backup file."), "Help starts with the five quick notes, in full");
   check(h.includes("Add the accounts you pay from") && h.includes("Make a backup") && (await page.locator('#screen .mline button[data-tab="setup"]').count()) >= 1, "then three getting-started steps, with a button to each");
   await addAccount(page, "Wallet", "asset", "100"); await page.click("#menuBtn"); await page.click('#menu button[data-tab="help"]');
   check(/✓ Add the accounts you pay from\s*Done/.test(await text(page, "#screen")) && /○ Log your first expense/.test(await text(page, "#screen")), "a finished step shows a tick and Done; an unfinished one shows an empty circle");
   await page.locator("#screen details.mrow summary", { hasText: "Verify" }).click();
-  check((await text(page, "#screen")).includes("Look at one entry at a time"), "tapping a screen's name opens its two or three lines");
+  check((await text(page, "#screen")).includes("You see one entry at a time"), "tapping a screen's name opens its short guide");
   await page.locator("#screen details.mrow[open] button", { hasText: "Open Verify" }).click();
   check(await page.locator("h1, #top").first().isVisible() && (await text(page, "#screen")).toLowerCase().includes("nothing to verify"), "and its button goes to that screen");
   await ctx.close(); }
@@ -2151,7 +2152,7 @@ console.log("What's new and how-tos");
   check(await seen(page, "#sheet", "What's new"), "after an update the What's new window opens");
   let t = await text(page, "#sheet");
   check(t.includes(CHANGES[0].text) && t.includes(CHANGES[2].text) && !t.includes(CHANGES[3]?.text ?? "never"), "it lists the latest three changes, one sentence each");
-  check(t.includes("Hold a button or a menu row for a moment to watch how it works. Help lists every clip."), "and says to hold a button to watch how it works");
+  check(t.includes("Help has the full list and the how-to clips."), "and says where the full list and the clips are");
   await page.click('#sheet button:has-text("Got it")');
   await page.reload(); await page.waitForSelector("#nav button"); await page.waitForTimeout(600);
   check(!(await text(page, "#sheet")).includes("What's new"), "it is not shown again");
@@ -2203,8 +2204,11 @@ console.log("What's new and how-tos");
   await page.click('#sheet button:has-text("Close")');
   await menuGo(page, "Help");
   t = await text(page, "#screen");
-  check(/How-tos/i.test(t) && /What's new/i.test(t) && t.includes(CHANGES[CHANGES.length - 1].text), "Help lists the how-tos and every change");
-  check(await page.locator(".mn.wn small").count() === CHANGES.length && (await page.locator(".mn.wn small").first().boundingBox()).height < 24, "each change shows its date on one short line of its own");
+  check(/Start here/i.test(t) && /Watch how it works/i.test(t) && /Guides/i.test(t) && /What's new/i.test(t) && t.includes(CHANGES[0].text) && !t.includes(CHANGES[CHANGES.length - 1].text), "Help runs Start here, Good to know, Watch, Guides, What's new, and shows only the latest three changes");
+  check((await page.locator("h2").allInnerTexts()).map((x) => x.toLowerCase()).join("|") === "start here|good to know|watch how it works|guides|what's new", "in that order");
+  await page.click('button[data-action="wn-all"]');
+  check((await text(page, "#screen")).includes(CHANGES[CHANGES.length - 1].text) && await page.locator("#screen button:has-text('Show fewer')").count() === 1, "Show all lists every change");
+  check(await page.locator(".mn.wn small").count() === CHANGES.length && parseFloat(await page.locator(".mn.wn").first().evaluate((e) => getComputedStyle(e).fontSize)) <= 14 && (await page.locator(".mn.wn small").first().boundingBox()).height < 24, "each change shows its date on one short line of its own");
   await page.click('#nav button[data-tab="log"]');
   check((await text(page, "#screen")).includes("spent today"), "the big number on Log says what it is");
   check((await text(page, "#glance")).includes("This month") && (await text(page, "#glance")).includes("left of"), "Log shows this month against the budgets");
@@ -2279,6 +2283,61 @@ console.log("Round 3: tabs, ring, swipe, folds");
   await swipeTo(130, 6);
   check(await seen(page, "#screen", "Nothing to verify") && JSON.parse((await stored(page)).local).state.transactions.find((t) => t.id === "d1").status === "verified", "swiping the entry to the right marks it Correct");
   check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
+  await ctx.close(); }
+
+// ===== 5s4. Setup as a short list of pages (no long scrolling) =====
+console.log("Setup as pages");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-10-01" };
+  ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct] } } }));
+  await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer")); await page.waitForTimeout(300);
+  const rowsText = await page.locator(".setrow").allInnerTexts();
+  check(rowsText.length === 5 && rowsText[0].includes("Accounts") && rowsText[0].includes("1 account") && rowsText[1].includes("Categories") && rowsText[2].includes("Budget options") && rowsText[3].includes("Backup and restore") && rowsText[3].includes("No backup yet") && rowsText[4].includes("About this app"), "Setup is five rows, each with a one-line status: " + rowsText.map((x) => x.split("\n")[0]).join(", "));
+  check(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 2), "the whole Setup list fits on one screen: nothing to scroll");
+  check(await page.locator("#a-bank").count() === 0 && await page.locator("#add-account-open").count() === 0, "no long form on the list");
+  for (const [row, title, mark] of [["Accounts", "Accounts", "#add-account-open"], ["Categories", "Categories", 'button[data-action="add-cat"]'], ["Budget options", "Budget options", 'button[data-action="toggle-new-budget"]'], ["Backup and restore", "Backup and restore", 'button[data-action="open-backup"]'], ["About this app", "About this app", "text=Your data format"]]) {
+    await page.click(`.setrow:has-text("${row}")`); await page.waitForTimeout(250);
+    check((await text(page, "#top")).includes(title) && await page.locator(mark).count() >= 1 && await page.locator('.back button:has-text("Setup")').count() === 1, `${row} opens its own page, with a way back`);
+    await page.click('.back button:has-text("Setup")'); await page.waitForTimeout(200);
+    check(await page.locator(".setrow").count() === 5, `back from ${row} returns to the list`);
+  }
+  await page.click(".scrim, #menu .scrim").catch(() => {});
+  await page.click('#nav button[data-tab="log"]'); await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
+  check(await page.locator(".setrow").count() === 5, "leaving Setup and coming back opens the list again");
+  check(errors.length === 0, "no script errors with the Setup pages");
+  await ctx.close();
+  ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, styled: false }));
+  await page.click('button:has-text("Add accounts")'); await page.waitForTimeout(300);
+  check((await text(page, "#top")).includes("Accounts") && await page.locator("#a-bank").count() === 1, "on a new phone, Add accounts goes straight to the Accounts page with its form");
+  await ctx.close(); }
+
+// ===== 5s5. saving up for a planned expense (a sinking fund) is spending, not savings =====
+console.log("Sinking funds");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 900000, opening_date: "2026-08-01" };
+  const TS = "2026-09-10T09:00:00.000+08:00";
+  const pay = [{ id: "p1", date: "2026-09-10", payee: "Insurer", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS }];
+  const ent = [{ transaction_id: "p1", category_id: "cat-ins", amount: 250000 }, { transaction_id: "p1", account_id: "w", amount: -250000 }];
+  const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, income_base_pin: 3000000, sinking_funds: { "cat-ins": "2026-08" } },
+    state: { ...OWNER_STYLE.state, accounts: [acct], categories: [...OWNER_STYLE.state.categories, { id: "cat-ins", name: "Insurance", kind: "expense" }], transactions: pay, entries: ent,
+      rules: [{ id: "r1", kind: "budget", subject_id: "cat-ins", amount: 100000, effective_from: "2026-08-01", created_at: TS }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Budget");
+  let row = await text(page, '.choice:has-text("Insurance")');
+  check(row.includes("\u20B15.00 saved up to spend") || row.includes("\u20B1500.00 saved up to spend"), "a category being saved up for shows what is saved up to spend (3 months at P1,000, P2,500 paid: P500): " + row.replace(/\n/g, " | "));
+  check(row.includes("saving up") && !row.includes("Over"), "a payment that was saved for is not flagged over budget");
+  await page.click('#screen .seg button:has-text("Saved")');
+  const saved = await text(page, "#screen");
+  check(saved.includes("Set aside for spending") && saved.includes("not saved") && saved.includes("Insurance") && saved.includes("\u20B1500.00"), "the Saved view lists it apart, under words that say it is not savings");
+  await menuGo(page, "Cards");
+  check((await text(page, "#cards-setaside")).includes("\u20B1500.00 of this is set aside for planned spending, not savings"), "Cards says how much of 'in your accounts' is waiting to be spent");
+  await menuGo(page, "Budget"); await page.click('#screen .seg button:has-text("Spending")');
+  await page.click('.choice:has-text("Insurance")');
+  check(await page.locator('#sheet button[data-action="toggle-sinking"][aria-pressed="true"]').count() === 1, "the budget window shows the switch on");
+  await page.click('#sheet button[data-action="toggle-sinking"]'); await page.waitForTimeout(400);
+  check(await page.locator('#sheet button[data-action="toggle-sinking"][aria-pressed="false"]').count() === 1 && !JSON.parse((await stored(page)).local).settings.sinking_funds?.["cat-ins"], "turning it off removes it from the settings");
+  await page.click('#sheet button[data-action="toggle-sinking"]'); await page.waitForTimeout(400);
+  check(JSON.parse((await stored(page)).local).settings.sinking_funds?.["cat-ins"] === "2026-10", "turning it on starts it this month");
+  check(JSON.parse((await stored(page)).local).v === 6, "no data version change");
+  check(errors.length === 0, "no script errors with sinking funds");
   await ctx.close(); }
 
 // ===== 5t. spending dated before an account was added is history only =====
