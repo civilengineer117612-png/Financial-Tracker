@@ -35,6 +35,7 @@ export const SCHEMAS = {
     status: oneOf("draft", "verified"),
     source: oneOf("manual", "preset", "template", "photo", "voice", "import", "reconciliation"),
     reference_no: optional(text),
+    schedule_id: optional(id), schedule_key: optional(text),   // ADDED (version 8): the scheduled payment this is, and which one ("2026-10" or the payment number)
     shot_time: optional(text),   // ADDED (version 7): the time a payment screenshot showed, "HH:MM", so the same screenshot twice can be told
     tag_id: optional(id),        // ADDED: spec 8.1 says trip expenses carry one tag. OLD: no longer read or written (data version 4 copies it to trip_add)
     trip_add: optional(id),      // ADDED (version 4): put on this trip by hand (or by a manual trip start); overrides the dates
@@ -49,7 +50,7 @@ export const SCHEMAS = {
     card_state: optional(oneOf("pending", "posted")),   // "Card entry state" row
   },
   Category: { id, name, kind: oneOf("income", "expense"),
-    role: optional(oneOf("food", "essentials", "subscription", "rent", "transport", "health", "utilities", "debt", "shopping", "fun", "dining", "invest", "family", "bank_fees", "other")) },   // ADDED: what the category is FOR (the scanner guesses by role, so renaming cannot break a guess)
+    role: optional(oneOf("food", "essentials", "subscription", "rent", "transport", "health", "utilities", "debt", "shopping", "fun", "dining", "invest", "family", "bank_fees", "interest_fees", "other")) },   // ADDED: what the category is FOR (the scanner guesses by role, so renaming cannot break a guess)
   CategoryMap: { from: id, to: id, effective_from: date },
   // BudgetRule / SavingsRule / AllocationRule share one shape, told apart by `kind`.
   // Fields beyond id and effective_from are a placeholder; the append-only check
@@ -58,6 +59,15 @@ export const SCHEMAS = {
   Template: { id, payee: name, amount: centavos, accounts: { type: "idList" }, schedule: name },
   Preset: { id, name, amount: centavos, category_id: id },
   PayeeRule: { id, payee_pattern: name, category_id: id },
+  // A scheduled payment (src/model/schedules.js): a repeating one (rent, a subscription) or an installment plan (an item paid in parts). Added in version 8.
+  Schedule: {
+    id, kind: oneOf("repeating", "installment"), name, category_id: id, account_id: id, start: date, created_at: timestamp,
+    amount: optional(centavos), day: optional({ type: "day" }),   // repeating: what it costs and the day it is due around
+    total: optional(centavos), count: optional({ type: "plan" }), made: optional(count), interest: optional(centavos),   // installment: all to pay (interest included), payments, paid before
+    foreign_currency: optional(name), foreign_amount: optional(centavos),   // in another currency: the peso amount is an estimate, fixed when it is verified
+  },
+  // Everything that happens to a schedule afterwards, one dated row each. Only ever added to: a new amount is a new row, never an edit.
+  ScheduleChange: { id, schedule_id: id, kind: oneOf("amount", "skip", "end", "paid_off", "due"), effective_from: date, key: optional(text), amount: optional(centavos), created_at: timestamp },
   Subscription: { id, name, card: id, currency: name, amount: centavos, renewal_day: { type: "day" }, exit_condition: text, review_date: date },
   CheckIn: { id, date, account_id: id, counted_balance: centavos, ledger_balance: centavos, difference: centavos },
   Attachment: { id, transaction_id: id, type: name, file: name, file_timestamp: timestamp },
@@ -102,6 +112,7 @@ const TYPE_CHECKS = {
   icon: (v) => typeof v === "string" && v.length <= 40000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(v),
   month: (v) => typeof v === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(v),
   day: (v) => Number.isInteger(v) && v >= 1 && v <= 31,
+  plan: (v) => Number.isInteger(v) && v >= 1 && v <= 600,
   rate: (v) => typeof v === "number" && Number.isFinite(v) && v > 0,
   lineList: (v) => Array.isArray(v) && v.every((l) => typeof l === "object" && l !== null && validateShape("PayslipLine", { payslip_id: "x", ...l }).length === 0),
   idList: (v) => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string" && x.length > 0),

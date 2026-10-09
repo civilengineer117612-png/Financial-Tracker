@@ -191,6 +191,7 @@ const ICONS = {
   mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/>',
   scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/>',
   buffer: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
+  scheduled: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/>',
   checkin: '<path d="M17 2l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/>',
   help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/>',
   setup: '<path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/>',
@@ -281,7 +282,7 @@ function renderScreen() {
   if (ui.tab !== "setup") ui.setupPage = null;
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
-    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "help" ? viewHelp() : ui.tab === "money" ? viewMoney() : ui.tab === "cards" ? viewCards() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "buffer" ? viewBuffer() : ui.tab === "scan" ? viewScan() : ui.tab === "income" ? viewIncome() : viewLog();
+    : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "help" ? viewHelp() : ui.tab === "money" ? viewMoney() : ui.tab === "cards" ? viewCards() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "scheduled" ? viewScheduled() : ui.tab === "buffer" ? viewBuffer() : ui.tab === "scan" ? viewScan() : ui.tab === "income" ? viewIncome() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
   renderTop(m ? m[1] : "Finance");
   const scr0 = $("screen"), sameTab = ui.tab === lastTabSig, oldBar = scr0.querySelector(".modebar, .viewmark"), barWas = oldBar?.getBoundingClientRect().top, bodyWas = scr0.querySelector(".viewbody")?.offsetHeight ?? 0;
@@ -366,6 +367,7 @@ function viewLog() {
     ${tilesHtml()}
     <p><button class="primary compact" data-action="open-other">Add expense</button></p>
     <p class="movelink"><button class="link" data-action="open-move">Move money between accounts</button></p>
+    ${dueSoonHtml()}
     ${monthGlance()}
     ${todays.length ? entriesBlock(todays, shown === today() ? "Today" : longDate(shown)) : `<h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2><p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
 }
@@ -412,11 +414,13 @@ function viewVerify() {
   const reserve = partner ? `<dt>Also</dt><dd>reserve transfer ${peso(describe(partner).amount)}</dd>` : "";
   const del = ui.confirmDelete === t.id;
   const shot = M.attachmentsFor(S(), t.id)[0];
-  const fromPhoto = t.source === "photo" ? `<p class="note">Read from the photo. Compare each line with the paper before you tap Correct.</p>`
-    : t.source === "voice" ? `<p class="note">Made from what you said${t.memo ? ": \u201C" + esc(t.memo) + "\u201D" : ""}. Check each line before you tap Correct.</p>` : "";
+  const sched = t.schedule_id ? (S().schedules ?? []).find((x) => x.id === t.schedule_id) : null;
+  const schedNote = sched ? `<p class="note">Scheduled payment${sched.kind === "installment" ? ", " + t.schedule_key + " of " + sched.count : ""}. Check the amount and date.</p>` : "";
+  const fromPhoto = schedNote + (t.source === "photo" ? `<p class="note">Read from the photo. Compare each line with the paper before you tap Correct.</p>`
+    : t.source === "voice" ? `<p class="note">Made from what you said${t.memo ? ": \u201C" + esc(t.memo) + "\u201D" : ""}. Check each line before you tap Correct.</p>` : "");
   return `${head}
     <div class="card">${shot ? `<button class="shotbtn" data-action="open-photo" data-id="${esc(shot.id)}" aria-label="Open the photo full size"><img class="shot" data-photo="${esc(shot.id)}" alt="The photo this entry was read from" hidden></button>` : ""}${fromPhoto}<div class="what">${esc(d.title)}</div><div class="big">${peso(d.amount)}</div>
-      <dl><dt>Date</dt><dd>${esc(longDate(t.date))}</dd>${fields}${reserve}</dl>
+      <dl><dt>Date</dt><dd>${esc(longDate(t.date))}</dd>${t.schedule_id && t.memo ? `<dt>Note</dt><dd>${esc(t.memo)}</dd>` : ""}${fields}${reserve}</dl>
       <div class="actions">
         <button class="primary wide" data-action="verify-ok" data-id="${esc(t.id)}">Correct</button>
         <button data-action="verify-edit" data-id="${esc(t.id)}">Edit</button>
@@ -766,6 +770,7 @@ function openScanSheet(blob, text, failed, queueId, spoken = null) {
   const moveAmount = mv?.amount ?? (mv?.foreign ? null : r.amount);
   ui.form = { kind: mr.kind ?? r.kind, guess: r.categoryGuess, amount: (mr.kind ? moveAmount : r.amount) ? ((mr.kind ? moveAmount : r.amount) / 100).toFixed(2) : "", date: r.date ?? today(), payee: mr.kind && mr.kind !== "choose" ? MOVE_TITLE[mr.kind] : r.payee ?? "", notes: [...notes, ...(mr.kind ? mv.notes : [])], text,
     account_id: acct.id, ...scanDefaults(r.kind, r.categoryGuess, r.payee, r.categoryName),
+    plan: !spoken && text ? (() => { const pl = M.planInText(S(), text); return pl ? { id: pl.id, name: pl.name } : null; })() : null,
     ...(mv ? { ref: mv.reference, time: mv.time, ...(mr.kind ? { origKind: r.kind, from_id: ends.from_id, to_id: ends.to_id, fee: mv.fee ? (mv.fee / 100).toFixed(2) : "", foreign: mv.foreign, ask: mr.cls.result === "ask" ? mr.cls.ask : null, own: null } : {}) } : {}) };
   ui.sheet = { type: "scan", queueId, voice: spoken !== null }; renderSheet();
 }
@@ -1426,6 +1431,82 @@ function viewBuffer() {
 
 // ---------- trips ----------
 // A trip is a tag with an optional budget. Switch one on and new entries are tagged with it, with no extra taps.
+// ---------- scheduled payments (src/model/schedules.js) ----------
+// Payments that fell due become DRAFTS in Verify; nothing is confirmed for you. Runs at start, when the app comes back, and after a schedule is added.
+async function runSchedules() {
+  if (!device.allowEntry || ui.upgrade?.failed || !(S().schedules ?? []).length) return false;
+  const r = M.makeDueDrafts(S(), today(), { reserve_source_id: ledger.settings.reserve_source_id });
+  if (!r.made.length) return false;
+  return commit(r.state, ledger.settings, { quiet: true });
+}
+const schedAmount = (s) => { const v = M.viewOf(S(), s, today()); return s.kind === "installment" ? (v.next?.amount ?? 0) : (v.next?.amount ?? s.amount); };
+function viewScheduled() {
+  const t = today(), list = S().schedules ?? [], md = (d) => longDate(d).replace(/^\w+, /, "");
+  const nextText = (v) => v.next ? `${esc(md(v.next.due))} \u00b7 ${esc(M.daysText(Math.round((Date.parse(v.next.due + "T00:00:00Z") - Date.parse(t + "T00:00:00Z")) / 86400000)))}` : "";
+  const rows = list.map((s) => {
+    const v = M.viewOf(S(), s, t), inst = s.kind === "installment";
+    const left = inst ? `${v.paid} of ${v.of} paid${v.paidOff ? " \u00b7 paid off" : ""}` : `the ${ordinal(s.day)} of each month${v.ended ? " \u00b7 stopped" : ""}`;
+    const bar = inst ? `<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${v.of ? Math.round((v.paid * 100) / v.of) : 0}%"></span></span>` : "";
+    const right = inst ? `${peso(v.stillToPay)}<span class="sr"> still to pay</span>` : `${peso(schedAmount(s))}<span class="sr"> a month</span>`;
+    return `<button class="choice" data-action="open-schedule" data-id="${esc(s.id)}"><span>${esc(s.name)}${bar}<small>${left}</small>${v.active ? `<small>${nextText(v)}</small>` : ""}</span><span class="bval">${right}</span></button>`;
+  }).join("");
+  return `<h1>Scheduled</h1><p class="sub">Rent, subscriptions and installment plans. Each payment waits in Verify on its due day.</p>
+    ${rows || `<p class="note">Nothing scheduled yet. Add rent, a subscription or an installment plan.</p>`}
+    <p><button class="primary" data-action="open-schedule-new" style="margin-top:8px">Add a scheduled payment</button></p>`;
+}
+const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th");
+// What the form holds, as a schedule to add. The first due day of a repeating payment is the next time that day comes round.
+function scheduleInput(f) {
+  const base = { id: (f.sid ??= newId("sch")), kind: f.skind, name: f.sname ?? "", category_id: f.category_id, account_id: f.account_id };
+  if (f.skind === "installment") {
+    const total = M.parsePesos(f.stotal ?? ""), interest = (f.sinterest ?? "").trim() ? M.parsePesos(f.sinterest) : { ok: true, centavos: 0 };
+    return { ...base, total: total.ok ? total.centavos : NaN, count: Number(f.scount), made: (f.smade ?? "").trim() === "" ? 0 : Number(f.smade), start: f.sfirst, interest: interest.ok ? interest.centavos : NaN };
+  }
+  const a = M.parsePesos(f.samount ?? ""), day = Number(f.sday), t = today();
+  const start = M.datesBetween(t, addDays(t, 62)).find((d) => M.isDue("monthly:" + day, d)) ?? t;
+  const fx = (f.scur ?? "").trim() && (f.sfx ?? "").trim() ? M.parsePesos(f.sfx) : null;
+  return { ...base, amount: a.ok ? a.centavos : NaN, day, start, ...(fx?.ok && fx.centavos > 0 ? { foreign: { currency: f.scur.trim().toUpperCase().slice(0, 6), amount: fx.centavos } } : {}) };
+}
+function scheduleSheet(f) {
+  const inst = f.skind === "installment";
+  return `<h3>Add a scheduled payment</h3>
+    <label>Kind</label><div class="chips"><button class="chip" data-action="pick-skind" data-id="repeating" aria-pressed="${!inst}">Repeats each month</button><button class="chip" data-action="pick-skind" data-id="installment" aria-pressed="${inst}">Installment plan</button></div>
+    <label for="s-name">${inst ? "Item" : "Name (rent, a subscription)"}</label><input id="s-name" data-field="sname" value="${esc(f.sname ?? "")}" autocomplete="off">
+    ${inst ? `<label for="s-total">Total to pay, interest included (\u20B1)</label><input id="s-total" data-field="stotal" inputmode="decimal" value="${esc(f.stotal ?? "")}" autocomplete="off">
+      <label for="s-count">Number of payments</label><div class="chips">${[1, 3, 6].map((n) => `<button class="chip" data-action="pick-scount" data-id="${n}" aria-pressed="${String(f.scount) === String(n)}">${n}</button>`).join("")}</div><input id="s-count" data-field="scount" inputmode="numeric" value="${esc(f.scount ?? "")}" autocomplete="off">
+      <label for="s-made">Payments already made</label><input id="s-made" data-field="smade" inputmode="numeric" value="${esc(f.smade ?? "")}" autocomplete="off">
+      <label for="s-first">First payment due</label><input id="s-first" data-field="sfirst" type="date" value="${esc(f.sfirst ?? "")}">
+      <label for="s-int">Interest part of the total (\u20B1, optional)</label><input id="s-int" data-field="sinterest" inputmode="decimal" value="${esc(f.sinterest ?? "")}" autocomplete="off">`
+    : `<label for="s-amount">Amount each month (\u20B1)</label><input id="s-amount" data-field="samount" inputmode="decimal" value="${esc(f.samount ?? "")}" autocomplete="off">
+      <label for="s-day">Due around day</label><input id="s-day" data-field="sday" inputmode="numeric" value="${esc(f.sday ?? "")}" autocomplete="off">
+      <details><summary>In another currency</summary><label for="s-cur">Currency (like USD)</label><input id="s-cur" data-field="scur" value="${esc(f.scur ?? "")}" autocomplete="off"><label for="s-fx">Amount in that currency</label><input id="s-fx" data-field="sfx" inputmode="decimal" value="${esc(f.sfx ?? "")}" autocomplete="off"><p class="note">The pesos above are an estimate. You fix them in Verify.</p></details>`}
+    <label>Category</label>${chips(expenseCategories(), f.category_id, "pick-cat")}
+    <label>Paid from</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
+    <p class="note" id="sch-line" role="status"></p>
+    <p class="note" id="scan-why" role="status"></p>
+    <p><button class="primary" id="f-save" data-action="save-schedule" style="margin-top:6px" disabled>Save</button></p>`;
+}
+function scheduleDetail(id) {
+  const sc = (S().schedules ?? []).find((x) => x.id === id); if (!sc) return `<h3>Scheduled</h3><p class="note">This one is no longer here.</p>`;
+  const v = M.viewOf(S(), sc, today()), key = (a) => ui.confirmSch === id + a;
+  const facts = sc.kind === "installment"
+    ? `<dt>Paid</dt><dd>${v.paid} of ${v.of}</dd><dt>Still to pay</dt><dd>${peso(v.stillToPay)}</dd>${v.next ? `<dt>Next due</dt><dd>${esc(longDate(v.next.due))} \u00b7 ${peso(v.next.amount)}</dd>` : ""}`
+    : `<dt>Each month</dt><dd>${peso(schedAmount(sc))}, around the ${ordinal(sc.day)}</dd>${v.next ? `<dt>Next due</dt><dd>${esc(longDate(v.next.due))}</dd>` : ""}`;
+  const rows = (S().scheduleChanges ?? []).filter((c) => c.schedule_id === id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+  const words = { amount: (c) => "New amount " + peso(c.amount) + " from " + longDate(c.effective_from), skip: (c) => "Skipped " + c.key, end: (c) => "Stopped after " + longDate(c.effective_from), paid_off: (c) => "Paid off " + longDate(c.effective_from), due: (c) => "Payment " + c.key + " asked for: " + peso(c.amount) };
+  return `<h3>${esc(sc.name)}</h3><dl class="txdl">${facts}<dt>Paid from</dt><dd class="who">${withIcon(S().accounts.find((a) => a.id === sc.account_id), 22)}</dd><dt>Category</dt><dd>${esc(categoryName(sc.category_id))}</dd></dl>
+    ${v.active ? `<p><button data-action="sch-pay" data-id="${esc(id)}" style="width:100%">Make the next payment a draft now</button></p>
+    <p><button data-action="sch-skip" data-id="${esc(id)}" style="width:100%">Skip the next payment</button></p>
+    ${sc.kind === "repeating" ? `<p><button data-action="sch-amount-open" data-id="${esc(id)}" style="width:100%">A new amount from a date</button></p>` : `<p><button data-action="sch-paidoff" data-id="${esc(id)}" style="width:100%">${key("paidoff") ? "Tap again: mark paid off" : "Mark paid off"}</button></p>`}
+    <p><button data-action="sch-end" data-id="${esc(id)}" style="width:100%">${key("end") ? "Tap again: stop future payments" : "Stop future payments"}</button></p>` : `<p class="note">${sc.kind === "installment" ? "All paid." : "Stopped."} Past payments stay as they were.</p>`}
+    ${rows.length ? `<h2>History</h2>${rows.map((c) => `<p class="note">${esc(words[c.kind](c))}</p>`).join("")}` : ""}`;
+}
+// The due soon lines on Log: name, amount, days left. Plain words.
+function dueSoonHtml() {
+  const list = M.dueSoon(S(), today(), { days: 7 }); if (!list.length) return "";
+  return `<h2>Due soon</h2>${list.slice(0, 3).map((d) => `<div class="row"><div>${esc(d.name)}<small>${esc(M.daysText(d.days))}</small></div><div class="amt">${peso(d.amount)}</div></div>`).join("")}${list.length > 3 ? `<p class="note"><button class="link" data-action="tab" data-tab="scheduled">See all ${list.length}</button></p>` : ""}`;
+}
+
 function viewTrips() {
   if (ui.tripId && S().tags.some((t) => t.id === ui.tripId)) return viewTripDetail(ui.tripId);
   const tags = S().tags, active = ledger.settings.active_tag_id;
@@ -1629,7 +1710,8 @@ function viewBudgetNew() {
       return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${t / 10}%"></span></span><small>${sf.over ? glyph("critical") + " Over by " + peso(sf.spent - sf.setAside) : peso(sf.available) + " saved up to spend"} \u00b7 ${peso(sf.spent)} spent</small></span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month"}<small>saving up</small></span></button>`;
     }
     const over = r.st?.over && r.now !== null;
-    const change = r.later !== r.now ? `<small>${r.later === null ? "ends" : peso(r.later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "";
+    const change = (r.later !== r.now ? `<small>${r.later === null ? "ends" : peso(r.later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "")
+      + (M.committedIn(S(), r.c.id, month, today()) ? `<small>Committed by installments this month: ${peso(M.committedIn(S(), r.c.id, month, today()))}</small>` : "");
     const bar = r.now > 0 ? (() => { const sp = Math.max(0, r.st?.spent ?? 0), t = Math.min(1000, M.tenths(sp, r.now)); return `<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${t / 10}%"></span></span><small>${flow(true, sp)}${M.showTenths(t)}</small>`; })() : "";
     return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}${bar}${change}${over ? `<small class="overnote">${glyph("critical")} Over budget by ${peso(r.st.spent - r.now)}</small>` : ""}</span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month" + share(r.now)}</span></button>`;
   }).join("");
@@ -1806,6 +1888,22 @@ function renderSheet() {
       <label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}
       <label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
       <p><button class="primary" id="f-save" data-action="save-other" style="margin-top:14px" disabled>Save</button></p>`;
+  } else if (sh.type === "schedule-new") {
+    body = scheduleSheet(ui.form);
+  } else if (sh.type === "schedule") {
+    body = scheduleDetail(sh.id);
+  } else if (sh.type === "schedule-amount") {
+    const sc = S().schedules.find((x) => x.id === sh.id);
+    body = `<h3>New amount for ${esc(sc.name)}</h3>
+      <label for="f-amount">Amount each month (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label for="f-date">From</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date ?? "")}">
+      <p class="note">Months before this date keep what they had.</p>
+      <p><button class="primary" id="f-save" data-action="save-schedule-amount" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "linkdue") {
+    const due = S().transactions.find((x) => x.id === sh.dueId), d = due ? describe(due) : null;
+    body = due ? `<h3>Is this your scheduled ${esc(due.payee)}?</h3><p class="note">${peso(d.amount)}, due ${esc(longDate(due.date))}. Link them so it is counted once.</p>
+      <p><button class="primary" data-action="link-due" style="width:100%">Yes, link them</button></p>
+      <p><button data-action="close-sheet" style="width:100%">No, keep both</button></p>` : `<h3>Scheduled</h3><p class="note">That payment is no longer waiting.</p>`;
   } else if (sh.type === "move") {
     body = `<h3>Move money</h3>
       <label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
@@ -1818,9 +1916,10 @@ function renderSheet() {
   } else if (sh.type === "edit") {
     const t = S().transactions.find((x) => x.id === sh.id), d = describe(t);
     body = `<h3>Edit entry</h3>
-      ${d.editable || d.kind === "transfer" || d.kind === "income" ? `<label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">` : ""}
+      ${d.editable || d.kind === "transfer" || d.kind === "income" || (t.schedule_id && d.kind === "split") ? `<label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">` : ""}
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}">
       <label for="f-payee">Name (optional)</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
+      ${t.schedule_id ? `<label for="f-memo">Note (optional, like "covers Sept to Oct")</label><input id="f-memo" data-field="memo" value="${esc(ui.form.memo ?? "")}" autocomplete="off">` : ""}
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${chips(accountsFor(null), ui.form.from_id, "pick-from")}<label>To</label>${chips(accountsFor(null), ui.form.to_id, "pick-to")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
@@ -2100,6 +2199,7 @@ function renderSheet() {
       <label>It looks like</label>${chips([...M.KINDS.slice(0, 5), ...M.MOVE_KINDS, ...M.KINDS.slice(5)].map((k) => ({ id: k.id, name: k.label })), f.kind, "pick-kind")}
       ${f.kind === "choose" ? `<p class="note flag">\u25B2 ${esc(M.CHOOSE_MESSAGE)}: tap one above. I will not guess.</p>` : ""}
       ${f.notes.map((n) => `<p class="note">${esc(n)}</p>`).join("")}
+      ${f.plan ? `<div class="card"><p class="note">This looks like a payment request for ${esc(f.plan.name)}. It is a reminder, not an expense.</p><p><button data-action="mark-due" style="width:100%">Mark its next payment due</button></p></div>` : ""}
       <label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(f.date)}">
       <label for="f-payee">${move ? "Name" : into ? "From" : "Paid to"} (optional)</label><input id="f-payee" data-field="payee" value="${esc(f.payee ?? "")}" autocomplete="off">
@@ -2304,6 +2404,17 @@ function refreshSave() {
         : `<p class="note">You already saved ${same.length === 1 ? "a payslip" : same.length + " payslips"} from ${esc(f.employer.trim())} for this period (net ${peso(same[0].deposit)}). Saving adds another one.</p>`;
       out.innerHTML = repeat + (lines.length ? `<p class="note">The lines add to gross ${peso(t.gross)}; minus deductions, net ${peso(t.net)}.</p>` : "") + (p.errors.length ? `<p class="note flag">\u25B2 Check the amount typed for: ${esc(p.errors.join(", "))}.</p>` : "") + flags.map(flagLine).join("");
     }
+  } else if (type === "schedule-new") {
+    const input = scheduleInput(f), r = M.addSchedule(S(), input, new Date());
+    btn.disabled = !r.ok;
+    const w = $("scan-why"); if (w) w.textContent = r.ok ? "" : (r.violations[0]?.message ?? "");
+    const line = $("sch-line");
+    if (line) {
+      const left = input.count - (input.made || 0);
+      line.textContent = r.ok && input.kind === "installment" ? M.planLine({ perMonth: Math.round(input.total / input.count), months: left, categoryName: categoryName(input.category_id), budget: M.budgetFor(S().rules, input.category_id, M.monthOf(today())) }, peso) : "";
+    }
+  } else if (type === "schedule-amount") {
+    const a = M.parsePesos(f.amount ?? ""); btn.disabled = !(a.ok && a.centavos > 0 && M.isPhDate(f.date ?? ""));
   } else if (type === "move") {
     const a = M.parsePesos(f.amount), fee = (f.fee ?? "").trim() ? M.parsePesos(f.fee) : { ok: true, centavos: 0 };
     const why = !(a.ok && a.centavos > 0) ? "Enter the amount to save." : !f.from_id ? "Choose where the money comes from." : !f.to_id ? "Choose where it goes." : f.from_id === f.to_id ? "Choose two different accounts." : !(fee.ok && fee.centavos >= 0) ? "Enter the fee like 15 or 15.50, or leave it empty." : "";
@@ -2408,7 +2519,11 @@ async function logExpense(input, label) {
   let next = M.applyDrafts(S(), drafts);
   if (input.photo_id) { const a = M.planAttachment(next, { id: input.photo_id, transaction_id: drafts[0].transaction.id }); if (a.ok) next = a.state; }
   const ok = await commit(next, settings);
-  showToast((ok ? "Saved " : "Not safely stored: ") + label + " · " + accountName(input.account_id), drafts[0].transaction.id, note);
+  showToast((ok ? "Saved " : "Not safely stored: ") + label + " \u00b7 " + accountName(input.account_id), drafts[0].transaction.id, note);
+  if (ok && !drafts[0].transaction.schedule_id) {   // a due scheduled payment of about the same name and amount: offer to link, so it is counted once
+    const t0 = drafts[0].transaction, due = M.matchDueDraft(S(), { payee: t0.payee || label, amount: input.amount, date: t0.date });
+    if (due) setTimeout(() => { if (!ui.sheet) { ui.sheet = { type: "linkdue", newId: t0.id, dueId: due }; renderSheet(); } }, 60);
+  }
   return ok;
 }
 
@@ -2823,6 +2938,81 @@ async function onClick(el) {
       await logExpense({ transaction_id: newId("tx"), payee: p.name, category_id: p.category_id, amount: p.amount, account_id: id, source: "preset", preset_id: p.id }, p.name + " " + peso(p.amount));
       break;
     }
+    case "open-schedule-new": {
+      const t = today();
+      ui.sheet = { type: "schedule-new" };
+      ui.form = { skind: "repeating", sname: "", samount: "", sday: String(Number(t.slice(8))), scount: "3", smade: "0", stotal: "", sfirst: t, sinterest: "", category_id: null, account_id: ledger.settings.last_account_id ?? accountsFor(null)[0]?.id ?? null };
+      renderSheet(); break;
+    }
+    case "pick-skind": {
+      form.skind = id;
+      if (id === "installment" && !form.category_id) form.category_id = M.categoryByRole(expenseCategories(), "shopping")?.id ?? null;   // plans are for Shopping unless you choose otherwise
+      renderSheet(); break;
+    }
+    case "pick-scount": form.scount = id; renderSheet(); break;
+    case "save-schedule": {
+      const r = M.addSchedule(S(), scheduleInput(form), new Date());
+      if (!r.ok) { showToast("Could not save: " + r.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      const first = M.makeDueDrafts(r.state, today(), { reserve_source_id: ledger.settings.reserve_source_id });
+      const waiting = first.made.length > 0;
+      if (await commit(first.state, { ...ledger.settings, last_account_id: form.account_id })) showToast(r.schedule.name + " is scheduled." + (waiting ? " Its payment is waiting in Verify." : ""));
+      break;
+    }
+    case "open-schedule": ui.sheet = { type: "schedule", id }; ui.confirmSch = null; renderSheet(); break;
+    case "sch-pay": {
+      const r = M.payNext(S(), id, today(), { reserve_source_id: ledger.settings.reserve_source_id });
+      if (!r.ok) { showToast("Could not: " + r.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      if (await commit(r.state)) showToast("The next payment is waiting in Verify.");
+      break;
+    }
+    case "sch-skip": {
+      const sc = S().schedules.find((x) => x.id === id), v = M.viewOf(S(), sc, today());
+      if (!v.next) { showToast("There is no payment to skip."); break; }
+      const r = M.skipPayment(S(), id, v.next.key, today());
+      ui.sheet = null; renderSheet();
+      if (r.ok && await commit(r.state)) showToast("Skipped " + (sc.kind === "repeating" ? v.next.key : "payment " + v.next.key) + ".");
+      break;
+    }
+    case "sch-amount-open": {
+      const t = today(), first = M.monthsAfter(t.slice(0, 8) + "01", 1);
+      ui.sheet = { type: "schedule-amount", id }; ui.form = { amount: "", date: first }; renderSheet(); break;
+    }
+    case "save-schedule-amount": {
+      const a = M.parsePesos(form.amount), r = a.ok ? M.setNewAmount(S(), ui.sheet.id, a.centavos, form.date) : null;
+      if (!r?.ok) { showToast("Enter an amount like 5500"); break; }
+      ui.sheet = null; renderSheet();
+      if (await commit(r.state)) showToast("New amount saved from " + longDate(form.date) + ".");
+      break;
+    }
+    case "sch-end": case "sch-paidoff": {
+      const key = id + (action === "sch-end" ? "end" : "paidoff");
+      if (ui.confirmSch !== key) { ui.confirmSch = key; renderSheet(); break; }
+      ui.confirmSch = null;
+      const r = action === "sch-end" ? M.endSchedule(S(), id, today()) : M.markPaidOff(S(), id, today());
+      ui.sheet = null; renderSheet();
+      if (r.ok && await commit(r.state)) showToast(action === "sch-end" ? "No more payments will come. Past ones stay." : "Marked paid off.");
+      break;
+    }
+    case "link-due": {
+      const sh = ui.sheet, r = M.linkToDue(S(), sh.newId, sh.dueId);
+      ui.sheet = null; renderSheet();
+      if (r.ok && await commit(r.state)) showToast("Linked. It is counted once.");
+      break;
+    }
+    case "mark-due": {
+      const a = M.parsePesos(form.amount), plan = form.plan;
+      if (!a.ok || a.centavos <= 0 || !plan) { showToast("Enter the amount first"); break; }
+      const m = M.markNextDue(S(), plan.id, a.centavos, today());
+      const p = m.ok ? M.payNext(m.state, plan.id, today(), { reserve_source_id: ledger.settings.reserve_source_id }) : m;
+      if (!p.ok) { showToast("Could not: " + p.violations[0].message); break; }
+      const queueId = ui.sheet.queueId ?? null;
+      if (pendingPhoto) { URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null; }
+      ui.sheet = null; renderSheet();
+      if (await commit(p.state, { ...ledger.settings, ...(queueId ? { scan_queue: scanQueue().filter((q) => q.id !== queueId) } : {}) })) { if (queueId) deletePhoto(queueId).catch(() => {}); showToast(plan.name + " " + peso(a.centavos) + " is due. Check it in Verify."); }
+      break;
+    }
     case "open-move": ui.sheet = { type: "move" }; ui.form = { amount: "", from_id: ledger.settings.last_account_id ?? null, to_id: null, fee: "" }; renderSheet(); break;
     case "save-move": {
       const f = ui.form, a = M.parsePesos(f.amount), fee = (f.fee ?? "").trim() ? M.parsePesos(f.fee) : { ok: true, centavos: 0 };
@@ -2960,7 +3150,8 @@ async function onClick(el) {
       const fee = d.kind === "transfer" ? M.feeOf(S(), t.id).amount : 0;
       ui.form = { date: t.date, payee: t.payee, category_id: d.category_id, account_id: d.account_id,
         ...(d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? { from_id: d.from_id, to_id: d.to_id, fee: fee ? (fee / 100).toFixed(2) : "" } : {}),
-        ...(d.editable || d.kind === "transfer" || d.kind === "income" ? { amount: (d.amount / 100).toFixed(2) } : {}) };
+        ...(t.schedule_id ? { memo: t.memo ?? "" } : {}),
+        ...(d.editable || d.kind === "transfer" || d.kind === "income" || (t.schedule_id && d.kind === "split") ? { amount: (d.amount / 100).toFixed(2) } : {}) };
       ui.sheet = { type: "edit", id }; renderSheet(); break;
     }
     case "save-edit": {
@@ -2972,6 +3163,7 @@ async function onClick(el) {
       }
       if (form.category_id) changes.category_id = form.category_id;
       if (form.account_id) changes.account_id = form.account_id;
+      if (form.memo !== undefined) changes.memo = form.memo;
       const isMove = S().transactions.some((x) => x.id === ui.sheet.id) && describe(S().transactions.find((x) => x.id === ui.sheet.id)).kind === "transfer" && form.from_id;
       if (isMove) {
         const fee = (form.fee ?? "").trim() ? M.parsePesos(form.fee) : { ok: true, centavos: 0 };
@@ -2990,7 +3182,8 @@ async function onClick(el) {
       if (ui.confirmDelete !== id) { ui.confirmDelete = id; renderScreen(); break; }
       ui.confirmDelete = null;
       const photos = M.attachmentsFor(S(), id);
-      const r = M.discardDraft(S(), id);
+      const r = M.discardDraft(S(), id), gone = S().transactions.find((x) => x.id === id);
+      if (r.ok && gone?.schedule_id) { const k = M.skipOnDelete(r.state, gone, today()); if (k.ok) r.state = k.state; }   // a deleted due payment is not made again
       if (r.ok && await commit(r.state)) for (const a of photos) deletePhoto(a.id).catch(() => {});
       break;
     }
@@ -3360,8 +3553,9 @@ async function start() {
     await dropOldPlaceholders();
     loadBankLogos();
     processScanQueue();   // photos taken just before the app was closed are read now
+    if (await runSchedules()) renderAll();   // payments that fell due while the app was closed become drafts
   }
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 }
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && device.allowEntry) processScanQueue(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && device.allowEntry) { processScanQueue(); runSchedules().then((made) => { if (made) renderAll(); }); } });
 start();

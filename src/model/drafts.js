@@ -90,10 +90,23 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
   const cat = entries.find((e) => e.category_id != null), acct = entries.find((e) => e.account_id != null);
   const isExpense = entries.length === 2 && cat && acct && EXPENSE_SOURCES.includes(t.source) && !id.startsWith("rsv:") && !id.startsWith("fee:") && state.categories.find((c) => c.id === cat.category_id)?.kind === "expense";
 
+  // A scheduled payment with an interest part has three lines (the plan's category, interest and fees, the account): a new amount changes the plan's
+  // part and keeps the interest part.
+  const catLines = entries.filter((e) => e.category_id != null);
+  if (t.schedule_id && changes.amount !== undefined && catLines.length === 2 && acct && entries.length === 3) {
+    const interest = catLines.find((e) => state.categories.find((c) => c.id === e.category_id)?.role === "interest_fees"), main = catLines.find((e) => e !== interest);
+    if (!interest || !main || !Number.isSafeInteger(changes.amount) || changes.amount <= interest.amount) return { ok: false, violations: fail("BAD_AMOUNT", "the amount must be more than the interest part").violations, state };
+    const next = entries.map((e) => (e === main ? { ...e, amount: changes.amount - interest.amount } : e === acct ? { ...e, amount: -changes.amount } : e));
+    const updated = { ...t, date: changes.date ?? t.date, payee: changes.payee ?? t.payee, memo: changes.memo ?? t.memo };
+    const probe = discardDraft(state, id).state, result = checkTransactionSave(probe, { transaction: updated, entries: next });
+    if (!result.ok) return { ok: false, violations: result.violations, state };
+    return { ok: true, violations: result.violations, state: applyDrafts(state, [{ transaction: updated, entries: next }]) };
+  }
   if (isExpense) {
+    const keptForeign = (state.foreignAmounts ?? []).find((f) => f.transaction_id === id);
     const base = discardDraft(state, id).state;
     const plan = planExpense(base, {
-      transaction_id: id, date: changes.date ?? t.date, payee: changes.payee ?? t.payee, memo: t.memo,
+      transaction_id: id, date: changes.date ?? t.date, payee: changes.payee ?? t.payee, memo: changes.memo ?? t.memo,
       category_id: changes.category_id ?? cat.category_id, amount: changes.amount ?? cat.amount,
       account_id: changes.account_id ?? acct.account_id, source: t.source, reserve_source_id,
       reference_no: t.reference_no ?? "", shot_time: t.shot_time ?? "",   // an edit keeps what a screenshot showed
@@ -104,7 +117,11 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
       const moved = plan.drafts[0].transaction.date !== t.date || plan.drafts[0].transaction.payee !== t.payee || (changes.amount !== undefined && changes.amount !== cat.amount) || (changes.category_id ?? cat.category_id) !== cat.category_id || (changes.account_id ?? acct.account_id) !== acct.account_id;
       plan.drafts[0].transaction.edited_before_verify = t.edited_before_verify === true || moved;
     }
-    return { ok: true, violations: plan.violations, state: { ...applyDrafts(base, plan.drafts), attachments: state.attachments ?? [] } };   // the photo stays with its draft
+    const applied = applyDrafts(base, plan.drafts);
+    const newAmount = changes.amount ?? cat.amount;
+    return { ok: true, violations: plan.violations, state: { ...applied, attachments: state.attachments ?? [],
+      ...(keptForeign ? { foreignAmounts: [...(applied.foreignAmounts ?? []), { ...keptForeign, rate: newAmount / keptForeign.foreign_amount }] } : {}),   // a foreign amount stays, and its rate follows the corrected pesos
+      transactions: applied.transactions.map((x) => (x.id === id ? { ...x, ...(t.schedule_id ? { schedule_id: t.schedule_id, schedule_key: t.schedule_key } : {}), ...(changes.memo !== undefined ? { memo: changes.memo } : {}) } : x)) } };   // the photo stays with its draft
   }
 
   let next = entries;

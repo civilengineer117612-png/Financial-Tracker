@@ -18,7 +18,7 @@ const T0 = new Date("2026-10-03T03:00:00Z");   // 11:00 on Oct 3 in Manila
 // What most tests start from: a ledger in the owner's own style (the categories and the three meal tiles the app used to start everyone with), so the
 // long flows below keep their wording. A brand-new install is now neutral: tests of that open with styled: false.
 const owner = (id, name, role) => ({ id, name, kind: "expense", ...(role ? { role } : {}) });
-const LEDGER_V = 7;
+const LEDGER_V = 8;
 const OWNER_STYLE = { v: 6, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings: { notice_seen_at: "2026-10-01T08:00:00.000+08:00" }, state: {
   ...Object.fromEntries(["accounts", "goals", "envelopes", "transactions", "entries", "categoryMaps", "rules", "templates", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"].map((k) => [k, []])),
   categories: [owner("cat-food", "Food", "food"), owner("cat-lakat", "Lakat/Date"), owner("cat-family", "Family"), owner("cat-shopping", "Shopping"), owner("cat-essentials", "Essentials", "essentials"), owner("cat-upskill", "Upskill"),
@@ -610,7 +610,7 @@ check(mb && mb.x < 40 && mb.y < 60 && mb.width >= 44 && mb.height >= 44, "the me
 check((await page.locator("#menuBtn svg rect").count()) === 3 && (await page.locator("#menuBtn").evaluate((b) => getComputedStyle(b).borderTopWidth === "0px" && getComputedStyle(b).backgroundColor === "rgba(0, 0, 0, 0)")), "it is just three lines, without a box around it");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "false", "and says it is closed");
 await page.click("#menuBtn");
-check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Cards,Budget,Weekly review,Scan,Trips,Buffer,Help,Setup", "the menu lists Cash flow, Cards, Budget (with Goals and the pay plan), Weekly review (with Checks), Scan, Trips, Buffer, then Help and Setup");
+check((await page.locator("#menu .item").allInnerTexts()).join() === "Cash flow,Cards,Budget,Scheduled,Weekly review,Scan,Trips,Buffer,Help,Setup", "the menu lists Cash flow, Cards, Budget (with Goals and the pay plan), Scheduled, Weekly review (with Checks), Scan, Trips, Buffer, then Help and Setup");
 check(await page.locator("#menu .drawer").evaluate((d) => d.scrollHeight <= d.clientHeight + 1), "everything fits without scrolling");
 check(await page.locator("#menu .drawer").evaluate((d) => getComputedStyle(d).borderRightWidth === "0px"), "there is no hard black line at the panel's edge");
 check(await page.getAttribute("#menuBtn", "aria-expanded") === "true", "and says it is open");
@@ -1115,7 +1115,10 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 await ctx.close();
 
 // ===== 5f. scanning a photo =====
-const closeViewer = async () => { const b = await page.locator(".lightbox .lbstage").boundingBox(); await page.mouse.click(b.x + 5, b.y + 3); };   // the dark strip above the picture
+const closeViewer = async () => {   // tap the dark strip above the picture; wait for the picture to settle first, and tap once more if the first tap landed too early
+  await page.waitForFunction(() => { const i = document.querySelector(".lightbox img"); return i && i.complete; }, null, { timeout: 5000 }).catch(() => {}); await page.waitForTimeout(300);
+  for (let k = 0; k < 3 && await page.locator(".lightbox").count(); k++) { const b = await page.locator(".lightbox .lbstage").boundingBox(); await page.mouse.click(b.x + 5, b.y + 3); await page.waitForTimeout(400); }
+};
 console.log("Scan");
 ({ ctx, page, errors } = await open({ blockSw: true }));
 await addAccount(page, "Wallet", "asset", "1000");
@@ -1297,6 +1300,80 @@ await page.click('button:has-text("Delete")'); await page.click('button:has-text
   await page.click('#screen button:has-text("Correct")'); await page.waitForTimeout(400);
   await menuGo(page, "Cards");
   check((await text(page, "#screen")).includes("\u00b7\u00b74821") || (await text(page, "#screen")).includes("\u00b7\u00b77305"), "Cards shows each account's last 4 beside its name");
+}
+
+// ----- Scheduled payments: a repeating one, an installment plan, Verify, Due soon, the link offer and a payment request -----
+{
+  await menuGo(page, "Scheduled");
+  check((await text(page, "#screen")).includes("Nothing scheduled yet") && await page.locator('#screen button.primary').count() === 1, "the Scheduled screen starts empty, with one button to add");
+  await page.click('button[data-action="open-schedule-new"]');
+  check(await page.locator("#f-save").isDisabled(), "Save waits until the form is complete");
+  await page.fill("#s-name", "Test Rent"); await page.fill("#s-amount", "5000");
+  await page.click('#sheet [data-action="pick-cat"]:has-text("Rent")'); await page.click('#sheet [data-action="pick-acct"] >> nth=0');
+  check(await page.inputValue("#s-day") === "3" && !(await page.locator("#f-save").isDisabled()), "the due day starts as today's (the 3rd) and Save is ready");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "is scheduled. Its payment is waiting in Verify"), "a payment due today becomes a draft at once");
+  const l0 = JSON.parse((await stored(page)).local), rentTx = l0.state.transactions.find((t) => t.schedule_id && t.payee === "Test Rent");
+  check(rentTx && rentTx.status === "draft" && rentTx.source === "template" && rentTx.schedule_key === "2026-10" && rentTx.date === "2026-10-03" && l0.state.entries.some((e) => e.transaction_id === rentTx.id && e.amount === 500000), "it is a draft, never confirmed, for October 3, with its amount");
+  await page.click('#nav button:has-text("Verify")');
+  check((await text(page, "#screen")).includes("Scheduled payment") && (await text(page, "#screen")).includes("\u20B15,000.00"), "Verify says it is a scheduled payment");
+  await page.click('#screen button:has-text("Edit")'); await page.fill("#f-memo", "covers Sept to Oct"); await page.fill("#f-amount", "5200"); await page.click("#f-save");
+  check(await seen(page, "#screen", "covers Sept to Oct") && (await text(page, "#screen")).includes("\u20B15,200.00"), "its note and its amount can be changed before checking");
+  await page.click('#screen button:has-text("Correct")'); await page.waitForTimeout(400);
+  check(JSON.parse((await stored(page)).local).state.transactions.find((t) => t.id === rentTx.id).status === "verified", "only your tap on Correct confirms it");
+
+  // an installment plan
+  await menuGo(page, "Scheduled");
+  await page.click('button[data-action="open-schedule-new"]'); await page.click('#sheet [data-action="pick-skind"][data-id="installment"]');
+  check(await page.locator('#sheet .chip[data-action="pick-cat"][aria-pressed="true"]').count() === 0, "no category holds the shopping role here, so nothing is chosen for you (a category is never found by its name)");
+  await page.click('#sheet [data-action="pick-cat"]:has-text("Essentials")');
+  await page.fill("#s-name", "Test Phone"); await page.fill("#s-total", "6000"); await page.click('#sheet [data-action="pick-scount"][data-id="3"]'); await page.fill("#s-made", "0");
+  const soon = await page.evaluate(() => new Date(Date.now() + 4 * 864e5).toISOString().slice(0, 10)); await page.fill("#s-first", soon);
+  await page.click('#sheet [data-action="pick-acct"] >> nth=0');
+  check((await text(page, "#sch-line")).includes("This plan takes \u20B12,000.00 a month for 3 months."), "one plain line says what the plan takes each month");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "Test Phone is scheduled"), "the plan is saved (its first payment is not due yet, so no draft)");
+  check((await text(page, "#screen")).includes("0 of 3 paid") && (await text(page, "#screen")).includes("\u20B16,000.00") && await page.locator("#screen .choice .meter").count() === 1, "the plan shows 0 of 3 paid with a bar, and what is still to pay");
+  await page.click('#nav button:has-text("Log")');
+  check((await text(page, "#screen")).toLowerCase().includes("due soon") && (await text(page, "#screen")).includes("Test Phone") && /due in \d+ days/.test(await text(page, "#screen")), "Log lists it under Due soon with the days left");
+
+  // the link offer: a payment logged by hand while a scheduled draft waits
+  await menuGo(page, "Scheduled");
+  await page.click('button[data-action="open-schedule-new"]'); await page.fill("#s-name", "Essentials"); await page.fill("#s-amount", "300");
+  await page.click('#sheet [data-action="pick-cat"]:has-text("Essentials")'); await page.click('#sheet [data-action="pick-acct"] >> nth=0'); await page.click("#f-save");
+  await seen(page, "#toast", "is scheduled");
+  await page.click('#nav button:has-text("Log")'); await page.click('button[data-action="open-other"]');
+  await page.fill("#f-amount", "300"); await page.click('#sheet [data-action="pick-cat"]:has-text("Essentials")'); await page.click('#sheet [data-action="pick-acct"] >> nth=0'); await page.click("#f-save");
+  check(await seen(page, "#sheet", "Is this your scheduled Essentials"), "a payment you log yourself is offered a link to the due one");
+  await page.click('#sheet button[data-action="link-due"]'); await seen(page, "#toast", "Linked");
+  const l1 = JSON.parse((await stored(page)).local), ess = l1.state.transactions.filter((t) => t.schedule_key === "2026-10" && t.schedule_id && t.payee !== "Test Rent" && !/Test Phone/.test(t.payee));
+  check(ess.length === 1 && !ess[0].id.startsWith("sch:") && ess[0].source === "manual" && !l1.state.transactions.some((t) => t.id.startsWith("sch:") && t.payee === "Essentials"), "linked: one payment for the month, yours, and no second draft");
+
+  // a scanned payment request marks the plan's next payment due
+  const reqPng = await page.evaluate(() => {
+    const c = document.createElement("canvas"); c.width = 900; c.height = 700;
+    const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 900, 700); x.fillStyle = "#000"; x.font = "bold 44px sans-serif";
+    ["Payment Request", "Test Phone installment", "Amount Due PHP 2,500.00", "Due 07 Oct 2026"].forEach((l, i) => x.fillText(l, 40, 100 + i * 110));
+    return c.toDataURL("image/png").split(",")[1];
+  });
+  await menuGo(page, "Scan");
+  await page.setInputFiles("input[data-scan]:not([capture])", { name: "request.png", mimeType: "image/png", buffer: Buffer.from(reqPng, "base64") });
+  check(await seen(page, "#sheet", "payment request for Test Phone", 180000), "a scanned payment request names the plan");
+  await page.fill("#f-amount", "2500");
+  await page.click('#sheet button[data-action="mark-due"]');
+  check(await seen(page, "#toast", "Test Phone"), "its next payment is marked due");
+  const l2 = JSON.parse((await stored(page)).local), req = l2.state.transactions.find((t) => t.id === "sch:" + l2.state.schedules.find((x) => x.name === "Test Phone").id + ":1");
+  check(req && req.status === "draft" && l2.state.entries.some((e) => e.transaction_id === req.id && e.amount === 250000) && l2.state.scheduleChanges.some((c) => c.kind === "due" && c.amount === 250000), "it waits in Verify for the asked amount, as a draft, and the plan itself is unchanged");
+  check(l2.state.schedules.find((x) => x.name === "Test Phone").total === 600000, "the plan's total is untouched");
+
+  // stopping: future only
+  await menuGo(page, "Scheduled");
+  await page.click('button[data-action="open-schedule"]:has-text("Test Rent")'); await page.click('#sheet button[data-action="sch-end"]');
+  check((await text(page, "#sheet")).includes("Tap again"), "stopping asks for a second tap");
+  const pastBefore = JSON.stringify(JSON.parse((await stored(page)).local).state.transactions.filter((t) => t.id === rentTx.id));
+  await page.click('#sheet button[data-action="sch-end"]'); await page.waitForTimeout(500);
+  const l3 = JSON.parse((await stored(page)).local);
+  check(l3.state.scheduleChanges.some((c) => c.kind === "end") && JSON.stringify(l3.state.transactions.filter((t) => t.id === rentTx.id)) === pastBefore, "stopping adds a row and leaves the past month exactly as it was");
 }
 
 // ----- quick capture from the scanner button on the Log screen -----
@@ -1988,7 +2065,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
     check(same(kept.local) && same(kept.idb), "the data as it was before the update is kept in both stores"); }
   await menuGo(page, "Setup");
   const su = await text(page, "#screen");
-  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 7") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
+  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 8") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
   await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "40"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
   check(JSON.parse((await stored(page)).local).state.transactions.length === 2, "an expense is added after the update");
   await menuGo(page, "Setup");

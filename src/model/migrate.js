@@ -10,9 +10,9 @@ import { phTimestamp } from "./util.js";
 
 // Version 2 is the first with named migrations. To change the data's shape: raise this number, add the step from the old number to MIGRATIONS,
 // add a backup fixture of the old version to tests/migrate.test.js, and add the new collection to COLLECTION_NAMES.
-export const LEDGER_VERSION = 7;
+export const LEDGER_VERSION = 8;
 export const COLLECTION_NAMES = ["accounts", "goals", "envelopes", "transactions", "entries", "categories", "categoryMaps", "rules",
-  "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"];
+  "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions", "schedules", "scheduleChanges"];
 
 // Each step takes a ledger of version N and returns one of N + 1 (the runner sets `v`). Steps only add.
 export const MIGRATIONS = {
@@ -54,6 +54,9 @@ export const MIGRATIONS = {
   // 6 to 7: an account may hold the last 4 digits of its number (`last4`), so a payment screenshot can tell the owner's own accounts apart; a transaction may
   // hold the time its screenshot showed (`shot_time`); a category may hold the role "bank_fees". Every account gets last4 "" (none given). Nothing is removed or renamed.
   6: (ledger) => ({ ...ledger, state: { ...ledger.state, accounts: (ledger.state.accounts ?? []).map((a) => (a.last4 === undefined ? { ...a, last4: "" } : a)) } }),
+  // 7 to 8: scheduled payments. Two new collections, `schedules` and `scheduleChanges`, start empty; a transaction may name the schedule it belongs to.
+  // Nothing existing is changed, so every total is the same.
+  7: (ledger) => ({ ...ledger, state: { ...ledger.state, schedules: ledger.state.schedules ?? [], scheduleChanges: ledger.state.scheduleChanges ?? [] } }),
 };
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
