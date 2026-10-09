@@ -198,7 +198,7 @@ function titleOf(title) {
 
 function renderTop(title) {
   const hub = M.hubOf(ui.tab) && device.allowEntry && M.HUBS[M.hubOf(ui.tab)].filter((id) => !M.menuHidden(ledger.settings).has(id)).length > 1;
-  const lines = `<svg width="24" height="16" viewBox="0 0 24 16" aria-hidden="true"><rect y="0" width="24" height="2.5" rx="1.25" fill="currentColor"/><rect y="6.75" width="17" height="2.5" rx="1.25" fill="currentColor"/><rect y="13.5" width="10" height="2.5" rx="1.25" fill="currentColor"/></svg>`;   // lines of falling length, no box
+  const lines = `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect y="1" width="22" height="2" rx="1" fill="currentColor"/><rect y="7" width="22" height="2" rx="1" fill="currentColor"/><rect y="13" width="13" height="2" rx="1" fill="currentColor"/></svg>`;   // three lines, the last one shorter, no box
   // One scanner button: it opens the two choices, camera or photos/files.
   const camera = device.allowEntry && ui.tab === "log" ? `<button class="camicon" data-action="open-scan-pick" data-howto="scan" aria-label="Scan a receipt or payment screen: take a photo or choose from photos or files"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.scan}</svg></button>` : "";
   const mic = device.allowEntry && ui.tab === "log" ? `<button class="camicon micbtn" data-action="open-voice" aria-label="Say an entry out loud"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.mic}</svg></button>` : "";
@@ -230,18 +230,18 @@ function renderBanner() {
   const bars = [];
   if (ui.error) bars.push(`<div class="bar" role="alert">${esc(ui.error)}</div>`);
   if (ui.upgrade?.failed) bars.push(`<div class="bar" role="alert">${esc(ui.upgrade.failed)}</div>`);
-  const showDevice = device.status === "TRIAL" || (device.status !== "OK" && device.status !== "EMPTY");   // an empty phone is explained on Log, next to its Restore button
+  if (device.status === "TRIAL") bars.push(`<div class="trialstrip" role="status"><span>Trial copy. Do not enter real data.</span><button class="link" data-action="reset-trial">${ui.confirmTrial ? "Tap again to erase" : "Start over"}</button></div>`);
+  const showDevice = device.status !== "TRIAL" && device.status !== "OK" && device.status !== "EMPTY";   // an empty phone is explained on Log, next to its Restore button
   if (showDevice) {
     const repair = device.status === "PARTIAL_LOSS" && boot.ledger ? `<p><button data-action="repair">Copy the surviving data into the empty store</button></p>` : "";
-    const trial = device.status === "TRIAL" ? `<p><button data-action="reset-trial">${ui.confirmTrial ? "Tap again to erase the trial copy" : "Start the trial over"}</button></p>` : "";
-    bars.push(`<div class="bar" role="status">${esc(device.message)}${repair}${trial}</div>`);
+    bars.push(`<div class="bar" role="status">${esc(device.message)}${repair}</div>`);
   }
   $("banner").innerHTML = bars.join("");
 }
 
 function renderNav() {
   const n = device.allowEntry ? dueDrafts().length : 0;
-  const pic = { log: '<path d="M7 17 17 7M8 7h9v9"/>', verify: '<path d="M20 6 9 17l-5-5"/>' };   // out and a tick
+  const pic = { log: '<path d="M7 17 17 7M8 7h9v9"/>', verify: '<path d="M20 6 9 17l-5-5"/>' };   // money going out, and a tick
   const tab = (id, label) => `<button data-action="tab" data-tab="${id}" data-howto="${id}"${ui.tab === id ? ' aria-current="page"' : ""}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${pic[id]}</svg>${label}</button>`;   // hold for its how-to
   $("nav").innerHTML = tab("log", M.SCREEN_NAMES.log) + tab("verify", n ? `${M.SCREEN_NAMES.verify} (${n})` : M.SCREEN_NAMES.verify);   // photo and audio will join these two
 }
@@ -253,6 +253,17 @@ function hubStrip() {
   if (ids.length < 2) return "";
   const on = (id) => ui.tab === id;
   return `<nav class="hub" aria-label="Screens here">${ids.map((id) => `<button data-action="tab" data-tab="${id}" data-howto="${id}"${on(id) ? ' aria-current="page"' : ""}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${esc(M.STRIP_NAMES[id])}</span></button>`).join("")}</nav>`;
+}
+
+// Layers: a run of list rows (or a table) directly on the page is put on one white card, so every screen reads as cards on the warm ground.
+const LISTY = (e) => e.matches?.(".row, button.choice, div.choice, table.tbl");
+function groupRows(root) {
+  for (const box of [root, ...root.querySelectorAll(".viewbody, .flip")]) {
+    let run = [];
+    const flush = () => { if (run.length) { const g = document.createElement("div"); g.className = "group"; run[0].before(g); run.forEach((n) => g.appendChild(n)); } run = []; };
+    for (const n of [...box.children]) { if (LISTY(n)) run.push(n); else flush(); }
+    flush();
+  }
 }
 
 let lastTabSig = null, lastViewSig = null, swapTimer = null;
@@ -274,6 +285,7 @@ function renderScreen() {
   if (bar) { body = document.createElement("div"); body.className = "viewbody"; while (bar.nextSibling) body.appendChild(bar.nextSibling); scr.appendChild(body); }
   // Switching view or period on the same screen keeps the view buttons exactly where they were on the glass: the part below keeps at least its old
   // height (so the page cannot shrink and jump), and any difference above the buttons is scrolled away.
+  groupRows(scr);   // the white cards are in place before the view buttons are measured, so they never move
   if (sameTab && body && barWas !== undefined) {
     body.style.minHeight = bodyWas + "px";
     const dy = scr.querySelector(".modebar, .viewmark").getBoundingClientRect().top - barWas;
@@ -292,11 +304,11 @@ function dayCard() {
   const d = M.dayTotal(S(), picked ?? today());
   const words = (picked ? longDate(picked) : "Today") + " " + peso(d.total) + (d.drafts ? ", including " + d.drafts + " not yet verified" : "");
   // One quiet link at a time: "Select date" on today; on another day the date itself (tap it to pick another) and a single "Today".
-  return `<div class="daytotal" role="status" aria-label="${esc(words)}">${peso(d.total)}</div><p class="center daylabel" aria-hidden="true">${picked ? "spent that day" : "spent today"}</p>
+  return `<p class="spentlabel" aria-hidden="true">${picked ? "Spent that day" : "Spent today"}</p><div class="daytotal" role="status" aria-label="${esc(words)}">${peso(d.total)}</div>
     ${picked ? `<p class="center daycap"><button class="daycapbtn datelink" data-action="open-cal" aria-label="${esc(longDate(picked))}, tap to choose another day">${esc(longDate(picked))}</button></p>
     <p class="note center small">New entries go on this day.</p>
     <p class="center"><button class="link" data-action="reset-day">Today</button></p>`
-    : `<p class="center"><button class="link datelink" data-action="open-cal">Select date</button></p>`}`;
+    : `<p class="changedate"><button class="link datelink" data-action="open-cal">Select date</button></p>`}`;
 }
 
 // This month at a glance on Log: verified spending against the month's budgets, one bar, the figure at its tip. Tap it for Budget.
@@ -304,11 +316,12 @@ function monthGlance() {
   const month = M.monthOf(today()), spent = Math.max(0, M.spendingByCategory(S(), { month }).total);
   const budget = expenseCategories().filter((c) => c.id !== M.UNLOGGED_CATEGORY_ID).reduce((n, c) => n + (M.budgetFor(S().rules, c.id, month) ?? 0), 0);
   const t = budget > 0 ? M.tenths(spent, budget) : null, w = t === null ? 0 : Math.min(100, t / 10);
-  const words = budget > 0 ? (spent > budget ? `Over the month's budget by ${peso(spent - budget)}` : `${peso(budget - spent)} left of ${peso(budget)}`) : "No budget set yet";
-  return `<button class="glance" id="glance" data-action="tab" data-tab="budget" aria-label="This month: ${esc(peso(spent))} spent. ${esc(words)}. Tap for Budget.">
-    <span class="gl-top"><span>This month</span><b>${peso(spent)}</b></span>
-    ${budget > 0 ? `<span class="meter goal"><span class="fill" style="width:${w}%"></span></span>` : ""}
-    <span class="gl-sub">${esc(words)}</span></button>`;
+  const words = budget > 0 ? (spent > budget ? `Over the month's budget by ${peso(spent - budget)}` : `${peso(budget - spent)} left of ${peso(budget)}, ${M.showTenths(t)} used`) : "No budget set yet";
+  // The bar is the message; the only words under it are for the one case that needs them (over, with its shape).
+  return `<button class="monthcard" id="glance" data-action="tab" data-tab="budget" aria-label="This month: ${esc(peso(spent))} spent. ${esc(words)}. Tap for Budget.">
+    <span class="mc-top"><span>This month</span><b>${peso(spent)}</b></span>
+    ${budget > 0 ? `<span class="bar" aria-hidden="true"><span style="width:${w}%"></span></span>` : ""}
+    ${budget > 0 && spent > budget ? `<span class="mc-sub">${glyph("critical")} ${esc(words)}</span>` : ""}</button>`;
 }
 
 // The day's entries stay out of sight until you tap the heading (less on the screen, nothing to scroll past). The choice is kept until the app is closed.
@@ -331,8 +344,7 @@ function viewLog() {
   const shown = ui.dayPick && ui.dayPick !== today() ? ui.dayPick : today();   // the list follows the day chosen with "Select date"
   const todays = S().transactions.filter((t) => t.date === shown && !isGenerated(t)).sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
   const age = M.daysSinceBackup(ledger.settings, today());
-  const backupNote = age === null || age >= BACKUP_NOTE_DAYS
-    ? `<p class="note"><button class="link" data-action="tab" data-tab="setup" data-page="backup">${age === null ? "No backup yet" : "Last backup " + age + " days ago"}</button></p>` : "";
+  const backupLink = age === null || age >= BACKUP_NOTE_DAYS ? `<button class="link" data-action="tab" data-tab="setup" data-page="backup">${age === null ? "No backup yet" : "Last backup " + age + " days ago"}</button>` : "";   // said only when a backup is due
   const dueNote = due ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">${due} ${due === 1 ? "entry" : "entries"} from before today ${due === 1 ? "needs" : "need"} verifying</button></p>` : "";
   const trip = S().tags.find((t) => t.id === ledger.settings.active_tag_id);
   const tripNote = trip ? `<p class="note">Tagging new entries: ${esc(trip.name)}. <button class="link" data-action="stop-trip">Stop</button></p>` : "";
@@ -340,7 +352,7 @@ function viewLog() {
   const photoNote = (ui.scan?.busy ? `<p class="note" id="scan-msg" role="status">${esc(ui.scan.msg)}</p>` : ui.scan?.error ? `<p class="note" role="alert">${esc(ui.scan.error)}</p>` : "")
     + (needLook ? `<p class="note"><button class="link" data-action="open-queue">${needLook} photo${needLook === 1 ? " needs" : "s need"} a look</button></p>` : "")
     + (waitingPhotos && !ui.scan?.busy ? `<p class="note">${waitingPhotos} photo${waitingPhotos === 1 ? " is" : "s are"} kept, waiting to be read. <button class="link" data-action="read-queue">Read now</button></p>` : "");
-  return `<h1>Log</h1>${ui.dayPick && ui.dayPick !== today() ? "" : `<p class="sub">${esc(longDate(today()))}</p>`}${photoNote}${dueNote}${backupNote}${tripNote}
+  return `<h1>Log</h1><div class="logmeta"><span class="sub">${ui.dayPick && ui.dayPick !== today() ? "" : esc(longDate(today()))}</span>${backupLink}</div>${photoNote}${dueNote}${tripNote}
     ${dayCard()}
     ${tilesHtml()}
     <p><button class="primary compact" data-action="open-other">Add expense</button></p>
@@ -1087,8 +1099,6 @@ const glyph = (level) => `<svg class="glyph g-${level}" viewBox="0 0 12 12" widt
 const legend = (pace = false) => `<p class="legend" aria-label="What the colours mean">${["good", "warning", "serious", "critical", "none"].map((l) => `<span>${glyph(l)}${LEVELS[l]}</span>`).join("")}${pace ? `<span class="pacekey"><i class="tickkey" aria-hidden="true"></i>Today's place in the month, shown when spending is ahead of it</span>` : ""}</p>`;
 const aheadOfMonth = M.paceAhead;   // the pace line is drawn on a budget only when its spending is ahead of the calendar
 
-// Donut colours: one blue hue, darkest for the biggest share; the legend carries the peso amount and percent of every slice.
-const DONUT_BLUES = ["#1b4f8f", "#2a78d6", "#4f93e0", "#74abe8", "#97c1ee", "#b6d3f4", "#cfe1f7"];
 function barChart(rows, selected) {
   const max = Math.max(...rows.map((r) => r.amount), 1);
   return `<div class="bars">${rows.map((r) => `<button class="brow${r.grade ? " g-" + r.grade : ""}${selected && selected !== r.id ? " dim" : ""}" data-action="pick-bar" data-id="${esc(r.id)}" aria-pressed="${selected === r.id}"${r.fold ? " disabled" : ""}>
@@ -1135,17 +1145,9 @@ const modeBar = () => `<div class="modebar"><button data-action="chart-mode" dat
 const moneyViews = () => `<div class="seg" role="group" aria-label="What to show">${[["category", "Category"], ["budget", "Budget"], ["account", "Accounts"], ["month", "Trends"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
 
 // A chart you tap to flip: bars become a donut and the donut becomes bars. Nothing else happens on a tap.
-function flipChart(rows, total, { shape = "donut" } = {}) {
+function flipChart(rows, total, { shape = "bars" } = {}) {
   const shown = foldRows(rows.filter((r) => r.amount > 0), total);
   if (!shown.length) return `<p class="note">Nothing verified in this period.</p>`;
-  if (shape === "donut") {
-    const R = 70, C = 2 * Math.PI * R, GAP = 2, sum = shown.reduce((n, r) => n + r.amount, 0) || 1;
-    let offset = 0;
-    const colored = shown.map((r, i) => ({ ...r, color: r.fold ? "#999" : DONUT_BLUES[Math.min(i, DONUT_BLUES.length - 1)] }));
-    const arcs = colored.map((r) => { const len = (r.amount / sum) * C, dash = Math.max(0.5, len - GAP); const c = `<circle class="slice" cx="100" cy="100" r="${R}" fill="none" stroke="${r.color}" stroke-width="30" stroke-dasharray="${dash.toFixed(2)} ${(C - dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 100 100)"/>`; offset += len; return c; }).join("");
-    const legend = colored.map((r) => `<div class="lrow"><span class="swatch" style="background:${r.color}"></span><span class="lname">${r.label}</span><span class="lval">${peso(r.amount)} \u00b7 ${r.percent}%</span></div>`).join("");
-    return `<div class="flip" data-action="chart-mode" data-mode="list" role="button" tabindex="0" aria-label="Donut of where the money went. Tap to show the list."><svg class="donut" viewBox="0 0 200 200" aria-hidden="true">${arcs}</svg><div class="legendlist">${legend}</div></div>`;
-  }
   const max = Math.max(...shown.map((r) => r.amount), 1);
   return `<div class="bars flip" data-action="chart-mode" data-mode="list" role="button" tabindex="0" aria-label="Bars of where the money went. Tap to show the list.">${shown.map((r) => `<div class="brow${r.grade ? " g-" + r.grade : ""}">
       <span class="btop"><span class="bname">${r.label}</span><span class="bval">${peso(r.amount)}${r.percent ? " \u00b7 " + r.percent + "%" : ""}</span></span>
@@ -1157,11 +1159,14 @@ function flipChart(rows, total, { shape = "donut" } = {}) {
 function viewCards() {
   const p = period(), [from, to] = periodBounds(p), o = M.accountsOverview(S(), { from, to });
   const acct = (id) => S().accounts.find((a) => a.id === id);
-  const row = (a, main, small) => `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}<small>${small}</small></div></div><div class="amt">${main}</div></div>`;
-  const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), `${peso(c.owe)}<small>you owe</small>`, `spent ${peso(c.spent)} \u00b7 paid ${peso(c.paid)}`)).join("") : `<p class="note">No credit cards yet. In Setup, add an account and choose "Credit card".</p>`;
-  const money = o.money.length ? [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))).map((m) => row(acct(m.account_id), `${peso(m.balance)}<small>in it</small>`, `spent ${peso(m.spent)}`)).join("") : `<p class="note">No accounts yet.</p>`;
+  // Pictures and signs say what words used to: a small arrow up is spent, an arrow down is paid in; a card's debt has a minus.
+  const arrow = (up) => `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${up ? "M12 19V5M5 12l7-7 7 7" : "M12 5v14M5 12l7 7 7-7"}"/></svg>`;
+  const flow = (up, amt) => `<span class="flow">${arrow(up)}<span class="sr">${up ? "spent " : "paid "}</span>${peso(amt)}</span>`;
+  const row = (a, main, small) => `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}${small ? `<small>${small}</small>` : ""}</div></div><div class="amt">${main}</div></div>`;
+  const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), `${c.owe > 0 ? "\u2212" : ""}${peso(c.owe)}<span class="sr"> you owe</span>`, [c.spent > 0 ? flow(true, c.spent) : "", c.paid > 0 ? flow(false, c.paid) : ""].filter(Boolean).join(" ")) ).join("") : `<p class="note">No credit cards yet. In Setup, add an account and choose "Credit card".</p>`;
+  const money = o.money.length ? [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))).map((m) => row(acct(m.account_id), peso(m.balance), m.spent > 0 ? flow(true, m.spent) : "")).join("") : `<p class="note">No accounts yet.</p>`;
   return `<h1>Cards</h1>${periodStepper(p)}
-    <div class="tiles two"><div class="tile"><b>${peso(o.held)}</b><span>in your accounts</span></div><div class="tile"><b>${peso(o.owe)}</b><span>owed on cards</span></div></div>
+    <div class="tiles two"><div class="tile" role="group" aria-label="In your accounts ${esc(peso(o.held))}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.buffer}</svg><b>${peso(o.held)}</b></div><div class="tile" role="group" aria-label="Owed on cards ${esc(peso(o.owe))}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.cards}</svg><b>${o.owe > 0 ? "\u2212" : ""}${peso(o.owe)}</b></div></div>
     ${(() => { const w = M.setAsideForSpending(M.sinkingFunds(S(), ledger.settings, { month: M.monthOf(today()), asOf: today() })); return w > 0 ? `<p class="note" id="cards-setaside">${peso(w)} of this is set aside for planned spending, not savings.</p>` : ""; })()}
     <h2>Credit cards</h2>${cards}
     <h2>Debit, savings and cash</h2>${money}
@@ -1180,15 +1185,12 @@ function viewMoney() {
     const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
     sub = "spent in " + days + (days === 1 ? " day" : " days") + (cat.total > 0 ? " \u00b7 about " + peso(Math.round(cat.total / days)) + " a day" : "");
   }
-  if (p.kind === "month") {
-    const prev = M.spendingByCategory(S(), { month: M.addMonths(p.month, -1), categoryMaps: maps, asOf });
-    if (prev.total > 0 && cat.total > 0) {
-      const d = cat.total - prev.total, pm = M.monthLabel(M.addMonths(p.month, -1)).split(" ")[0];
-      delta = `<p class="sub">${d === 0 ? "The same as " + pm + "." : peso(Math.abs(d)) + (d > 0 ? " more" : " less") + " than " + pm + "."}</p>`;
-    }
+  if (p.kind === "month") {   // "spent in October · P10,880.00 left": what the month's budgets still allow
+    const budgeted = expenseCategories().filter((c) => c.id !== M.UNLOGGED_CATEGORY_ID).reduce((n, c) => n + (M.budgetFor(S().rules, c.id, p.month) ?? 0), 0);
+    sub = "spent in " + M.monthLabel(p.month).split(" ")[0] + (budgeted > 0 ? (cat.total > budgeted ? ` \u00b7 over by ${peso(cat.total - budgeted)}` : ` \u00b7 ${peso(budgeted - cat.total)} left`) : "");
   }
   const stepper = periodStepper(p);
-  const hero = `<h1>Spending</h1>${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">${esc(sub)}</p>${delta}${pendingNote(cat.pending)}${moneyViews()}${modeBar()}`;
+  const hero = `<h1>Spending</h1>${stepper}<div class="hero">${peso(cat.total)}</div><p class="sub">${esc(sub)}</p>${delta}${pendingNote(cat.pending)}${moneyViews()}${ui.view === "category" ? "" : modeBar()}`;
   // A list is tapped to go back to the chart, the same way a chart is tapped to go to its list.
   const done = (html) => hero + (ui.asList ? `<div class="flip" data-action="chart-mode" data-mode="chart" role="button" tabindex="0" aria-label="The list. Tap to show the chart.">${html}</div>` : html);
   const empty = () => hero + (p.kind === "month" ? emptyMoney() : `<p class="note">Nothing verified in this period.</p>`);
@@ -1229,8 +1231,9 @@ function viewMoney() {
   const rows = cat.rows.map((r) => {
     return { id: r.category_id, label: esc(r.name), amount: r.amount, percent: r.percent, grade: null };
   });
-  if (ui.asList) return done(listTable(["Category", "Spent", "Share"], rows.map((r) => [r.label, peso(r.amount), r.percent + "%"]), "Total", cat.total));
-  return done(flipChart(rows, cat.total, { shape: "donut" }));
+  const top = Math.max(...rows.map((r) => r.amount), 1);   // each bar is scaled to the largest category, so the list is its own twin
+  return hero + `<div class="card catcard">${rows.filter((r) => r.amount > 0).map((r) => `<div class="catrow"><div class="ct"><span>${r.label}</span><span class="amt">${peso(r.amount)}</span></div><div class="catbar" role="img" aria-label="${esc(r.label)}: ${Math.round((r.amount * 100) / top)}% of the largest"><span style="width:${Math.max(2, Math.round((r.amount * 100) / top))}%"></span></div></div>`).join("")}</div>
+    <p class="entrylink"><button class="link" data-action="open-entries">See every entry</button></p>`;
 }
 
 // Each budget as a meter: how much of it is used, with a mark for how far through the month we are.
@@ -2023,6 +2026,9 @@ function renderSheet() {
   } else if (sh.type === "howto") {
     const h = M.HOWTOS.find((x) => x.id === sh.id);
     body = `<h3>${esc(h.label)}</h3>${clipFor(h.id)}<p class="hwcap">${esc(h.caption)}</p>`;
+  } else if (sh.type === "entries") {
+    const p = period(), [from, to] = periodBounds(p), list = S().transactions.filter((t) => t.date >= from && t.date <= to && !isGenerated(t)).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.created_at < b.created_at ? 1 : -1));
+    body = `<h3>Every entry in ${esc(periodLabel(p))}</h3>${list.length ? list.map(rowFor).join("") : `<p class="note">Nothing logged in this period.</p>`}`;
   } else if (sh.type === "whatsnew") {
     const moved = sh.changes?.length ? `<p class="note" id="wn-balances"><b>Balances that changed:</b> ${sh.changes.map((x) => `${esc(x.name)} ${x.by > 0 ? "+" : "\u2212"}${peso(Math.abs(x.by))}`).join(", ")}. Spending dated before the day you added these accounts was being taken off twice; it now stays as history only.</p>` : "";
     body = `<h3>What's new</h3><div class="wnlist">${M.whatsNew({}, 3).map((c) => `<div class="wnitem"><small>${esc(longDate(c.date))}</small>${esc(c.text)}</div>`).join("")}</div>${moved}
@@ -2077,7 +2083,7 @@ function renderSheet() {
       <p class="note">Anything entered since this backup was made will be gone. Pictures are not in a backup, so those entries will say "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  const closer = sh.type === "notice" ? "" : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  const closer = sh.type === "notice" ? "" : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
   $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
@@ -2813,6 +2819,7 @@ async function onClick(el) {
     }
     case "open-backup-file": await openBackupFile(); break;
     case "restore-now": await restoreNow(); break;
+    case "open-entries": ui.sheet = { type: "entries" }; renderSheet(); break;
     case "wn-all": ui.wnAll = !ui.wnAll; renderScreen(); break;
     case "setup-page": ui.setupPage = el.dataset.id || null; ui.setupAdd = false; renderScreen(); window.scrollTo(0, 0); break;
     case "toggle-add-account": ui.setupAdd = !ui.setupAdd; renderScreen(); break;

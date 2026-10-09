@@ -56,6 +56,9 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 
 - IMPORT OLD SPENDING: `src/model/importer.js` (Scan window, "Import old spending"). Reads a notes screenshot (the on-phone reader, lines rebuilt with `linesByRow`), a CSV, or an .xlsx (our own small zip reader and the browser's DecompressionStream: no library, nothing leaves the phone). The date order (day/month or month/day) is decided per file from the dates themselves (a number above 12; else the number that changes is the day; else fewer future dates; else asked). Categories: the file's own category name, then a quick tile of that name, then the kind read from the name, else Unlogged. Lines already logged (same date, name, amount) are left out. Every line becomes a DRAFT (source "import") that waits in Verify; all or nothing.
 
+## LEDGER PAPER (the look; owner approved)
+Colours are the CSS variables on `:root` in `app/index.html` (ground, surface, ink, muted, line, track, accent, dashed); screens write no colour of their own. Font: IBM Plex Sans bundled in `app/fonts` with its OFL license, listed in `app/sw.js`, never a network font; money uses the same face with tabular digits. Exactly ONE filled (accent) button per screen; cards are white, 1px line, 14px radius, no shadows, no side stripes. Red only for strictly-over-budget charts. Under a figure use a small picture or sign rather than a sentence. `tests/theme.test.js` enforces this.
+
 ## Every PR message starts with a MERGE CHECK (owner's rule)
 The PR message must START with a block titled "MERGE CHECK", exactly these six lines, each answered in one short line:
 1. Data version: before -> after (or "unchanged").

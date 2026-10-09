@@ -8,11 +8,12 @@ import * as M from "../src/model/index.js";
 const read = (p) => readFileSync(new URL("../" + p, import.meta.url), "utf8");
 const sw = read("app/sw.js");
 const filesBlock = sw.slice(sw.indexOf("const FILES = ["), sw.indexOf("];", sw.indexOf("const FILES = [")));   // only the offline list, not other strings in the worker
-const listed = [...filesBlock.matchAll(/"([^"]+\.(?:js|json|png|html)|\.\/)"/g)].map((m) => m[1]);
+const listed = [...filesBlock.matchAll(/"([^"]+\.(?:js|json|png|html|woff2|txt)|\.\/)"/g)].map((m) => m[1]);
 
 test("the offline list contains every model file and every app file", () => {
   for (const f of readdirSync(new URL("../src/model/", import.meta.url))) assert.ok(listed.includes("../src/model/" + f), "missing from sw.js: src/model/" + f);
-  for (const f of readdirSync(new URL("../app/", import.meta.url)).filter((x) => x !== "sw.js")) assert.ok(listed.includes(f), "missing from sw.js: app/" + f);
+  for (const f of readdirSync(new URL("../app/", import.meta.url)).filter((x) => x !== "sw.js" && x !== "fonts")) assert.ok(listed.includes(f), "missing from sw.js: app/" + f);
+  for (const f of readdirSync(new URL("../app/fonts/", import.meta.url))) assert.ok(listed.includes("fonts/" + f), "missing from sw.js: app/fonts/" + f);
 });
 test("every file in the offline list exists", () => {
   for (const f of listed.filter((x) => x !== "./")) assert.ok(existsSync(new URL("../app/" + f, import.meta.url)), "not found: " + f);
@@ -45,20 +46,17 @@ test("everything the app takes from the model is really exported", () => {
   assert.ok(used.size > 10);
   for (const name of used) assert.ok(name in M, "app.js uses M." + name + " but the model does not export it");
 });
-test("the app is black and gray except the chart blue, its shades for the budget grades, and one red, each written once", () => {
-  const css = read("app/index.html");
-  const TOKENS = { "--chart": "#2a78d6", "--good": "#74abe8", "--warn": "#4f93e0", "--serious": "#1b4f8f", "--critical": "#d03b3b" };
-  const used = [...(css.match(/#[0-9a-fA-F]{3,6}\b/g) ?? [])];
-  for (const [name, hex] of Object.entries(TOKENS)) {
-    assert.ok(css.includes(name + ": " + hex + ";"), name + " is declared as " + hex);
-    assert.equal(used.filter((h) => h.toLowerCase() === hex).length, 1, hex + " is written once, as a token, and used by name");
-  }
-  for (const hex of used) {
-    if (Object.values(TOKENS).includes(hex.toLowerCase())) continue;
-    const h = hex.slice(1), full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
-    const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
-    assert.ok(r === g && g === b, hex + " is not a gray");
-  }
+test("Ledger Paper: every colour is a token written once; red is only for over budget; the screens hard-code none", () => {
+  const html = read("app/index.html"), css = html.slice(html.indexOf("<style>"), html.indexOf("</style>"));
+  const TOKENS = { "--ground": "#F5F3EE", "--surface": "#FFFFFF", "--ink": "#1B1D1F", "--muted": "#5C6166", "--line": "#E2DDD3", "--track": "#ECE8DF", "--accent": "#1E5B47", "--dashed": "#A39B8B", "--critical": "#D03B3B" };
+  const used = [...(css.match(/#[0-9a-fA-F]{3,6}\b/g) ?? [])].map((h) => h.toUpperCase());
+  for (const [name, hex] of Object.entries(TOKENS)) assert.ok(css.includes(name + ": " + hex + ";"), name + " is declared as " + hex);
+  for (const hex of new Set(used)) assert.ok(Object.values(TOKENS).includes(hex) || ["#7FB09E", "#4F8C75", "#1E5B47", "#000"].includes(hex), hex + " is not a token");
+  for (const hex of Object.values(TOKENS)) assert.ok(used.filter((h) => h === hex).length <= 2, hex + " is written as a token, then used by name");
+  assert.match(html, /<meta name="theme-color" content="#F5F3EE">/, "the phone's status bar matches the page");
+  assert.ok(!/#[0-9a-fA-F]{6}\b/.test(read("app/app.js")), "the screens' code writes no colour of its own");
+  assert.ok(css.includes("--chart: var(--accent)") && css.includes("--paper: var(--surface)") && css.includes("--mid: var(--muted)"), "the older names point at the tokens");
+  assert.ok(!/rgba?\(0, ?0, ?0/.test(css), "no stray black shadows or scrims: they are tokens too");
   const js = read("app/app.js");
   assert.ok(!/XMLHttpRequest|WebSocket|navigator\.sendBeacon/.test(js), "the app must not talk to a server");
   // The one exception: looking up a bank's logo on Wikipedia, which sends only a search phrase from the bank list, nothing of the owner's.
@@ -134,10 +132,10 @@ test("tidy-up: the menu has no one-row groups, the notice has one answer, an emp
   assert.match(js, /const closer = sh\.type === "notice" \? "" :/, "the first-run notice has no Cancel");
   assert.match(js, /device\.status !== "OK" && device\.status !== "EMPTY"/, "an empty phone is not a banner");
   assert.match(js, /device\.status === "EMPTY" \? `<div class="card" id="first-run"><p>\$\{esc\(device\.message\)\}<\/p><p><button data-action="open-restore"/, "it is said on Log, with Restore");
-  assert.match(js, /"spent that day" : "spent today"/, "the big number says what it is");
+  assert.match(js, /"Spent that day" : "Spent today"/, "the big number says what it is");
   assert.ok(!js.includes('id="menu-backup"'), "the backup line is not repeated in the menu: Log says it when it is due, Setup has the button");
   assert.match(js, /<span>\$\{list\.length\} \$\{list\.length === 1 \? "entry" : "entries"\}<\/span>/, "the folded heading says only how many: the day's total is the big number above");
-  assert.match(js, /\$\{ui\.dayPick && ui\.dayPick !== today\(\) \? "" : `<p class="sub">/, "the date is written once: the top date hides when another day is picked");
+  assert.match(js, /<span class="sub">\$\{ui\.dayPick && ui\.dayPick !== today\(\) \? "" : esc\(longDate\(today\(\)\)\)\}<\/span>/, "the date is written once: the top date hides when another day is picked");
   assert.match(js, /<span class="mn wn"><small>\$\{esc\(longDate\(c\.date\)\)\}<\/small>/, "a change's date sits on its own line");
   assert.ok(js.includes("downloads the reader (about 30 MB)") && !js.includes("about 7 MB"), "the reader's size is stated once, correctly");
 });
@@ -152,8 +150,9 @@ test("hubs: screens that belong together share one menu row and a picture strip;
   assert.match(js, /\$\("screen"\)\.innerHTML = hubStrip\(\) \+/, "the strip is drawn on every hub screen");
   assert.match(js, /const current = \(id\) => ui\.tab === id \|\| M\.hubOf\(ui\.tab\) === id \|\| \(id === "money" && ui\.tab === "income"\);/, "the hub's menu row stays marked");
   assert.match(js, /\$\{monthGlance\(\)\}/, "Log shows this month");
-  assert.match(js, /<span class="gl-sub">\$\{esc\(words\)\}<\/span><\/button>`;/, "the line says what is left, with no second percent");
-  assert.match(js, /budget > 0 \? \(spent > budget \? `Over the month's budget by \$\{peso\(spent - budget\)\}` : `\$\{peso\(budget - spent\)\} left of \$\{peso\(budget\)\}`\)/, "the glance states over or left in words");
+  assert.match(js, /\$\{budget > 0 && spent > budget \? `<span class="mc-sub">\$\{glyph\("critical"\)\} \$\{esc\(words\)\}<\/span>` : ""\}<\/button>`;/, "under the bar there are words only when over budget, with their shape");
+  assert.ok(js.includes("left of ${peso(budget)}, ${M.showTenths(t)} used"), "the card still says what is left, to a screen reader");
+  assert.ok(js.includes("`Over the month's budget by ${peso(spent - budget)}`") && js.includes("`${peso(budget - spent)} left of ${peso(budget)}, ${M.showTenths(t)} used`") && js.includes('"No budget set yet"'), "the card states over, left or no budget in words (read aloud; shown only when over)");
   assert.match(js, /const t = budget > 0 \? M\.tenths\(spent, budget\) : null, w = t === null \? 0 : Math\.min\(100, t \/ 10\);/, "the bar never runs past full");
 });
 
@@ -166,7 +165,7 @@ test("signs, folded entries, Budget bars, one date link: money out has a minus, 
   assert.match(js, /const logOpen = \(\) => \{ try \{ return sessionStorage\.getItem\("logOpen"\) === "1"; \} catch \{ return false; \} \};/, "closed by default, even if storage fails");
   assert.match(js, /case "toggle-entries":/);
   assert.match(js, /pic = \{ log: '<path d="M7 17 17 7M8 7h9v9"\/>'/, "the Log icon is an arrow going out (money out), not a plus");
-  assert.ok(js.includes('data-action="open-cal">Select date</button>') && js.includes('<p class="sub">${esc(longDate(today()))}</p>`}${photoNote}') && !js.includes('class="link topdate"'), "one date link (Select date); the date at the top is plain text");
+  assert.ok(js.includes('data-action="open-cal">Select date</button>') && js.includes('<div class="logmeta"><span class="sub">${ui.dayPick && ui.dayPick !== today() ? "" : esc(longDate(today()))}</span>${backupLink}</div>') && !js.includes('class="link topdate"'), "one date link (Select date); the date at the top is plain text");
   assert.match(js, /const sp = Math\.max\(0, r\.st\?\.spent \?\? 0\), t = Math\.min\(1000, M\.tenths\(sp, r\.now\)\);/, "a budget row's bar is spent over budget and never runs past full");
   assert.match(js, /\$\{peso\(sp\)\} spent \\u00b7 \$\{M\.showTenths\(t\)\}/, "with the figure written beside it");
 });
@@ -250,4 +249,13 @@ test("Setup is a short list of pages and Help runs in a clear order with a small
   assert.ok(!js.includes("<h2>Each screen</h2>") && !js.includes("<h2>How-tos</h2>"), "the vague headings are gone");
   assert.match(css, /\.mn\.wn \{ font-size: 14px; line-height: 1\.35; \}/, "What's new is set in small type");
   assert.match(css, /\.setrow \.st b \{ font-weight: 600; font-size: 16px; \}/);
+});
+
+test("pictures and signs instead of little sentences under figures: Cards", () => {
+  const js = read("app/app.js");
+  for (const gone of ["<span>in your accounts</span>", "<span>owed on cards</span>", "<small>you owe</small>", "<small>in it</small>", "`spent ${peso(m.spent)}`"]) assert.ok(!js.includes(gone), gone + " is gone");
+  assert.match(js, /\$\{c\.owe > 0 \? "\\u2212" : ""\}\$\{peso\(c\.owe\)\}<span class="sr"> you owe<\/span>/, "a card's debt has a minus, and a screen reader still hears 'you owe'");
+  assert.match(js, /const flow = \(up, amt\) => `<span class="flow">\$\{arrow\(up\)\}<span class="sr">\$\{up \? "spent " : "paid "\}<\/span>\$\{peso\(amt\)\}<\/span>`;/, "an arrow up is spent, an arrow down is paid; both are read aloud");
+  assert.match(js, /m\.spent > 0 \? flow\(true, m\.spent\) : ""/, "an account that spent nothing shows nothing");
+  assert.match(js, /aria-label="In your accounts \$\{esc\(peso\(o\.held\)\)\}"/); assert.match(js, /aria-label="Owed on cards /);
 });
