@@ -117,6 +117,15 @@ function accountsFor(presetId) {
   return activeAccounts().filter((a) => !a.reserve_for).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
+// A transfer's lines in Verify and in its detail: where from, where to, its fee, and the foreign amount a paper showed.
+const foreignText = (f) => f.currency + " " + (f.foreign_amount / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function transferFields(t, d) {
+  const fee = M.feeOf(S(), t.id), fx = M.foreignOf(S(), t.id), acct = (id) => S().accounts.find((a) => a.id === id);
+  return `<dt>From</dt><dd class="who">${withIcon(acct(d.from_id), 22)}</dd><dt>To</dt><dd class="who">${withIcon(acct(d.to_id), 22)}</dd>`
+    + (fee.amount ? `<dt>Fee</dt><dd>${peso(fee.amount)} \u00b7 ${esc(categoryName(S().entries.find((e) => e.transaction_id === fee.transaction.id && e.category_id != null).category_id))}</dd>` : "")
+    + (fx ? `<dt>Foreign</dt><dd>${esc(foreignText(fx))}<br><small>Check the peso amount: your bank sets its own rate.</small></dd>` : "");
+}
+
 // One line about a transaction, whatever kind it is.
 function describe(t) {
   const es = S().entries.filter((e) => e.transaction_id === t.id);
@@ -132,12 +141,12 @@ function describe(t) {
   }
   if (es.length === 2 && es.every((e) => e.account_id != null)) {
     const from = es.find((e) => e.amount < 0), to = es.find((e) => e.amount > 0);
-    return { kind: "transfer", editable: false, title: t.payee || "Transfer", amount: to.amount, detail: accountName(from.account_id) + " to " + accountName(to.account_id) };
+    return { kind: "transfer", editable: false, title: t.payee || "Transfer", amount: to.amount, from_id: from.account_id, to_id: to.account_id, detail: accountName(from.account_id) + " to " + accountName(to.account_id) };
   }
   return { kind: "other", editable: false, title: t.payee || "Entry", amount: es.filter((e) => e.amount > 0).reduce((n, e) => n + e.amount, 0), detail: "" };
 }
 
-const isGenerated = (t) => t.id.startsWith("rsv:");
+const isGenerated = (t) => t.id.startsWith("rsv:") || M.isFeeId(t.id);   // the card reserve transfer and a transfer's fee are shown inside the entry they belong to
 const dueDrafts = () => M.pendingDrafts(S(), addDays(today(), -1)).filter((t) => !isGenerated(t));
 
 // ---------- saving ----------
@@ -397,6 +406,7 @@ function viewVerify() {
     ? `<dt>Category</dt><dd>${esc(categoryName(d.category_id))}</dd><dt>Paid from</dt><dd class="who">${withIcon(S().accounts.find((a) => a.id === d.account_id), 22)}</dd>`
     : d.kind === "split" ? `${d.parts.map((p, i) => `<dt>${i ? "&nbsp;" : "Split"}</dt><dd>${esc(p.name)} ${peso(p.amount)}</dd>`).join("")}<dt>Paid from</dt><dd class="who">${withIcon(S().accounts.find((a) => a.id === d.account_id), 22)}</dd>`
     : d.kind === "income" ? `<dt>Arrived in</dt><dd class="who">${withIcon(S().accounts.find((a) => a.id === d.account_id), 22)}</dd>`
+    : d.kind === "transfer" ? transferFields(t, d)
     : d.detail ? `<dt>Between</dt><dd>${esc(d.detail)}</dd>` : "";
   const reserve = partner ? `<dt>Also</dt><dd>reserve transfer ${peso(describe(partner).amount)}</dd>` : "";
   const del = ui.confirmDelete === t.id;
@@ -677,6 +687,28 @@ function scanDefaults(kind, guess, payee, named = null) {   // guess: a category
   return { category_id: expenseCategories().find((c) => c.id === learned)?.id ?? expenseCategories().find((c) => named && c.name.toLowerCase() === String(named).toLowerCase())?.id ?? M.categoryByRole(expenseCategories(), guess)?.id ?? null };
 }
 
+// ---------- money moved between the owner's own accounts (src/model/transfers.js) ----------
+const kindOf = (id) => M.MOVE_KINDS.find((k) => k.id === id) ?? M.kindById(id);
+const isMoveKind = (id) => M.MOVE_KINDS.some((k) => k.id === id);
+const MOVE_TITLE = { transfer: "Transfer", withdrawal: "Cash withdrawal", deposit: "Cash deposit" };
+const cashAccount = () => accountsFor(null).find(isCash) ?? null;
+// What a paper says about a move of money, and what to do with it: "transfer" (both ends known), "choose" (cannot tell: the owner decides, nothing is
+// defaulted), or null (an ordinary payment, which stays an expense).
+function moveRead(text, r) {
+  const mv = M.readMove(text), cls = M.classifyMove(mv, { accounts: S().accounts, cashId: cashAccount()?.id ?? null, recipients: ledger.settings.own_recipients ?? {} });
+  let kind = null;
+  if (r.kind !== "payslip") {
+    if (mv.kind === "withdrawal" || mv.kind === "deposit") kind = mv.kind;
+    else if (mv.kind === "transfer" && ["gcash", "bank", "other"].includes(r.kind) && cls.result !== "expense") kind = cls.result === "unsure" ? "choose" : "transfer";
+  }
+  return { mv, cls, kind };
+}
+// Where the money came from and went to: the last four digits first; a withdrawal's source (or a deposit's target) also from the bank the paper names.
+function moveEnds(kind, cls, r) {
+  const acct = accountForScan(r).id, cash = cashAccount()?.id ?? null;
+  return { from_id: kind === "deposit" ? cash : cls.from_id ?? (kind === "withdrawal" ? acct : null), to_id: kind === "withdrawal" ? cash : cls.to_id ?? (kind === "deposit" ? acct : null) };
+}
+
 // The account the paper names: the bank on its From line, matched to the owner's own accounts. A credit card screen prefers a card
 // account. When the paper does not say, nothing is chosen for you: a wrong silent default (the first account) was worse than a tap.
 function accountForScan(r) {
@@ -728,8 +760,12 @@ function openScanSheet(blob, text, failed, queueId, spoken = null) {
   if (pendingPhoto) { URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null; }
   if (blob) pendingPhoto = { blob, url: URL.createObjectURL(blob) };
   const notes = failed ? ["The reader could not run (" + failed + "). Fill in the fields yourself; the photo is kept."] : r.readAnything ? [...r.notes, ...(acct.note ? [acct.note] : [])] : ["I could not read any words on the photo. Fill in the fields yourself; the photo is kept."];
-  ui.form = { kind: r.kind, guess: r.categoryGuess, amount: r.amount ? (r.amount / 100).toFixed(2) : "", date: r.date ?? today(), payee: r.payee ?? "", notes, text,
-    account_id: acct.id, ...scanDefaults(r.kind, r.categoryGuess, r.payee, r.categoryName) };
+  const mr = spoken || !text ? { mv: null, cls: null, kind: null } : moveRead(text, r), mv = mr.mv;
+  const ends = mr.kind && mr.kind !== "choose" ? moveEnds(mr.kind, mr.cls, r) : mr.kind === "choose" ? { from_id: mr.cls.from_id, to_id: mr.cls.to_id } : { from_id: null, to_id: null };
+  const moveAmount = mv?.amount ?? (mv?.foreign ? null : r.amount);
+  ui.form = { kind: mr.kind ?? r.kind, guess: r.categoryGuess, amount: (mr.kind ? moveAmount : r.amount) ? ((mr.kind ? moveAmount : r.amount) / 100).toFixed(2) : "", date: r.date ?? today(), payee: mr.kind && mr.kind !== "choose" ? MOVE_TITLE[mr.kind] : r.payee ?? "", notes: [...notes, ...(mr.kind ? mv.notes : [])], text,
+    account_id: acct.id, ...scanDefaults(r.kind, r.categoryGuess, r.payee, r.categoryName),
+    ...(mv ? { ref: mv.reference, time: mv.time, ...(mr.kind ? { origKind: r.kind, from_id: ends.from_id, to_id: ends.to_id, fee: mv.fee ? (mv.fee / 100).toFixed(2) : "", foreign: mv.foreign, ask: mr.cls.result === "ask" ? mr.cls.ask : null, own: null } : {}) } : {}) };
   ui.sheet = { type: "scan", queueId, voice: spoken !== null }; renderSheet();
 }
 
@@ -827,6 +863,23 @@ async function processScanQueue({ interactive = false } = {}) {
       }
       if (!blob) { await commit(S(), withQueue(scanQueue().filter((q) => q.id !== item.id)), { quiet: true }); continue; }   // the picture is gone (a restored backup has none)
       const r = M.readScan(text, today()), acct = accountForScan(r), cat = scanDefaults(r.kind, r.categoryGuess, r.payee).category_id;
+      const mr = moveRead(text, r);
+      if (mr.kind && mr.kind !== "choose" && mr.cls.result === "transfer" && !mr.mv.foreign && mr.mv.amount) {   // a move is saved on its own only when both ends are certain
+        const ends = moveEnds(mr.kind, mr.cls, r);
+        if (ends.from_id && ends.to_id && ends.from_id !== ends.to_id) {
+          const res = await commitMove({ transaction_id: newId("tx"), date: r.date ?? today(), from_account_id: ends.from_id, to_account_id: ends.to_id, amount: mr.mv.amount, fee: mr.mv.fee ?? 0, payee: MOVE_TITLE[mr.kind],
+            reference_no: mr.mv.reference, shot_time: mr.mv.time, foreign: null, trip_id: null }, { photoId: item.id, queueId: item.id });
+          if (res.ok) continue;
+        }
+        await commit(S(), withQueue(scanQueue().map((q) => (q.id === item.id ? { ...q, needs: true, text } : q))), { quiet: true });
+        if (interactive) { ui.scan = null; await openQueuedScan(item.id); }
+        continue;
+      }
+      if (mr.kind) {   // a move that is not certain (unsure, an unknown end, a foreign amount): the owner looks
+        await commit(S(), withQueue(scanQueue().map((q) => (q.id === item.id ? { ...q, needs: true, text } : q))), { quiet: true });
+        if (interactive) { ui.scan = null; await openQueuedScan(item.id); }
+        continue;
+      }
       if (M.kindById(r.kind).direction === "out" && r.amount && acct.id && cat) {
         const ok = await logExpense({ transaction_id: newId("tx"), date: r.date ?? today(), payee: r.payee ?? "", category_id: cat, amount: r.amount, account_id: acct.id, source: "photo", photo_id: item.id, drop_scan: item.id },
           (r.payee || categoryName(cat)) + " " + peso(r.amount));
@@ -845,7 +898,47 @@ async function openQueuedScan(id) {
   openScanSheet(blob, item.text ?? "", null, id);
 }
 
+// A move of money saved as drafts: the transfer, its fee when there is one, the foreign amount, the photo. Returns {ok, dup}: `dup` names an entry
+// already there that this one repeats (nothing is saved then; the caller offers to link). `recipients` replaces the remembered answers when given.
+async function commitMove(input, { photoId, queueId, recipients = null, force = false, putFile = null }) {
+  const p = M.planTransfer(S(), input);
+  if (!p.ok) { showToast("Could not save: " + p.violations[0].message); return { ok: false, dup: null }; }
+  const t = p.state.transactions.find((x) => x.id === input.transaction_id), es = p.state.entries.filter((e) => e.transaction_id === t.id);
+  const dup = force ? null : M.findDuplicate(S(), t, es);
+  if (dup) return { ok: false, dup };
+  if (putFile) { try { await putPhoto(photoId, putFile); } catch { showToast("The photo could not be kept on this phone, so nothing was saved."); return { ok: false, dup: null }; } }
+  const a = M.planAttachment(p.state, { id: photoId, transaction_id: t.id });
+  const ok = a.ok && await commit(a.state, { ...ledger.settings, last_account_id: input.from_account_id, ...(recipients ? { own_recipients: recipients } : {}), ...(queueId ? { scan_queue: scanQueue().filter((q) => q.id !== queueId) } : {}) });
+  if (!ok && putFile) deletePhoto(photoId).catch(() => {});
+  return { ok, dup: null };
+}
+const moveInput = (f, id) => ({ transaction_id: id, date: f.date, from_account_id: f.from_id, to_account_id: f.to_id, amount: M.parsePesos(f.amount).centavos,
+  fee: (f.fee ?? "").trim() ? M.parsePesos(f.fee).centavos : 0, payee: (f.payee ?? "").trim() || MOVE_TITLE[f.kind] || "Transfer", reference_no: f.ref ?? "", shot_time: f.time ?? "",
+  foreign: f.foreign ?? null, trip_id: f.trip_id ?? null });
+async function saveMove() {
+  const f = ui.form, queueId = ui.sheet.queueId ?? null, photoId = queueId ?? newId("photo"), id = newId("tx");
+  const recipients = f.ask && f.own === "yes" ? M.rememberRecipient(ledger.settings.own_recipients, f.ask.key, f.ask.known_side === "from" ? f.to_id : f.from_id) : null;
+  const r = await commitMove(moveInput(f, id), { photoId, queueId, recipients, force: f.dup === "new", putFile: queueId ? null : pendingPhoto.blob });
+  if (r.dup) { f.dupOf = r.dup; renderSheet(); return; }
+  if (!r.ok) return;
+  if (pendingPhoto) { URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null; }
+  const amount = M.parsePesos(f.amount).centavos;
+  ui.sheet = null; ui.scan = { done: "Saved " + peso(amount) + " as a draft " + (f.kind === "withdrawal" ? "cash withdrawal" : f.kind === "deposit" ? "cash deposit" : "transfer") + " with its photo." };
+  renderAll();
+}
+// The photo shows a payment already saved: keep the photo with that entry and add nothing.
+async function linkDuplicate() {
+  const f = ui.form, queueId = ui.sheet.queueId ?? null, photoId = queueId ?? newId("photo"), other = f.dupOf;
+  if (!queueId) { try { await putPhoto(photoId, pendingPhoto.blob); } catch { showToast("The photo could not be kept on this phone, so nothing was saved."); return; } }
+  const a = M.planAttachment(S(), { id: photoId, transaction_id: other });
+  const ok = a.ok && await commit(a.state, { ...ledger.settings, ...(queueId ? { scan_queue: scanQueue().filter((q) => q.id !== queueId) } : {}) });
+  if (!ok) { if (!queueId) deletePhoto(photoId).catch(() => {}); return; }
+  if (pendingPhoto) { URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null; }
+  ui.sheet = null; ui.scan = { done: "Linked the photo to the entry you already had. Nothing was added." }; renderAll();
+}
+
 async function saveScan() {
+  if (M.MOVE_KINDS.some((k) => k.id === ui.form.kind)) { await saveMove(); return; }
   const f = ui.form, amount = M.parsePesos(f.amount).centavos, kind = M.kindById(f.kind), id = newId("tx"), queueId = ui.sheet.queueId ?? null, photoId = queueId ?? newId("photo");
   const voice = ui.sheet.voice === true, source = voice ? "voice" : "photo";   // a spoken entry has no photo
   if (!queueId && !voice) { try { await putPhoto(photoId, pendingPhoto.blob); } catch { showToast("The photo could not be kept on this phone, so nothing was saved."); return; } }
@@ -857,8 +950,13 @@ async function saveScan() {
       ok = a.ok && await commit(a.state, { ...ledger.settings, last_account_id: f.account_id, ...(queueId ? { scan_queue: scanQueue().filter((q) => q.id !== queueId) } : {}) });
     } else showToast("Could not save: " + p.violations[0].message);
   } else {
+    if (!f.split && f.dup !== "new" && (f.ref || f.time)) {   // the same payment shown twice: offer to link instead of adding a second
+      const cand = { id, date: f.date, reference_no: f.ref ?? "", shot_time: f.time ?? "" }, es = [{ transaction_id: id, category_id: f.category_id, amount }, { transaction_id: id, account_id: f.account_id, amount: -amount }];
+      const dup = M.findDuplicate(S(), cand, es);
+      if (dup) { f.dupOf = dup; renderSheet(); return; }
+    }
     const second = f.split ? M.parsePesos(f.split_amt).centavos : 0, lines = f.split ? [{ category_id: f.category_id, amount: amount - second }, { category_id: f.split_cat, amount: second }] : undefined;
-    ok = await logExpense({ transaction_id: id, date: f.date, payee: f.payee.trim(), category_id: f.category_id, amount, account_id: f.account_id, source, ...(voice ? { memo: f.text } : { photo_id: photoId, drop_scan: queueId }), ...(lines ? { lines } : {}) }, (f.payee.trim() || categoryName(f.category_id)) + " " + peso(amount));
+    ok = await logExpense({ transaction_id: id, date: f.date, payee: f.payee.trim(), category_id: f.category_id, amount, account_id: f.account_id, source, ...(voice ? { memo: f.text } : { photo_id: photoId, drop_scan: queueId }), ...(lines ? { lines } : {}), ...(f.ref ? { reference_no: f.ref } : {}), ...(f.time ? { shot_time: f.time } : {}), ...(f.askNo ? { own_recipients: M.rememberRecipient(ledger.settings.own_recipients, f.askNo, "") } : {}) }, (f.payee.trim() || categoryName(f.category_id)) + " " + peso(amount));
   }
   if (!ok) { if (!queueId && !voice) deletePhoto(photoId).catch(() => {}); return; }   // the window stays open so nothing typed is lost
   if (pendingPhoto) { URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null; }
@@ -1026,7 +1124,7 @@ function viewSetup() {
   const used = new Set(S().entries.map((e) => e.account_id));
   const reserveExists = S().accounts.some((a) => a.reserve_for);
   const hosts = activeAccounts().filter((a) => a.class === "asset" && !a.reserve_for);
-  const rows = cashFirst(S().accounts).map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? "Bank, wallet or cash" : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"}</small></div></div>
+  const rows = cashFirst(S().accounts).map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? "Bank, wallet or cash" : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"} · <button class="link" data-action="edit-last4" data-id="${esc(a.id)}">${a.last4 ? "ends in " + esc(a.last4) : "add last 4 digits"}</button></small></div></div>
       <div class="amt">${peso(M.naturalBalance(a, M.countedEntries(S())))}${used.has(a.id) ? "" : `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`}</div></div>`).join("");
   // The form comes FIRST so it stays in the same place however many accounts there are: the
   // button never drifts down behind the keyboard. The list of accounts follows it.
@@ -1646,6 +1744,23 @@ function backupAgeText() {
 }
 
 // ---------- sheets ----------
+// The fields of a move of money in the scan window: from, to, the fee, the question about an unknown end, a foreign amount, a trip.
+function moveFields(f) {
+  const ask = f.ask && f.own !== "yes" ? `<p class="note"><b>Is the other end one of your accounts?</b> The paper shows \u201C${esc(f.ask.label)}\u201D. I ask once per name.</p>
+      <div class="chips"><button class="chip" data-action="own-yes" aria-pressed="false">Yes, it is mine</button><button class="chip" data-action="own-no" aria-pressed="false">No, it is someone else</button></div>` : f.ask ? `<p class="note">Remembered when you save. Choose which of your accounts it is.</p>` : "";
+  const trips = f.foreign && S().tags.length ? `<label>Tag a trip (optional)</label><div class="chips">${S().tags.map((t) => `<button class="chip" data-action="pick-trip" data-id="${esc(t.id)}" aria-pressed="${f.trip_id === t.id}">${esc(t.name)}</button>`).join("")}</div>` : "";
+  return `${ask}<label>From</label>${chips(accountsFor(null), f.from_id, "pick-from")}<label>To</label>${chips(accountsFor(null), f.to_id, "pick-to")}
+      <label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(f.fee ?? "")}" autocomplete="off">
+      ${f.foreign ? `<p class="note">The paper shows ${esc(f.foreign.currency)} ${(f.foreign.amount / 100).toFixed(2)}. Type the peso amount your bank took; you can fix it again in Verify.</p>${trips}` : ""}`;
+}
+// The same payment shown twice: offer to link the photo to the entry already there. Never refused, never a second entry by default.
+function dupBlock(otherId) {
+  const t = S().transactions.find((x) => x.id === otherId); if (!t) return "";
+  const d = describe(t);
+  return `<div class="card"><p class="note flag">\u25B2 This looks like one you already have: ${esc(d.title)}, ${peso(d.amount)}, ${esc(longDate(t.date))}.</p>
+    <p><button data-action="link-dup" style="width:100%">Link this photo to it</button></p>
+    <p><button data-action="dup-new" style="width:100%">It is a different payment: add it</button></p></div>`;
+}
 function chips(items, selectedId, action) {
   if (action === "pick-acct") items = cashFirst(items);
   return `<div class="chips">${items.map((i) => `<button class="chip" data-action="${action}" data-id="${esc(i.id)}" aria-pressed="${i.id === selectedId}">${i.class ? withIcon(i, 24) : esc(i.name)}</button>`).join("")}</div>`;
@@ -1692,6 +1807,7 @@ function renderSheet() {
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}">
       <label for="f-payee">Name (optional)</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
       ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
+      ${d.kind === "transfer" && t.source === "photo" ? `<label>From</label>${chips(accountsFor(null), ui.form.from_id, "pick-from")}<label>To</label>${chips(accountsFor(null), ui.form.to_id, "pick-to")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
   if (sh.type === "banks") {
@@ -1963,20 +2079,22 @@ function renderSheet() {
       <p class="note">Apple's or Google's service turns speech into words, so the audio leaves your phone while you speak. Your ledger and photos never do.</p>
       <p><button class="primary" id="f-save" data-action="use-spoken" style="margin-top:6px" disabled>Use this</button></p>`;
   } else if (sh.type === "scan") {
-    const f = ui.form, kind = M.kindById(f.kind), into = kind.direction === "in";
+    const f = ui.form, kind = kindOf(f.kind), into = kind.direction === "in", move = isMoveKind(f.kind);
     body = `<h3>${sh.voice ? "Check what I heard" : "Check what I read"}</h3>
       ${sh.voice ? `<p class="note">You said: \u201C${esc(f.text)}\u201D</p>` : `<button class="shotbtn" data-action="view-shot" aria-label="Open the photo full size to compare it with what was read"><img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your photo"></button>`}
-      <label>It looks like</label>${chips(M.KINDS.map((k) => ({ id: k.id, name: k.label })), f.kind, "pick-kind")}
+      <label>It looks like</label>${chips([...M.KINDS.slice(0, 5), ...M.MOVE_KINDS, ...M.KINDS.slice(5)].map((k) => ({ id: k.id, name: k.label })), f.kind, "pick-kind")}
+      ${f.kind === "choose" ? `<p class="note flag">\u25B2 ${esc(M.CHOOSE_MESSAGE)}: tap one above. I will not guess.</p>` : ""}
       ${f.notes.map((n) => `<p class="note">${esc(n)}</p>`).join("")}
       <label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(f.date)}">
-      <label for="f-payee">${into ? "From" : "Paid to"} (optional)</label><input id="f-payee" data-field="payee" value="${esc(f.payee ?? "")}" autocomplete="off">
-      <label>Category</label>${chips(into ? incomeCategories() : expenseCategories(), f.category_id, "pick-cat")}
-      ${into ? "" : `<p><button class="link" data-action="toggle-split" aria-pressed="${f.split === true}">${f.split ? "Do not split this receipt" : "Split between two categories"}</button></p>
+      <label for="f-payee">${move ? "Name" : into ? "From" : "Paid to"} (optional)</label><input id="f-payee" data-field="payee" value="${esc(f.payee ?? "")}" autocomplete="off">
+      ${move ? moveFields(f) : `<label>Category</label>${chips(into ? incomeCategories() : expenseCategories(), f.category_id, "pick-cat")}`}
+      ${into || move ? "" : `<p><button class="link" data-action="toggle-split" aria-pressed="${f.split === true}">${f.split ? "Do not split this receipt" : "Split between two categories"}</button></p>
       ${f.split ? `<label>Second category</label>${chips(expenseCategories().filter((c) => c.id !== f.category_id), f.split_cat, "pick-split")}
         <label for="f-split">Amount that belongs to the second category (\u20B1)</label><input id="f-split" data-field="split_amt" inputmode="decimal" value="${esc(f.split_amt ?? "")}" autocomplete="off">
         <p class="note" id="split-note" role="status"></p>` : ""}`}
-      <label>${into ? "Arrived in" : "Paid from"}</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
+      ${move ? "" : `<label>${into ? "Arrived in" : "Paid from"}</label>${chips(accountsFor(null), f.account_id, "pick-acct")}`}
+      ${f.dupOf ? dupBlock(f.dupOf) : ""}
       <details${sh.voice ? " hidden" : ""}><summary>What the reader saw</summary><pre class="rawtext">${esc(f.text || "(nothing)")}</pre></details>
       <p class="note" id="scan-why" role="status"></p>
       <p><button class="primary" id="f-save" data-action="save-scan" style="margin-top:14px" disabled>Save to Verify</button></p>
@@ -1990,7 +2108,7 @@ function renderSheet() {
       const source = t.source === "photo" ? "Read from a photo" : t.source === "voice" ? "Made from what you said" : "Typed in";
       const rows = [["Date", fullDate(t.date)], ["Status", t.status === "draft" ? "Draft, waiting in Verify" : "Verified"], ["How it was entered", source],
         ...(d.kind === "split" ? d.parts.map((x) => [x.name, peso(x.amount)]) : d.category_id ? [["Category", categoryName(d.category_id)]] : []),
-        ...(d.kind === "transfer" ? [["Between", d.detail]] : []), ...(t.memo ? [["What was said or noted", "\u201C" + t.memo + "\u201D"]] : [])];
+        ...(d.kind === "transfer" ? [["Between", d.detail], ...(M.feeOf(S(), t.id).amount ? [["Fee", peso(M.feeOf(S(), t.id).amount)]] : []), ...(M.foreignOf(S(), t.id) ? [["Foreign amount", foreignText(M.foreignOf(S(), t.id))]] : [])] : []), ...(t.memo ? [["What was said or noted", "\u201C" + t.memo + "\u201D"]] : [])];
       body = `<h3>${esc(d.title)}</h3><p class="bigamt">${peso(d.amount)}</p>
         <dl class="txdl">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}${acct ? `<dt>${d.kind === "income" ? "Arrived in" : "Paid from"}</dt><dd class="who">${withIcon(acct, 22)}</dd>` : ""}</dl>
         ${shot ? `<p><button class="primary" data-action="open-photo" data-id="${esc(shot.id)}">See the photo</button></p>` : ""}`;
@@ -1999,6 +2117,13 @@ function renderSheet() {
     const [pf, pt] = periodBounds(period());
     const loose = M.incomeWithoutPayslip(S(), { from: pf, to: pt });
     body = `<h3>Payslips, ${esc(periodLabel(period()))}</h3>${payslipRows({ from: pf, to: pt })}${loose.length ? `<h3>Added without a payslip</h3><p class="note">These count as income but have no payslip, for example a payslip photo saved as plain pay. Remove one if it is a double.</p>${loose.map((r) => `<div class="row"><div>${esc(r.payee || "Pay received")}<small>${esc(fullDate(r.date))}${r.account_id ? " · into " + esc(accountName(r.account_id)) : ""}</small></div><div class="amt">${peso(r.amount)}</div></div>${ui.confirmDelInc === r.transaction_id ? `<p class="note">Remove this entry? ${peso(r.amount)} also comes out of ${esc(r.account_id ? accountName(r.account_id) : "the account")}. <button class="link" data-action="del-inc-yes" data-id="${esc(r.transaction_id)}">Yes, remove it</button></p>` : `<p class="note"><button class="link" data-action="del-inc" data-id="${esc(r.transaction_id)}">Remove this entry</button></p>`}`).join("")}` : ""}`;
+  } else if (sh.type === "last4") {
+    const a = S().accounts.find((x) => x.id === sh.id);
+    body = `<h3>Last 4 digits of ${esc(a.name)}</h3>
+      <p class="note">Only the last 4 digits, never the whole number. They tell your own accounts apart on payment screenshots. Leave it empty to remove them.</p>
+      <label for="l4">Last 4 digits</label><input id="l4" data-field="last4" inputmode="numeric" maxlength="4" autocomplete="off" value="${esc(ui.form.last4 ?? "")}">
+      <p id="l4-msg" class="note" role="alert"></p>
+      <p><button class="primary" id="f-save" data-action="save-last4" style="margin-top:6px">Save</button></p>`;
   } else if (sh.type === "photo") {
     body = `<h3>Photo</h3><img class="shotfull" data-photo="${esc(sh.id)}" alt="The photo this entry was read from" hidden>`;
   } else if (sh.type === "icon") {
@@ -2166,6 +2291,13 @@ function refreshSave() {
     }
   } else if (type === "voice") {
     btn.disabled = !(f.spoken ?? "").trim();
+  } else if (type === "scan" && (f.kind === "choose" || isMoveKind(f.kind))) {
+    const a = M.parsePesos(f.amount), fee = (f.fee ?? "").trim() ? M.parsePesos(f.fee) : { ok: true, centavos: 0 };
+    const asked = f.ask && f.own !== "yes";
+    const why = f.kind === "choose" ? M.CHOOSE_MESSAGE + "." : asked ? "Is the other end one of your accounts? Answer above." : !(a.ok && a.centavos > 0) ? "Enter the amount to save." : !M.isPhDate(f.date) ? "Choose the date to save."
+      : !f.from_id ? "Choose where the money came from." : !f.to_id ? "Choose where it went." : f.from_id === f.to_id ? "Choose two different accounts." : !(fee.ok && fee.centavos >= 0) ? "Enter the fee like 15 or 15.50, or leave it empty." : "";
+    btn.disabled = why !== "";
+    const w = $("scan-why"); if (w) w.textContent = why;
   } else if (type === "scan") {
     const a = M.parsePesos(f.amount), second = M.parsePesos(f.split_amt ?? "");
     const splitOk = !f.split || (f.split_cat && f.split_cat !== f.category_id && second.ok && second.centavos > 0 && a.ok && second.centavos < a.centavos);
@@ -2252,7 +2384,7 @@ async function logExpense(input, label) {
     note = reserveNote(plan.violations);
   }
   const settings = { ...ledger.settings, last_account_id: input.account_id, ...(input.drop_scan ? { scan_queue: scanQueue().filter((q) => q.id !== input.drop_scan) } : {}),
-    last_account_by_preset: { ...(ledger.settings.last_account_by_preset ?? {}), ...(input.preset_id ? { [input.preset_id]: input.account_id } : {}) } };
+    last_account_by_preset: { ...(ledger.settings.last_account_by_preset ?? {}), ...(input.preset_id ? { [input.preset_id]: input.account_id } : {}) }, ...(input.own_recipients ? { own_recipients: input.own_recipients } : {}) };
   let next = M.applyDrafts(S(), drafts);
   if (input.photo_id) { const a = M.planAttachment(next, { id: input.photo_id, transaction_id: drafts[0].transaction.id }); if (a.ok) next = a.state; }
   const ok = await commit(next, settings);
@@ -2617,6 +2749,12 @@ async function onClick(el) {
       break;
     }
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
+    case "edit-last4": ui.sheet = { type: "last4", id }; ui.form = { last4: S().accounts.find((a) => a.id === id)?.last4 ?? "" }; renderSheet(); break;
+    case "save-last4": {
+      const r = M.setAccountLast4(S(), ui.sheet.id, ui.form.last4);
+      if (!r.ok) { const m = $("l4-msg"); if (m) m.textContent = r.violations[0].message; break; }
+      ui.sheet = null; renderSheet(); await commit(r.state); break;
+    }
     case "save-icon": await saveIcon(); break;
     case "clear-icon": {
       const a = S().accounts.find((x) => x.id === ui.sheet.id);
@@ -2727,13 +2865,29 @@ async function onClick(el) {
       if (!d?.ok || !d.transaction) { showToast("Could not make the draft."); break; }
       await commit(M.applyDrafts(S(), [d])); showToast("The Emergency Fund draft is waiting in Verify."); break;
     }
-    case "pick-kind": if (id === "payslip" && pendingPhoto && !ui.sheet.voice) { openPayslipFromPhoto(pendingPhoto.blob, form.text ?? "", ui.sheet.queueId ?? null); break; } form.kind = id; Object.assign(form, scanDefaults(id, form.guess, form.payee)); renderSheet(); break;
+    case "pick-kind": if (id === "payslip" && pendingPhoto && !ui.sheet.voice) { openPayslipFromPhoto(pendingPhoto.blob, form.text ?? "", ui.sheet.queueId ?? null); break; } form.kind = id; form.dupOf = null;
+      if (isMoveKind(id)) {   // a move: no category, two accounts. A withdrawal ends in Cash on hand, a deposit starts from it.
+        const cash = cashAccount()?.id ?? null;
+        form.from_id = id === "deposit" ? cash : form.from_id ?? null; form.to_id = id === "withdrawal" ? cash : form.to_id ?? null; if (form.from_id === form.to_id) form.to_id = null;
+        form.payee = MOVE_TITLE[id]; form.origKind ??= "bank";
+      } else Object.assign(form, scanDefaults(id, form.guess, form.payee));
+      renderSheet(); break;
     case "save-scan": await saveScan(); break;
     case "view-shot": if (pendingPhoto) viewShot(pendingPhoto.url); break;
     case "open-payslips": ui.confirmDelSlip = null; ui.confirmDelInc = null; ui.sheet = { type: "payslips" }; renderSheet(); break;
     case "open-tx": ui.sheet = { type: "txdetail", id }; renderSheet(); break;
     case "open-photo": { const u = photoUrls.get(id) ?? (await getPhoto(id).then((b) => b && URL.createObjectURL(b))); if (u) { photoUrls.set(id, u); viewShot(u); } else showToast("Picture not on this phone. Pictures are not part of the backup file."); break; }
     case "pick-acct": form.account_id = id; renderSheet(); break;
+    case "own-yes": form.own = "yes"; renderSheet(); break;
+    case "own-no": {   // not mine: an ordinary payment after all, and the app remembers that for this name
+      form.askNo = form.ask.key; form.ask = null; form.kind = form.origKind ?? "bank"; form.payee = ""; form.dupOf = null;
+      Object.assign(form, scanDefaults(form.kind, form.guess, form.payee)); renderSheet(); break;
+    }
+    case "pick-trip": form.trip_id = form.trip_id === id ? null : id; renderSheet(); break;
+    case "link-dup": await linkDuplicate(); break;
+    case "dup-new": form.dup = "new"; form.dupOf = null; await saveScan(); break;
+    case "pick-from": form.from_id = id; renderSheet(); break;
+    case "pick-to": form.to_id = id; renderSheet(); break;
     case "import-order": form.order = id; renderSheet(); break;
     case "save-import": {
       const p = M.previewImport(S(), form.items, form.order), r = M.planImport(S(), p.lines, { account_id: form.account_id, newId: () => newId("tx") });
@@ -2774,7 +2928,9 @@ async function onClick(el) {
     }
     case "verify-edit": {
       const t = S().transactions.find((x) => x.id === id), d = describe(t);
+      const fee = d.kind === "transfer" ? M.feeOf(S(), t.id).amount : 0;
       ui.form = { date: t.date, payee: t.payee, category_id: d.category_id, account_id: d.account_id,
+        ...(d.kind === "transfer" && t.source === "photo" ? { from_id: d.from_id, to_id: d.to_id, fee: fee ? (fee / 100).toFixed(2) : "" } : {}),
         ...(d.editable || d.kind === "transfer" || d.kind === "income" ? { amount: (d.amount / 100).toFixed(2) } : {}) };
       ui.sheet = { type: "edit", id }; renderSheet(); break;
     }
@@ -2787,6 +2943,14 @@ async function onClick(el) {
       }
       if (form.category_id) changes.category_id = form.category_id;
       if (form.account_id) changes.account_id = form.account_id;
+      const isMove = S().transactions.some((x) => x.id === ui.sheet.id) && describe(S().transactions.find((x) => x.id === ui.sheet.id)).kind === "transfer" && form.from_id;
+      if (isMove) {
+        const fee = (form.fee ?? "").trim() ? M.parsePesos(form.fee) : { ok: true, centavos: 0 };
+        if (!fee.ok || fee.centavos < 0) { showToast("Enter the fee like 15 or 15.50, or leave it empty"); return; }
+        const rm = M.editTransfer(S(), ui.sheet.id, { ...changes, from_account_id: form.from_id, to_account_id: form.to_id, fee: fee.centavos });
+        if (!rm.ok) { showToast("Could not save: " + rm.violations[0].message); return; }
+        ui.sheet = null; await commit(rm.state); break;
+      }
       const r = M.editDraftFields(S(), ui.sheet.id, changes, { reserve_source_id: ledger.settings.reserve_source_id });
       if (!r.ok) { showToast("Could not save: " + r.violations[0].message); return; }
       ui.sheet = null;

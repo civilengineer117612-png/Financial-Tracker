@@ -53,23 +53,35 @@ export function checkReserve(accounts, entriesBefore, entriesAfter) {
   return out;
 }
 
-// 4. Duplicate = same reference number AND same amount. Amount alone is never enough,
-// and a transaction without a reference number can never be flagged.
+// 4. Duplicate: the same payment shown twice (a screenshot taken again). It is a WARNING with the older entry named, never a refusal: the app offers to
+// link the new photo to the entry already there instead of adding a second. Two ways to be the same:
+//  - the same reference number and the same amount, within 3 days of each other;
+//  - the same two accounts, the same amount, the same day and the same time on the screenshot.
+// Amount alone is never enough, and an entry with neither a reference nor a screenshot time can never be flagged.
 // "Amount" of a transaction = sum of its positive entries (its gross size).
 const grossAmount = (entries) => entries.filter((e) => e.amount > 0).reduce((s, e) => s + e.amount, 0);
+const dayGap = (a, b) => Math.abs(Date.parse(a + "T00:00:00Z") - Date.parse(b + "T00:00:00Z")) / 86400000;
+const ends = (entries) => ({ from: entries.find((e) => e.account_id != null && e.amount < 0)?.account_id ?? null, to: entries.find((e) => e.account_id != null && e.amount > 0)?.account_id ?? null });
+
+// The id of the entry already saved that this one repeats, or null.
+export function findDuplicate(state, transaction, entries) {
+  const ref = (transaction.reference_no ?? "").trim(), time = (transaction.shot_time ?? "").trim();
+  if (!ref && !time) return null;
+  const amount = grossAmount(entries), mine = ends(entries);
+  for (const other of state.transactions) {
+    if (other.id === transaction.id) continue;
+    const oe = state.entries.filter((e) => e.transaction_id === other.id);
+    if (grossAmount(oe) !== amount) continue;
+    if (ref && (other.reference_no ?? "").trim() === ref && dayGap(other.date, transaction.date) <= 3) return other.id;
+    const theirs = ends(oe);
+    if (time && (other.shot_time ?? "").trim() === time && other.date === transaction.date && mine.from && mine.from === theirs.from && mine.to === theirs.to) return other.id;
+  }
+  return null;
+}
 
 export function checkDuplicate(state, transaction, entries) {
-  const ref = (transaction.reference_no ?? "").trim();
-  if (!ref) return [];
-  const amount = grossAmount(entries);
-  for (const other of state.transactions) {
-    if (other.id === transaction.id || (other.reference_no ?? "").trim() !== ref) continue;
-    const otherAmount = grossAmount(state.entries.filter((e) => e.transaction_id === other.id));
-    if (otherAmount === amount) {
-      return [err("DUPLICATE_REFERENCE", "same reference_no and amount as transaction " + other.id, { duplicate_of: other.id })];
-    }
-  }
-  return [];
+  const other = findDuplicate(state, transaction, entries);
+  return other ? [warn("DUPLICATE_REFERENCE", "looks like transaction " + other + " (same payment shown again)", { duplicate_of: other })] : [];
 }
 
 // 5. Rules are append-only: every previously saved row must still be present and

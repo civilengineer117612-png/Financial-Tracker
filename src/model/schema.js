@@ -25,6 +25,7 @@ export const SCHEMAS = {
     bank: optional(text),   // ADDED: which bank the account belongs to (src/model/banks.js); accounts of one bank share a picture
     icon_url: optional({ type: "iconurl" }),   // ADDED: where a bank logo is shown from when it could not be copied onto the phone (allow-listed icon services only)
     icon: optional({ type: "icon" }),   // ADDED: a small picture the owner chose for this account, kept on the phone
+    last4: optional({ type: "last4" }),   // ADDED (version 7): the last 4 digits of the account number, only those, so a payment screenshot can tell the owner's own accounts apart. Empty when not given
   },
   Goal: { id, account_id: optional(id), name, target: optional(centavos), deadline: optional(date), hidden_by_default: bool,
     role: optional(oneOf("emergency")) },   // ADDED: what the goal is FOR, so nothing has to guess from its name (one goal at most holds a role)
@@ -34,6 +35,7 @@ export const SCHEMAS = {
     status: oneOf("draft", "verified"),
     source: oneOf("manual", "preset", "template", "photo", "voice", "import", "reconciliation"),
     reference_no: optional(text),
+    shot_time: optional(text),   // ADDED (version 7): the time a payment screenshot showed, "HH:MM", so the same screenshot twice can be told
     tag_id: optional(id),        // ADDED: spec 8.1 says trip expenses carry one tag. OLD: no longer read or written (data version 4 copies it to trip_add)
     trip_add: optional(id),      // ADDED (version 4): put on this trip by hand (or by a manual trip start); overrides the dates
     trip_out: optional(id),      // ADDED (version 4): taken off this trip by hand although its date falls inside the trip
@@ -47,7 +49,7 @@ export const SCHEMAS = {
     card_state: optional(oneOf("pending", "posted")),   // "Card entry state" row
   },
   Category: { id, name, kind: oneOf("income", "expense"),
-    role: optional(oneOf("food", "essentials", "subscription", "rent", "transport", "health", "utilities", "debt", "shopping", "fun", "dining", "invest", "family", "other")) },   // ADDED: what the category is FOR (the scanner guesses by role, so renaming cannot break a guess)
+    role: optional(oneOf("food", "essentials", "subscription", "rent", "transport", "health", "utilities", "debt", "shopping", "fun", "dining", "invest", "family", "bank_fees", "other")) },   // ADDED: what the category is FOR (the scanner guesses by role, so renaming cannot break a guess)
   CategoryMap: { from: id, to: id, effective_from: date },
   // BudgetRule / SavingsRule / AllocationRule share one shape, told apart by `kind`.
   // Fields beyond id and effective_from are a placeholder; the append-only check
@@ -95,6 +97,7 @@ const TYPE_CHECKS = {
   count: (v) => Number.isSafeInteger(v) && v >= 0,
   ease: (v) => Number.isInteger(v) && v >= 1 && v <= 5,
   // A small picture stored right in the record, so it travels with backups and never leaves the phone.
+  last4: (v) => v === "" || (typeof v === "string" && /^\d{4}$/.test(v)),   // exactly four digits, never longer; "" means none given
   iconurl: (v) => typeof v === "string" && v.length <= 300 && /^https:\/\/(t[0-3]\.gstatic\.com|www\.google\.com|icons\.duckduckgo\.com|icon\.horse)\/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*$/.test(v),
   icon: (v) => typeof v === "string" && v.length <= 40000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(v),
   month: (v) => typeof v === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(v),

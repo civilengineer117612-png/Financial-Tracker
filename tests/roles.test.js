@@ -48,7 +48,7 @@ test("data version 2 upgrades to the current version: nothing but roles and the 
   assert.equal(after.v, LEDGER_VERSION); assert.equal(after.rev, 12);
   assert.equal(fingerprint(after), fingerprint(before)); assert.deepEqual(selfCheck(after), []);
   assert.equal(parseLedger(JSON.stringify(after)).ok, true); assert.deepEqual(validateState(after.state), []);
-  const strip = (l) => JSON.parse(JSON.stringify(l, (k, v) => (k === "role" ? undefined : v)));
+  const strip = (l) => JSON.parse(JSON.stringify(l, (k, v) => (k === "role" || k === "last4" ? undefined : v)));
   assert.deepEqual({ ...strip(after).state }, strip(before).state, "every record is the same apart from the new role field");
   assert.deepEqual(Object.keys(after.settings).sort(), [...Object.keys(before.settings), "sweep_order"].sort());
   for (const k of Object.keys(before.settings)) assert.deepEqual(after.settings[k], before.settings[k], "setting " + k + " kept");

@@ -186,8 +186,19 @@ test("same reference number and same amount is a duplicate", () => {
   commit(s, first);
   const second = { transaction: tx({ id: "b", reference_no: "REF-1" }), entries: [entry({ transaction_id: "b", category_id: "food", amount: 5000 }), entry({ transaction_id: "b", account_id: "chk", amount: -5000 })] };
   const r = checkTransactionSave(s, second);
-  assert.equal(r.ok, false);
+  assert.equal(r.ok, true, "a repeat is a warning with the older entry named, never a refusal");
+  assert.equal(r.violations[0].severity, "warning");
   assert.equal(r.violations[0].duplicate_of, "a");
+});
+test("a repeat more than 3 days later is not flagged; the same two accounts, amount, day and screenshot time are", () => {
+  const s = makeState();
+  const mk = (id, over, date) => ({ transaction: tx({ id, date, ...over }), entries: [entry({ transaction_id: id, account_id: "res", amount: 5000 }), entry({ transaction_id: id, account_id: "chk", amount: -5000 })] });
+  commit(s, mk("a", { reference_no: "REF-9", shot_time: "14:05" }, "2026-03-10"));
+  assert.equal(checkTransactionSave(s, mk("b", { reference_no: "REF-9" }, "2026-03-13")).violations[0]?.duplicate_of, "a", "3 days later is still the same payment");
+  assert.deepEqual(checkTransactionSave(s, mk("c", { reference_no: "REF-9" }, "2026-03-14")).violations, [], "4 days later is a different one");
+  assert.equal(checkTransactionSave(s, mk("d", { shot_time: "14:05" }, "2026-03-10")).violations[0]?.duplicate_of, "a", "no reference, but the same time on the same day");
+  assert.deepEqual(checkTransactionSave(s, mk("e", { shot_time: "14:06" }, "2026-03-10")).violations, [], "another minute is another payment");
+  assert.deepEqual(checkTransactionSave(s, mk("f", { shot_time: "14:05" }, "2026-03-11")).violations, [], "another day is another payment");
 });
 test("same reference but different amount is not a duplicate", () => {
   const s = makeState();
