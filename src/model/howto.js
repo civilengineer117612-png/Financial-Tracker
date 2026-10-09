@@ -11,9 +11,10 @@ export const HOWTOS = [
   { id: "budget", label: "Set a budget", caption: "Tap a category, type its monthly limit, Save: the bucket bars follow." },
   { id: "trips", label: "Keep a trip apart", caption: "Tag new entries on a trip, or give it dates: its spending stays apart." },
   { id: "goals", label: "Save toward a goal", caption: "Tap Put money in on a goal, type the amount, Save: its bar grows." },
+  { id: "import", label: "Import old spending", caption: "Tap the camera, Import old spending, pick a file: every line waits in Verify." },
   { id: "backup", label: "Back up your data", caption: "Back up now, set a password, save the file off this phone." },
 ];
-export const HOWTO_HINT = "Hold Log, Verify, the camera, Budget, Goals or Trips in the menu, or Back up now in Setup, for a moment to watch how it works.";
+export const HOWTO_HINT = "Hold a button or a menu row for a moment to watch how it works. Help lists every clip.";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const EXAMPLE_TILES = [{ name: "Coffee", amount: 15000, category: "Food" }, { name: "Jeep", amount: 1300, category: "Transport" }, { name: "Lunch", amount: 9500, category: "Food" }];
@@ -30,6 +31,7 @@ const pctText = (t) => (t / 10).toFixed(1) + "%";
 const EXAMPLE_TRIPS = [{ name: "Beach weekend", days: "3 Oct 2026 to 5 Oct 2026", spent: 450000 }, { name: "Family visit", days: null, spent: 0 }];
 
 // The Goals clip's data: {name, balance, target (centavos), account?: {name, picture?}}: one goal that has a target and is not hidden by default.
+// goal.ef: true for the emergency fund, whose target comes from your budgets (goal.months of your rent, food and essentials).
 const EXAMPLE_GOAL = { name: "New phone", balance: 800000, target: 2000000, account: { name: "Savings" } };
 
 export function clipData({ date, tiles = [], account = null, total = 0, budget = null, trips = [], goal = null }) {
@@ -91,9 +93,16 @@ export function howtoClip(id, raw) {
       <div class="hw-card"><div class="hw-row"><span class="hw-acct">${into.picture ?? ""}<b>${esc(g.name)}</b></span></div>
       <div class="hw-gval"><span class="hw-t0">${val(g.balance, t0)}</span><span class="hw-t1">${val(after, t1)}</span></div>
       <div class="hw-meter"><span class="hw-fill hw-grow" style="--w0:${t0 / 10}%;--w1:${t1 / 10}%"></span></div>
-      <div class="hw-btn hw-go">Put money in</div></div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>
+      <div class="hw-btn hw-go">Put money in</div></div>
+      <div class="hw-note">${g.ef ? `The target is worked out from your budgets: ${esc(g.months ?? 3)} months of your rent, food and essentials.` : "A goal with no account yet holds nothing: choose an account for it first."}</div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>
       ${sheet(`<div class="hw-amt">${esc(formatPesos(add))}</div><div class="hw-row"><span>Into</span>${acct(into)}</div>`, "Save")}${tick}`,
       `A finger taps Put money in on ${g.name}, the window shows ${formatPesos(add)} going into ${into.name}, the finger taps Save, and the bar grows from ${pctText(t0)} to ${pctText(t1)}.`);
+  }
+  if (id === "import") {   // invented numbers, always marked as an example; reachable from Help (a held button cannot be pressed under an open window)
+    return phone("import", `<div class="hw-screen"><div class="hw-ex">Example</div><div class="hw-top"><div class="hw-h">Log</div><div class="hw-cam" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></div></div>
+      <div class="hw-date">${esc(d.date)}</div><div class="hw-note">A photo of your notes, a CSV or an Excel file</div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>
+      ${sheet(`<div class="hw-row"><span>Paid from</span>${acct(d.account)}</div><div class="hw-row"><span><b>12 lines</b> to add as drafts</span><span>2 already logged, left out</span></div>`, "Add 10 drafts to Verify")}${tick}`,
+      `A finger taps the camera and Import old spending, a file is read, the window shows 12 lines with 2 already logged left out, and the finger taps Add 10 drafts to Verify.`);
   }
   if (id === "backup") {   // Setup's Backup block: tap Back up now, set a password, save the file off the phone; "Last backup" turns to today
     const last = (c) => `<span class="${c}">${c === "hw-t0" ? "No backup yet" : "Last backup today"}</span>`;
