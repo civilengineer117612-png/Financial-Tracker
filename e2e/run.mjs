@@ -1707,7 +1707,7 @@ console.log("The new Budget");
   // set a budget the old way: the row shows the amount and its share of income
   await page.click('button[data-action="open-budget"][data-id="cat-food"]'); await page.fill("#f-amount", "5000"); await page.click("#f-save"); await seen(page, "#toast", "Budget saved");
   t = await text(page, "#screen");
-  check(/₱5,000\.00 a month\s+20\.0% of income/.test(t) && sh(t)[0] === 200 && sh(t)[2] > 0, "a budget row shows its amount and its percent of income, and the shares follow");
+  check(/₱5,000\.00 a month\s+20\.0%(?! of)/.test(t) && await page.locator('.choice .bval small[aria-label="20.0% of income"]').count() === 1 && sh(t)[0] === 200 && sh(t)[2] > 0, "a budget row shows its amount and its percent of income, and the shares follow");
   check(!(await page.locator("#bud-income .overnote, .overnote").count()) && !(await page.locator("#screen .meter.g-critical").count()), "nothing is red when nothing is over");
   // suggest, pin one line, confirm for next month
   await page.click('button:has-text("Suggest a budget")');
@@ -2240,7 +2240,7 @@ console.log("Signs and folded entries");
   await page.click("#entries-toggle");
   check(await page.locator("#entries-list").isHidden(), "and a second tap folds them again");
   await menuGo(page, "Budget");
-  check((await text(page, "#screen")).includes("\u20B195.00 spent") && await page.locator(".choice .meter .fill").count() >= 1, "Budget rows draw a bar of spent against the limit, with the figure beside it");
+  check((await text(page, "#screen")).includes("\u20B195.00") && await page.locator(".choice .flow svg").count() >= 1 && await page.locator(".choice .meter .fill").count() >= 1, "Budget rows draw a bar of spent against the limit, with an arrow and the figure beside it");
   check(errors.length === 0, "no script errors with signs and folded entries");
   await ctx.close(); }
 

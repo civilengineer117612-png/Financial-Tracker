@@ -105,8 +105,10 @@ export function howtoClip(id, raw) {
       ${sheet(`<div class="hw-amt">${esc(formatPesos(add))}</div><div class="hw-row"><span>Into</span>${acct(into)}</div>`, "Save")}${tick}`,
       `A finger taps Put money in on ${g.name}, the window shows ${formatPesos(add)} going into ${into.name}, the finger taps Save, and the bar grows from ${pctText(t0)} to ${pctText(t1)}.`);
   }
-  if (id === "cards") {   // the arrow goes back a month: each account's "spent" for the month changes, the balances do not
-    const rows = d.accounts.map((a) => `<div class="hw-brow"><span class="hw-acct">${a.picture ?? ""}<span>${esc(a.name)}</span></span><span class="hw-bval"><span class="hw-t0">${esc(formatPesos(a.amount))}<small>${a.owe ? "you owe" : "in it"} \u00b7 spent ${esc(formatPesos(a.spent[0]))}</small></span><span class="hw-t1">${esc(formatPesos(a.amount))}<small>${a.owe ? "you owe" : "in it"} \u00b7 spent ${esc(formatPesos(a.spent[1]))}</small></span></span></div>`).join("");
+  if (id === "cards") {   // the arrow goes back a month: the arrow-up figure (spent) changes, the balances do not; the screen's own signs, no words
+    const up = `<svg class="hw-up" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>`;
+    const bal = (a) => `${a.owe ? "\u2212" : ""}${esc(formatPesos(a.amount))}`;
+    const rows = d.accounts.map((a) => `<div class="hw-brow"><span class="hw-acct">${a.picture ?? ""}<span>${esc(a.name)}</span></span><span class="hw-bval"><span class="hw-t0">${bal(a)}<small>${up}${esc(formatPesos(a.spent[0]))}</small></span><span class="hw-t1">${bal(a)}<small>${up}${esc(formatPesos(a.spent[1]))}</small></span></span></div>`).join("");
     return phone("cards", `<div class="hw-screen">${d.accountsExample ? `<div class="hw-ex">Example</div>` : ""}<div class="hw-h">Cards</div>
       <div class="hw-month"><span class="hw-arrow">\u2039</span><span class="hw-bval hw-ml"><span class="hw-t0">${esc(d.months[0])}</span><span class="hw-t1">${esc(d.months[1])}</span></span><span class="hw-arrow hw-dim">\u203a</span></div>
       <div class="hw-blist">${rows}</div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>`,

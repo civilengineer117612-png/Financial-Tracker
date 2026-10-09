@@ -219,8 +219,9 @@ test("no data version bump is needed: the new settings keys are additive, a ledg
 
 test("the new Budget's amounts line up: the share sits under the amount, the totals lines and the overall line use the same numbers, and the bar has a colour", () => {
   const view = app.slice(app.indexOf("function viewBudgetNew()"), app.indexOf("function viewBudgetOld()"));
-  assert.match(view, /const share = \(amount\) => \(income \? `<small>\$\{M\.showTenths\(M\.tenths\(amount, income\)\)\} of income<\/small>` : ""\)/);
+  assert.match(view, /const share = \(amount\) => \(income \? `<small aria-label="\$\{M\.showTenths\(M\.tenths\(amount, income\)\)\} of income">\$\{M\.showTenths\(M\.tenths\(amount, income\)\)\}<\/small>` : ""\)/);
   assert.ok(!/ \\u00b7 \$\{M\.showTenths\(M\.tenths/.test(view), "no share is glued to the amount on one long line");
+  assert.ok(view.includes('<small aria-label="${M.showTenths(r.tenths)} of income">${M.showTenths(r.tenths)}</small>'), "a bucket row shows just the percent; a screen reader still hears of income");
   assert.match(view, /M\.showTenths\(sh\.spending\) \+ " of income"/); assert.match(view, /M\.showTenths\(sh\.saved\) \+ " of income"/);
   assert.match(view, /"Over income by " \+ peso\(-sh\.unallocated\) : "Unallocated " \+ peso\(sh\.unallocated\)/, "Unallocated is shown in pesos");
   assert.match(view, /<div class="meter goal"/);

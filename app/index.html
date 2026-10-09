@@ -317,7 +317,7 @@
   .hw-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
   .hw-row > span:last-child { color: var(--mid); }
   .hw-acct { display: inline-flex; align-items: center; gap: 6px; } .hw-acct .ico { width: 20px; height: 20px; font-size: 10px; }
-  .hw-btn { background: var(--ink); color: var(--paper); border-radius: 12px; text-align: center; padding: 11px 0; font-weight: 700; font-size: 13px; }
+  .hw-btn { background: var(--accent); color: var(--surface); border-radius: 12px; text-align: center; padding: 11px 0; font-weight: 700; font-size: 13px; }
   .hw-card { border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: grid; gap: 4px; }
   .hw-empty { text-align: center; color: var(--mid); font-size: 13px; opacity: 0; }
   .hw-receipt { position: relative; margin: 4px auto 0; width: 170px; padding: 12px 14px; background: var(--wash); border-radius: 4px; display: grid; gap: 5px; font-size: 11px; font-family: "Courier New", monospace; opacity: 0; overflow: hidden; }
@@ -352,6 +352,7 @@
   @keyframes hwReceipt { 0%, 24% { opacity: 0; transform: scale(.96); } 28%, 52% { opacity: 1; transform: scale(1); } 58%, 100% { opacity: 0; } }
   @keyframes hwScanline { 0%, 28% { opacity: 0; top: 0; } 30% { opacity: 1; top: 0; } 40% { opacity: 1; top: 100%; } 42%, 100% { opacity: 0; top: 100%; } }
   .hw-blist { display: grid; gap: 2px; } .hw-brow { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .hw-bval small svg { vertical-align: -1px; margin-right: 2px; }
   .hw-bval { display: grid; justify-items: end; min-width: 92px; font-variant-numeric: tabular-nums; } .hw-bval > span { grid-area: 1 / 1; display: grid; justify-items: end; } .hw-bval small { font-size: 10px; color: var(--mid); }
   .hw-type { position: relative; height: 36px; } .hw-type span { position: absolute; inset: 0; }
   .hw-bars { display: grid; gap: 7px; margin-top: 4px; } .hw-bk { display: grid; grid-template-columns: 58px 1fr 42px; align-items: center; gap: 8px; font-size: 11px; }

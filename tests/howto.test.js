@@ -132,9 +132,10 @@ const accts = [{ name: "Test Card", amount: 304800, owe: true, spent: [54900, 12
 
 test("the Cards clip is drawn from the owner's accounts: balances stay, the month and what was spent change", () => {
   const h = howtoClip("cards", { ...own, accounts: accts, months: ["October 2026", "September 2026"] });
-  for (const w of ["Test Card", "Test Wallet", "₱3,048.00", "you owe", "spent ₱549.00", "spent ₱1,200.00", "October 2026", "September 2026", "hw-cards"]) assert.ok(h.includes(w), w);
+  for (const w of ["Test Card", "Test Wallet", "\u2212₱3,048.00", "hw-up", "₱549.00", "₱1,200.00", "October 2026", "September 2026", "hw-cards"]) assert.ok(h.includes(w), w);
   assert.ok(!h.includes("Example") && h.includes('class="ico mono"'), "own accounts, with their pictures");
   assert.equal((h.match(/₱3,048\.00/g) ?? []).length, 2, "the balance is drawn before and after, unchanged");
+  assert.ok(!/you owe|in it|spent ₱/.test(h), "the clip uses the screen's signs, not small sentences");
   assert.ok(howtoClip("cards", own).includes("Example"), "no accounts: a marked example");
 });
 
