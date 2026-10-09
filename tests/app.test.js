@@ -216,3 +216,21 @@ test("polish: the strip matches the bottom bar (marker, no filled box), budget b
   assert.match(css, /\.choice > span:first-child \{ flex: 1; min-width: 0; \} \.choice \.meter \{ width: 100%; \}/);
   assert.match(css, /\.card dd\.big \{ font-size: 20px; overflow-wrap: normal; \}/);
 });
+
+test("round 3: the Setup form waits behind a button once there are accounts, goals draw a ring, an entry swiped right is marked Correct, long notes fold under Why?", () => {
+  const js = read("app/app.js"), css = read("app/index.html"), help = read("src/model/help.js");
+  assert.match(js, /const formOpen = ui\.setupAdd \|\| S\(\)\.accounts\.length === 0;/, "a new phone opens on the form; after that it is behind a button");
+  assert.match(js, /ui\.setupError = null; ui\.setupAdd = false;/, "adding an account puts the form away");
+  assert.match(js, /case "toggle-add-account": ui\.setupAdd = !ui\.setupAdd;/);
+  assert.match(js, /const ring = \(pct, label\) => `<svg class="ring"/);
+  assert.ok(js.includes("Math.max(0, Math.min(100, pct)) / 100 * 113.1"), "the ring never runs past full or below empty");
+  assert.match(js, /\$\{ring\(ef\.percent, ef\.percent \+ "% of the target"\)\}/); assert.match(js, /\$\{ring\(p\.percent, p\.percent \+ "% of the goal"\)\}/);
+  assert.ok(!js.includes('aria-label="${p.percent}% of the goal"><span class="fill"'), "no bar left beside the ring");
+  assert.match(js, /if \(dx > 90 && Math\.abs\(dy\) < 40 && dx > Math\.abs\(dy\) \* 2\.5\) \{ s0\.c\.querySelector\('button\[data-action="verify-ok"\]'\)\?\.click\(\); \}/, "only a clear swipe to the right counts");
+  assert.ok(!js.includes('verify-delete"]\')?.click'), "a swipe never deletes");
+  assert.match(help, /Swipe an entry to the right to mark it Correct\./);
+  assert.match(js, /const why = \(html, label = "Why\?"\) => `<details class="why"><summary>\$\{label\}<\/summary><p class="note">\$\{html\}<\/p><\/details>`;/);
+  assert.ok((js.match(/\$\{why\(/g) ?? []).length >= 4, "the long notes on Budget, Cards, Weekly review and Setup are folded");
+  assert.match(css, /\.seg\[aria-label="What to show"\] button\[aria-pressed="true"\]::after/, "Cash flow's views are tabs with a line under the current one");
+  assert.match(css, /\.ring \{ width: 64px; height: 64px; flex: none; \}/);
+});

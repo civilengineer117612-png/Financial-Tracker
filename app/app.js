@@ -152,6 +152,10 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 // Everything that is not Log or Verify lives in the menu at the upper left, so new screens (and later photo
 // and audio capture beside Log and Verify) can be added without crowding the bottom bar.
 // Plain line icons (drawn in the text colour). Groups are separated by thin lines, like a settings list.
+// A progress ring with the percent in the middle. The figures beside it say the same in words (its list twin).
+const ring = (pct, label) => `<svg class="ring" viewBox="0 0 44 44" role="img" aria-label="${esc(label)}"><circle class="rt" cx="22" cy="22" r="18"/><circle class="rf" cx="22" cy="22" r="18" stroke-dasharray="${(Math.max(0, Math.min(100, pct)) / 100 * 113.1).toFixed(1)} 113.1" transform="rotate(-90 22 22)"/><text x="22" y="26.5" text-anchor="middle">${Math.round(pct)}%</text></svg>`;
+// A long explanation stays out of sight until asked for. The words are the same; they are just folded under "Why?".
+const why = (html, label = "Why?") => `<details class="why"><summary>${label}</summary><p class="note">${html}</p></details>`;
 const ICONS = {
   cards: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
   money: '<path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3"/>',
@@ -998,8 +1002,8 @@ function viewSetup() {
       <div class="amt">${peso(M.naturalBalance(a, M.countedEntries(S())))}${used.has(a.id) ? "" : `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`}</div></div>`).join("");
   // The form comes FIRST so it stays in the same place however many accounts there are: the
   // button never drifts down behind the keyboard. The list of accounts follows it.
-  return `<h1>Setup</h1><p class="sub">Accounts. The ledger is on this phone only.</p>
-    <h2>Add an account</h2>
+  const formOpen = ui.setupAdd || S().accounts.length === 0;   // a new phone opens on the form; after that it sits behind one button
+  const addForm = `<h2>Add an account</h2>
     <label for="a-bank">Bank</label>
     <button id="a-bank" class="bankpick" data-action="open-banks" data-for="add">${f.bank ? `${iconOf({ name: M.bankById(f.bank).name, bank: f.bank, ...(bankPictureOf(f.bank) ?? {}) }, 28)}<span>${esc(M.bankById(f.bank).name)}</span>` : `<span class="muted">Choose a bank</span>`}<span class="chev" aria-hidden="true">\u203A</span></button>
     ${f.bank ? `<label for="a-sub">Which part of ${esc(M.bankById(f.bank).name)}? (optional)</label><input id="a-sub" data-field="sub" value="${esc(f.sub)}" placeholder="e.g. Emergency Fund, Savings" autocomplete="off" enterkeyhint="next">
@@ -1010,9 +1014,12 @@ function viewSetup() {
     <p class="note" id="a-open-note">Spending logged with an earlier date does not change this amount. From today on, it does.</p>
     ${f.kind === "asset" && cards.length ? `<label for="a-covers">This account is a reserve for a card (optional)</label><select id="a-covers" data-field="covers"><option value="">No</option>${cards.map((c) => `<option value="${esc(c.id)}"${f.covers === c.id ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select>` : ""}
     ${ui.setupError ? `<p id="a-error" role="alert"><b>${esc(ui.setupError)}</b></p>` : ""}
-    <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>
+    <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>${S().accounts.length ? `<p class="center"><button class="link" data-action="toggle-add-account">Cancel</button></p>` : ""}`;
+  return `<h1>Setup</h1><p class="sub">Accounts. The ledger is on this phone only.</p>
+    ${formOpen ? addForm : ""}
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}
+    ${formOpen ? "" : `<p><button id="add-account-open" data-action="toggle-add-account" style="width:100%">Add an account</button></p>`}
     <h2>Categories</h2>
     ${expenseCategories().map((c) => `<div class="row"><div>${catLine(c)}</div><div class="amt"><button class="link" data-action="cat-bucket" data-id="${esc(c.id)}">Bucket</button> <button class="link" data-action="rename-cat" data-id="${esc(c.id)}">Rename</button></div></div>`).join("")}
     <p><button data-action="add-cat" style="width:100%">Add a category</button></p>
@@ -1026,7 +1033,7 @@ function viewSetup() {
     <p><button class="primary" data-action="open-backup" data-howto="backup">Back up now</button></p>
     <p><button data-action="open-restore" style="width:100%">Restore from a backup</button></p>
     <p><button data-action="open-check-backup" style="width:100%">Check a backup file</button></p>
-    <p class="note">The file is encrypted. Keep a second copy off this phone, like iCloud Drive or a computer.</p>
+    ${why("The file is encrypted. Keep a second copy off this phone, like iCloud Drive or a computer.", "Where to keep it")}
     <h2>This app</h2>
     <p class="note">${M.isDevBuild() ? "Version: a development copy." : "Version " + esc(M.APP_BUILD) + ", updated " + esc(fullDate(M.APP_BUILT_ON)) + "."} Your data format: ${ledger.v}.</p>
     ${(ui.copies ?? []).map((c, i) => `<p><button data-action="restore-copy" data-id="${i}" style="width:100%">${ui.confirmCopy === i ? "Tap again to restore. Entries made since then will be lost." : i === 0 ? "Restore the copy from before the last update" : "Restore the copy from before the update before that"}</button></p><p class="note small">Saved ${esc(fullDate(c.at.slice(0, 10)))}, before your data was updated from format ${c.from_version}.</p>`).join("")}
@@ -1122,7 +1129,7 @@ function viewCards() {
     <div class="tiles two"><div class="tile"><b>${peso(o.held)}</b><span>in your accounts</span></div><div class="tile"><b>${peso(o.owe)}</b><span>owed on cards</span></div></div>
     <h2>Credit cards</h2>${cards}
     <h2>Debit, savings and cash</h2>${money}
-    <p class="note">Paying a card bill is not spending: the purchases were counted when you made them. The amounts spent and paid are for ${esc(periodLabel(p))}.</p>
+    ${why(`Paying a card bill is not spending: the purchases were counted when you made them. The amounts spent and paid are for ${esc(periodLabel(p))}.`)}
     <p><button class="link" data-action="tab" data-tab="setup">Add or change accounts</button></p>`;
 }
 
@@ -1407,15 +1414,13 @@ function viewGoals() {
     const efBody = !ef ? "" : `<table class="tbl"><tr><td>Target</td><td class="n">${peso(ef.target)}</td></tr><tr><td>Balance now</td><td class="n">${peso(ef.balance)}</td></tr>
         <tr><td>Monthly contribution</td><td class="n">${ef.monthly ? peso(ef.monthly) : ef.source === "budgets" ? "not set" : "none in your plan"}</td></tr>
         <tr><td>Months to target</td><td class="n">${ef.reached ? "Reached" : ef.monthsToTarget === null ? "Not known yet" : "About " + ef.monthsToTarget}</td></tr></table>
-        <div class="meter goal" role="img" aria-label="${ef.percent}% of the target"><span class="fill" style="width:${ef.percent}%"></span></div>
-        <div class="status">${ef.reached ? "Target reached" : ef.percent + "% \u00b7 " + peso(ef.remaining) + " to go"}</div>
+        <div class="goalrow">${ring(ef.percent, ef.percent + "% of the target")}<div class="status">${ef.reached ? "Target reached" : peso(ef.remaining) + " to go"}</div></div>
         <p class="note">Target = ${ef.months} months of ${esc(ef.basis.join(", "))} from ${ef.source === "budgets" ? "your budgets" : "your plan"} (${peso(ef.monthlyBasis)} a month). It changes when ${ef.source === "budgets" ? "your budgets do" : "your plan does"}.${ef.missing.length ? " Your plan has no line named " + esc(ef.missing.join(", ")) + "." : ""}</p>`;
     const body = hidden ? `<p class="note">Hidden. Tap Show balances above.</p>`
       : ef ? efBody
       : isEf ? `<div class="btop"><span class="bval">${peso(p.balance)}</span></div><p class="note">The target is 3 months of your rent, food and essentials, from your budgets. Set those budgets (Menu, Budget) and it appears here.</p>`
       : `<div class="btop"><span class="bval">${peso(p.balance)}${p.target != null ? " of " + peso(p.target) : ""}</span></div>
-         ${p.target != null ? `<div class="meter goal" role="img" aria-label="${p.percent}% of the goal"><span class="fill" style="width:${p.percent}%"></span></div>
-         <div class="status">${p.reached ? "Goal reached" : p.percent + "% \u00b7 " + peso(p.remaining) + " to go"}${eta ? " \u00b7 about " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : ""}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div>` : `<div class="status">No target, just a place to build up.</div>`}`;
+         ${p.target != null ? `<div class="goalrow">${ring(p.percent, p.percent + "% of the goal")}<div class="status">${p.reached ? "Goal reached" : peso(p.remaining) + " to go"}${eta ? " \u00b7 about " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : ""}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div></div>` : `<div class="status">No target, just a place to build up.</div>`}`;
     return `<div class="bcard"><div class="btop"><span class="bname who">${iconOf(S().accounts.find((a) => a.id === g.account_id) ?? { name: g.name }, 24)}<span>${esc(g.name)}</span></span></div>${body}
       <p>${g.account_id ? `<button data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button>` : `<span class="note">No account yet. </span><button data-action="open-goal-account" data-id="${esc(g.id)}">Choose an account</button>`}</p>
       <p class="note"><button class="link" data-action="goal-role" data-id="${esc(g.id)}">${g.role === "emergency" ? "This is your emergency fund (tap to undo)" : "Make this my emergency fund"}</button></p></div>`;
@@ -1451,7 +1456,7 @@ function viewCheckin() {
   const backupLine = age === null || age >= 6 ? `<p class="note"><b>One reminder:</b> back up after this check-in. ${esc(backupAgeText())} <button class="link" data-action="tab" data-tab="setup">Back up now</button></p>` : "";
   return `<h1>Weekly review</h1><p class="sub">Week of ${esc(longDate(w.week_start))} to ${esc(longDate(w.week_end))}</p>
     <p class="note">Open each account, look at the real balance, and type it in. ${done} of ${accts.length} counted.</p>${backupLine}${rows}${questions}
-    <p class="note">Money the ledger cannot explain is recorded as Unlogged. It never blocks anything.</p>`;
+    ${why("Money the ledger cannot explain is recorded as Unlogged. It never blocks anything.")}`;
 }
 
 // The switch is a settings key, off by default; off, this is exactly the screen it always was.
@@ -1527,7 +1532,7 @@ function viewBudgetNew() {
   return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${head}${sum}
     ${views}<div class="viewbody">${part}</div>
     ${byPaydaySection()}
-    <p class="note">A budget never changes the past. A change starts next month unless you choose otherwise.</p>`;
+    ${why("A budget never changes the past. A change starts next month unless you choose otherwise.")}`;
 }
 const runSuggest = () => { const set = ledger.settings; return M.suggestBudgets({ state: S(), plan: planOf(), pin: set.income_base_pin ?? null, today: today(), month: M.monthOf(today()), settings: set.suggest_settings, pins: set.budget_pins ?? {}, rent: set.starter_rent ?? undefined, goalPins: set.goal_monthly ?? {}, goalShares: set.goal_shares ?? {}, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets }); };
 // What the "Yours" box shows: what was typed or taken from the suggestion, else the pinned figure, else the budget in force.
@@ -2761,6 +2766,7 @@ async function onClick(el) {
     }
     case "open-backup-file": await openBackupFile(); break;
     case "restore-now": await restoreNow(); break;
+    case "toggle-add-account": ui.setupAdd = !ui.setupAdd; renderScreen(); break;
     case "add-account": await addAccount(); break;
     case "remove-account": {
       if (S().entries.some((e) => e.account_id === id)) break;
@@ -2903,7 +2909,7 @@ async function addAccount() {
   if (!opening.ok) return fail("Enter the balance like 1250 or 1250.50.");
   const plan = M.planAccount(S(), { id: newId("acct"), bank: f.bank || undefined, sub: f.sub, name: f.name, kind: f.kind, opening: opening.centavos, date: today(), covers: f.covers });
   if (!plan.ok) return fail(plan.violations[0].message);
-  ui.setupError = null;
+  ui.setupError = null; ui.setupAdd = false;
   ui.accountForm = { name: "", bank: null, sub: "", kind: f.kind, opening: "", covers: "" };
   document.activeElement?.blur();   // close the keyboard so the result is visible
   const ok = await commit(plan.state);
@@ -2923,6 +2929,15 @@ document.addEventListener("click", (e) => { if (suppressClick) { suppressClick =
 // A new touch is a new gesture: a click held back from the last one can no longer come (its button may have gone, as when holding a menu item closes the
 // menu, so the lift is never reported), so it must not swallow this tap.
 document.addEventListener("pointerdown", () => { suppressClick = false; }, true);
+// Verify: swipe the entry to the right to mark it Correct (the Correct button stays; this is the quick way). Left does nothing, so Delete is never by accident.
+let swipe = null;
+document.addEventListener("pointerdown", (e) => { const c = ui.tab === "verify" && !ui.sheet ? e.target.closest("#screen .card") : null; swipe = c && !e.target.closest("button, a, input, select") ? { x: e.clientX, y: e.clientY, c } : null; });
+document.addEventListener("pointerup", (e) => {
+  const s0 = swipe; swipe = null;
+  if (!s0 || ui.tab !== "verify" || ui.sheet) return;
+  const dx = e.clientX - s0.x, dy = e.clientY - s0.y;
+  if (dx > 90 && Math.abs(dy) < 40 && dx > Math.abs(dy) * 2.5) { s0.c.querySelector('button[data-action="verify-ok"]')?.click(); }
+});
 document.addEventListener("pointerdown", (e) => {
   const t = e.target.closest(".tile[data-id]");
   if (!t || e.target.closest(".tminus") || ui.tab !== "log" || ui.sheet) return;
