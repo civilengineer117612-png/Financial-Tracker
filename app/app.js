@@ -45,8 +45,13 @@ function clipFor(id) {
   const trips = id === "trips" ? S().tags.map((t) => ({ name: t.name, days: M.tripDays(t), spent: M.tagSummary(S(), t.id, { categoryMaps: S().categoryMaps, asOf: today() }).spent })) : [];
   let goal = null;
   if (id === "goals") {   // the first goal with a target that is not hidden by default (hidden goals are never drawn)
-    const g = S().goals.find((x) => x.target > 0 && !x.hidden_by_default && x.role !== "emergency"), p = g ? M.goalProgress(S(), g) : null, ga = g?.account_id ? S().accounts.find((a) => a.id === g.account_id) : null;
+    const shown = (x) => !x.hidden_by_default || ui.reveal;   // a hidden goal is drawn only while "Show balances" is on
+    const g = S().goals.find((x) => x.target > 0 && shown(x) && x.role !== "emergency"), p = g ? M.goalProgress(S(), g) : null, ga = g?.account_id ? S().accounts.find((a) => a.id === g.account_id) : null;
     if (g && p) goal = { name: g.name, balance: p.balance, target: g.target, account: ga ? { name: ga.name, picture: iconOf(ga, 20) } : null };
+    else {   // no ordinary goal: the emergency fund, whose target is worked out from the plan or the budgets
+      const e = S().goals.find((x) => x.role === "emergency" && shown(x)), st = e ? (planOf() ? M.emergencyFundStatus(S(), planOf(), e) : M.emergencyFundFromBudgets(S(), e, { month: M.monthOf(today()) })) : null, ea = e?.account_id ? S().accounts.find((a) => a.id === e.account_id) : null;
+      if (e && st?.target > 0) goal = { name: e.name, balance: st.balance, target: st.target, ef: true, months: st.months, account: ea ? { name: ea.name, picture: iconOf(ea, 20) } : null };
+    }
   }
   return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total, budget, trips, goal });
 }

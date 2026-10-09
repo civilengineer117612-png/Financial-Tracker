@@ -45,9 +45,9 @@ test("names from the owner's screen are escaped, never run as markup", () => {
 });
 
 test("every clip has one caption; the hint names the buttons that hold a how-to, and the app wires exactly those", () => {
-  assert.deepEqual(HOWTOS.map((h) => h.id), ["log", "verify", "scan", "budget", "trips", "goals", "backup"]);
+  assert.deepEqual(HOWTOS.map((h) => h.id), ["log", "verify", "scan", "budget", "trips", "goals", "import", "backup"]);
   for (const h of HOWTOS) assert.ok(h.caption && h.label && h.caption.length < 80, h.id);
-  assert.match(HOWTO_HINT, /^Hold Log, Verify, the camera, Budget, Goals or Trips in the menu, or Back up now in Setup/);
+  assert.match(HOWTO_HINT, /^Hold a button or a menu row for a moment to watch how it works\. Help lists every clip\.$/);
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8"), css = readFileSync(new URL("../app/index.html", import.meta.url), "utf8");
   assert.match(app, /data-tab="\$\{id\}" data-howto="\$\{id\}"/); assert.match(app, /class="camicon" data-action="open-scan-pick" data-howto="scan"/);
   assert.match(app, /class="tile addtile" data-action="add-tile" data-howto="log"/);
@@ -114,4 +114,16 @@ test("the goals clip is drawn from the owner's own goal; the bar and the figures
   assert.ok(howtoClip("goals", own).includes("Example") && howtoClip("goals", { ...own, goal: { name: "x", balance: 0, target: 0 } }).includes("Example"), "no goal with a target: a marked example");
   assert.ok(howtoClip("goals", { ...own, goal: { name: "Almost", balance: 1990000, target: 2000000 } }).includes("₱100.00"), "near the target, only what is left is added");
   assert.ok(howtoClip("goals", { ...own, goal: { name: "<i>x</i>", balance: 1, target: 100 } }).includes("&lt;i&gt;x") && !howtoClip("goals", { ...own, goal: { name: "<i>x</i>", balance: 1, target: 100 } }).includes("<i>x"), "escaped");
+});
+
+test("the goals clip explains the emergency fund's target and the no-account case; the import clip is an invented, marked example drawn on the owner's account", () => {
+  const ef = howtoClip("goals", { ...own, goal: { name: "Safety", balance: 100000, target: 900000, ef: true, months: 3, account: { name: "Test Savings" } } });
+  assert.ok(ef.includes("worked out from your budgets: 3 months of your rent, food and essentials"));
+  const plain = howtoClip("goals", { ...own, goal: { name: "G", balance: 1, target: 100 } });
+  assert.ok(plain.includes("holds nothing: choose an account for it first") && !plain.includes("worked out from your budgets"));
+  const im = howtoClip("import", own);
+  for (const w of ["Example", "Test Wallet", "12 lines", "2 already logged, left out", "Add 10 drafts to Verify", "hw-import"]) assert.ok(im.includes(w), w);
+  const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
+  assert.match(app, /!x\.hidden_by_default \|\| ui\.reveal/, "a hidden goal is drawn only while balances are shown");
+  for (const k of ["hwScanFinger"]) assert.ok(readFileSync(new URL("../app/index.html", import.meta.url), "utf8").includes(k));
 });
