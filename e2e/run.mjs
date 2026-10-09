@@ -74,12 +74,15 @@ const text = (page, sel = "body") => page.locator(sel).innerText();
 const addPayslipFlow = async (page) => { await page.click('button:has-text("Add income")'); };   // the Add income window offers the payslip ways straight away
 // Screens that belong together share one menu row; the picture strip on top of them switches between them (HUBS in names.js).
 const HUB_OF = { Goals: "Budget", "Pay plan": "Budget", Checks: "Weekly review" };
+const openAddForm = async (page) => { const b = page.locator("#add-account-open"); if (await b.count()) { await b.click(); await page.waitForSelector("#a-bank"); } };   // with accounts, Setup keeps the form behind a button
+const afterAdd = async (page) => { await page.waitForFunction(() => !document.querySelector("#a-bank") || document.querySelector("#a-error"), null, { timeout: 2500 }).catch(() => {}); await openAddForm(page); };   // adding closes the form: open it again for the next one
 const menuGo = async (page, name) => {   // Spending and Income are one menu item, Cash flow, with a switch inside
   await page.click("#menuBtn");
   const money = name === "Spending" || name === "Income";
   await page.click(`#menu .item:has-text("${money ? "Cash flow" : HUB_OF[name] ?? name}")`);
   await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
   if (HUB_OF[name]) await page.click(`#screen .hub button:has-text("${name}")`);
+  if (name === "Setup") await openAddForm(page);
   if (name === "Income") await page.click("#top .titleswitch");
 };
 // Saving is asynchronous (it writes two stores), so checks wait for the text to appear instead of racing it.
@@ -114,7 +117,7 @@ async function addAccount(page, name, kind, opening, covers) {
   await page.selectOption("#a-kind", kind);
   if (opening) await page.fill("#a-open", opening);
   if (covers) await page.selectOption("#a-covers", { label: covers });
-  await page.click('button:has-text("Add account")');
+  await page.click('button:has-text("Add account")'); await afterAdd(page);
   await page.waitForFunction((n) => [...document.querySelectorAll("#screen .row, #screen .choice, #screen li")].some((e) => e.innerText.includes(n)) || document.getElementById("screen").innerText.includes(n), name, { timeout: 8000 }).catch(() => {});   // saving is asynchronous: wait until the account is listed before going on
 }
 
@@ -138,9 +141,9 @@ check(!(await text(page, "#banner")).includes("No data on this device") && !(awa
 let s = await stored(page);
 check(s.local && s.idb && s.local === s.idb, "the same text is in localStorage and IndexedDB");
 check(JSON.parse(s.local).state.categories.length > 5 && JSON.parse(s.local).state.presets.length === 3, "defaults were saved with the first save");
-await page.click('button:has-text("Add account")');
+await page.click('button:has-text("Add account")'); await afterAdd(page);
 check(await seen(page, "#screen", "Give the account a name"), "an empty name is refused plainly");
-await page.fill("#a-name", "test cash"); await page.click('button:has-text("Add account")');
+await page.fill("#a-name", "test cash"); await page.click('button:has-text("Add account")'); await afterAdd(page);
 check(await seen(page, "#screen", "already have an account"), "a duplicate name is refused");
 
 // ===== 2. logging =====
@@ -320,7 +323,7 @@ async function tapAdd(page, name, kind, opening) {
   await page.tap("#a-name"); await page.keyboard.type(name);
   await page.selectOption("#a-kind", kind);
   await page.tap("#a-open"); await page.keyboard.type(opening);
-  await page.tap('button:has-text("Add account")');
+  await page.tap('button:has-text("Add account")'); await afterAdd(page);
 }
 await tapAdd(page, "Wallet", "asset", "250");
 check(await seen(page, "#toast", "Added Wallet"), "adding an account says so");
@@ -330,6 +333,7 @@ await tapAdd(page, "Card", "liability", "");
 check(await seen(page, "#toast", "Added Card"), "a third, owed this time, with no balance typed");
 const rowsText = await text(page, "#screen");
 check(["Wallet", "Bank", "Card", "₱1,000.50"].every((x) => rowsText.includes(x)), "all three are listed with their balances");
+await openAddForm(page);
 await page.tap("#a-name"); await page.keyboard.type("bank");
 await page.tap('button:has-text("Add account")');
 check(await seen(page, "#screen", "already have an account"), "a repeated name is refused");
@@ -409,7 +413,8 @@ check(!["Test Cash", "Test Card", "Lunch", "9500"].some((x) => raw.includes(x)),
 check(await seen(page, "#toast", "Backup file created"), "the app says what to do next");
 { const st = await stored(page); check(!st.local.includes(made) && !st.local.includes(PASS) && !(JSON.stringify(st).includes(made)), "neither passphrase is kept anywhere on the phone"); }
 check(await seen(page, "#screen", "Last backup: today"), "Setup shows when the last backup was made");
-check((await text(page, "#screen")).includes("Keep a second copy off this phone"), "Setup reminds you to keep a second copy off the phone");
+await page.click("details.why summary");
+check((await text(page, "#screen")).includes("Keep a second copy off this phone"), "Setup reminds you to keep a second copy off the phone (under Where to keep it)");
 { const before = (await stored(page)).local;
   await page.click('button:has-text("Check a backup file")');
   await page.setInputFiles("#r-file", file); await page.fill("#r-pass", "a different passphrase"); await page.click('button:has-text("Check backup")');
@@ -966,14 +971,14 @@ await page.click('#sheet .bankrow:has-text("GoTyme")');
 check((await page.locator("#a-name").count()) === 0 && (await page.locator("#a-sub").count()) === 1 && (await text(page, "#a-bank")).includes("GoTyme"), "choosing a bank closes the list and asks which part of the bank");
 await page.fill("#a-sub", "Emergency Fund");
 check((await text(page, "#a-preview")).includes("GoTyme · Emergency Fund"), "the saved name is previewed as you type");
-await page.fill("#a-open", "100"); await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added GoTyme · Emergency Fund");
-await page.click("#a-bank"); await page.click('#sheet .bankrow:has-text("GoTyme")'); await page.fill("#a-sub", "Savings"); await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added GoTyme · Savings");
+await page.fill("#a-open", "100"); await page.click('button:has-text("Add account")'); await afterAdd(page); await seen(page, "#toast", "Added GoTyme · Emergency Fund");
+await page.click("#a-bank"); await page.click('#sheet .bankrow:has-text("GoTyme")'); await page.fill("#a-sub", "Savings"); await page.click('button:has-text("Add account")'); await afterAdd(page); await seen(page, "#toast", "Added GoTyme · Savings");
 check((await page.locator("#screen .row", { hasText: "GoTyme" }).count()) === 2, "two accounts can live in the same bank");
 // a savings account and a credit card at the same bank
-await page.click("#a-bank"); await page.click('#sheet .bankrow:has-text("Metrobank")'); await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added Metrobank");
+await page.click("#a-bank"); await page.click('#sheet .bankrow:has-text("Metrobank")'); await page.click('button:has-text("Add account")'); await afterAdd(page); await seen(page, "#toast", "Added Metrobank");
 await page.click("#a-bank"); await page.click('#sheet .bankrow:has-text("Metrobank")'); await page.selectOption("#a-kind", "liability");
 check((await text(page, "#a-preview")).includes("Saved as: Metrobank \u00b7 Credit card"), "a credit card at a bank is previewed as 'Bank \u00b7 Credit card'");
-await page.click('button:has-text("Add account")'); await seen(page, "#toast", "Added Metrobank \u00b7 Credit card");
+await page.click('button:has-text("Add account")'); await afterAdd(page); await seen(page, "#toast", "Added Metrobank \u00b7 Credit card");
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.state.accounts.filter((a) => a.bank === "metrobank").map((a) => a.class).sort().join() === "asset,liability", "the same bank holds a money account and a credit card");
 await page.selectOption("#a-kind", "asset");
@@ -2182,6 +2187,16 @@ console.log("What's new and how-tos");
   await holdOn('#screen .hub button[data-tab="goals"]');
   check(await seen(page, "#sheet", "Save toward a goal") && (await text(page, "#sheet")).includes("Put money in") && /example/i.test(await text(page, "#sheet")) && (await text(page, "#sheet")).includes("Tap Put money in on a goal"), "holding Goals in the menu plays the goals how-to (an example while there is no goal with a target)");
   await page.click('#sheet button:has-text("Close")');
+  for (const [id, title, phrase] of [["cards", "See what you owe", "Cards shows each account"], ["checkin", "Count your accounts", "Tap an account, type its real balance"], ["buffer", "Cover an overrun", "the buffer pays the gap"]]) {
+    await page.click("#menuBtn"); await page.waitForSelector("#menu .item"); await page.waitForTimeout(500);
+    await holdOn(`#menu .item[data-tab="${id}"]`);
+    check(await seen(page, "#sheet", title) && (await text(page, "#sheet")).includes(phrase), `holding ${id} in the menu plays its how-to`);
+    await page.click('#sheet button:has-text("Close")');
+  }
+  await page.click("#menuBtn"); await page.click('#menu .item[data-tab="checkin"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
+  await holdOn('#screen .hub button[data-tab="checks"]');
+  check(await seen(page, "#sheet", "Check your card reserve") && /example/i.test(await text(page, "#sheet")), "holding Checks in its strip plays the card reserve how-to (a marked example)");
+  await page.click('#sheet button:has-text("Close")');
   await menuGo(page, "Setup");
   await holdOn('button[data-action="open-backup"][data-howto="backup"]');
   check(await seen(page, "#sheet", "Back up your data") && (await text(page, "#sheet")).includes("Save the file") && !(await page.locator("#sheet #f-pass").count()), "holding Back up now plays the backup how-to and does not open the backup window");
@@ -2230,6 +2245,40 @@ console.log("Signs and folded entries");
   await menuGo(page, "Budget");
   check((await text(page, "#screen")).includes("\u20B195.00 spent") && await page.locator(".choice .meter .fill").count() >= 1, "Budget rows draw a bar of spent against the limit, with the figure beside it");
   check(errors.length === 0, "no script errors with signs and folded entries");
+  await ctx.close(); }
+
+// ===== 5s3. Setup form behind a button, Cash flow tabs, the Goals ring, swipe to Correct, folded explanations =====
+console.log("Round 3: tabs, ring, swipe, folds");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-10-01" };
+  const sav = { id: "s", name: "Test Savings", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 250000, opening_date: "2026-10-01" };
+  const TS = "2026-10-03T09:00:00.000+08:00";
+  const tx = [{ id: "d1", date: "2026-10-03", payee: "Coffee", memo: "", status: "draft", source: "manual", created_at: TS }];
+  const en = [{ transaction_id: "d1", category_id: "cat-food", amount: 16500 }, { transaction_id: "d1", account_id: "w", amount: -16500 }];
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct, sav], goals: [{ id: "g1", name: "Test Laptop", account_id: "s", target: 1000000, hidden_by_default: false }], transactions: tx, entries: en } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
+  check(await page.locator("#a-bank").count() === 0 && await page.locator("#add-account-open").count() === 1, "with accounts, Setup opens on them and the form waits behind one button");
+  await page.click("#add-account-open");
+  check(await page.locator("#a-bank").count() === 1 && await page.locator("#add-account-open").count() === 0, "the button opens the form");
+  await page.click('button:has-text("Cancel")');
+  check(await page.locator("#a-bank").count() === 0, "Cancel puts it away");
+  await menuGo(page, "Spending");
+  const tab = await page.locator('.seg[aria-label="What to show"] button[aria-pressed="true"]').evaluate((b) => ({ bg: getComputedStyle(b).backgroundColor, border: getComputedStyle(b).borderTopWidth }));
+  check(tab.bg === "rgba(0, 0, 0, 0)" && tab.border === "0px" && await page.locator('.seg[aria-label="What to show"] button').count() === 4, "Cash flow's four views are quiet tabs with a line under the current one, not four boxes");
+  await menuGo(page, "Goals");
+  check(await page.locator(".goalrow svg.ring").count() === 1 && (await text(page, ".goalrow")).includes("to go") && (await page.locator("svg.ring").getAttribute("aria-label")).includes("% of the goal"), "a goal shows a ring with the percent, and the figures beside it say the same in words");
+  await menuGo(page, "Cards");
+  check(await page.locator("details.why").count() === 1 && !(await text(page, "#screen")).includes("Paying a card bill is not spending"), "the long note on Cards is folded under Why?");
+  await page.click("details.why summary");
+  check((await text(page, "#screen")).includes("Paying a card bill is not spending"), "one tap shows it");
+  await page.click('#nav button[data-tab="verify"]'); await page.waitForTimeout(400);
+  const swipeTo = (dx, dy) => page.evaluate(([x, y]) => { const c = document.querySelector("#screen .card"); const r = c.getBoundingClientRect(), x0 = r.left + 20, y0 = r.top + 20;
+    c.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: x0, clientY: y0 })); document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, clientX: x0 + x, clientY: y0 + y })); }, [dx, dy]);
+  await swipeTo(-120, 0); await swipeTo(40, 0); await swipeTo(120, 90); await page.waitForTimeout(300);
+  check(JSON.parse((await stored(page)).local).state.transactions.find((t) => t.id === "d1").status === "draft", "a left swipe, a short swipe and a diagonal swipe do nothing");
+  await swipeTo(130, 6);
+  check(await seen(page, "#screen", "Nothing to verify") && JSON.parse((await stored(page)).local).state.transactions.find((t) => t.id === "d1").status === "verified", "swiping the entry to the right marks it Correct");
+  check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
   await ctx.close(); }
 
 // ===== 5t. spending dated before an account was added is history only =====

@@ -10,6 +10,10 @@ export const HOWTOS = [
   { id: "scan", label: "Scan a receipt", caption: "Tap the camera, take the receipt, and it waits in Verify." },
   { id: "budget", label: "Set a budget", caption: "Tap a category, type its monthly limit, Save: the bucket bars follow." },
   { id: "trips", label: "Keep a trip apart", caption: "Tag new entries on a trip, or give it dates: its spending stays apart." },
+  { id: "cards", label: "See what you owe", caption: "Cards shows each account and what you owe. Tap the arrow for an earlier month." },
+  { id: "checkin", label: "Count your accounts", caption: "Tap an account, type its real balance, Save: the difference is recorded." },
+  { id: "checks", label: "Check your card reserve", caption: "Card spending goes up; Checks says if the reserve still covers it." },
+  { id: "buffer", label: "Cover an overrun", caption: "When a category runs over, the buffer pays the gap and records it." },
   { id: "goals", label: "Save toward a goal", caption: "Tap Put money in on a goal, type the amount, Save: its bar grows." },
   { id: "import", label: "Import old spending", caption: "Tap the camera, Import old spending, pick a file: every line waits in Verify." },
   { id: "backup", label: "Back up your data", caption: "Back up now, set a password, save the file off this phone." },
@@ -34,10 +38,13 @@ const EXAMPLE_TRIPS = [{ name: "Beach weekend", days: "3 Oct 2026 to 5 Oct 2026"
 // goal.ef: true for the emergency fund, whose target comes from your budgets (goal.months of your rent, food and essentials).
 const EXAMPLE_GOAL = { name: "New phone", balance: 800000, target: 2000000, account: { name: "Savings" } };
 
-export function clipData({ date, tiles = [], account = null, total = 0, budget = null, trips = [], goal = null }) {
+// The Cards and Weekly review clips' accounts: [{name, picture?, amount (centavos), owe?: true for a credit card, spent: [this month, last month]}]; months: [this, last].
+const EXAMPLE_ACCOUNTS = [{ name: "Test Card", amount: 304800, owe: true, spent: [54900, 120000] }, { name: "Wallet", amount: 292600, spent: [39900, 85000] }, { name: "Savings", amount: 4500000, spent: [0, 0] }];
+
+export function clipData({ date, tiles = [], account = null, total = 0, budget = null, trips = [], goal = null, accounts = [], months = ["This month", "Last month"] }) {
   const own = tiles.slice(0, 3), b = budget?.income > 0 && budget.rows?.length ? budget : null;
   return { date, total, example: own.length === 0 || !account, tiles: own.length ? own : EXAMPLE_TILES, account: account ?? { name: "Wallet" },
-    budget: b ? { ...b, rows: b.rows.slice(0, 3) } : EXAMPLE_BUDGET, budgetExample: !b, goal: goal?.target > 0 ? goal : EXAMPLE_GOAL, goalExample: !(goal?.target > 0),
+    budget: b ? { ...b, rows: b.rows.slice(0, 3) } : EXAMPLE_BUDGET, budgetExample: !b, goal: goal?.target > 0 ? goal : EXAMPLE_GOAL, goalExample: !(goal?.target > 0), months, accounts: accounts.length ? accounts.slice(0, 3) : EXAMPLE_ACCOUNTS, accountsExample: accounts.length === 0,
     trips: trips.length ? trips.slice(0, 2) : EXAMPLE_TRIPS, tripsExample: trips.length === 0 };
 }
 
@@ -97,6 +104,37 @@ export function howtoClip(id, raw) {
       <div class="hw-note">${g.ef ? `The target is worked out from your budgets: ${esc(g.months ?? 3)} months of your rent, food and essentials.` : "A goal with no account yet holds nothing: choose an account for it first."}</div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>
       ${sheet(`<div class="hw-amt">${esc(formatPesos(add))}</div><div class="hw-row"><span>Into</span>${acct(into)}</div>`, "Save")}${tick}`,
       `A finger taps Put money in on ${g.name}, the window shows ${formatPesos(add)} going into ${into.name}, the finger taps Save, and the bar grows from ${pctText(t0)} to ${pctText(t1)}.`);
+  }
+  if (id === "cards") {   // the arrow goes back a month: each account's "spent" for the month changes, the balances do not
+    const rows = d.accounts.map((a) => `<div class="hw-brow"><span class="hw-acct">${a.picture ?? ""}<span>${esc(a.name)}</span></span><span class="hw-bval"><span class="hw-t0">${esc(formatPesos(a.amount))}<small>${a.owe ? "you owe" : "in it"} \u00b7 spent ${esc(formatPesos(a.spent[0]))}</small></span><span class="hw-t1">${esc(formatPesos(a.amount))}<small>${a.owe ? "you owe" : "in it"} \u00b7 spent ${esc(formatPesos(a.spent[1]))}</small></span></span></div>`).join("");
+    return phone("cards", `<div class="hw-screen">${d.accountsExample ? `<div class="hw-ex">Example</div>` : ""}<div class="hw-h">Cards</div>
+      <div class="hw-month"><span class="hw-arrow">\u2039</span><span class="hw-bval hw-ml"><span class="hw-t0">${esc(d.months[0])}</span><span class="hw-t1">${esc(d.months[1])}</span></span><span class="hw-arrow hw-dim">\u203a</span></div>
+      <div class="hw-blist">${rows}</div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>`,
+      `A finger taps the back arrow, the month changes from ${d.months[0]} to ${d.months[1]} and what each account spent changes with it; the balances stay.`);
+  }
+  if (id === "checkin") {   // tap an account, type its real balance, Save: the row says Counted and the count goes up
+    const a = d.accounts[0], n = d.accounts.length;
+    const rows = d.accounts.map((x, i) => `<div class="hw-brow${i === 0 ? " hw-bpick" : ""}"><span class="hw-acct">${x.picture ?? ""}<span>${esc(x.name)}</span></span><span class="hw-bval">${i === 0
+      ? `<span class="hw-t0">Not counted</span><span class="hw-t1">${esc(formatPesos(x.amount))}</span>` : `<span>Not counted</span>`}</span></div>`).join("");
+    return phone("checkin", `<div class="hw-screen">${d.accountsExample ? `<div class="hw-ex">Example</div>` : ""}<div class="hw-h">Weekly review</div>
+      <div class="hw-date hw-bval hw-cnt"><span class="hw-t0">0 of ${n} counted</span><span class="hw-t1">1 of ${n} counted</span></div><div class="hw-blist">${rows}</div></div>
+      ${sheet(`<div class="hw-row"><span>${esc(a.name)}</span><span>real balance</span></div><div class="hw-amt hw-type"><span class="hw-t0">\u20B10.00</span><span class="hw-t1">${esc(formatPesos(a.amount))}</span></div>`, "Save")}${tick}`,
+      `A finger taps ${a.name}, types its real balance ${formatPesos(a.amount)} and taps Save; the row shows the balance and the count goes up by one.`);
+  }
+  if (id === "checks") {   // an invented example: card spending rises and the reserve no longer covers it
+    return phone("checks", `<div class="hw-screen"><div class="hw-ex">Example</div><div class="hw-h">Checks</div><div class="hw-date">Card reserve</div>
+      <div class="hw-card"><div class="hw-row"><span>Test Card owes</span><span class="hw-bval"><span class="hw-t0">\u20B13,048.00</span><span class="hw-t1">\u20B15,548.00</span></span></div>
+      <div class="hw-row"><span>Reserve holds</span><span>\u20B15,000.00</span></div>
+      <div class="hw-stat hw-bval"><span class="hw-t0">Covered</span><span class="hw-t1">Short by \u20B1548.00</span></div></div>
+      <div class="hw-chip">Card purchase \u20B12,500.00</div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>`,
+      "A card purchase of 2,500 pesos is logged; the amount owed goes from 3,048 to 5,548 pesos and Checks changes from Covered to Short by 548 pesos.");
+  }
+  if (id === "buffer") {   // an invented example: Food goes over its limit and the buffer covers the gap
+    return phone("buffer", `<div class="hw-screen"><div class="hw-ex">Example</div><div class="hw-h">Buffer</div><div class="hw-date">Kept aside for overruns</div>
+      <div class="hw-card"><div class="hw-row"><span>Food</span><span class="hw-bval"><span class="hw-t0">Over by \u20B1500.00</span><span class="hw-t1">Covered</span></span></div>
+      <div class="hw-row"><span>Buffer</span><span class="hw-bval"><span class="hw-t0">\u20B12,000.00</span><span class="hw-t1">\u20B11,500.00</span></span></div></div>
+      <div class="hw-chip">Paid from the buffer \u00b7 recorded against Food</div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>`,
+      "Food goes 500 pesos over its limit; the buffer pays the gap, goes from 2,000 to 1,500 pesos, and the draw is recorded against Food.");
   }
   if (id === "import") {   // invented numbers, always marked as an example; reachable from Help (a held button cannot be pressed under an open window)
     return phone("import", `<div class="hw-screen"><div class="hw-ex">Example</div><div class="hw-top"><div class="hw-h">Log</div><div class="hw-cam" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></div></div>
