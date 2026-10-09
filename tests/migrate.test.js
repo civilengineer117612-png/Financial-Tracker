@@ -69,8 +69,8 @@ const text = (l) => JSON.stringify(l);
 // every field of `a` is still in `b` with the same value (b may have more)
 const holds = (a, b) => (typeof a !== "object" || a === null ? a === b : typeof b === "object" && b !== null && Object.keys(a).every((k) => holds(a[k], b[k])));
 
-test("the current data version is 6 and the first version's data is still accepted as older", () => {
-  assert.equal(LEDGER_VERSION, 6);
+test("the current data version is 7 and the first version's data is still accepted as older", () => {
+  assert.equal(LEDGER_VERSION, 7);
   for (const make of Object.values(FIXTURES)) { const p = parseLedger(text(make())); assert.equal(p.ok, true); assert.equal(p.older, true); }
   const cur = upgradeLedger(v1Early()).ledger;
   assert.equal(parseLedger(text(cur)).older, undefined);
@@ -213,8 +213,8 @@ test("data version 4 upgrades to 5: Transport and Health categories get their ro
   assert.deepEqual(["c-h2", "c-in"].map(role), [undefined, undefined], "a different name and an income category get none"); assert.equal(role("c-fun"), "fun", "and the plain Fun category gets its role from the next step");
   assert.equal(role("c-set"), "food", "a role the owner already has is never replaced");
   assert.equal(fingerprint(r.ledger), fingerprint(before)); assert.deepEqual(selfCheck(r.ledger), []);
-  const strip = (l) => JSON.parse(JSON.stringify(l, (k, v) => (k === "role" ? undefined : v)));
-  assert.deepEqual(strip(r.ledger).state, strip(before).state, "every record is the same apart from the role field");
+  const strip = (l) => JSON.parse(JSON.stringify(l, (k, v) => (k === "role" || k === "last4" ? undefined : v)));
+  assert.deepEqual(strip(r.ledger).state, strip(before).state, "every record is the same apart from the role field (and the empty last4 version 7 adds)");
   assert.deepEqual(r.ledger.settings, before.settings);
   assert.equal(parseLedger(text(r.ledger)).ok, true);
   const again = upgradeLedger(r.ledger);
@@ -231,7 +231,7 @@ test("an old version 4 backup file opens and upgrades; restoring it keeps its ow
 test("data version 5 upgrades to 6: Shopping, Fun, Utilities and Dining get their roles once; goals, totals and everything else stay", () => {
   const before = v5WithGoals(), snapshot = JSON.stringify(before);
   const r = upgradeLedger(before, { now: new Date("2026-10-08T00:00:00Z") });
-  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, 6); assert.equal(JSON.stringify(before), snapshot, "the input is never changed");
+  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, LEDGER_VERSION); assert.equal(JSON.stringify(before), snapshot, "the input is never changed");
   const role = (id) => r.ledger.state.categories.find((c) => c.id === id).role;
   assert.deepEqual(["c-sh", "c-fun", "c-ut", "c-di"].map(role), ["shopping", "fun", "utilities", "dining"]);
   assert.deepEqual(["c-ot", "c-fm", "c-fun2", "c-in"].map(role), [undefined, undefined, undefined, undefined], "Other, Family, a different name and an income category get none: they are asked, not guessed");
@@ -239,8 +239,8 @@ test("data version 5 upgrades to 6: Shopping, Fun, Utilities and Dining get thei
   assert.equal(role("c-keep"), "food", "even a category named Shopping keeps the role it already has"); assert.equal(role("c-inc"), undefined, "an income category named Fun gets none");
   assert.deepEqual(r.ledger.state.goals, before.state.goals, "goals are untouched: they all had an account and still do");
   assert.equal(fingerprint(r.ledger), fingerprint(before)); assert.deepEqual(selfCheck(r.ledger), []);
-  const strip = (l) => JSON.parse(JSON.stringify(l, (k, v) => (k === "role" ? undefined : v)));
-  assert.deepEqual(strip(r.ledger).state, strip(before).state, "every record is the same apart from the role field");
+  const strip = (l) => JSON.parse(JSON.stringify(l, (k, v) => (k === "role" || k === "last4" ? undefined : v)));
+  assert.deepEqual(strip(r.ledger).state, strip(before).state, "every record is the same apart from the role field (and the empty last4 version 7 adds)");
   assert.deepEqual(r.ledger.settings, before.settings);
   const again = upgradeLedger(r.ledger); assert.equal(JSON.stringify(again.ledger.state), JSON.stringify(r.ledger.state), "running it again changes nothing");
 });
@@ -250,4 +250,39 @@ test("a version 5 backup file opens and upgrades; restoring it keeps its own ver
   const r = upgradeLedger(back, { now: new Date("2026-10-08T00:00:00Z") });
   assert.equal(r.ok, true); assert.equal(r.ledger.state.categories.find((c) => c.id === "c-ut").role, "utilities");
   assert.equal(restoreLedger({ v: LEDGER_VERSION, rev: 60, saved_at: TS, state: {}, settings: {} }, back).v, 5);
+});
+
+// ----- data version 7: an account may hold its last 4 digits -----
+// A version 6 backup, written out by hand (it does not move when the code does). Invented names, digits and amounts.
+const v6Ledger = () => ({
+  v: 6, rev: 70, saved_at: "2026-10-08T09:00:00.000+08:00",
+  state: {
+    ...Object.fromEntries(COLLECTION_NAMES.map((k) => [k, []])),
+    accounts: [acct({ id: "chk", name: "Test Checking", class: "asset", opening_balance: 300000, bank: "bdo" }), acct({ id: "cash", name: "Cash on hand", class: "asset", opening_balance: 20000 }), acct({ id: "card", name: "Test Card", class: "liability" })],
+    categories: [{ id: "cat-food", name: "Food", kind: "expense", role: "food" }, { id: "cat-salary", name: "Salary", kind: "income" }],
+    goals: [{ id: "g1", name: "Test Goal", hidden_by_default: false }],
+    transactions: [{ id: "t1", date: "2026-10-04", payee: "Sample Shop", memo: "", status: "verified", source: "photo", edited_before_verify: false, reference_no: "R-100", created_at: TS, verified_at: TS }],
+    entries: [{ transaction_id: "t1", category_id: "cat-food", amount: 9500 }, { transaction_id: "t1", account_id: "chk", amount: -9500 }],
+  },
+  settings: { notice_seen_at: TS, last_backup_at: "2026-10-01T09:00:00.000+08:00", sweep_order: [{ goal_id: "g1" }] },
+});
+test("data version 6 upgrades to 7: every account gets an empty last4; nothing is removed or renamed, totals and the self-check are the same", () => {
+  const before = v6Ledger(), snapshot = JSON.stringify(before);
+  const r = upgradeLedger(before, { now: new Date("2026-10-09T00:00:00Z") });
+  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, 7); assert.equal(JSON.stringify(before), snapshot, "the input is never changed");
+  assert.deepEqual(r.ledger.state.accounts.map((a) => a.last4), ["", "", ""]);
+  const strip = (l) => JSON.parse(JSON.stringify(l, (k, v) => (k === "last4" ? undefined : v)));
+  assert.deepEqual(strip(r.ledger).state, strip(before).state, "every record is the same apart from the new last4 field");
+  assert.deepEqual(r.ledger.settings, before.settings);
+  assert.equal(fingerprint(r.ledger), fingerprint(before)); assert.deepEqual(selfCheck(r.ledger), []);
+  const own = v6Ledger(); own.state.accounts[0].last4 = "4821";
+  assert.equal(upgradeLedger(own).ledger.state.accounts[0].last4, "4821", "a last4 already there is kept");
+  const again = upgradeLedger(r.ledger); assert.equal(JSON.stringify(again.ledger.state), JSON.stringify(r.ledger.state), "running it again changes nothing");
+});
+test("a version 6 backup file opens and upgrades; restoring it keeps its own version", async () => {
+  const sealed = await encryptLedgerBackup(v6Ledger(), "correct horse battery"), back = await decryptLedgerBackup(sealed, "correct horse battery");
+  assert.equal(back.v, 6);
+  const r = upgradeLedger(back, { now: new Date("2026-10-09T00:00:00Z") });
+  assert.equal(r.ok, true); assert.equal(r.ledger.state.accounts[0].last4, "");
+  assert.equal(restoreLedger({ v: LEDGER_VERSION, rev: 90, saved_at: TS, state: {}, settings: {} }, back).v, 6);
 });

@@ -9,6 +9,7 @@ import { validateShape } from "./schema.js";
 const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }], drafts: [] });
 const EXPENSE_SOURCES = ["manual", "preset", "template", "photo", "voice", "import"];
 const partnerId = (id) => "rsv:" + id;   // the generated card reserve transfer (templates.js)
+const partnerIds = (id) => [partnerId(id), "fee:" + id];   // and the fee draft that belongs to a scanned transfer (transfers.js)
 
 export function applyDrafts(state, drafts) {
   const ids = new Set(drafts.map((d) => d.transaction.id));
@@ -23,7 +24,7 @@ export function applyDrafts(state, drafts) {
 // set up, a draft reserve transfer is generated alongside it. Warnings never block saving.
 // input: {transaction_id, date, payee?, category_id, amount, account_id, source?, memo?, reserve_source_id?, tag_id?}
 export function planExpense(state, input, now = new Date()) {
-  const { transaction_id: id, date, payee = "", category_id, amount, account_id, source = "manual", memo = "", reserve_source_id, tag_id } = input;
+  const { transaction_id: id, date, payee = "", category_id, amount, account_id, source = "manual", memo = "", reserve_source_id, tag_id, reference_no = "", shot_time = "" } = input;
   if (!Number.isSafeInteger(amount) || amount <= 0) return fail("BAD_AMOUNT", "amount must be more than zero");
   const account = state.accounts.find((a) => a.id === account_id);
   if (!account) return fail("UNKNOWN_ACCOUNT", "no account " + account_id);
@@ -33,7 +34,7 @@ export function planExpense(state, input, now = new Date()) {
 
   if (tag_id != null && !(state.tags ?? []).some((t) => t.id === tag_id)) return fail("UNKNOWN_TAG", "no tag " + tag_id);
 
-  const transaction = { id, date, payee, memo, status: "draft", source, created_at: phTimestamp(now), ...(source === "photo" || source === "voice" ? { edited_before_verify: false } : {}), ...(tag_id != null ? { trip_add: tag_id } : {}) };
+  const transaction = { id, date, payee, memo, status: "draft", source, created_at: phTimestamp(now), ...(source === "photo" || source === "voice" ? { edited_before_verify: false } : {}), ...(tag_id != null ? { trip_add: tag_id } : {}), ...(reference_no ? { reference_no } : {}), ...(shot_time ? { shot_time } : {}) };
   const entries = [
     { transaction_id: id, category_id, amount },
     { transaction_id: id, account_id, amount: -amount, ...(account.class === "liability" ? { card_state: "pending" } : {}) },
@@ -56,11 +57,11 @@ export function discardDraft(state, id) {
   const t = state.transactions.find((x) => x.id === id);
   if (!t) return { ok: false, violations: fail("UNKNOWN_TRANSACTION", "no transaction " + id).violations, state };
   if (t.status !== "draft") return { ok: false, violations: fail("NOT_A_DRAFT", id + " is already verified").violations, state };
-  const gone = new Set([id, ...state.transactions.filter((x) => x.id === partnerId(id) && x.status === "draft").map((x) => x.id)]);
+  const gone = new Set([id, ...state.transactions.filter((x) => partnerIds(id).includes(x.id) && x.status === "draft").map((x) => x.id)]);
   return {
     ok: true, violations: [],
     // The photo goes with its draft (the caller deletes the picture file itself, see attachmentsFor).
-    state: { ...state, transactions: state.transactions.filter((x) => !gone.has(x.id)), entries: state.entries.filter((e) => !gone.has(e.transaction_id)), attachments: (state.attachments ?? []).filter((a) => !gone.has(a.transaction_id)) },
+    state: { ...state, transactions: state.transactions.filter((x) => !gone.has(x.id)), entries: state.entries.filter((e) => !gone.has(e.transaction_id)), ...(state.foreignAmounts ? { foreignAmounts: state.foreignAmounts.filter((f) => !gone.has(f.transaction_id)) } : {}), attachments: (state.attachments ?? []).filter((a) => !gone.has(a.transaction_id)) },
   };
 }
 
@@ -70,8 +71,7 @@ export function verifyDraft(state, id, now = new Date()) {
   const main = verifyTransaction(state, id, now);
   if (!main.ok) return { ok: false, violations: main.violations, state };
   const swap = new Map([[id, main.transaction]]);
-  const partner = state.transactions.find((x) => x.id === partnerId(id) && x.status === "draft");
-  if (partner) {
+  for (const partner of state.transactions.filter((x) => partnerIds(id).includes(x.id) && x.status === "draft")) {
     const p = verifyTransaction(state, partner.id, now);
     if (p.ok) swap.set(partner.id, p.transaction);
   }
@@ -88,7 +88,7 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
   if (t.status !== "draft") return { ok: false, violations: fail("NOT_A_DRAFT", id + " is already verified").violations, state };
   const entries = state.entries.filter((e) => e.transaction_id === id);
   const cat = entries.find((e) => e.category_id != null), acct = entries.find((e) => e.account_id != null);
-  const isExpense = entries.length === 2 && cat && acct && EXPENSE_SOURCES.includes(t.source) && !id.startsWith("rsv:") && state.categories.find((c) => c.id === cat.category_id)?.kind === "expense";
+  const isExpense = entries.length === 2 && cat && acct && EXPENSE_SOURCES.includes(t.source) && !id.startsWith("rsv:") && !id.startsWith("fee:") && state.categories.find((c) => c.id === cat.category_id)?.kind === "expense";
 
   if (isExpense) {
     const base = discardDraft(state, id).state;
@@ -96,6 +96,7 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
       transaction_id: id, date: changes.date ?? t.date, payee: changes.payee ?? t.payee, memo: t.memo,
       category_id: changes.category_id ?? cat.category_id, amount: changes.amount ?? cat.amount,
       account_id: changes.account_id ?? acct.account_id, source: t.source, reserve_source_id,
+      reference_no: t.reference_no ?? "", shot_time: t.shot_time ?? "",   // an edit keeps what a screenshot showed
     }, now);
     if (!plan.ok) return { ok: false, violations: plan.violations, state };
     plan.drafts[0].transaction.created_at = t.created_at;   // an edit does not change when it was captured

@@ -42,7 +42,7 @@ const cleanDigitsOnce = (s) => s.replace(/(?<=\d)[Oo]+(?=[\d/.,-])|(?<=[\d/.,-])
 const cleanDigits = (s) => { let t = s; for (let i = 0; i < 4; i++) { const n = cleanDigitsOnce(t); if (n === t) break; t = n; } return t; };   // "7oo.00" needs more than one pass
 const AMOUNT_RE = /(?:₱|php|\bp\b|#|£)?\s*(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})\b(?![:\d])/gi;   // "2026.01:00" is a year and a time, not a figure
 
-function amountsIn(line) {
+export function amountsIn(line) {
   const out = [];
   // "1.750.32" (dots as thousands) is 1,750.32; "0.00 x 114.18" is a count times a rate: only the rate is a figure
   const plain = cleanDigits(line).replace(/(\d)\.(\d{3})\.(\d{2})\b/g, "$1,$2.$3").replace(/\d+(?:\.\d+)?\s*[x×]\s*(?=\d)/gi, "");

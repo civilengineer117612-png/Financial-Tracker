@@ -18,7 +18,7 @@ const T0 = new Date("2026-10-03T03:00:00Z");   // 11:00 on Oct 3 in Manila
 // What most tests start from: a ledger in the owner's own style (the categories and the three meal tiles the app used to start everyone with), so the
 // long flows below keep their wording. A brand-new install is now neutral: tests of that open with styled: false.
 const owner = (id, name, role) => ({ id, name, kind: "expense", ...(role ? { role } : {}) });
-const LEDGER_V = 6;
+const LEDGER_V = 7;
 const OWNER_STYLE = { v: 6, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings: { notice_seen_at: "2026-10-01T08:00:00.000+08:00" }, state: {
   ...Object.fromEntries(["accounts", "goals", "envelopes", "transactions", "entries", "categoryMaps", "rules", "templates", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"].map((k) => [k, []])),
   categories: [owner("cat-food", "Food", "food"), owner("cat-lakat", "Lakat/Date"), owner("cat-family", "Family"), owner("cat-shopping", "Shopping"), owner("cat-essentials", "Essentials", "essentials"), owner("cat-upskill", "Upskill"),
@@ -1214,6 +1214,70 @@ await page.click('#nav button:has-text("Verify")');
 check((await text(page, "#screen")).includes("Food ₱100.00") && (await text(page, "#screen")).includes("Essentials ₱50.00"), "Verify shows both parts and the photo");
 await page.click('button:has-text("Delete")'); await page.click('button:has-text("Tap again to delete")'); await page.waitForTimeout(400);
 
+// ----- money moved between your own accounts: last 4 digits, the scan window, Verify, a repeat -----
+{
+  const led0 = JSON.parse((await stored(page)).local), mine = led0.state.accounts.filter((a) => a.class === "asset" && !a.reserve_for && !a.archived);
+  const [a1, a2] = mine;
+  await menuGo(page, "Setup");
+  const l4 = async (acct, digits) => { await page.click(`button[data-action="edit-last4"][data-id="${acct.id}"]`); await page.fill("#l4", digits); await page.click("#f-save"); };
+  await page.click(`button[data-action="edit-last4"][data-id="${a1.id}"]`); await page.click("#l4"); await page.keyboard.type("12345");
+  check(await page.inputValue("#l4") === "1234" && await page.getAttribute("#l4", "maxlength") === "4", "the box takes four digits and no more");
+  await page.fill("#l4", "12a4"); await page.click("#f-save");
+  check((await seen(page, "#l4-msg", "exactly the last 4")) && !JSON.parse((await stored(page)).local).state.accounts.find((a) => a.id === a1.id).last4, "letters are refused, with words, and nothing is saved");
+  await page.fill("#l4", "4821"); await page.click("#f-save"); await page.waitForTimeout(300);
+  await l4(a2, "7305"); await page.waitForTimeout(300);
+  const led1 = JSON.parse((await stored(page)).local);
+  check(led1.state.accounts.find((a) => a.id === a1.id).last4 === "4821" && led1.state.accounts.find((a) => a.id === a2.id).last4 === "7305", "the last 4 digits are saved on each account");
+  check((await text(page, "#screen")).includes("ends in 4821"), "Setup shows them");
+  await l4(a1, "7305"); check(await seen(page, "#l4-msg", "Another account already has these 4 digits"), "the same four on a second account is refused");
+  await page.click('#sheet button:has-text("Cancel")');
+
+  const movePng = await page.evaluate(() => {
+    const c = document.createElement("canvas"); c.width = 900; c.height = 1000;
+    const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 900, 1000); x.fillStyle = "#000"; x.font = "bold 40px sans-serif";
+    ["Transfer Successful", "From Test Account ending in 4821", "To Test Account ending in 7305", "Amount Sent PHP 1,000.00", "Ref No. 8842117055", "03 Oct 2026 14:15"].forEach((l, i) => x.fillText(l, 40, 90 + i * 100));
+    return c.toDataURL("image/png").split(",")[1];
+  });
+  await menuGo(page, "Scan");
+  await page.setInputFiles("input[data-scan]:not([capture])", { name: "move.png", mimeType: "image/png", buffer: Buffer.from(movePng, "base64") });
+  check(await seen(page, "#sheet", "Check what I read", 180000), "a transfer screenshot is read");
+  check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Transfer between my accounts")').count() === 1, "it is a transfer between my accounts, not an expense");
+  const pressed = await page.locator('#sheet [data-action="pick-from"][aria-pressed="true"], #sheet [data-action="pick-to"][aria-pressed="true"]').evaluateAll((els) => els.map((e) => e.dataset.action + ":" + e.dataset.id));
+  check(pressed.includes("pick-from:" + a1.id) && pressed.includes("pick-to:" + a2.id), "From and To were found by their last 4 digits (" + pressed.join(" ") + ")");
+  check(await page.inputValue("#f-amount") === "1000.00" && await page.locator("#sheet #f-fee").count() === 1, "the amount is read, and there is a fee box");
+  await page.fill("#f-fee", "15");
+  await page.click("#f-save");
+  check(await seen(page, "#screen", "draft transfer with its photo"), "it is saved as a draft transfer with its photo");
+  const led2 = JSON.parse((await stored(page)).local), mv = led2.state.transactions.find((t) => t.reference_no === "8842117055");
+  check(mv && mv.status === "draft" && mv.source === "photo" && led2.state.entries.filter((e) => e.transaction_id === mv.id).map((e) => e.amount).sort((x, y) => x - y).join() === "-100000,100000", "one transfer draft, both ends, nothing counted as spending");
+  const fee = led2.state.transactions.find((t) => t.id === "fee:" + mv.id);
+  check(fee && fee.status === "draft" && led2.state.entries.some((e) => e.transaction_id === fee.id && e.amount === 1500 && e.category_id === "cat-bank-fees") && led2.state.categories.some((c) => c.id === "cat-bank-fees" && c.role === "bank_fees"), "the fee is its own expense draft in Bank fees");
+  await page.click('#nav button:has-text("Verify")');
+  const vt = await text(page, "#screen");
+  check(vt.includes("From") && vt.includes("To") && vt.includes("Fee") && vt.includes("\u20B115.00") && vt.includes("\u20B11,000.00") && await page.locator("#screen img.shot, #screen .note:has-text('Picture not on this phone')").count() >= 1, "Verify shows the transfer: From, To, amount, fee and the photo");
+  check((await page.locator('#screen button:has-text("Correct")').count()) === 1 && vt.includes("1 to check"), "the fee is not a second entry to check: one entry waits");
+  await page.click('#screen button:has-text("Edit")');
+  check(await page.locator('#sheet [data-action="pick-from"]').count() > 1 && await page.inputValue("#f-fee") === "15.00", "Edit shows both ends and the fee");
+  await page.fill("#f-fee", "20"); await page.click("#f-save");
+  check(await seen(page, "#screen", "\u20B120.00"), "the fee can be changed");
+  // the same screenshot again
+  await menuGo(page, "Scan");
+  await page.setInputFiles("input[data-scan]:not([capture])", { name: "move.png", mimeType: "image/png", buffer: Buffer.from(movePng, "base64") });
+  check(await seen(page, "#sheet", "Check what I read", 180000), "the same screenshot is read again");
+  await page.click("#f-save");
+  check(await seen(page, "#sheet", "This looks like one you already have"), "a repeat is not refused: it offers to link");
+  const before = JSON.parse((await stored(page)).local).state.transactions.length;
+  await page.click('#sheet button[data-action="link-dup"]');
+  check(await seen(page, "#screen", "Nothing was added"), "linking adds nothing");
+  const led3 = JSON.parse((await stored(page)).local);
+  check(led3.state.transactions.length === before && led3.state.attachments.filter((a) => a.transaction_id === mv.id).length === 2, "the second photo sits with the first entry; no second entry");
+  await page.click('#nav button:has-text("Verify")');
+  await page.click('#screen button:has-text("Correct")');
+  await page.waitForTimeout(500);
+  const led4 = JSON.parse((await stored(page)).local);
+  check(led4.state.transactions.find((t) => t.id === mv.id).status === "verified" && led4.state.transactions.find((t) => t.id === "fee:" + mv.id).status === "verified", "verifying the transfer verifies its fee with it");
+}
+
 // ----- quick capture from the scanner button on the Log screen -----
 await page.click('#nav button:has-text("Log")');
 check(await page.locator('#top button[data-action="open-scan-pick"]').count() === 1, "the Log screen has one scanner button");
@@ -1903,7 +1967,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
     check(same(kept.local) && same(kept.idb), "the data as it was before the update is kept in both stores"); }
   await menuGo(page, "Setup");
   const su = await text(page, "#screen");
-  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 6") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
+  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 7") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
   await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "40"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
   check(JSON.parse((await stored(page)).local).state.transactions.length === 2, "an expense is added after the update");
   await menuGo(page, "Setup");
@@ -2329,7 +2393,7 @@ console.log("Sinking funds");
   check(await page.locator('#sheet button[data-action="toggle-sinking"][aria-pressed="false"]').count() === 1 && !JSON.parse((await stored(page)).local).settings.sinking_funds?.["cat-ins"], "turning it off removes it from the settings");
   await page.click('#sheet button[data-action="toggle-sinking"]'); await page.waitForTimeout(400);
   check(JSON.parse((await stored(page)).local).settings.sinking_funds?.["cat-ins"] === "2026-10", "turning it on starts it this month");
-  check(JSON.parse((await stored(page)).local).v === 6, "no data version change");
+  check(JSON.parse((await stored(page)).local).v === LEDGER_V, "no data version change");
   check(errors.length === 0, "no script errors with sinking funds");
   await ctx.close(); }
 

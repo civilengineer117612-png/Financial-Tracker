@@ -10,7 +10,7 @@ import { phTimestamp } from "./util.js";
 
 // Version 2 is the first with named migrations. To change the data's shape: raise this number, add the step from the old number to MIGRATIONS,
 // add a backup fixture of the old version to tests/migrate.test.js, and add the new collection to COLLECTION_NAMES.
-export const LEDGER_VERSION = 6;
+export const LEDGER_VERSION = 7;
 export const COLLECTION_NAMES = ["accounts", "goals", "envelopes", "transactions", "entries", "categories", "categoryMaps", "rules",
   "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"];
 
@@ -51,6 +51,9 @@ export const MIGRATIONS = {
     const n = String(c.name).trim().toLowerCase();
     return n === "shopping" ? { ...c, role: "shopping" } : n === "fun" ? { ...c, role: "fun" } : n === "utilities" || n === "utility" ? { ...c, role: "utilities" } : n === "dining" || n === "dining out" ? { ...c, role: "dining" } : c;
   }) } }),
+  // 6 to 7: an account may hold the last 4 digits of its number (`last4`), so a payment screenshot can tell the owner's own accounts apart; a transaction may
+  // hold the time its screenshot showed (`shot_time`); a category may hold the role "bank_fees". Every account gets last4 "" (none given). Nothing is removed or renamed.
+  6: (ledger) => ({ ...ledger, state: { ...ledger.state, accounts: (ledger.state.accounts ?? []).map((a) => (a.last4 === undefined ? { ...a, last4: "" } : a)) } }),
 };
 
 const clone = (x) => JSON.parse(JSON.stringify(x));

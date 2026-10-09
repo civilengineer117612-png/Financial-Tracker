@@ -68,6 +68,8 @@ export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByRange, sp
 export { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, emergencyFundStatus, emergencyFundFromBudgets, DEFAULT_EF, cutoffFor, planProgress, planIncome, planPayReceived } from "./plan.js";
 export { planTag, planTripDates, planTripOverride, tripMembership, tripEntries, tagSummary, overlappingTrip, tripDays, niceDay, AUTO_TAG_SKIPS } from "./trips.js";
 export { BANKS, CASH, pickerBanks, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, bankPicture, isPlaceholderAddress, dropPlaceholderAddresses } from "./banks.js";
+export { MOVE_KINDS, CHOOSE_MESSAGE, FEE_PREFIX, BANK_FEES_ROLE, isFeeId, feeIdOf, normalizeLast4, accountByLast4, setAccountLast4, last4In, recipientKey, readMove, classifyMove, rememberRecipient, ensureBankFees, planTransfer, editTransfer, feeOf, foreignOf } from "./transfers.js";
+export { findDuplicate } from "./invariants.js";
 export { KINDS, kindById, wordsToCentavos, readScan, readPayslip, linesFromWords, linesFromBoxes, snapEmployer, categoryFromHistory } from "./scan.js";
 export { EARNINGS, DEDUCTIONS, GOVERNMENT, LOST, SOURCES, OVERTIME_SHARE, linesOf, payslipTotals, payslipChecks, planPayslip, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeMonths, slipDate, deletePayslip, updatePayslip, incomeWithoutPayslip, removeIncomeEntry, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, PAYSLIP_VERSION, revisionsOf, payslipNotes, missingPayPeriods, samePeriodPayslips, markPayslipChecked, revisionChanges, incomeBreakdown } from "./income.js";
 export { homeSummary } from "./summary.js";
