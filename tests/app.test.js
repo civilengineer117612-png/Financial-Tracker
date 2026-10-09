@@ -143,7 +143,7 @@ test("tidy-up: the menu has no one-row groups, the notice has one answer, an emp
 test("hubs: screens that belong together share one menu row and a picture strip; Log shows this month at a glance", async () => {
   const { HUBS, hubOf, menuRows, MENU_GROUPS, STRIP_NAMES } = await import("../src/model/names.js");
   const all = MENU_GROUPS.flatMap(([, ids]) => ids);
-  assert.deepEqual(menuRows(all), ["money", "cards", "budget", "checkin", "scan", "trips", "buffer"], "the menu shows seven rows");
+  assert.deepEqual(menuRows(all), ["money", "cards", "budget", "scheduled", "checkin", "scan", "trips", "buffer"], "the menu shows eight rows");
   for (const [h, ids] of Object.entries(HUBS)) { assert.equal(ids[0], h); for (const id of ids) { assert.equal(hubOf(id), h); assert.ok(STRIP_NAMES[id], id); assert.ok(all.includes(id), id + " still has its Help topic"); } }
   assert.equal(hubOf("cards"), null, "Cards has its own menu row"); assert.equal(hubOf("trips"), null);
   const js = read("app/app.js");

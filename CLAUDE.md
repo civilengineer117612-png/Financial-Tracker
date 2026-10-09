@@ -59,6 +59,9 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 ## LEDGER PAPER (the look; owner approved)
 Colours are the CSS variables on `:root` in `app/index.html` (ground, surface, ink, muted, line, track, accent, dashed); screens write no colour of their own. Font: IBM Plex Sans bundled in `app/fonts` with its OFL license, listed in `app/sw.js`, never a network font; money uses the same face with tabular digits. Exactly ONE filled (accent) button per screen; cards are white, 1px line, 14px radius, no shadows, no side stripes. Red only for strictly-over-budget charts. Under a figure use a small picture or sign rather than a sentence. `tests/theme.test.js` enforces this.
 
+## SCHEDULED PAYMENTS (owner's rules)
+`src/model/schedules.js`: rows in `schedules` and dated rows in `scheduleChanges` (only ever added to: a new amount, a skip, an end, a paid-off or a payment request is a new row, never an edit). A due payment becomes a DRAFT (id `sch:<schedule>:<key>`, source "template") in Verify on its due day; nothing is auto-confirmed. Ending or deleting stops FUTURE payments only. A payment logged by hand or scanned near a due draft is OFFERED a link, never doubled. An installment counts as spent when verified, in the plan's category (the plan is recorded once). The Shopping default is found by ROLE, never by name. Data version 8.
+
 ## Every PR message starts with a MERGE CHECK (owner's rule)
 The PR message must START with a block titled "MERGE CHECK", exactly these six lines, each answered in one short line:
 1. Data version: before -> after (or "unchanged").

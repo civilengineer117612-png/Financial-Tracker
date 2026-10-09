@@ -8,6 +8,7 @@ const COLLECTIONS = {
   categories: "Category", categoryMaps: "CategoryMap", rules: "Rule", templates: "Template", presets: "Preset",
   payeeRules: "PayeeRule", subscriptions: "Subscription", checkIns: "CheckIn", attachments: "Attachment",
   tags: "Tag", foreignAmounts: "ForeignAmount", surveyResponses: "SurveyResponse", payslips: "Payslip", payslipLines: "PayslipLine", payslipRevisions: "PayslipRevision",
+  schedules: "Schedule", scheduleChanges: "ScheduleChange",
 };
 
 // Every record in every collection must be well-formed; unknown collections are refused.

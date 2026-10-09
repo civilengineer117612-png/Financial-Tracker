@@ -1,12 +1,12 @@
 // The ONE place the screens' names are written. The menu, the bottom bar, the Help topics and the Help drawings all read them from here, so renaming a
 // screen changes every one of them together (tests/helpart.test.js proves a drawing follows a rename).
 export const SCREEN_NAMES = {
-  log: "Log", verify: "Verify", money: "Cash flow", income: "Income", cards: "Cards", budget: "Budget", goals: "Goals", plan: "Pay plan (optional)", checks: "Checks",
+  log: "Log", verify: "Verify", money: "Cash flow", income: "Income", cards: "Cards", budget: "Budget", goals: "Goals", plan: "Pay plan (optional)", scheduled: "Scheduled", checks: "Checks",
   trips: "Trips", buffer: "Buffer", scan: "Scan", checkin: "Weekly review", help: "Help", setup: "Setup",
 };
 
 // The menu, in order: [group, [screen ids]]. Setup and Help are pinned at the bottom of the menu by the app.
-export const MENU_GROUPS = [["Your money", ["money", "cards", "budget", "goals", "plan"]], ["Tools", ["checkin", "checks", "scan", "trips", "buffer"]]];   // every screen, for Help; no one-row groups
+export const MENU_GROUPS = [["Your money", ["money", "cards", "budget", "goals", "plan", "scheduled"]], ["Tools", ["checkin", "checks", "scan", "trips", "buffer"]]];   // every screen, for Help; no one-row groups
 
 // Screens that belong together share ONE menu row (the first id). On each of them a strip of pictures along the top switches between them, so the menu
 // stays short: Budget holds Goals and the pay plan, Weekly review holds Checks. (Cards has its own row: it shows where your money is, not where it went.)
