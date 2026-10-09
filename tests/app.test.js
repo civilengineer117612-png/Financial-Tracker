@@ -234,3 +234,20 @@ test("round 3: the Setup form waits behind a button once there are accounts, goa
   assert.match(css, /\.seg\[aria-label="What to show"\] button\[aria-pressed="true"\]::after/, "Cash flow's views are tabs with a line under the current one");
   assert.match(css, /\.ring \{ width: 64px; height: 64px; flex: none; \}/);
 });
+
+test("Setup is a short list of pages and Help runs in a clear order with a small What's new", async () => {
+  const js = read("app/app.js"), css = read("app/index.html");
+  for (const id of ["accounts", "categories", "budget", "backup", "about"]) assert.ok(js.includes(`["${id}", `), "a Setup row for " + id);
+  assert.match(js, /const page = ui\.setupPage && blocks\[ui\.setupPage\] \? ui\.setupPage : null;/);
+  assert.match(js, /if \(ui\.tab !== "setup"\) ui\.setupPage = null;/, "leaving Setup returns it to the list");
+  assert.match(js, /case "setup-page": ui\.setupPage = el\.dataset\.id \|\| null;/);
+  assert.match(js, /data-tab="setup" data-page="accounts">Add accounts/, "Add accounts goes straight to its page");
+  assert.match(js, /data-tab="setup" data-page="backup"/, "backup links go straight to the backup page");
+  assert.ok(js.includes("const setupFlat = () =>") && js.includes('sessionStorage.getItem("setupFlat") === "1"'), "the one-long-page layout is only for the tests");
+  const order = [...js.slice(js.indexOf("function viewHelp()")).matchAll(/<h2>([^<]+)<\/h2>/g)].slice(0, 5).map((m) => m[1]);
+  assert.deepEqual(order, ["Start here", "Good to know", "Watch how it works", "Guides", "What's new"], "Help runs in one clear order");
+  assert.match(js, /news = all \? M\.CHANGES : M\.CHANGES\.slice\(0, 3\)/, "What's new shows three, and Show all shows the rest");
+  assert.ok(!js.includes("<h2>Each screen</h2>") && !js.includes("<h2>How-tos</h2>"), "the vague headings are gone");
+  assert.match(css, /\.mn\.wn \{ font-size: 14px; line-height: 1\.35; \}/, "What's new is set in small type");
+  assert.match(css, /\.setrow \.st b \{ font-weight: 600; font-size: 16px; \}/);
+});
