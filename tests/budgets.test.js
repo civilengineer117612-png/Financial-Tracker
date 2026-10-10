@@ -124,8 +124,20 @@ test("the pace line is drawn only when the share of the budget used is more than
 test("the Budget view draws the line only on rows that are ahead, and the legend (not a note at the bottom) explains it", () => {
   const app = readApp(new URL("../app/app.js", import.meta.url), "utf8");
   assert.match(app, /\$\{aheadOfMonth\(r\.spent, r\.budget, elapsed\) \? `<span class="tick" style="left:\$\{elapsed\}%"><\/span>` : ""\}/);
-  assert.match(app, /legend\(budgeted\.some\(\(r\) => aheadOfMonth\(r\.spent, r\.budget, elapsed\)\)\)/);
-  assert.match(app, /Today's place in the month, shown when spending is ahead of it/);
+  assert.match(app, /legend\(budgeted\.some\(\(r\) => aheadOfMonth\(r\.spent, r\.budget, elapsed\)\), \[\.\.\.new Set\(budgeted\.map\(\(r\) => r\.grade\.level\)\)\]\)/, "the key lists only the shapes in use");
+  assert.match(app, /<i class="tickkey" aria-hidden="true"><\/i>Today<\/span>/, "and the line is called Today");
   assert.ok(!app.includes("The black line is today's place in the month."), "the old note under the list is gone");
   assert.match(app, /const aheadOfMonth = M\.paceAhead;/);
+});
+
+test("Spending, Budget: one slim row per category; tapping a row turns the figure into what is left; the table twin is only in List", () => {
+  const app = readApp(new URL("../app/app.js", import.meta.url), "utf8");
+  const view = app.slice(app.indexOf("function viewBudgets("), app.indexOf("// ---------- Budget: the monthly amounts"));
+  assert.match(view, /data-action="toggle-bud"/); assert.match(view, /aria-expanded="\$\{on\}"/);
+  assert.match(view, /\$\{over \? esc\(words\(r\)\) : on \? esc\(words\(r\)\) : peso\(r\.spent\)\}/, "closed: what is spent; open: what is left; over budget: always the words");
+  assert.match(view, /\$\{on \|\| over \? `<span class="sub2">\$\{peso\(r\.spent\)\} of \$\{peso\(r\.budget\)\}/, "open: spent of budget");
+  assert.ok(!/status">\$\{glyph/.test(view), "the long line under every bar is gone");
+  assert.ok(!view.includes("<h2>Budget vs actual</h2>"), "the table is not repeated under the bars: List shows it");
+  assert.match(app, /case "toggle-bud":/);
+  assert.match(readApp(new URL("../app/index.html", import.meta.url), "utf8"), /button\.budrow \{[^}]*min-height: 44px/, "a row is a 44 px target");
 });

@@ -367,7 +367,6 @@ function viewLog() {
     ${dayCard()}
     ${tilesHtml()}
     <p><button class="primary compact" data-action="open-other">Add expense</button></p>
-    <p class="movelink"><button class="link" data-action="open-move">Move money between accounts</button></p>
     ${dueSoonHtml()}
     ${monthGlance()}
     ${todays.length ? entriesBlock(todays, shown === today() ? "Today" : longDate(shown)) : `<h2 class="today">${shown === today() ? "Today" : esc(longDate(shown))}</h2><p class="note">Nothing logged ${shown === today() ? "today" : "that day"}.</p>`}`;
@@ -1201,7 +1200,7 @@ const SHOWN_BARS = 7;   // bigger lists fold the small ones into one row
 const LEVELS = { good: "On track", warning: "Getting there", serious: "Nearly used up", critical: "Over budget", none: "No budget" };
 const SHAPES = { good: '<circle cx="6" cy="6" r="5"/>', warning: '<path d="M6 1 L11.5 11 H0.5 Z"/>', serious: '<path d="M6 0.5 L11.5 6 L6 11.5 L0.5 6 Z"/>', critical: '<rect x="1" y="1" width="10" height="10"/>', none: '<circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/>' };
 const glyph = (level) => `<svg class="glyph g-${level}" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">${SHAPES[level]}</svg>`;
-const legend = (pace = false) => `<p class="legend" aria-label="What the colours mean">${["good", "warning", "serious", "critical", "none"].map((l) => `<span>${glyph(l)}${LEVELS[l]}</span>`).join("")}${pace ? `<span class="pacekey"><i class="tickkey" aria-hidden="true"></i>Today's place in the month, shown when spending is ahead of it</span>` : ""}</p>`;
+const legend = (pace = false, only = null) => `<p class="legend" aria-label="What the shapes mean">${["good", "warning", "serious", "critical", "none"].filter((l) => !only || only.includes(l)).map((l) => `<span>${glyph(l)}${LEVELS[l]}</span>`).join("")}${pace ? `<span class="pacekey"><i class="tickkey" aria-hidden="true"></i>Today</span>` : ""}</p>`;
 const aheadOfMonth = M.paceAhead;   // the pace line is drawn on a budget only when its spending is ahead of the calendar
 
 function barChart(rows, selected) {
@@ -1277,6 +1276,7 @@ function viewCards() {
     <h2>Credit cards</h2>${cards}
     <h2>Debit, savings and cash</h2>${money}
     ${why(`Paying a card bill is not spending: the purchases were counted when you made them. The amounts spent and paid are for ${esc(periodLabel(p))}.`)}
+    <p><button data-action="open-move" style="width:100%">Move money between accounts</button></p>
     <p><button class="link" data-action="tab" data-tab="setup" data-page="accounts">Add or change accounts</button></p>`;
 }
 
@@ -1315,7 +1315,7 @@ function viewMoney() {
     const hit = series.find((x) => x.month === sel);
     return done(`<div class="cols${many ? " tight" : ""}">${cols}</div><div class="clabs${many ? " tight" : ""}">${series.map((x) => `<span>${many ? MONTH3[Number(x.month.slice(5)) - 1][0] : MONTH3[Number(x.month.slice(5)) - 1]}</span>`).join("")}</div>
       <p class="caption" aria-live="polite">${hit ? esc(M.monthLabel(hit.month) + ": " + peso(hit.amount) + " spent.") : "Tap a column to see its month."}</p>
-      <h2>Budget vs actual</h2>${trendChart(trend)}`);
+  X${trendChart(trend)}`);
   }
 
   if (ui.view === "budget") {
@@ -1392,13 +1392,15 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
   if (ui.asList) {
     return hero + varianceTable(budgeted);
   }
-  const cards = budgeted.map((r) => `<div class="bcard" role="group" aria-label="${esc(categoryName(r.category_id) + ": " + peso(r.spent) + " of " + peso(r.budget) + ", " + LEVELS[r.grade.level])}">
-      <div class="btop"><span class="bname">${esc(categoryName(r.category_id))}</span><span class="bval">${peso(r.spent)} of ${peso(r.budget)}</span></div>
-      <div class="meter g-${r.grade.level}"><span class="fill" style="width:${r.spent > 0 ? Math.max(1, Math.min(100, Math.round((r.spent * 100) / r.budget))) : 0}%"></span>${aheadOfMonth(r.spent, r.budget, elapsed) ? `<span class="tick" style="left:${elapsed}%"></span>` : ""}</div>
-      <div class="status">${glyph(r.grade.level)}${esc(LEVELS[r.grade.level])} · ${esc(words(r))}${r.pending > 0 ? " · " + esc("+" + peso(r.pending) + " not verified") : ""}</div></div>`).join("");
+  // One slim line per category: its name with its shape, what is spent, and the bar. Tap a row and the figure turns into what is left, with "spent of budget" below.
+  const open = ui.budOpen ?? new Set();
+  const cards = budgeted.map((r) => { const lvl = r.grade.level, on = open.has(r.category_id), over = lvl === "critical";
+    return `<button class="bcard budrow" data-action="toggle-bud" data-id="${esc(r.category_id)}" aria-expanded="${on}" aria-label="${esc(categoryName(r.category_id) + ": " + peso(r.spent) + " of " + peso(r.budget) + ", " + LEVELS[lvl] + ", " + words(r))}">
+      <span class="btop"><span class="bname">${glyph(lvl)} ${esc(categoryName(r.category_id))}</span><span class="bval">${over ? esc(words(r)) : on ? esc(words(r)) : peso(r.spent)}</span></span>
+      <span class="meter g-${lvl}" aria-hidden="true"><span class="fill" style="width:${r.spent > 0 ? Math.max(1, Math.min(100, Math.round((r.spent * 100) / r.budget))) : 0}%"></span>${aheadOfMonth(r.spent, r.budget, elapsed) ? `<span class="tick" style="left:${elapsed}%"></span>` : ""}</span>
+      ${on || over ? `<span class="sub2">${peso(r.spent)} of ${peso(r.budget)}${over ? " \u00b7 " + esc(LEVELS[lvl]) : on ? " \u00b7 " + esc(LEVELS[lvl]) : ""}${r.pending > 0 ? " \u00b7 " + esc("+" + peso(r.pending) + " not verified") : ""}</span>` : ""}</button>`; }).join("");
   const rest = unbudgeted.length ? `<h2>No budget set</h2>${unbudgeted.map((r) => `<div class="row"><div>${esc(categoryName(r.category_id))}</div><div class="amt">${peso(r.spent)}</div></div>`).join("")}` : "";
-  return hero + legend(budgeted.some((r) => aheadOfMonth(r.spent, r.budget, elapsed))) + `<div>${cards}</div>
-    <h2>Budget vs actual</h2>${varianceTable(budgeted)}${rest}`;
+  return hero + legend(budgeted.some((r) => aheadOfMonth(r.spent, r.budget, elapsed)), [...new Set(budgeted.map((r) => r.grade.level))]) + `<div>${cards}</div>${rest}`;
 }
 
 // ---------- Budget: the monthly amounts ----------
@@ -1914,7 +1916,7 @@ function renderSheet() {
       <label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">
       <p class="note" id="scan-why" role="status"></p>
       <p><button class="primary" id="f-save" data-action="save-move" style="margin-top:6px" disabled>Save</button></p>
-      <p class="note">It is a draft transfer, not spending. Verify it to count it.</p>`;
+      <p class="note">For money you move between your own accounts, like cash out or a top-up. It is not spending. Verify it to count it.</p>`;
   } else if (sh.type === "edit") {
     const t = S().transactions.find((x) => x.id === sh.id), d = describe(t);
     body = `<h3>Edit entry</h3>
@@ -3023,6 +3025,7 @@ async function onClick(el) {
       if (await commit(p.state, { ...ledger.settings, ...(queueId ? { scan_queue: scanQueue().filter((q) => q.id !== queueId) } : {}) })) { if (queueId) deletePhoto(queueId).catch(() => {}); showToast(plan.name + " " + peso(a.centavos) + " is due. Check it in Verify."); }
       break;
     }
+    case "toggle-bud": { const o = new Set(ui.budOpen ?? []); if (o.has(id)) o.delete(id); else o.add(id); ui.budOpen = o; renderScreen(); break; }
     case "open-move": ui.sheet = { type: "move" }; ui.form = { amount: "", from_id: ledger.settings.last_account_id ?? null, to_id: null, fee: "" }; renderSheet(); break;
     case "save-move": {
       const f = ui.form, a = M.parsePesos(f.amount), fee = (f.fee ?? "").trim() ? M.parsePesos(f.fee) : { ok: true, centavos: 0 };

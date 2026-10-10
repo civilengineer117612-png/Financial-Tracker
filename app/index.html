@@ -106,7 +106,6 @@
   .tiles.arranging .tile.dragging { transition: none; z-index: 5; position: relative; box-shadow: 0 8px 22px var(--shade); background: var(--paper); }
   .tiles.arranging .tile.addtile { background: none; color: var(--mid); } .tile.addtile b { font-size: 26px; font-weight: 400; }
   .l4 { color: var(--muted); font-size: 12px; font-weight: 400; }
-  .movelink { margin: -4px 0 4px; }
   .tiles.two { grid-template-columns: repeat(2, 1fr); margin: 8px 0; } .tiles.two .tile { min-height: 72px; } .tiles.two .tile b { font-size: 17px; }
   .tile { border-radius: 12px; } .tile:active { transform: scale(.96); }
   .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 84px; gap: 2px; }
@@ -193,6 +192,9 @@
   .meter .tick { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1.5px; background: var(--ink); border-radius: 2px; box-shadow: 0 0 0 1.5px var(--paper); }
   .status { display: flex; align-items: center; color: var(--mid); font-size: 14px; }
   .bcard { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  button.budrow { display: block; width: 100%; text-align: left; min-height: 44px; padding: 12px 14px; margin: 8px 0; font: inherit; font-weight: 400; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  .budrow .btop { display: flex; justify-content: space-between; align-items: center; gap: 10px; } .budrow .bname { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; } .budrow .bval { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .budrow .meter { display: block; margin-top: 10px; } .budrow .sub2 { display: block; margin-top: 8px; font-size: 13px; color: var(--muted); }
   .bcard .btop { margin-bottom: 0; }
   .choice { display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 0; min-height: 56px; }
   .choice small { color: var(--mid); display: block; } .choice .bval { text-align: right; }
@@ -424,7 +426,7 @@
   .seg[aria-label="What to show"] button { background: none; border: 0; border-radius: 0; min-height: 44px; color: var(--mid); position: relative; font-size: 14px; padding: 6px 2px; }
   .seg[aria-label="What to show"] button[aria-pressed="true"] { background: none; color: var(--ink); font-weight: 700; }
   .seg[aria-label="What to show"] button[aria-pressed="true"]::after { content: ""; position: absolute; bottom: -1px; left: 14%; right: 14%; height: 2px; background: var(--ink); border-radius: 2px 2px 0 0; }
-  .modebar { display: flex; justify-content: flex-end; margin: 0; } .modebar button { background: none; border: 0; min-height: 36px; padding: 4px 0; color: var(--mid); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }
+  .modebar { display: flex; justify-content: flex-end; margin: 0; } .modebar button { background: none; border: 0; min-height: 44px; padding: 4px 0 4px 16px; color: var(--mid); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }
   .goalrow { display: flex; align-items: center; gap: 14px; margin: 8px 0 2px; } .goalrow .status { margin: 0; }
   .ring { width: 64px; height: 64px; flex: none; } .ring circle { fill: none; stroke-width: 4; } .ring .rt { stroke: var(--wash); } .ring .rf { stroke: var(--chart); stroke-linecap: round; } .ring text { font-size: 11px; font-weight: 700; fill: var(--ink); font-variant-numeric: tabular-nums; }
   details.why { margin: 8px 0; } details.why summary { color: var(--mid); font-size: 14px; cursor: pointer; list-style: none; text-decoration: underline; text-underline-offset: 3px; } details.why summary::-webkit-details-marker { display: none; } details.why .note { margin-top: 4px; }
