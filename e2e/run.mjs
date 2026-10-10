@@ -18,7 +18,7 @@ const T0 = new Date("2026-10-03T03:00:00Z");   // 11:00 on Oct 3 in Manila
 // What most tests start from: a ledger in the owner's own style (the categories and the three meal tiles the app used to start everyone with), so the
 // long flows below keep their wording. A brand-new install is now neutral: tests of that open with styled: false.
 const owner = (id, name, role) => ({ id, name, kind: "expense", ...(role ? { role } : {}) });
-const LEDGER_V = 8;
+const LEDGER_V = 9;
 const OWNER_STYLE = { v: 6, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings: { notice_seen_at: "2026-10-01T08:00:00.000+08:00" }, state: {
   ...Object.fromEntries(["accounts", "goals", "envelopes", "transactions", "entries", "categoryMaps", "rules", "templates", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"].map((k) => [k, []])),
   categories: [owner("cat-food", "Food", "food"), owner("cat-lakat", "Lakat/Date"), owner("cat-family", "Family"), owner("cat-shopping", "Shopping"), owner("cat-essentials", "Essentials", "essentials"), owner("cat-upskill", "Upskill"),
@@ -2085,7 +2085,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
     check(same(kept.local) && same(kept.idb), "the data as it was before the update is kept in both stores"); }
   await menuGo(page, "Setup");
   const su = await text(page, "#screen");
-  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 8") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
+  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 9") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
   await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "40"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
   check(JSON.parse((await stored(page)).local).state.transactions.length === 2, "an expense is added after the update");
   await menuGo(page, "Setup");
@@ -2532,6 +2532,39 @@ console.log("Start date of an account");
   await page.reload(); await page.waitForSelector("#nav button"); await page.waitForTimeout(600);
   check(!(await text(page, "#sheet")).includes("Balances that changed"), "the note is not shown again");
   check(errors.length === 0, "no script errors around the start date");
+  await ctx.close(); }
+
+// ===== 5v. putting right a verified entry at the Weekly review =====
+console.log("Correct a verified entry");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-10-01" };
+  const TS = "2026-10-03T09:00:00.000+08:00";
+  const slip = { id: "slip", date: "2026-10-03", payee: "Corner Cafe", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS };
+  const slipEntries = [{ transaction_id: "slip", category_id: "cat-food", amount: 120000 }, { transaction_id: "slip", account_id: "w", amount: -120000 }];
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [slip], entries: slipEntries } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Weekly review");
+  check((await text(page, "#screen")).includes("A verified entry is final"), "the Weekly review says a verified entry is final");
+  check(!(await page.locator('button[data-action="open-correct"]').isDisabled()) && (await text(page, "#screen")).includes("1 can be put right"), "and offers the one entry that can still be put right");
+  await page.click('button[data-action="open-correct"]');
+  check((await text(page, "#sheet")).includes("Corner Cafe") && (await text(page, "#sheet")).includes("\u20B11,200.00"), "the list shows the entry, the date and the amount");
+  await page.click('#sheet button[data-action="pick-correct"]');
+  check((await text(page, "#sheet")).includes("Nothing is erased or edited") && (await text(page, "#sheet")).includes("A new draft"), "it says nothing is erased, and that a new draft waits in Verify");
+  await page.click('#sheet button[data-action="do-correct"]');
+  check(await seen(page, "#toast", "Fix the new draft in Verify"), "it is cancelled and the fresh draft is announced");
+  const l = JSON.parse((await stored(page)).local), rev = l.state.transactions.find((t) => t.reverses === "slip"), fix = l.state.transactions.find((t) => t.corrects === "slip");
+  check(rev && rev.status === "verified" && rev.source === "correction" && fix && fix.status === "draft", "a verified cancelling entry and a draft are saved");
+  check(JSON.stringify(l.state.transactions.find((t) => t.id === "slip")) === JSON.stringify(slip) && JSON.stringify(l.state.entries.filter((e) => e.transaction_id === "slip")) === JSON.stringify(slipEntries), "the old entry is exactly as it was");
+  check((await text(page, "#screen")).includes("none to put right"), "the same entry cannot be put right twice");
+  await page.click('#nav button:has-text("Verify")');
+  const vt = await text(page, "#screen");
+  check(vt.includes("Replaces an entry you cancelled") && vt.includes("this entry is final"), "Verify says the draft replaces the cancelled entry, and that verifying makes it final");
+  await page.click('button:has-text("Edit")'); await page.fill("#f-amount", "1000"); await page.click("#f-save");
+  await seen(page, "#screen", "\u20B11,000.00");
+  await page.click('#screen button:has-text("Correct")'); await page.waitForTimeout(400);
+  const l2 = JSON.parse((await stored(page)).local), net = l2.state.entries.filter((e) => e.account_id === "w").reduce((n, e) => n + e.amount, 0);
+  check(net === -100000 && l2.state.transactions.filter((t) => t.status === "draft").length === 0, "after the right amount is verified the wallet shows only that spending (" + net + ")");
+  await menuGo(page, "Cash flow"); await page.click('button:has-text("See every entry")').catch(() => {});
+  check(!(await text(page, "#screen")).includes("Correction:") && errors.length === 0, "no script errors");
   await ctx.close(); }
 
 // ===== 5u. importing old spending from a spreadsheet =====

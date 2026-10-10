@@ -10,7 +10,7 @@ import { phTimestamp } from "./util.js";
 
 // Version 2 is the first with named migrations. To change the data's shape: raise this number, add the step from the old number to MIGRATIONS,
 // add a backup fixture of the old version to tests/migrate.test.js, and add the new collection to COLLECTION_NAMES.
-export const LEDGER_VERSION = 8;
+export const LEDGER_VERSION = 9;
 export const COLLECTION_NAMES = ["accounts", "goals", "envelopes", "transactions", "entries", "categories", "categoryMaps", "rules",
   "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions", "schedules", "scheduleChanges"];
 
@@ -57,6 +57,10 @@ export const MIGRATIONS = {
   // 7 to 8: scheduled payments. Two new collections, `schedules` and `scheduleChanges`, start empty; a transaction may name the schedule it belongs to.
   // Nothing existing is changed, so every total is the same.
   7: (ledger) => ({ ...ledger, state: { ...ledger.state, schedules: ledger.state.schedules ?? [], scheduleChanges: ledger.state.scheduleChanges ?? [] } }),
+  // 8 to 9: corrections at the Weekly review. A transaction may carry `reverses` (the verified entry it cancels) or `corrects` (the entry a fresh draft replaces),
+  // and a new source "correction" exists. Nothing existing has these, so nothing is changed and every total is the same; the version number only stops an older app from
+  // reading data it does not understand.
+  8: (ledger) => ({ ...ledger }),
 };
 
 const clone = (x) => JSON.parse(JSON.stringify(x));

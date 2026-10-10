@@ -17,6 +17,7 @@ or AI service. This repository is public, so it holds no real money data, screen
   accounts), Budget (with Goals and the Pay plan), Scheduled (repeating payments and installments), Trips, Buffer,
   Weekly review (with Checks), Scan, Help, Setup.
 - Transfers keep a fee and a foreign amount; accounts can carry a last 4 digits so a scanned transfer finds its account.
+- A verified entry is final. A mistake from the last two weeks is put right at the Weekly review: a second entry cancels it and a fresh draft waits in Verify.
 - Scheduled payments become drafts in Verify on their due day; nothing is confirmed by itself.
 - Photos are read on the phone (PaddleOCR, Tesseract as fallback, both served from this site). No photo leaves it.
 - The look is "Ledger Paper": colours are variables on `:root` in `app/index.html`, IBM Plex Sans is bundled in `app/fonts`.
@@ -26,7 +27,7 @@ or AI service. This repository is public, so it holds no real money data, screen
 - `app/app.js` draws the screens and handles taps. It only calls the model.
 - `app/store.js` is the only file that touches storage (localStorage and IndexedDB, repaired by `src/model/persist.js`).
 - `app/sw.js` makes the app open offline. A new file under `src/model/` must be listed there (a test enforces it).
-- The saved data has a version (now 8). A change of its shape is a migration in `src/model/migrate.js`: additive only,
+- The saved data has a version (now 9). A change of its shape is a migration in `src/model/migrate.js`: additive only,
   with a copy kept before it runs and a self-check after it. See `HANDOVER.md`.
 
 **Checks**

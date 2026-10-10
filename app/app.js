@@ -130,6 +130,7 @@ function transferFields(t, d) {
 // One line about a transaction, whatever kind it is.
 function describe(t) {
   const es = S().entries.filter((e) => e.transaction_id === t.id);
+  if (t.reverses) return { kind: "other", editable: false, title: "Cancels: " + (t.payee || "an entry"), amount: es.filter((e) => e.amount > 0).reduce((n, e) => n + e.amount, 0), detail: "cancels an earlier entry" };   // shown without a sign: it only takes back what was entered
   const cat = es.find((e) => e.category_id != null), acct = es.find((e) => e.account_id != null);
   if (cat && acct && es.filter((e) => e.category_id == null).every((e) => e.account_id === acct.account_id) && es.filter((e) => e.category_id != null).length === 1) {
     if (S().categories.find((c) => c.id === cat.category_id)?.kind === "income") return { kind: "income", editable: false, title: t.payee || categoryName(cat.category_id), category_id: cat.category_id, account_id: acct.account_id, amount: Math.abs(cat.amount), detail: accountName(acct.account_id) };
@@ -390,7 +391,7 @@ const signed = (d) => (d.kind === "income" ? "+" : d.kind === "expense" || d.kin
 function rowFor(t) {
   const d = describe(t);
   const acct = d.kind === "expense" ? S().accounts.find((a) => a.id === d.account_id) : null;
-  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${signed(d)}</div></button>`;
+  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${M.correctionTag(S(), t) === "Corrected" ? " · cancelled" : ""}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${signed(d)}</div></button>`;
 }
 
 // Everything waiting, oldest first. Nothing has to wait for tomorrow: verify whenever you have the time.
@@ -416,7 +417,8 @@ function viewVerify() {
   const shot = M.attachmentsFor(S(), t.id)[0];
   const sched = t.schedule_id ? (S().schedules ?? []).find((x) => x.id === t.schedule_id) : null;
   const schedNote = sched ? `<p class="note">Scheduled payment${sched.kind === "installment" ? ", " + t.schedule_key + " of " + sched.count : ""}. Check the amount and date.</p>` : "";
-  const fromPhoto = schedNote + (t.source === "photo" ? `<p class="note">Read from the photo. Compare each line with the paper before you tap Correct.</p>`
+  const finalNote = `<p class="note">${t.corrects ? "Replaces an entry you cancelled at the Weekly review. " : ""}Once you tap Correct, this entry is final. A mistake can be put right only at the Weekly review.</p>`;
+  const fromPhoto = schedNote + finalNote + (t.source === "photo" ? `<p class="note">Read from the photo. Compare each line with the paper before you tap Correct.</p>`
     : t.source === "voice" ? `<p class="note">Made from what you said${t.memo ? ": \u201C" + esc(t.memo) + "\u201D" : ""}. Check each line before you tap Correct.</p>` : "");
   return `${head}
     <div class="card">${shot ? `<button class="shotbtn" data-action="open-photo" data-id="${esc(shot.id)}" aria-label="Open the photo full size"><img class="shot" data-photo="${esc(shot.id)}" alt="The photo this entry was read from" hidden></button>` : ""}${fromPhoto}<div class="what">${esc(d.title)}</div><div class="big">${peso(d.amount)}</div>
@@ -1678,8 +1680,11 @@ function viewCheckin() {
     ? `<h2 class="today">Weekly questions</h2><button class="choice" data-action="open-survey"><span>Four quick questions</span><span class="bval">${sv ? "Answered \u2713" : "Not answered"}</span></button>` : "";
   const age = M.daysSinceBackup(ledger.settings, today());
   const backupLine = age === null || age >= 6 ? `<p class="note"><b>One reminder:</b> back up after this check-in. ${esc(backupAgeText())} <button class="link" data-action="tab" data-tab="setup" data-page="backup">Back up now</button></p>` : "";
+  const fixable = M.correctable(S(), today()).length;
+  const fix = `<h2 class="today">A mistake in something verified?</h2><p class="note">A verified entry is final. Here, and only here, you can cancel one from the last two weeks and enter it again.</p>
+    <button class="choice" data-action="open-correct"${fixable ? "" : " disabled"}><span>Put right a verified entry</span><span class="bval">${fixable ? fixable + " can be put right" : "none to put right"}</span></button>`;
   return `<h1>Weekly review</h1><p class="sub">Week of ${esc(longDate(w.week_start))} to ${esc(longDate(w.week_end))}</p>
-    <p class="note">Open each account, look at the real balance, and type it in. ${done} of ${accts.length} counted.</p>${backupLine}${rows}${questions}
+    <p class="note">Open each account, look at the real balance, and type it in. ${done} of ${accts.length} counted.</p>${backupLine}${rows}${fix}${questions}
     ${why("Money the ledger cannot explain is recorded as Unlogged. It never blocks anything.")}`;
 }
 
@@ -2053,6 +2058,17 @@ function renderSheet() {
       ${a.class === "liability" ? `<p class="note">Use the posted amount your bank shows. Charges still pending are left alone.</p>` : ""}
       <p id="f-diff" class="note" role="status"></p>
       <p><button class="primary" id="f-save" data-action="save-checkin" disabled>Save count</button></p>`;
+  } else if (sh.type === "correct") {
+    const list = M.correctable(S(), today()), pick = list.find((t) => t.id === sh.id), pc = pick ? M.planCorrection(S(), { id: pick.id, redo_id: "probe", today: today() }) : null;
+    const line = (t) => { const d = describe(t); return `${esc(d.title)} \u00b7 ${esc(longDate(t.date))} \u00b7 ${signed(d)}`; };
+    body = pick
+      ? `<h3>Put right this entry</h3><p>${line(pick)}</p>
+        <p class="note">It stays in your list, marked corrected, and a second entry cancels it. Nothing is erased or edited.</p>
+        <p class="note">${pc.redo ? "A new draft with the same details waits in Verify. Fix the amount there and verify it." : "This kind of entry is cancelled only. Log the right one again by hand."}</p>
+        <p><button class="primary" data-action="do-correct" data-id="${esc(pick.id)}" style="margin-top:14px">Cancel it${pc.redo ? " and enter it again" : ""}</button></p>
+        <p class="center"><button class="link" data-action="open-correct">Back to the list</button></p>`
+      : `<h3>Which entry was wrong?</h3><p class="note">Verified in the last two weeks.</p>
+        ${list.length ? list.map((t) => `<button class="choice" data-action="pick-correct" data-id="${esc(t.id)}"><span>${line(t)}</span></button>`).join("") : `<p class="note">Nothing verified in the last two weeks.</p>`}`;
   } else if (sh.type === "survey") {
     const w = thisWeek(), auto = M.autoFillSurvey(S(), { unlogged_category_id: M.UNLOGGED_CATEGORY_ID, week_start: w.week_start, week_end: w.week_end });
     body = `<h3>This week</h3>
@@ -2660,6 +2676,16 @@ async function onClick(el) {
       ui.sheet = null; renderSheet();
       await commit(next);
       showToast(acct.name + ": " + differenceText(plan.checkIn.difference));
+      break;
+    }
+    case "open-correct": ui.sheet = { type: "correct" }; ui.form = {}; renderSheet(); break;
+    case "pick-correct": ui.sheet = { type: "correct", id }; renderSheet(); break;
+    case "do-correct": {
+      const plan = M.planCorrection(S(), { id, redo_id: newId("fix"), reserve_source_id: ledger.settings.reserve_source_id, today: today() }, new Date());
+      if (!plan.ok) { showToast("Could not correct: " + plan.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      await commit(M.applyCorrection(S(), plan));
+      showToast(plan.redo ? "Cancelled. Fix the new draft in Verify." : "Cancelled. Log the right entry again.");
       break;
     }
     case "open-survey": {

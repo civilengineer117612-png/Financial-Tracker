@@ -3,7 +3,7 @@
 ## What is built
 Log, Verify, Cash flow, Cards (with transfers), Budget (Goals, Pay plan), Scheduled payments, Trips, Buffer, Weekly
 review (Checks), Scan and import of old spending, Help, Setup, encrypted backup and restore, safe data upgrades
-(data version 8), the Ledger Paper look. Rules for all of it are in `CLAUDE.md`; the model is in `src/model/`.
+(data version 9), the Ledger Paper look. Rules for all of it are in `CLAUDE.md`; the model is in `src/model/`.
 
 ## What is parked
 - Scheduled paydays / expected payslips: the owner said no.

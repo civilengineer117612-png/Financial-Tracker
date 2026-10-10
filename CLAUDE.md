@@ -62,6 +62,9 @@ Colours are the CSS variables on `:root` in `app/index.html` (ground, surface, i
 ## SCHEDULED PAYMENTS (owner's rules)
 `src/model/schedules.js`: rows in `schedules` and dated rows in `scheduleChanges` (only ever added to: a new amount, a skip, an end, a paid-off or a payment request is a new row, never an edit). A due payment becomes a DRAFT (id `sch:<schedule>:<key>`, source "template") in Verify on its due day; nothing is auto-confirmed. Ending or deleting stops FUTURE payments only. A payment logged by hand or scanned near a due draft is OFFERED a link, never doubled. An installment counts as spent when verified, in the plan's category (the plan is recorded once). The Shopping default is found by ROLE, never by name. Data version 8.
 
+## CORRECTIONS (owner's rule, data version 9)
+A verified entry is FINAL: never edited, never deleted. A mistake in one is put right ONLY at the Weekly review ("Put right a verified entry", entries verified in the last 14 days, `src/model/corrections.js`): a new verified entry (source "correction", `reverses`) cancels it, and a plain expense also gets a fresh draft (`corrects`) in Verify. Nothing is rewritten; the old entry shows "cancelled". Scheduled payments, count gaps and corrections cannot be corrected here. The first-run notice, Verify and Help say "final once verified". Drafts stay editable in Verify.
+
 ## Every PR message starts with a MERGE CHECK (owner's rule)
 The PR message must START with a block titled "MERGE CHECK", exactly these six lines, each answered in one short line:
 1. Data version: before -> after (or "unchanged").
