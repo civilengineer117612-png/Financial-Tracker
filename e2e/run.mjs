@@ -2645,6 +2645,47 @@ console.log("Shrink old pictures");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
+// ===== 5y. the Pictures file: back up, lose the pictures, put them back =====
+console.log("Pictures file");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" };
+  const TS = "2026-09-20T09:00:00.000+08:00";
+  const tx = { id: "slip", date: "2026-09-20", payee: "Corner Cafe", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [tx], entries: [{ transaction_id: "slip", category_id: "cat-food", amount: 5000 }, { transaction_id: "slip", account_id: "w", amount: -5000 }],
+    attachments: [{ id: "pic-a", transaction_id: "slip", type: "photo", file: "pic-a", file_timestamp: TS }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  const idb = (fn, arg) => page.evaluate(async ([src, a]) => {
+    const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; });
+    const out = await (new Function("db", "arg", "return (" + src + ")(db, arg)"))(db, a); db.close(); return out; }, [fn.toString(), arg]);
+  const made = await idb(async (db) => { const c = document.createElement("canvas"); c.width = 300; c.height = 200; const x = c.getContext("2d"); x.fillStyle = "#c33"; x.fillRect(0, 0, 300, 200); x.fillStyle = "#fff"; x.fillText("INVENTED RECEIPT", 20, 100);
+    const b = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.9)); await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").put(b, "pic-a"); t.oncomplete = res; }); return b.size; });
+  await page.reload(); await page.waitForSelector("#nav button");
+  await menuGo(page, "Setup");
+  check(await page.locator('button[data-action="open-pic-backup"]').count() === 1, "Setup offers Back up pictures when there are pictures");
+  await page.click('button[data-action="open-pic-backup"]');
+  const PW = "a long passphrase for the pictures";
+  await page.fill("#b-pass", PW); await page.fill("#b-pass2", PW);
+  const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.click("#f-save")]);
+  const file = join(tmpdir(), "pics-" + Date.now() + ".fpics"); await dl.saveAs(file);
+  check(/^finance-pictures-.*\.fpics$/.test(dl.suggestedFilename()) && readFileSync(file).length > made, "a pictures file is made (" + dl.suggestedFilename() + ")");
+  check(!readFileSync(file).toString("latin1").includes("INVENTED RECEIPT") && !readFileSync(file).toString("latin1").includes("pic-a"), "and it is encrypted");
+  check(await seen(page, "#toast", "Pictures file created"), "the app says so");
+  await idb(async (db) => { await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").delete("pic-a"); t.oncomplete = res; }); });
+  await menuGo(page, "Setup");
+  await page.click('button[data-action="open-pic-restore"]');
+  await page.setInputFiles("#r-file", file); await page.fill("#r-pass", "not the passphrase at all"); await page.click("#f-save");
+  check(await seen(page, "#f-msg", "Wrong passphrase, or the file is damaged"), "a wrong passphrase is refused in plain words");
+  await page.fill("#r-pass", PW); await page.click("#f-save");
+  check(await seen(page, "#sheet", "This pictures file opens") && (await text(page, "#sheet")).includes("1 picture that belong"), "the right passphrase shows what is inside and what is missing here");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "1 picture is back"), "the picture is put back");
+  const back = await idb(async (db) => { const b = await new Promise((res) => { const q = db.transaction("photos").objectStore("photos").get("pic-a"); q.onsuccess = () => res(q.result); }); return b ? b.size : null; });
+  check(back === made, "it is the same picture, byte for byte in size (" + back + " of " + made + ")");
+  await menuGo(page, "Setup"); await page.click('button[data-action="open-pic-restore"]');
+  await page.setInputFiles("#r-file", file); await page.fill("#r-pass", PW); await page.click("#f-save");
+  check(await seen(page, "#sheet", "0 pictures that belong") && await page.locator("#f-save").isDisabled(), "a second time there is nothing missing, and nothing to do");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
 // ===== 5u. importing old spending from a spreadsheet =====
 console.log("Import old spending");
 { const { deflateRawSync } = await import("node:zlib");

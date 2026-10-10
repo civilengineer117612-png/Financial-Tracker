@@ -1173,7 +1173,10 @@ function viewSetup() {
     <p class="note">${backupAgeText()}</p>${M.picturesNote((S().attachments ?? []).length) ? `<p class="note">${esc(M.picturesNote((S().attachments ?? []).length))}</p>` : ""}
     <p><button class="primary" data-action="open-backup" data-howto="backup">Back up now</button></p>
     <p><button data-action="open-restore" style="width:100%">Restore from a backup</button></p>
-    <p><button data-action="open-check-backup" style="width:100%">Check a backup file</button></p>
+    <p><button data-action="open-check-backup" style="width:100%">Check a backup file</button></p>${(S().attachments ?? []).length ? `
+    <p><button data-action="open-pic-backup" style="width:100%">Back up pictures</button></p>
+    <p><button data-action="open-pic-restore" style="width:100%">Put pictures back from a file</button></p>
+    ${ledger.settings.last_pictures_backup_at ? `<p class="note">Pictures last backed up ${esc(longDate(ledger.settings.last_pictures_backup_at.slice(0, 10)))}.</p>` : ""}` : ""}
     ${why("The file is encrypted. Keep a second copy off this phone, like iCloud Drive or a computer.", "Where to keep it")}`;
   const aboutHtml = `    <h2>This app</h2>
     <p class="note">${M.isDevBuild() ? "Version: a development copy." : "Version " + esc(M.APP_BUILD) + ", updated " + esc(fullDate(M.APP_BUILT_ON)) + "."} Your data format: ${ledger.v}.</p>
@@ -2320,7 +2323,8 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-icon" disabled>Use this picture</button></p>
       ${a.icon || a.icon_url || bankLogo(a.bank ?? M.bankForName(a.name)?.id) ? `<p><button data-action="clear-icon" style="width:100%">Remove the picture</button></p>` : ""}`;
   } else if (sh.type === "backup") {
-    body = `<h3>Back up now</h3>
+    body = `<h3>${sh.pictures ? "Back up pictures" : "Back up now"}</h3>
+      ${sh.pictures ? `<p class="note">The pictures go in a file of their own, so the normal backup stays small. Use the same passphrase as your backup.</p><p class="note">A big collection is cut into parts. Each part opens on its own.</p>` : ""}
       <p class="note">Choose a passphrase of at least ${M.MIN_PASSPHRASE} characters. Without it nobody can open the backup, not even me. Your phone may offer to make a strong one and keep it in Passwords: accept that. Or tap "Make one for me" and save it yourself. This app never keeps your passphrase.</p>
       <input class="sr" type="text" name="username" autocomplete="username" value="Finance backup" readonly tabindex="-1" aria-hidden="true">
       <label for="b-pass">Passphrase</label><input id="b-pass" data-field="pass" name="password" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" value="${esc(ui.form.pass ?? "")}">
@@ -2328,7 +2332,7 @@ function renderSheet() {
       <p><button data-action="make-passphrase" style="width:100%">Make one for me</button></p>
       ${ui.form.made ? `<p class="note">Your passphrase. Save it in Passwords (name it Finance backup), or write it on paper:</p><p class="passbox" id="b-made">${esc(ui.form.made)}</p><p><button data-action="copy-passphrase" style="width:100%">Copy it</button></p>` : ""}
       <p id="f-msg" role="alert" class="note"></p>
-      <p><button class="primary" id="f-save" data-action="make-backup" disabled>Create backup file</button></p>
+      <p><button class="primary" id="f-save" data-action="${sh.pictures ? "make-pic-backup" : "make-backup"}" disabled>${sh.pictures ? "Create pictures file" : "Create backup file"}</button></p>
       <p class="note">Next, choose where to keep the file, like Save to Files. It is encrypted, so iCloud Drive or a flash drive is safe.</p>`;
   } else if (sh.type === "howto") {
     const h = M.HOWTOS.find((x) => x.id === sh.id);
@@ -2370,6 +2374,20 @@ function renderSheet() {
   } else if (sh.type === "notice") {
     body = `<h3>${esc(M.FIRST_RUN_NOTICE.title)}</h3>${figure("data")}<ol class="notes">${M.FIRST_RUN_NOTICE.lines.map((n) => `<li>${esc(n)}</li>`).join("")}</ol>
       <p><button class="primary" data-action="close-sheet">I understand</button></p>`;
+  } else if (sh.type === "restorepics") {
+    const r = ui.form.picsFound;
+    body = r
+      ? `<h3>This pictures file opens</h3><div class="card" style="border:0;padding:0"><dl><dt>The file</dt><dd>${r.count} ${r.count === 1 ? "picture" : "pictures"}${r.parts > 1 ? `, part ${r.part} of ${r.parts}` : ""}${r.saved_at ? "<br>saved " + esc(longDate(r.saved_at)) : ""}</dd><dt>Missing here</dt><dd>${r.missing} ${r.missing === 1 ? "picture" : "pictures"} that belong to your entries</dd></dl></div>
+        <p class="note">Pictures already on this phone stay exactly as they are. Nothing else changes.</p>
+        <p id="f-msg" role="alert" class="note"></p>
+        <p><button class="primary" id="f-save" data-action="restore-pics"${r.missing ? "" : " disabled"}>Put ${r.missing === 1 ? "it" : "them"} back</button></p>`
+      : `<h3>Put pictures back</h3>
+        <p class="note">Choose a pictures file made by Back up pictures. Only pictures that are missing on this phone and belong to your entries are added.</p>
+        <label for="r-file">Pictures file</label><input id="r-file" data-field="file" type="file" accept=".fpics,application/octet-stream">
+        <input class="sr" type="text" name="username" autocomplete="username" value="Finance backup" readonly tabindex="-1" aria-hidden="true">
+        <label for="r-pass">Passphrase</label><input id="r-pass" data-field="pass" name="password" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false">
+        <p id="f-msg" role="alert" class="note"></p>
+        <p><button class="primary" id="f-save" data-action="open-pic-file" disabled>Open pictures file</button></p>`;
   } else if (sh.type === "restore" && !ui.form.restored) {
     body = `<h3>${sh.check ? "Check a backup file" : "Restore from a backup"}</h3>
       ${sh.check ? `<p class="note">This opens the file to prove the passphrase works. Nothing on this phone changes.</p>` : `<p class="note">This replaces everything on this phone with the backup.</p>
@@ -2534,6 +2552,8 @@ function refreshSave() {
     const long = (f.pass ?? "").length >= M.MIN_PASSPHRASE, same = f.pass === f.pass2;
     btn.disabled = !(long && same) || f.busy;
     $("f-msg").textContent = !(f.pass ?? "").length ? "" : !long ? "At least " + M.MIN_PASSPHRASE + " characters." : !same && (f.pass2 ?? "").length ? "The two do not match." : "";
+  } else if (type === "restorepics" && !f.picsFound) {
+    btn.disabled = !(f.file && (f.pass ?? "").length) || f.busy;
   } else if (type === "restore" && !f.restored) {
     btn.disabled = !(f.file && (f.pass ?? "").length) || f.busy;
   }
@@ -3290,6 +3310,11 @@ async function onClick(el) {
       catch { showToast("Could not copy. Select the passphrase and copy it by hand."); }
       break;
     }
+    case "open-pic-backup": ui.sheet = { type: "backup", pictures: true }; ui.form = {}; renderSheet(); break;
+    case "make-pic-backup": await makePicturesBackup(); break;
+    case "open-pic-restore": ui.sheet = { type: "restorepics" }; ui.form = {}; renderSheet(); break;
+    case "open-pic-file": await openPicturesFile(); break;
+    case "restore-pics": await restorePictures(); break;
     case "open-backup-file": await openBackupFile(); break;
     case "restore-now": await restoreNow(); break;
     case "open-entries": ui.sheet = { type: "entries" }; renderSheet(); break;
@@ -3433,6 +3458,56 @@ async function makeBackup() {
   ui.sheet = null;
   await commit(S(), { ...ledger.settings, last_backup_at: M.phTimestamp() });
   showToast("Backup file created. Check that it is in Files or on your drive, and keep a second copy off this phone.");
+}
+
+// The pictures go into one or more files (each opens on its own), made one picture at a time so the phone never holds a second copy of them all.
+async function makePicturesBackup() {
+  working(true, "Working...");
+  try {
+    const have = [];
+    for (const a of S().attachments ?? []) { const b = await getPhoto(a.id).catch(() => null); if (b) have.push({ id: a.id, size: b.size }); }
+    if (!have.length) { working(false, "There are no pictures on this phone to back up."); return; }
+    const parts = M.planParts(have), day = today(), files = [];
+    for (let i = 0; i < parts.length; i++) {
+      working(true, "Making file " + (i + 1) + " of " + parts.length + "...");
+      const items = parts[i].map((id) => async () => { const b = await getPhoto(id).catch(() => null); return b ? { id, bytes: new Uint8Array(await b.arrayBuffer()) } : null; });
+      const blob = await M.sealPictures(items, ui.form.pass, { savedAt: day, part: i + 1, parts: parts.length });
+      files.push(new File([blob], M.partFileName(day, i + 1, parts.length), { type: "application/octet-stream" }));
+    }
+    if (navigator.canShare?.({ files })) await navigator.share({ files, title: "Finance pictures" });
+    else for (const f of files) { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); }
+    ui.sheet = null;
+    await commit(S(), { ...ledger.settings, last_pictures_backup_at: M.phTimestamp() });
+    showToast(files.length === 1 ? "Pictures file created. Keep it with your backup." : files.length + " pictures files created. Keep them together with your backup.");
+  } catch (e) {
+    working(false, e.name === "AbortError" ? "Not saved. Tap Create pictures file to try again." : "Could not create the pictures file: " + e.message);
+  }
+}
+
+async function openPicturesFile() {
+  working(true, "Opening...");
+  try {
+    const have = new Set((S().attachments ?? []).map((a) => a.id)), missing = [];
+    const r = await M.openPictures(ui.form.file, ui.form.pass, async (id) => { if (have.has(id) && !(await getPhoto(id).catch(() => null))) missing.push(id); });
+    ui.form = { ...ui.form, picsFound: { ...r, missing: missing.length }, busy: false };
+    renderSheet();
+  } catch (e) {
+    working(false, e.message.startsWith("could not decrypt") ? "Wrong passphrase, or the file is damaged." : e.message);
+  }
+}
+
+async function restorePictures() {
+  working(true, "Putting pictures back...");
+  try {
+    const have = new Set((S().attachments ?? []).map((a) => a.id)); let put = 0;
+    await M.openPictures(ui.form.file, ui.form.pass, async (id, bytes) => {
+      if (have.has(id) && !(await getPhoto(id).catch(() => null))) { await putPhoto(id, new Blob([bytes], { type: "image/jpeg" })); put++; }
+    });
+    ui.sheet = null; renderSheet(); renderAll();
+    showToast(put + (put === 1 ? " picture is back." : " pictures are back."));
+  } catch (e) {
+    working(false, "Could not put the pictures back: " + e.message);
+  }
 }
 
 async function openBackupFile() {

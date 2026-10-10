@@ -52,6 +52,7 @@ export { validateRatchetParams, wasMet, nextRatchet, ratchetSchedule, splitRatch
 export { planCheckIn, ledgerBalanceFor, unloggedTotal } from "./checkin.js";
 export { formatSize, picturesNote, readerStatus, usageLine } from "./storage.js";
 export { KEEP_MONTHS, SHRINK_MAX_SIDE, SHRINK_BATCH, monthsBefore, shrinkDue, shrinkProgress, targetSize } from "./pictures.js";
+export { PART_BYTES, planParts, partFileName, sealPictures, openPictures } from "./picturebackup.js";
 export { correctable, planCorrection, applyCorrection, isReversed, correctionTag, CORRECTION_DAYS } from "./corrections.js";
 export { envelopeBalance, planGcashSpend, splitSweep, planMonthEndSweep, planSweep, sweepOrderAccounts, underBudgetedCategories, planEnvelopeSetup, planBufferFunding, bufferSummary } from "./buffer.js";
 export { parseSchedule, isDue, datesBetween, categoryForPayee, draftId, draftFromTemplate, draftsForRange, planReserveTransfer, updatePreset, addPreset, removePreset, reorderPresets, MAX_PRESETS } from "./templates.js";
