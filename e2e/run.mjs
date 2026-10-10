@@ -2589,6 +2589,26 @@ console.log("Correct a verified entry");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
+// ===== 5w. what is kept on the phone, and the photo reader ahead of time =====
+console.log("Space, pictures and the photo reader");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-10-01" };
+  const TS = "2026-10-03T09:00:00.000+08:00";
+  const tx = { id: "slip", date: "2026-10-03", payee: "Corner Cafe", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS };
+  const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, last_backup_at: "2026-09-01T09:00:00.000+08:00" }, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [tx], entries: [{ transaction_id: "slip", category_id: "cat-food", amount: 5000 }, { transaction_id: "slip", account_id: "w", amount: -5000 }],
+    attachments: [{ id: "att1", transaction_id: "slip", type: "photo", file: "att1.jpg", file_timestamp: TS }, { id: "att2", transaction_id: "slip", type: "photo", file: "att2.jpg", file_timestamp: TS }] } };
+  ({ ctx, page, errors } = await open({ seed }));
+  await menuGo(page, "Setup");
+  check(await seen(page, "#screen", "2 pictures are kept on this phone only. They are not in the backup."), "Setup's Backup says how many pictures are not in it");
+  check(await seen(page, "#about-reader", "is not on this phone yet") && !(await page.locator("#warm-btn").isHidden()), "the photo reader says it is not on the phone yet, with a button to download it");
+  check(await seen(page, "#about-storage", "of the phone's space"), "and the space the app uses is shown");
+  await page.click("#warm-btn");
+  check(await seen(page, "#toast", "The photo reader is on this phone", 120000), "the button downloads the reader");
+  check(await seen(page, "#about-reader", "The photo reader is on this phone.") && await page.locator("#warm-btn").isHidden(), "and the line changes, with no button left");
+  await menuGo(page, "Weekly review");
+  check((await text(page, "#screen")).includes("One reminder") && (await text(page, "#screen")).includes("2 pictures are kept on this phone only"), "a due backup reminder at the Weekly review names the pictures");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
 // ===== 5u. importing old spending from a spreadsheet =====
 console.log("Import old spending");
 { const { deflateRawSync } = await import("node:zlib");

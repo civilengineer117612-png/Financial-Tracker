@@ -50,6 +50,7 @@ export function checkRulesSave(previousRules, nextRules) {
 export { ruleInEffect, rulesInEffect, reportingCategory, checkCategoryMapSave } from "./rules.js";
 export { validateRatchetParams, wasMet, nextRatchet, ratchetSchedule, splitRatchet } from "./ratchet.js";
 export { planCheckIn, ledgerBalanceFor, unloggedTotal } from "./checkin.js";
+export { formatSize, picturesNote, readerStatus, usageLine } from "./storage.js";
 export { correctable, planCorrection, applyCorrection, isReversed, correctionTag, CORRECTION_DAYS } from "./corrections.js";
 export { envelopeBalance, planGcashSpend, splitSweep, planMonthEndSweep, planSweep, sweepOrderAccounts, underBudgetedCategories, planEnvelopeSetup, planBufferFunding, bufferSummary } from "./buffer.js";
 export { parseSchedule, isDue, datesBetween, categoryForPayee, draftId, draftFromTemplate, draftsForRange, planReserveTransfer, updatePreset, addPreset, removePreset, reorderPresets, MAX_PRESETS } from "./templates.js";
