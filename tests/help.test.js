@@ -38,15 +38,16 @@ test("the getting-started steps tick themselves from the data", () => {
   assert.deepEqual(checklist({ accounts: [{ id: "a" }], transactions: [] }, {}).map((s) => s.done), [true, false, false]);
 });
 
-test("the first-run notice says the five plain things: data stays here, nothing recovers a lost phone or passphrase, back up now, iPhone Home Screen, Android site data", () => {
+test("the first-run notice says the six plain things: a verified entry is final, data stays here, nothing recovers a lost phone or passphrase, back up now, iPhone Home Screen, Android site data", () => {
   const all = FIRST_RUN_NOTICE.lines.join(" ");
-  assert.equal(FIRST_RUN_NOTICE.lines.length, 5);
-  assert.match(FIRST_RUN_NOTICE.lines[0], /stays on this phone/);
-  assert.match(FIRST_RUN_NOTICE.lines[1], /lost phone/); assert.match(FIRST_RUN_NOTICE.lines[1], /forgotten backup passphrase/); assert.match(FIRST_RUN_NOTICE.lines[1], /cannot be recovered/);
-  assert.match(FIRST_RUN_NOTICE.lines[2], /backup now/);
-  assert.match(FIRST_RUN_NOTICE.lines[3], /^iPhone: add this app to the Home Screen first/);
-  assert.match(FIRST_RUN_NOTICE.lines[4], /^Android: clearing the browser's site data erases the ledger/);
-  assert.ok(all.length < 520, "short enough to read at a glance");
+  assert.equal(FIRST_RUN_NOTICE.lines.length, 6);
+  assert.match(FIRST_RUN_NOTICE.lines[0], /^Once you verify an entry it is final/); assert.match(FIRST_RUN_NOTICE.lines[0], /Weekly review/);
+  assert.match(FIRST_RUN_NOTICE.lines[1], /stays on this phone/);
+  assert.match(FIRST_RUN_NOTICE.lines[2], /lost phone/); assert.match(FIRST_RUN_NOTICE.lines[2], /forgotten backup passphrase/); assert.match(FIRST_RUN_NOTICE.lines[2], /cannot be recovered/);
+  assert.match(FIRST_RUN_NOTICE.lines[3], /backup now/);
+  assert.match(FIRST_RUN_NOTICE.lines[4], /^iPhone: add this app to the Home Screen first/);
+  assert.match(FIRST_RUN_NOTICE.lines[5], /^Android: clearing the browser's site data erases the ledger/);
+  assert.ok(all.length < 680, "short enough to read at a glance");
 });
 
 test("Help words never name an owner-specific goal or category, and the goals topic speaks of roles", () => {

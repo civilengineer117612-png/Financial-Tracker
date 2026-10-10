@@ -69,8 +69,8 @@ const text = (l) => JSON.stringify(l);
 // every field of `a` is still in `b` with the same value (b may have more)
 const holds = (a, b) => (typeof a !== "object" || a === null ? a === b : typeof b === "object" && b !== null && Object.keys(a).every((k) => holds(a[k], b[k])));
 
-test("the current data version is 8 and the first version's data is still accepted as older", () => {
-  assert.equal(LEDGER_VERSION, 8);
+test("the current data version is 9 and the first version's data is still accepted as older", () => {
+  assert.equal(LEDGER_VERSION, 9);
   for (const make of Object.values(FIXTURES)) { const p = parseLedger(text(make())); assert.equal(p.ok, true); assert.equal(p.older, true); }
   const cur = upgradeLedger(v1Early()).ledger;
   assert.equal(parseLedger(text(cur)).older, undefined);
@@ -319,4 +319,38 @@ test("a version 7 backup file opens and upgrades; restoring it keeps its own ver
   const r = upgradeLedger(back, { now: new Date("2026-10-10T00:00:00Z") });
   assert.equal(r.ok, true); assert.deepEqual(r.ledger.state.schedules, []);
   assert.equal(restoreLedger({ v: LEDGER_VERSION, rev: 100, saved_at: TS, state: {}, settings: {} }, back).v, 7);
+});
+
+// ----- data version 9: corrections at the Weekly review -----
+// A version 8 backup, written out by hand (it does not move when the code does). Invented names and amounts.
+const v8Ledger = () => ({
+  v: 8, rev: 120, saved_at: "2026-10-10T09:00:00.000+08:00",
+  state: {
+    ...Object.fromEntries(COLLECTION_NAMES.map((k) => [k, []])),
+    accounts: [acct({ id: "chk", name: "Test Checking", class: "asset", opening_balance: 300000, last4: "4821" })],
+    categories: [{ id: "cat-food", name: "Food", kind: "expense" }],
+    transactions: [{ id: "t1", date: "2026-10-08", payee: "Corner Cafe", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS }],
+    entries: [{ transaction_id: "t1", category_id: "cat-food", amount: 12000 }, { transaction_id: "t1", account_id: "chk", amount: -12000 }],
+  },
+  settings: { notice_seen_at: TS, last_backup_at: "2026-10-08T09:00:00.000+08:00" },
+});
+test("data version 8 upgrades to 9: no record changes; a correction written afterwards is accepted by the same checks", () => {
+  const before = v8Ledger(), snapshot = JSON.stringify(before);
+  const r = upgradeLedger(before, { now: new Date("2026-10-10T00:00:00Z") });
+  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, 9); assert.equal(JSON.stringify(before), snapshot, "the input is never changed");
+  assert.deepEqual(r.ledger.state, before.state, "every record is the same");
+  assert.deepEqual(r.ledger.settings, before.settings);
+  assert.equal(fingerprint(r.ledger), fingerprint(before)); assert.deepEqual(selfCheck(r.ledger), []);
+  const withFix = JSON.parse(JSON.stringify(r.ledger));
+  withFix.state.transactions.push({ id: "rev:t1", date: "2026-10-08", payee: "Corner Cafe", memo: "Correction of Corner Cafe", status: "verified", source: "correction", reverses: "t1", created_at: TS, verified_at: TS });
+  withFix.state.entries.push({ transaction_id: "rev:t1", category_id: "cat-food", amount: -12000 }, { transaction_id: "rev:t1", account_id: "chk", amount: 12000 });
+  assert.deepEqual(selfCheck(withFix), [], "a correction pair adds up like any other entry");
+  assert.equal(upgradeLedger(r.ledger).steps, 0, "already current: nothing to do");
+});
+test("a version 8 backup file opens and upgrades; restoring it keeps its own version", async () => {
+  const sealed = await encryptLedgerBackup(v8Ledger(), "correct horse battery"), back = await decryptLedgerBackup(sealed, "correct horse battery");
+  assert.equal(back.v, 8);
+  const r = upgradeLedger(back, { now: new Date("2026-10-10T00:00:00Z") });
+  assert.equal(r.ok, true); assert.equal(r.ledger.v, 9);
+  assert.equal(restoreLedger({ v: LEDGER_VERSION, rev: 130, saved_at: TS, state: {}, settings: {} }, back).v, 8);
 });

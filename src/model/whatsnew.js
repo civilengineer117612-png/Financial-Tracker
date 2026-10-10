@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-10-final", date: "2026-10-10", text: "A verified entry is now clearly final: the first-run notice, Verify and Help say so, and a mistake from the last two weeks can be cancelled and entered again at the Weekly review." },
   { id: "2026-10-10-quiet-budget", date: "2026-10-10", text: "Spending, Budget: one slim line per category (tap one to see what is left), a shorter key, and Move money between accounts now lives on Cards, not on Log." },
   { id: "2026-10-10-scheduled-more", date: "2026-10-10", text: "Scheduled: a skipped payment can be brought back, a plan on a credit card sets its reserve aside once, and there is a how-to clip (hold its menu row)." },
   { id: "2026-10-10-scheduled", date: "2026-10-10", text: "New Scheduled screen: repeating payments and installment plans become drafts in Verify on their due day, Log shows what is due soon, and a payment you log yourself is linked, not doubled." },
