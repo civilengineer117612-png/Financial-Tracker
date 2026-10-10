@@ -8,9 +8,9 @@ const CACHE = "finance-app-" + VERSION;
 // cache-first: it downloads once, not again after every update. If the reader is ever replaced, change this name so the new files are fetched.
 const READER = "finance-reader-v1";
 const FILES = [
-  "./", "index.html", "app.js", "store.js", "ocr.js", "paddle.js", "voice.js", "manifest.json", "icon-180.png", "icon-512.png", "fonts/OFL.txt", "fonts/ibm-plex-sans-latin-400-normal.woff2", "fonts/ibm-plex-sans-latin-500-normal.woff2", "fonts/ibm-plex-sans-latin-600-normal.woff2", "fonts/ibm-plex-sans-latin-ext-400-normal.woff2", "fonts/ibm-plex-sans-latin-ext-500-normal.woff2", "fonts/ibm-plex-sans-latin-ext-600-normal.woff2",
+  "./", "index.html", "app.js", "store.js", "ocr.js", "paddle.js", "shrink.js", "voice.js", "manifest.json", "icon-180.png", "icon-512.png", "fonts/OFL.txt", "fonts/ibm-plex-sans-latin-400-normal.woff2", "fonts/ibm-plex-sans-latin-500-normal.woff2", "fonts/ibm-plex-sans-latin-600-normal.woff2", "fonts/ibm-plex-sans-latin-ext-400-normal.woff2", "fonts/ibm-plex-sans-latin-ext-500-normal.woff2", "fonts/ibm-plex-sans-latin-ext-600-normal.woff2",
   "../src/model/index.js", "../src/model/util.js", "../src/model/schema.js", "../src/model/balances.js",
-  "../src/model/invariants.js", "../src/model/rules.js", "../src/model/ratchet.js", "../src/model/checkin.js", "../src/model/corrections.js", "../src/model/storage.js",
+  "../src/model/invariants.js", "../src/model/rules.js", "../src/model/ratchet.js", "../src/model/checkin.js", "../src/model/corrections.js", "../src/model/storage.js", "../src/model/pictures.js",
   "../src/model/buffer.js", "../src/model/templates.js", "../src/model/budget.js", "../src/model/inbox.js",
   "../src/model/goals.js", "../src/model/backup.js", "../src/model/survey.js", "../src/model/device.js",
   "../src/model/reminders.js", "../src/model/money.js", "../src/model/seed.js", "../src/model/drafts.js",

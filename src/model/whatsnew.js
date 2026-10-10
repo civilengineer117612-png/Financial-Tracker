@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-10-shrink", date: "2026-10-10", text: "Pictures older than 3 months are now shrunk once to save space; nothing is deleted and the entries stay as they were." },
   { id: "2026-10-10-pictures-space", date: "2026-10-10", text: "Setup says how many pictures are not in your backup and how much space the app uses, and can download the photo reader ahead of a scan." },
   { id: "2026-10-10-reader-cache", date: "2026-10-10", text: "The photo reader now downloads once and stays on your phone, so a scan after an update no longer re-downloads it." },
   { id: "2026-10-10-final-more", date: "2026-10-10", text: "An account with entries can be hidden at a zero balance, a move with its fee can be put right at the Weekly review, and cancelled entries stay out of the lists unless you ask." },

@@ -2609,6 +2609,42 @@ console.log("Space, pictures and the photo reader");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
+// ===== 5x. old pictures are shrunk, recent ones are not =====
+console.log("Shrink old pictures");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-04-01" };
+  const TS = "2026-05-02T09:00:00.000+08:00", TS2 = "2026-09-20T09:00:00.000+08:00";
+  const tx = (id, date, ts) => ({ id, date, payee: "Corner Cafe", memo: "", status: "verified", source: "manual", created_at: ts, verified_at: ts });
+  const es = (id) => [{ transaction_id: id, category_id: "cat-food", amount: 5000 }, { transaction_id: id, account_id: "w", amount: -5000 }];
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [tx("old", "2026-05-02", TS), tx("new", "2026-09-20", TS2)], entries: [...es("old"), ...es("new")],
+    attachments: [{ id: "pic-old", transaction_id: "old", type: "photo", file: "pic-old", file_timestamp: TS }, { id: "pic-new", transaction_id: "new", type: "photo", file: "pic-new", file_timestamp: TS2 }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  // two big pictures of noise (so they do not compress to nothing), put in the phone's own picture store as the app would
+  const sizes = await page.evaluate(async () => {
+    const make = async () => { const c = document.createElement("canvas"); c.width = 3200; c.height = 2400; const x = c.getContext("2d");
+      const d = x.createImageData(c.width, c.height); for (let i = 0; i < d.data.length; i += 4) { d.data[i] = Math.random() * 255; d.data[i + 1] = Math.random() * 255; d.data[i + 2] = Math.random() * 255; d.data[i + 3] = 255; }
+      x.putImageData(d, 0, 0); return await new Promise((r) => c.toBlob(r, "image/jpeg", 0.9)); };
+    const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; });
+    const out = {};
+    for (const id of ["pic-old", "pic-new"]) { const b = await make(); out[id] = b.size; await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").put(b, id); t.oncomplete = res; }); }
+    db.close(); return out;
+  });
+  await page.reload(); await page.waitForSelector("#nav button");
+  const read = () => page.evaluate(async () => {
+    const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; });
+    const get = (id) => new Promise((res) => { const q = db.transaction("photos").objectStore("photos").get(id); q.onsuccess = () => res(q.result); });
+    const out = {}; for (const id of ["pic-old", "pic-new"]) { const b = await get(id); const m = await createImageBitmap(b); out[id] = { size: b.size, w: m.width, h: m.height }; m.close(); } db.close(); return out;
+  });
+  let got = null;
+  for (let i = 0; i < 40 && !(got && got["pic-old"].w <= 1600); i++) { await page.waitForTimeout(1000); got = await read(); }
+  check(got["pic-old"].w === 1600 && got["pic-old"].h === 1200 && got["pic-old"].size < sizes["pic-old"] / 2, "a picture older than 3 months is shrunk to 1600 on its longest side and is much smaller (" + sizes["pic-old"] + " to " + got["pic-old"].size + ")");
+  check(got["pic-new"].w === 3200 && got["pic-new"].size === sizes["pic-new"], "a recent picture is left exactly as it was");
+  const l = JSON.parse((await stored(page)).local);
+  check(l.settings.photos_shrunk_through === TS && l.state.attachments.length === 2 && l.state.transactions.length === 2, "the marker is saved and no entry or picture record changed");
+  await menuGo(page, "Setup");
+  check(await seen(page, "#screen", "shrunk to save space, one time each: 1 of 1 done"), "Setup says how far the shrinking got");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
 // ===== 5u. importing old spending from a spreadsheet =====
 console.log("Import old spending");
 { const { deflateRawSync } = await import("node:zlib");

@@ -1180,7 +1180,7 @@ function viewSetup() {
     <h2>Photo reader and space</h2>
     <p class="note" id="about-reader">Checking the photo reader\u2026</p>
     <p><button data-action="warm-reader" id="warm-btn" style="width:100%" hidden>Download the photo reader now</button></p>
-    <p class="note" id="about-storage"></p>
+    <p class="note" id="about-storage"></p>${(() => { const g = M.shrinkProgress(S().attachments ?? [], today(), ledger.settings.photos_shrunk_through ?? ""); return g.old ? `<p class="note">Pictures older than 3 months are shrunk to save space, one time each: ${g.done} of ${g.old} done.</p>` : ""; })()}
     ${(ui.copies ?? []).map((c, i) => `<p><button data-action="restore-copy" data-id="${i}" style="width:100%">${ui.confirmCopy === i ? "Tap again to restore. Entries made since then will be lost." : i === 0 ? "Restore the copy from before the last update" : "Restore the copy from before the update before that"}</button></p><p class="note small">Saved ${esc(fullDate(c.at.slice(0, 10)))}, before your data was updated from format ${c.from_version}.</p>`).join("")}`;
   const reserveHtml = `    ${reserveExists ? `<h2>Card reserve</h2><label for="r-src">Reserve transfers come out of</label><select id="r-src" data-action-change="set-reserve-source"><option value="">Choose an account</option>${hosts.map((a) => `<option value="${esc(a.id)}"${ledger.settings.reserve_source_id === a.id ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select>` : ""}`;
   const flat = setupFlat();   // one long page, kept for the tests; the phone shows a short list of pages
@@ -1851,6 +1851,28 @@ async function refreshAbout() {
   if (el) { el.textContent = st.text; const b = document.getElementById("warm-btn"); if (b) b.hidden = st.ready; }
   let used = null; try { used = (await navigator.storage?.estimate?.())?.usage ?? null; } catch { /* the phone does not say */ }
   const sl = document.getElementById("about-storage"); if (sl) sl.textContent = used === null ? "" : M.usageLine(used);
+}
+
+// Pictures older than 3 months are shrunk a few at a time while the app is open and visible. Nothing is deleted: the entries and the pictures stay, smaller.
+// Each picture is replaced only after the smaller copy has been checked; the setting `photos_shrunk_through` remembers how far it got.
+let shrinking = false;
+async function shrinkOldPictures() {
+  if (shrinking || !device.allowEntry || document.visibilityState !== "visible" || ui.upgrade?.failed) return;
+  shrinking = true;
+  try {
+    const { shrinkBlob } = await import("./shrink.js");
+    for (let round = 0; round < 40; round++) {   // a few pictures at a time; at most 40 rounds in one go
+      const due = M.shrinkDue(S().attachments ?? [], today(), ledger.settings.photos_shrunk_through ?? "");
+      if (!due.length || document.visibilityState !== "visible") break;
+      for (const a of due) {
+        const blob = await getPhoto(a.id).catch(() => null);
+        const small = blob ? await shrinkBlob(blob) : null;
+        if (small) await putPhoto(a.id, small).catch(() => {});
+      }
+      await commit(S(), { ...ledger.settings, photos_shrunk_through: due[due.length - 1].file_timestamp }, { quiet: true });
+      await new Promise((r) => setTimeout(r, 300));   // a pause, so the screen stays quick
+    }
+  } finally { shrinking = false; }
 }
 
 function backupAgeText() {
@@ -3641,9 +3663,10 @@ async function start() {
     await dropOldPlaceholders();
     loadBankLogos();
     processScanQueue();   // photos taken just before the app was closed are read now
+    setTimeout(shrinkOldPictures, 8000);   // old pictures are shrunk a while after the app has started, never at once
     if (await runSchedules()) renderAll();   // payments that fell due while the app was closed become drafts
   }
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 }
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && device.allowEntry) { processScanQueue(); runSchedules().then((made) => { if (made) renderAll(); }); } });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && device.allowEntry) { processScanQueue(); setTimeout(shrinkOldPictures, 8000); runSchedules().then((made) => { if (made) renderAll(); }); } });
 start();
