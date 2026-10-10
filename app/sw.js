@@ -4,6 +4,9 @@
 // installs a fresh worker and drops the old cache.
 const VERSION = "__VERSION__";
 const CACHE = "finance-app-" + VERSION;
+// The photo reader (src/vendor, about 30 MB) is copied unchanged and never edited, so it is kept in its OWN cache that a deploy does not delete, and read
+// cache-first: it downloads once, not again after every update. If the reader is ever replaced, change this name so the new files are fetched.
+const READER = "finance-reader-v1";
 const FILES = [
   "./", "index.html", "app.js", "store.js", "ocr.js", "paddle.js", "voice.js", "manifest.json", "icon-180.png", "icon-512.png", "fonts/OFL.txt", "fonts/ibm-plex-sans-latin-400-normal.woff2", "fonts/ibm-plex-sans-latin-500-normal.woff2", "fonts/ibm-plex-sans-latin-600-normal.woff2", "fonts/ibm-plex-sans-latin-ext-400-normal.woff2", "fonts/ibm-plex-sans-latin-ext-500-normal.woff2", "fonts/ibm-plex-sans-latin-ext-600-normal.woff2",
   "../src/model/index.js", "../src/model/util.js", "../src/model/schema.js", "../src/model/balances.js",
@@ -23,7 +26,7 @@ self.addEventListener("install", (e) => {
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== READER).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -36,6 +39,16 @@ self.addEventListener("fetch", (e) => {
   const ICON_HOSTS = /^(t[0-3]\.gstatic\.com|www\.google\.com|icons\.duckduckgo\.com)$/;
   const iconRequest = (ICON_HOSTS.test(u.hostname) && (u.pathname === "/faviconV2" || u.pathname === "/s2/favicons" || u.pathname.startsWith("/ip3/"))) || u.pathname === "/apple-touch-icon.png";   // a bank site's own icon
   if (u.origin !== location.origin && !iconRequest) return;
+  if (u.origin === location.origin && u.pathname.includes("/src/vendor/") && !e.request.headers.has("range")) {   // the photo reader: saved once, used from the phone after that
+    e.respondWith(caches.open(READER).then(async (c) => {
+      const hit = await c.match(e.request);
+      if (hit) return hit;
+      const res = await fetch(e.request);
+      if (res.ok && res.status === 200) c.put(e.request, res.clone());
+      return res;
+    }));
+    return;
+  }
   e.respondWith(
     fetch(e.request, u.origin === location.origin ? { cache: "no-cache" } : undefined)   // same site: always check with the server, never reuse a stale saved copy
       .then((res) => {
