@@ -338,7 +338,10 @@ function monthGlance() {
 
 // The day's entries stay out of sight until you tap the heading (less on the screen, nothing to scroll past). The choice is kept until the app is closed.
 const logOpen = () => { try { return sessionStorage.getItem("logOpen") === "1"; } catch { return false; } };
+// An entry cancelled at the Weekly review and the entry that cancels it stay in the ledger but are kept out of the lists, unless "Show cancelled" is on.
+const cancelledIds = () => new Set(S().transactions.filter((t) => t.reverses).flatMap((t) => [t.id, t.reverses]));
 function entriesBlock(list, label) {
+  const gone = cancelledIds(); list = list.filter((t) => !gone.has(t.id));
   const anim = ui.entriesAnim; ui.entriesAnim = false;   // only the tap itself animates, not every redraw
   const open = logOpen();
   return `<button class="entrieshead" id="entries-toggle" data-action="toggle-entries" aria-expanded="${open}" aria-controls="entries-list"><span>${list.length} ${list.length === 1 ? "entry" : "entries"}</span><span class="eh-r"><svg class="chev${open ? " up" : ""}${anim ? " flip" : ""}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></button>
@@ -417,7 +420,7 @@ function viewVerify() {
   const shot = M.attachmentsFor(S(), t.id)[0];
   const sched = t.schedule_id ? (S().schedules ?? []).find((x) => x.id === t.schedule_id) : null;
   const schedNote = sched ? `<p class="note">Scheduled payment${sched.kind === "installment" ? ", " + t.schedule_key + " of " + sched.count : ""}. Check the amount and date.</p>` : "";
-  const finalNote = `<p class="note">${t.corrects ? "Replaces an entry you cancelled at the Weekly review. " : ""}Once you tap Correct, this entry is final. A mistake can be put right only at the Weekly review.</p>`;
+  const finalNote = t.corrects ? `<p class="note">Replaces an entry you cancelled at the Weekly review.</p>` : "";
   const fromPhoto = schedNote + finalNote + (t.source === "photo" ? `<p class="note">Read from the photo. Compare each line with the paper before you tap Correct.</p>`
     : t.source === "voice" ? `<p class="note">Made from what you said${t.memo ? ": \u201C" + esc(t.memo) + "\u201D" : ""}. Check each line before you tap Correct.</p>` : "");
   return `${head}
@@ -427,7 +430,7 @@ function viewVerify() {
         <button class="primary wide" data-action="verify-ok" data-id="${esc(t.id)}">Correct</button>
         <button data-action="verify-edit" data-id="${esc(t.id)}">Edit</button>
         <button data-action="verify-delete" data-id="${esc(t.id)}">${del ? "Tap again to delete" : "Delete"}</button>
-      </div></div>`;
+      </div><p class="note finalnote">Correct makes this entry final. A mistake is put right only at the Weekly review.</p></div>`;
 }
 
 // ---------- Income: where every peso of pay comes from ----------
@@ -1132,8 +1135,12 @@ function viewSetup() {
   const used = new Set(S().entries.map((e) => e.account_id));
   const reserveExists = S().accounts.some((a) => a.reserve_for);
   const hosts = activeAccounts().filter((a) => a.class === "asset" && !a.reserve_for);
-  const rows = cashFirst(S().accounts).map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? "Bank, wallet or cash" : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"} · <button class="link" data-action="edit-last4" data-id="${esc(a.id)}">${a.last4 ? "ends in " + esc(a.last4) : "add last 4 digits"}</button></small></div></div>
-      <div class="amt">${peso(M.naturalBalance(a, M.countedEntries(S())))}${used.has(a.id) ? "" : `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`}</div></div>`).join("");
+  const rows = cashFirst(S().accounts.filter((a) => !a.archived)).map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? "Bank, wallet or cash" : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"} · <button class="link" data-action="edit-last4" data-id="${esc(a.id)}">${a.last4 ? "ends in " + esc(a.last4) : "add last 4 digits"}</button></small></div></div>
+      <div class="amt">${peso(M.naturalBalance(a, M.countedEntries(S())))}${!used.has(a.id) ? `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`
+        : M.naturalBalance(a, M.countedEntries(S())) === 0 ? `<br><button class="link" data-action="hide-account" data-id="${esc(a.id)}">Hide</button>` : ""}</div></div>`).join("");
+  const hiddenAccts = S().accounts.filter((a) => a.archived);
+  const hiddenHtml = hiddenAccts.length ? `<h2>Hidden accounts</h2><p class="note">Their entries and history stay. They are left out of pickers and totals.</p>${hiddenAccts.map((a) => `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}</div></div><div class="amt"><button class="link" data-action="show-account" data-id="${esc(a.id)}">Show again</button></div></div>`).join("")}` : "";
+  const keepNote = S().accounts.some((a) => !a.archived && used.has(a.id)) ? `<p class="note">An account with entries cannot be removed. When its balance is zero you can hide it.</p>` : "";
   // The form comes FIRST so it stays in the same place however many accounts there are: the
   // button never drifts down behind the keyboard. The list of accounts follows it.
   const formOpen = ui.setupAdd || S().accounts.length === 0;   // a new phone opens on the form; after that it sits behind one button
@@ -1151,7 +1158,7 @@ function viewSetup() {
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>${S().accounts.length ? `<p class="center"><button class="link" data-action="toggle-add-account">Cancel</button></p>` : ""}`;
   const accountsHtml = `    ${formOpen ? addForm : ""}
     <h2>Your accounts</h2>
-    ${rows || `<p class="note">No accounts yet.</p>`}
+    ${rows || `<p class="note">No accounts yet.</p>`}${keepNote}${hiddenHtml}
     ${formOpen ? "" : `<p><button id="add-account-open" data-action="toggle-add-account" style="width:100%">Add an account</button></p>`}`;
   const categoriesHtml = `    <h2>Categories</h2>
     ${expenseCategories().map((c) => `<div class="row"><div>${catLine(c)}</div><div class="amt"><button class="link" data-action="cat-bucket" data-id="${esc(c.id)}">Bucket</button> <button class="link" data-action="rename-cat" data-id="${esc(c.id)}">Rename</button></div></div>`).join("")}
@@ -1681,10 +1688,12 @@ function viewCheckin() {
   const age = M.daysSinceBackup(ledger.settings, today());
   const backupLine = age === null || age >= 6 ? `<p class="note"><b>One reminder:</b> back up after this check-in. ${esc(backupAgeText())} <button class="link" data-action="tab" data-tab="setup" data-page="backup">Back up now</button></p>` : "";
   const fixable = M.correctable(S(), today()).length;
+  const gapNote = fixable && accts.some((a) => { const c = countedThisWeek(a.id); return c && c.difference !== 0; })
+    ? `<p class="note">A gap can come from a wrong entry. <button class="link" data-action="open-correct">Look through the last two weeks</button></p>` : "";
   const fix = `<h2 class="today">A mistake in something verified?</h2><p class="note">A verified entry is final. Here, and only here, you can cancel one from the last two weeks and enter it again.</p>
     <button class="choice" data-action="open-correct"${fixable ? "" : " disabled"}><span>Put right a verified entry</span><span class="bval">${fixable ? fixable + " can be put right" : "none to put right"}</span></button>`;
   return `<h1>Weekly review</h1><p class="sub">Week of ${esc(longDate(w.week_start))} to ${esc(longDate(w.week_end))}</p>
-    <p class="note">Open each account, look at the real balance, and type it in. ${done} of ${accts.length} counted.</p>${backupLine}${rows}${fix}${questions}
+    <p class="note">Open each account, look at the real balance, and type it in. ${done} of ${accts.length} counted.</p>${backupLine}${rows}${gapNote}${fix}${questions}
     ${why("Money the ledger cannot explain is recorded as Unlogged. It never blocks anything.")}`;
 }
 
@@ -2289,7 +2298,8 @@ function renderSheet() {
     body = `<h3>${esc(h.label)}</h3>${clipFor(h.id)}<p class="hwcap">${esc(h.caption)}</p>`;
   } else if (sh.type === "entries") {
     const p = period(), [from, to] = periodBounds(p), list = S().transactions.filter((t) => t.date >= from && t.date <= to && !isGenerated(t)).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.created_at < b.created_at ? 1 : -1));
-    body = `<h3>Every entry in ${esc(periodLabel(p))}</h3>${list.length ? list.map(rowFor).join("") : `<p class="note">Nothing logged in this period.</p>`}`;
+    const gone = cancelledIds(), shown = ui.showCancelled ? list : list.filter((t) => !gone.has(t.id)), nGone = list.length - list.filter((t) => !gone.has(t.id)).length;
+    body = `<h3>Every entry in ${esc(periodLabel(p))}</h3>${nGone ? `<p class="note"><button class="link" data-action="toggle-cancelled">${ui.showCancelled ? "Hide" : "Show"} ${nGone} cancelled ${nGone === 1 ? "entry" : "entries"}</button></p>` : ""}${shown.length ? shown.map(rowFor).join("") : `<p class="note">Nothing logged in this period.</p>`}`;
   } else if (sh.type === "whatsnew") {
     const moved = sh.changes?.length ? `<p class="note" id="wn-balances"><b>Balances that changed:</b> ${sh.changes.map((x) => `${esc(x.name)} ${x.by > 0 ? "+" : "\u2212"}${peso(Math.abs(x.by))}`).join(", ")}. Spending dated before the day you added these accounts was being taken off twice; it now stays as history only.</p>` : "";
     body = `<h3>What's new</h3><div class="wnlist">${M.whatsNew({}, 3).map((c) => `<div class="wnitem"><small>${esc(longDate(c.date))}</small>${esc(c.text)}</div>`).join("")}</div>${moved}
@@ -3246,10 +3256,23 @@ async function onClick(el) {
     case "open-backup-file": await openBackupFile(); break;
     case "restore-now": await restoreNow(); break;
     case "open-entries": ui.sheet = { type: "entries" }; renderSheet(); break;
+    case "toggle-cancelled": ui.showCancelled = !ui.showCancelled; renderSheet(); break;
     case "wn-all": ui.wnAll = !ui.wnAll; renderScreen(); break;
     case "setup-page": ui.setupPage = el.dataset.id || null; ui.setupAdd = false; renderScreen(); window.scrollTo(0, 0); break;
     case "toggle-add-account": ui.setupAdd = !ui.setupAdd; renderScreen(); break;
     case "add-account": await addAccount(); break;
+    case "hide-account": {
+      const a = S().accounts.find((x) => x.id === id);
+      if (!a || M.naturalBalance(a, M.countedEntries(S())) !== 0) { showToast("Only an account with a zero balance can be hidden."); break; }
+      if (S().accounts.some((x) => !x.archived && x.reserve_for === id) || (a.reserve_for && !S().accounts.find((x) => x.id === a.reserve_for)?.archived) || ledger.settings.reserve_source_id === id) { showToast("This account is part of a card reserve. Change the reserve first."); break; }
+      await commit({ ...S(), accounts: S().accounts.map((x) => (x.id === id ? { ...x, archived: true } : x)) });
+      showToast(a.name + " is hidden. Setup keeps it under Hidden accounts.");
+      break;
+    }
+    case "show-account":
+      await commit({ ...S(), accounts: S().accounts.map((x) => (x.id === id ? { ...x, archived: false } : x)) });
+      showToast("Shown again");
+      break;
     case "remove-account": {
       if (S().entries.some((e) => e.account_id === id)) break;
       if (ui.confirmRemove !== id) { ui.confirmRemove = id; renderScreen(); break; }

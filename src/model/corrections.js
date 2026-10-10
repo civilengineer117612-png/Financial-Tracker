@@ -3,7 +3,7 @@
 // values (`corrects` names the entry it replaces) that waits in Verify for the right amount. All three stay visible; nothing is rewritten.
 import { checkTransactionSave } from "./index.js";
 import { planExpense, applyDrafts } from "./drafts.js";
-import { isFeeId } from "./transfers.js";
+import { isFeeId, planTransfer, feeOf } from "./transfers.js";
 import { phTimestamp } from "./util.js";
 
 export const CORRECTION_DAYS = 14;   // an entry verified in the last 14 days (this week and the one before) can be corrected
@@ -54,6 +54,7 @@ export function planCorrection(state, input, now = new Date()) {
   const plain = mine.length === 2 && cat && acct && cat.amount > 0 && acct.amount < 0
     && (probe.categories.find((c) => c.id === cat.category_id)?.kind === "expense");
   let redo = null;
+  const moved = mine.length === 2 && mine.every((e) => e.account_id != null);   // a move between two of the owner's accounts, with its fee when it had one
   if (plain) {
     const p = planExpense(probe, {
       transaction_id: input.redo_id, date: original.date, payee: original.payee, memo: original.memo, category_id: cat.category_id, amount: cat.amount,
@@ -62,6 +63,17 @@ export function planCorrection(state, input, now = new Date()) {
     }, now);
     if (!p.ok) return { ok: false, violations: p.violations, transactions: [], entries: [], redo: null };
     redo = p.drafts.map((d, i) => (i === 0 ? { ...d, transaction: { ...d.transaction, corrects: original.id } } : d));
+  } else if (moved) {
+    const to = mine.find((e) => e.amount > 0), from = mine.find((e) => e.amount < 0);
+    const p = planTransfer(probe, {
+      transaction_id: input.redo_id, date: original.date, from_account_id: from.account_id, to_account_id: to.account_id, amount: to.amount,
+      fee: feeOf(state, original.id).amount, payee: original.payee, trip_id: original.trip_add ?? null, source: original.source === "photo" ? "photo" : "manual",
+    }, now);
+    if (!p.ok) return { ok: false, violations: p.violations, transactions: [], entries: [], redo: null };
+    const keep = new Set([input.redo_id, "fee:" + input.redo_id]);
+    redo = p.state.transactions.filter((t) => keep.has(t.id)).map((t) => ({
+      transaction: t.id === input.redo_id ? { ...t, corrects: original.id } : t, entries: p.state.entries.filter((e) => e.transaction_id === t.id),
+    }));
   }
   return { ok: true, violations: [], transactions, entries, redo };
 }

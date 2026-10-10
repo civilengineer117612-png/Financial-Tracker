@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planExpense, verifyDraft, applyDrafts, correctable, planCorrection, applyCorrection, isReversed, correctionTag, naturalBalance, countedEntries, cardOutstanding, editDraftFields } from "../src/model/index.js";
+import { planExpense, verifyDraft, applyDrafts, correctable, planCorrection, applyCorrection, isReversed, correctionTag, naturalBalance, countedEntries, cardOutstanding, editDraftFields, planTransfer, editTransfer } from "../src/model/index.js";
 import { makeState } from "./fixtures.js";
 
 // Invented data. A checking account of 1,000.00 and one verified lunch of 120.00 on the 8th.
@@ -81,11 +81,39 @@ test("a card purchase is cancelled together with its reserve transfer", () => {
   assert.ok(!correctable(s, TODAY).some((t) => t.id === "rsv:lunch"), "the reserve transfer is not listed on its own");
 });
 
-test("an entry that is not a plain expense is cancelled with no draft", () => {
+test("a move between two accounts comes back as a transfer draft with its fee; the right amount verified makes both balances right", () => {
+  let s = ledger();
+  const made = planTransfer(s, { transaction_id: "mv", date: "2026-10-09", from_account_id: "chk", to_account_id: "res", amount: 5000, fee: 1500, payee: "Move", source: "manual" }, NOW);
+  assert.equal(made.ok, true, JSON.stringify(made.violations));
+  s = verifyDraft(made.state, "mv", NOW).state;
+  assert.equal(s.transactions.find((t) => t.id === "fee:mv").status, "verified", "the fee is verified with the move");
+  const bal = (x, id) => naturalBalance(x.accounts.find((a) => a.id === id), countedEntries(x));
+  const before = [bal(s, "chk"), bal(s, "res")];
+  const p = planCorrection(s, { id: "mv", redo_id: "fix9", today: TODAY }, NOW);
+  assert.equal(p.ok, true, JSON.stringify(p.violations));
+  assert.deepEqual(p.transactions.map((t) => t.id).sort(), ["rev:fee:mv", "rev:mv"]);
+  assert.deepEqual(p.redo.map((d) => d.transaction.id).sort(), ["fee:fix9", "fix9"]);
+  assert.equal(p.redo.find((d) => d.transaction.id === "fix9").transaction.corrects, "mv");
+  const gone = applyCorrection(s, { ...p, redo: null });
+  assert.deepEqual([bal(gone, "chk"), bal(gone, "res")], [before[0] + 5000 + 1500, before[1] - 5000], "cancelled: both accounts are back where they were before the move");
+  const next = applyCorrection(s, p);
+  assert.deepEqual([bal(next, "chk"), bal(next, "res")], before, "with the fresh draft in place the figures read the same until it is changed");
+  const edited = editTransfer(next, "fix9", { amount: 4000, fee: 1000 }, NOW);
+  assert.equal(edited.ok, true, JSON.stringify(edited.violations));
+  const done = verifyDraft(edited.state, "fix9", NOW).state;
+  assert.deepEqual([bal(done, "chk"), bal(done, "res")], [before[0] + 5000 + 1500 - 4000 - 1000, before[1] - 5000 + 4000]);
+});
+
+test("an income entry and a split purchase are cancelled with no draft", () => {
   const s = ledger();
-  const two = { ...s, transactions: [...s.transactions, { id: "mv", date: "2026-10-09", payee: "Move", memo: "", status: "verified", source: "manual", created_at: "2026-10-09T09:00:00.000+08:00", verified_at: "2026-10-09T09:00:00.000+08:00" }],
-    entries: [...s.entries, { transaction_id: "mv", account_id: "chk", amount: -5000 }, { transaction_id: "mv", account_id: "res", amount: 5000 }] };
-  const p = planCorrection(two, { id: "mv", redo_id: "fix9", today: TODAY }, NOW);
+  const inc = { ...s, transactions: [...s.transactions, { id: "pay", date: "2026-10-09", payee: "Pay", memo: "", status: "verified", source: "manual", created_at: "2026-10-09T09:00:00.000+08:00", verified_at: "2026-10-09T09:00:00.000+08:00" }],
+    entries: [...s.entries, { transaction_id: "pay", category_id: "pay", amount: -30000 }, { transaction_id: "pay", account_id: "chk", amount: 30000 }] };
+  const p = planCorrection(inc, { id: "pay", redo_id: "fix8", today: TODAY }, NOW);
   assert.equal(p.ok, true, JSON.stringify(p.violations)); assert.equal(p.redo, null);
-  assert.equal(chk(applyCorrection(two, p)), chk(two) + 5000);
+  assert.equal(chk(applyCorrection(inc, p)), chk(inc) - 30000);
+  const split = { ...s, transactions: [...s.transactions, { id: "sp", date: "2026-10-09", payee: "Mart", memo: "", status: "verified", source: "manual", created_at: "2026-10-09T09:00:00.000+08:00", verified_at: "2026-10-09T09:00:00.000+08:00" }],
+    entries: [...s.entries, { transaction_id: "sp", category_id: "food", amount: 3000 }, { transaction_id: "sp", category_id: "food", amount: 2000 }, { transaction_id: "sp", account_id: "chk", amount: -5000 }] };
+  const q = planCorrection(split, { id: "sp", redo_id: "fix7", today: TODAY }, NOW);
+  assert.equal(q.ok, true, JSON.stringify(q.violations)); assert.equal(q.redo, null);
+  assert.equal(chk(applyCorrection(split, q)), chk(split) + 5000);
 });
