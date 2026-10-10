@@ -2686,6 +2686,33 @@ console.log("Pictures file");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
+// ===== 5z. suggested scheduled payments (from history), the owner decides =====
+console.log("Suggested scheduled payments");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 900000, opening_date: "2026-04-01" };
+  const pay = (id, payee, date, amount) => [{ id, date, payee, memo: "", status: "verified", source: "manual", created_at: date + "T09:00:00.000+08:00", verified_at: date + "T09:00:00.000+08:00" }, [{ transaction_id: id, category_id: "cat-food", amount }, { transaction_id: id, account_id: "w", amount: -amount }]];
+  const rows = [...["2026-06-08", "2026-07-08", "2026-08-09", "2026-09-08"].map((d, i) => pay("s" + i, "Stream Plus", d, 29900)), ...["2026-07-15", "2026-08-15", "2026-09-16"].map((d, i) => pay("g" + i, "Gym Fee", d, 80000))];
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: rows.map((r) => r[0]), entries: rows.flatMap((r) => r[1]) } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Scheduled");
+  let st = (await text(page, "#screen")).replace(/\s+/g, " ");
+  check(st.toLowerCase().includes("maybe add") && st.includes("Stream Plus") && st.includes("paid in 4 of the last 6 months") && st.includes("Gym Fee"), "Scheduled suggests the two payments found in the history");
+  check(st.includes("Nothing is added until you save it") && await page.locator('#screen button.primary').count() === 1, "it says nothing is added by itself, and the screen still has one filled button");
+  await page.click('button[data-action="hint-no"][data-id="hist:gym fee"]');
+  check(await seen(page, "#toast", "will not be suggested again") && !(await text(page, "#screen")).includes("Gym Fee"), "Not this removes a suggestion");
+  await page.click('button[data-action="hint-add"][data-id="hist:stream plus"]');
+  check(await page.inputValue("#s-name") === "Stream Plus" && await page.inputValue("#s-amount") === "299.00" && await page.inputValue("#s-day") === "8", "Add opens the usual form with the name, amount and day filled in");
+  const before = JSON.parse((await stored(page)).local).state.schedules.length;
+  check(before === 0, "nothing has been saved yet");
+  await page.click("#f-save");
+  await seen(page, "#toast", "is scheduled");
+  const l = JSON.parse((await stored(page)).local);
+  check(l.state.schedules.length === 1 && l.state.schedules[0].name === "Stream Plus" && l.state.schedules[0].amount === 29900 && l.settings.schedule_hints_dismissed.join() === "hist:gym fee", "saving it makes the schedule; the dismissed one is remembered");
+  check(!(await text(page, "#screen")).includes("Maybe add") && !(await text(page, "#screen")).includes("MAYBE ADD"), "no suggestion is left");
+  await page.reload(); await page.waitForSelector("#nav button"); await menuGo(page, "Scheduled");
+  check(!(await text(page, "#screen")).toLowerCase().includes("maybe add"), "and they stay gone after a restart");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
 // ===== 5u. importing old spending from a spreadsheet =====
 console.log("Import old spending");
 { const { deflateRawSync } = await import("node:zlib");

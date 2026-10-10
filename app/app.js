@@ -1470,8 +1470,11 @@ function viewScheduled() {
     const right = inst ? `${peso(v.stillToPay)}<span class="sr"> still to pay</span>` : `${peso(schedAmount(s))}<span class="sr"> a month</span>`;
     return `<button class="choice" data-action="open-schedule" data-id="${esc(s.id)}"><span>${esc(s.name)}${bar}<small>${left}</small>${v.active ? `<small>${nextText(v)}</small>` : ""}</span><span class="bval">${right}</span></button>`;
   }).join("");
+  const hints = M.scheduleHints(S(), t, planOf(), { dismissed: ledger.settings.schedule_hints_dismissed ?? [] });
+  const hintHtml = hints.length ? `<h2>Maybe add</h2><p class="note">Found in your own history and your Pay plan. Nothing is added until you save it.</p>${hints.map((h) => `<div class="row"><div>${esc(h.name)}<small>${h.approx ? "about " : ""}${peso(h.amount)} around the ${esc(ordinal(h.day))}${h.source === "history" ? " \u00b7 paid in " + h.months + " of the last " + h.of + " months" : " \u00b7 from your Pay plan"}</small></div>
+      <div class="amt"><button data-action="hint-add" data-id="${esc(h.key)}">Add</button><br><button class="link" data-action="hint-no" data-id="${esc(h.key)}">Not this</button></div></div>`).join("")}` : "";
   return `<h1>Scheduled</h1><p class="sub">Rent, subscriptions and installment plans. Each payment waits in Verify on its due day.</p>
-    ${rows || `<p class="note">Nothing scheduled yet. Add rent, a subscription or an installment plan.</p>`}
+    ${hintHtml}${rows || `<p class="note">Nothing scheduled yet. Add rent, a subscription or an installment plan.</p>`}
     <p><button class="primary" data-action="open-schedule-new" style="margin-top:8px">Add a scheduled payment</button></p>`;
 }
 const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th");
@@ -3035,6 +3038,14 @@ async function onClick(el) {
       await logExpense({ transaction_id: newId("tx"), payee: p.name, category_id: p.category_id, amount: p.amount, account_id: id, source: "preset", preset_id: p.id }, p.name + " " + peso(p.amount));
       break;
     }
+    case "hint-add": {
+      const h = M.scheduleHints(S(), today(), planOf(), { dismissed: ledger.settings.schedule_hints_dismissed ?? [], limit: 99 }).find((x) => x.key === id);
+      if (!h) { renderScreen(); break; }
+      ui.sheet = { type: "schedule-new" };
+      ui.form = { skind: "repeating", sname: h.name, samount: (h.amount / 100).toFixed(2), sday: String(h.day), scount: "3", smade: "0", stotal: "", sfirst: today(), sinterest: "", category_id: h.category_id, account_id: h.account_id ?? ledger.settings.last_account_id ?? accountsFor(null)[0]?.id ?? null };
+      renderSheet(); break;
+    }
+    case "hint-no": await commit(S(), { ...ledger.settings, schedule_hints_dismissed: [...(ledger.settings.schedule_hints_dismissed ?? []), id] }, { quiet: true }); showToast("Got it. It will not be suggested again."); break;
     case "open-schedule-new": {
       const t = today();
       ui.sheet = { type: "schedule-new" };
