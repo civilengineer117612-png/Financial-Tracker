@@ -5,6 +5,24 @@
 const BASE = new URL("../src/vendor/paddle/", import.meta.url).href;
 const DET_MAX = 2048;   // the longest side the finder looks at; bigger reads small print better (a tall phone screenshot at 1536 was read as gibberish) and is slower
 
+// Every file the stronger reader needs, and the cache the worker keeps them in (app/sw.js). "Download it now" in Setup fetches them all once, so the first scan does not wait.
+export const READER_FILES = ["ort.wasm.min.mjs", "ort-wasm-simd-threaded.mjs", "ort-wasm-simd-threaded.wasm", "ch_PP-OCRv4_det_infer.onnx", "ch_PP-OCRv4_rec_infer.onnx", "ppocr_keys_v1.txt"];
+const READER_CACHE = "finance-reader-v1";
+export async function readerStored() {
+  try { const keys = (await (await caches.open(READER_CACHE)).keys()).map((r) => new URL(r.url).pathname); return READER_FILES.filter((f) => keys.some((k) => k.endsWith("/" + f))).length; } catch { return 0; }
+}
+export async function warmReader(progress = () => {}) {
+  let n = 0;
+  for (const f of READER_FILES) {
+    progress(n, READER_FILES.length);
+    const r = await fetch(BASE + f);
+    if (!r.ok) throw new Error("download failed: " + f);
+    await r.arrayBuffer();   // read to the end so the worker keeps the whole file
+    n++;
+  }
+  progress(n, READER_FILES.length);
+}
+
 let ort = null, det = null, rec = null, dict = null;
 async function load(progress) {
   if (det && rec && dict) return;

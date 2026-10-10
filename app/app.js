@@ -1130,6 +1130,7 @@ function viewHelp() {
 }
 
 function viewSetup() {
+  setTimeout(refreshAbout, 0);
   const f = ui.accountForm;
   const cards = S().accounts.filter((a) => a.class === "liability" && !a.archived);
   const used = new Set(S().entries.map((e) => e.account_id));
@@ -1169,13 +1170,17 @@ function viewSetup() {
     <p class="note">Shows your income, each limit as a share of it, and what you save. Off by default.</p>
     <p><button data-action="toggle-new-budget" aria-pressed="${Boolean(ledger.settings.try_new_budget)}" style="width:100%">${ledger.settings.try_new_budget ? "On (tap to turn off)" : "Off (tap to turn on)"}</button></p>`;
   const backupHtml = `    <h2>Backup</h2>
-    <p class="note">${backupAgeText()}</p>
+    <p class="note">${backupAgeText()}</p>${M.picturesNote((S().attachments ?? []).length) ? `<p class="note">${esc(M.picturesNote((S().attachments ?? []).length))}</p>` : ""}
     <p><button class="primary" data-action="open-backup" data-howto="backup">Back up now</button></p>
     <p><button data-action="open-restore" style="width:100%">Restore from a backup</button></p>
     <p><button data-action="open-check-backup" style="width:100%">Check a backup file</button></p>
     ${why("The file is encrypted. Keep a second copy off this phone, like iCloud Drive or a computer.", "Where to keep it")}`;
   const aboutHtml = `    <h2>This app</h2>
     <p class="note">${M.isDevBuild() ? "Version: a development copy." : "Version " + esc(M.APP_BUILD) + ", updated " + esc(fullDate(M.APP_BUILT_ON)) + "."} Your data format: ${ledger.v}.</p>
+    <h2>Photo reader and space</h2>
+    <p class="note" id="about-reader">Checking the photo reader\u2026</p>
+    <p><button data-action="warm-reader" id="warm-btn" style="width:100%" hidden>Download the photo reader now</button></p>
+    <p class="note" id="about-storage"></p>
     ${(ui.copies ?? []).map((c, i) => `<p><button data-action="restore-copy" data-id="${i}" style="width:100%">${ui.confirmCopy === i ? "Tap again to restore. Entries made since then will be lost." : i === 0 ? "Restore the copy from before the last update" : "Restore the copy from before the update before that"}</button></p><p class="note small">Saved ${esc(fullDate(c.at.slice(0, 10)))}, before your data was updated from format ${c.from_version}.</p>`).join("")}`;
   const reserveHtml = `    ${reserveExists ? `<h2>Card reserve</h2><label for="r-src">Reserve transfers come out of</label><select id="r-src" data-action-change="set-reserve-source"><option value="">Choose an account</option>${hosts.map((a) => `<option value="${esc(a.id)}"${ledger.settings.reserve_source_id === a.id ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select>` : ""}`;
   const flat = setupFlat();   // one long page, kept for the tests; the phone shows a short list of pages
@@ -1686,7 +1691,7 @@ function viewCheckin() {
   const questions = done
     ? `<h2 class="today">Weekly questions</h2><button class="choice" data-action="open-survey"><span>Four quick questions</span><span class="bval">${sv ? "Answered \u2713" : "Not answered"}</span></button>` : "";
   const age = M.daysSinceBackup(ledger.settings, today());
-  const backupLine = age === null || age >= 6 ? `<p class="note"><b>One reminder:</b> back up after this check-in. ${esc(backupAgeText())} <button class="link" data-action="tab" data-tab="setup" data-page="backup">Back up now</button></p>` : "";
+  const backupLine = age === null || age >= 6 ? `<p class="note"><b>One reminder:</b> back up after this check-in. ${esc(backupAgeText())} ${esc(M.picturesNote((S().attachments ?? []).length))} <button class="link" data-action="tab" data-tab="setup" data-page="backup">Back up now</button></p>` : "";
   const fixable = M.correctable(S(), today()).length;
   const gapNote = fixable && accts.some((a) => { const c = countedThisWeek(a.id); return c && c.difference !== 0; })
     ? `<p class="note">A gap can come from a wrong entry. <button class="link" data-action="open-correct">Look through the last two weeks</button></p>` : "";
@@ -1837,6 +1842,16 @@ function viewBudgetOld() {
 }
 
 const emptyMoney = () => `<p class="note">Nothing verified for this month yet. Verified entries appear here.</p><p><button class="link" data-action="tab" data-tab="verify">Go to Verify</button></p>`;
+
+// The two lines under "Photo reader and space" are filled in after the screen is drawn (the phone answers a moment later), straight into their places.
+async function refreshAbout() {
+  const reader = document.getElementById("about-reader"); if (!reader) return;
+  const { readerStored, READER_FILES } = await import("./paddle.js");
+  const st = M.readerStatus(await readerStored(), READER_FILES.length), el = document.getElementById("about-reader");
+  if (el) { el.textContent = st.text; const b = document.getElementById("warm-btn"); if (b) b.hidden = st.ready; }
+  let used = null; try { used = (await navigator.storage?.estimate?.())?.usage ?? null; } catch { /* the phone does not say */ }
+  const sl = document.getElementById("about-storage"); if (sl) sl.textContent = used === null ? "" : M.usageLine(used);
+}
 
 function backupAgeText() {
   const age = M.daysSinceBackup(ledger.settings, today());
@@ -2348,7 +2363,7 @@ function renderSheet() {
     const line = (x) => `${count(x.accounts, "account", "accounts")}, ${x.transactions ? count(x.transactions, "entry", "entries") : "no entries"}${x.latest_date ? ", latest " + longDate(x.latest_date) : ""}`;
     if (sh.check) body = `<h3>This backup opens</h3>
       <div class="card" style="border:0;padding:0"><dl><dt>The backup</dt><dd>${esc(line(b))}${b.saved_at ? "<br>saved " + esc(longDate(b.saved_at.slice(0, 10))) : ""}</dd></dl></div>
-      <p class="note">The passphrase works. Nothing on this phone was changed.</p>`;
+      <p class="note">The passphrase works. Nothing on this phone was changed. Pictures are not inside a backup file.</p>`;
     else body = `<h3>Replace this phone's data?</h3>
       <div class="card" style="border:0;padding:0"><dl><dt>The backup</dt><dd>${esc(line(b))}${b.saved_at ? "<br>saved " + esc(longDate(b.saved_at.slice(0, 10))) : ""}</dd><dt>This phone</dt><dd>${esc(line(now))}</dd></dl></div>
       <p class="note">Anything entered since this backup was made will be gone. Pictures are not in a backup, so those entries will say "picture not on this phone".</p>
@@ -3261,6 +3276,17 @@ async function onClick(el) {
     case "setup-page": ui.setupPage = el.dataset.id || null; ui.setupAdd = false; renderScreen(); window.scrollTo(0, 0); break;
     case "toggle-add-account": ui.setupAdd = !ui.setupAdd; renderScreen(); break;
     case "add-account": await addAccount(); break;
+    case "warm-reader": {
+      const btn = $("warm-btn"), note = $("about-reader"); if (btn) btn.disabled = true;
+      try {
+        const { warmReader } = await import("./paddle.js");
+        await warmReader((n, total) => { const el = $("about-reader"); if (el) el.textContent = "Downloading the photo reader\u2026 " + n + " of " + total; });
+        showToast("The photo reader is on this phone");
+      } catch { showToast("The download did not finish. Check your connection and try again."); if (note) note.textContent = ""; }
+      if (btn) btn.disabled = false;
+      refreshAbout();
+      break;
+    }
     case "hide-account": {
       const a = S().accounts.find((x) => x.id === id);
       if (!a || M.naturalBalance(a, M.countedEntries(S())) !== 0) { showToast("Only an account with a zero balance can be hidden."); break; }
