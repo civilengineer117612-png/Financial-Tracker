@@ -43,6 +43,7 @@ function clipFor(id) {
     budget = { income, rows, buckets: bk };
   }
   const trips = id === "trips" ? S().tags.map((t) => ({ name: t.name, days: M.tripDays(t), spent: M.tagSummary(S(), t.id, { categoryMaps: S().categoryMaps, asOf: today() }).spent })) : [];
+  const schedules = id === "scheduled" ? (S().schedules ?? []).map((s) => { const v = M.viewOf(S(), s, today()); return v.next ? { name: s.name, amount: v.next.amount, due: longDate(v.next.due).replace(/^\w+, /, "") } : null; }).filter(Boolean) : [];
   let accounts = [], months = ["This month", "Last month"];
   if (id === "cards" || id === "checkin") {   // the accounts as the owner has them: cards first for Cards, cash first for the count
     const month = M.monthOf(today()), prev = M.addMonths(month, -1), at = (m) => M.accountsOverview(S(), { from: m + "-01", to: periodBounds({ kind: "month", month: m })[1] });
@@ -61,7 +62,7 @@ function clipFor(id) {
       if (e && st?.target > 0) goal = { name: e.name, balance: st.balance, target: st.target, ef: true, months: st.months, account: ea ? { name: ea.name, picture: iconOf(ea, 20) } : null };
     }
   }
-  return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total, budget, trips, goal, accounts, months });
+  return M.howtoClip(id, { date: longDate(today()), tiles, account: a ? { name: a.name, picture: iconOf(a, 20) } : null, total: M.dayTotal(S(), today()).total, budget, trips, goal, accounts, months, schedules });
 }
 // The reason under a suggested figure. The starter share's long note was the same on every row, so it is said once, in the tips at the bottom; a row
 // keeps only what is its own (learned from history, pinned, or lowered to fit the income).
@@ -1499,6 +1500,7 @@ function scheduleDetail(id) {
     <p><button data-action="sch-skip" data-id="${esc(id)}" style="width:100%">Skip the next payment</button></p>
     ${sc.kind === "repeating" ? `<p><button data-action="sch-amount-open" data-id="${esc(id)}" style="width:100%">A new amount from a date</button></p>` : `<p><button data-action="sch-paidoff" data-id="${esc(id)}" style="width:100%">${key("paidoff") ? "Tap again: mark paid off" : "Mark paid off"}</button></p>`}
     <p><button data-action="sch-end" data-id="${esc(id)}" style="width:100%">${key("end") ? "Tap again: stop future payments" : "Stop future payments"}</button></p>` : `<p class="note">${sc.kind === "installment" ? "All paid." : "Stopped."} Past payments stay as they were.</p>`}
+    ${M.skippedOf(S(), sc, today()).length ? `<h2>Skipped</h2>${M.skippedOf(S(), sc, today()).map((p) => `<div class="row"><div>${esc(sc.kind === "installment" ? "Payment " + p.key : p.key)}<small>${peso(p.amount)}</small></div><div class="amt"><button class="link" data-action="sch-unskip" data-id="${esc(id)}" data-key="${esc(p.key)}">Bring it back</button></div></div>`).join("")}` : ""}
     ${rows.length ? `<h2>History</h2>${rows.map((c) => `<p class="note">${esc(words[c.kind](c))}</p>`).join("")}` : ""}`;
 }
 // The due soon lines on Log: name, amount, days left. Plain words.
@@ -2954,8 +2956,9 @@ async function onClick(el) {
       const r = M.addSchedule(S(), scheduleInput(form), new Date());
       if (!r.ok) { showToast("Could not save: " + r.violations[0].message); break; }
       ui.sheet = null; renderSheet();
-      const first = M.makeDueDrafts(r.state, today(), { reserve_source_id: ledger.settings.reserve_source_id });
-      const waiting = first.made.length > 0;
+      const held = M.reserveForPlan(r.state, r.schedule, { reserve_source_id: ledger.settings.reserve_source_id, today: today() });   // a plan on a credit card: the reserve covers the amount still owed
+      const first = M.makeDueDrafts(held.state, today(), { reserve_source_id: ledger.settings.reserve_source_id });
+      const waiting = first.made.length > 0 || held.id !== null;
       if (await commit(first.state, { ...ledger.settings, last_account_id: form.account_id })) showToast(r.schedule.name + " is scheduled." + (waiting ? " Its payment is waiting in Verify." : ""));
       break;
     }
@@ -2968,11 +2971,18 @@ async function onClick(el) {
       break;
     }
     case "sch-skip": {
-      const sc = S().schedules.find((x) => x.id === id), v = M.viewOf(S(), sc, today());
-      if (!v.next) { showToast("There is no payment to skip."); break; }
-      const r = M.skipPayment(S(), id, v.next.key, today());
+      const sc = S().schedules.find((x) => x.id === id), nx = M.nextOpenPayment(S(), sc, today());
+      if (!nx) { showToast("There is no payment to skip."); break; }
+      const r = M.skipPayment(S(), id, nx.key, today());
       ui.sheet = null; renderSheet();
-      if (r.ok && await commit(r.state)) showToast("Skipped " + (sc.kind === "repeating" ? v.next.key : "payment " + v.next.key) + ".");
+      if (r.ok && await commit(r.state)) showToast("Skipped " + (sc.kind === "repeating" ? nx.key : "payment " + nx.key) + ".");
+      break;
+    }
+    case "sch-unskip": {
+      const r = M.payKey(S(), id, el.dataset.key, today(), { reserve_source_id: ledger.settings.reserve_source_id });
+      if (!r.ok) { showToast("Could not: " + r.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      if (await commit(r.state)) showToast("Brought back. It is waiting in Verify.");
       break;
     }
     case "sch-amount-open": {

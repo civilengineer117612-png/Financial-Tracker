@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   addSchedule, makeDueDrafts, setNewAmount, skipPayment, endSchedule, markPaidOff, markNextDue, payNext, skipOnDelete, viewOf, dueSoon, daysText, planLine,
-  committedIn, matchDueDraft, linkToDue, planInText, paymentState, paymentsOf, monthsAfter, verifyDraft, discardDraft, editDraftFields, validateShape, validateState,
+  committedIn, matchDueDraft, nextOpenPayment, reserveForPlan, reserveIdFor, payKey, skippedOf, linkToDue, planInText, paymentState, paymentsOf, monthsAfter, verifyDraft, discardDraft, editDraftFields, validateShape, validateState,
   encryptLedgerBackup, decryptLedgerBackup, upgradeLedger, parseLedger, selfCheck, LEDGER_VERSION, INTEREST_ROLE, COLLECTION_NAMES,
 } from "../src/model/index.js";
 import { account } from "./fixtures.js";
@@ -229,4 +229,63 @@ test("the screens: a Scheduled screen, Due soon on Log, the guard, the budget li
   assert.ok(app.includes("M.skipOnDelete("), "a deleted due draft is not made again");
   const sw = readFileSync(new URL("../app/sw.js", import.meta.url), "utf8");
   assert.ok(sw.includes("../src/model/schedules.js"), "works offline");
+});
+
+test("a plan on a credit card: the reserve covers the whole amount still to be billed, once; the payments add no reserve of their own", () => {
+  const s0 = { ...base(), accounts: [...base().accounts, account({ id: "res", name: "Test Reserve", class: "asset", opening_balance: 0, reserve_for: "card" }), account({ id: "pay", name: "Test Pay", class: "asset", opening_balance: 9000000 })] };
+  const s1 = add(s0, plan({ account_id: "card", total: 600000, count: 3, made: 0, start: "2026-10-10" }));
+  const r = reserveForPlan(s1, s1.schedules[0], { reserve_source_id: "pay", today: "2026-10-05", now: NOW });
+  assert.equal(r.ok, true, JSON.stringify(r.violations)); assert.equal(r.id, reserveIdFor("p1")); assert.equal(r.amount, 600000, "the whole plan, not one payment");
+  const t = r.state.transactions.find((x) => x.id === r.id);
+  assert.deepEqual([t.status, t.source], ["draft", "template"]);
+  assert.deepEqual(r.state.entries.filter((e) => e.transaction_id === r.id).map((e) => [e.account_id, e.amount]).sort(), [["pay", -600000], ["res", 600000]]);
+  const d = makeDueDrafts(r.state, "2026-10-10", { reserve_source_id: "pay", now: NOW }).state;
+  assert.equal(d.transactions.some((x) => x.id.startsWith("rsv:")), false, "no reserve draft with the payment: it is already covered");
+  assert.equal(reserveForPlan(r.state, r.state.schedules[0], { reserve_source_id: "pay", today: "2026-10-05", now: NOW }).id, null, "made once");
+  const plain = makeDueDrafts(s1, "2026-10-10", { reserve_source_id: "pay", now: NOW }).state;
+  assert.equal(plain.transactions.some((x) => x.id.startsWith("rsv:")), true, "without the plan reserve, each payment has the usual one");
+  // only a plan on a credit card that has a reserve account
+  assert.equal(reserveForPlan(add(s0, plan({ id: "p2" })), { ...plan({ id: "p2" }), kind: "installment" }, { reserve_source_id: "pay", today: "2026-10-05" }).id, null, "paid from a bank account: nothing");
+  assert.equal(reserveForPlan(add(base(), plan({ account_id: "card" })), plan({ account_id: "card" }), { reserve_source_id: "bank", today: "2026-10-05" }).id, null, "a card with no reserve account: nothing");
+  const odd = { ...s0, accounts: [...s0.accounts, account({ id: "odd", name: "Odd Reserve", class: "asset", opening_balance: 0, reserve_for: "bank" })] };
+  assert.equal(reserveForPlan(add(odd, plan({ id: "p3", account_id: "bank" })), plan({ id: "p3", account_id: "bank" }), { reserve_source_id: "pay", today: "2026-10-05" }).id, null, "only a credit card gets a plan reserve, whatever points at the account");
+  assert.equal(reserveForPlan(add(s0, rent({ id: "q", account_id: "card" })), rent({ id: "q", account_id: "card" }), { reserve_source_id: "pay", today: "2026-10-05" }).id, null, "a repeating payment is covered per payment, as before");
+});
+
+test("a skipped payment can be brought back as a draft; a payment that is not skipped cannot", () => {
+  let s = add(base(), rent()); s = skipPayment(s, "r1", "2026-10", "2026-10-01", NOW).state;
+  assert.deepEqual(skippedOf(s, s.schedules[0], "2026-10-20").map((p) => p.key), ["2026-10"]);
+  const b = payKey(s, "r1", "2026-10", "2026-10-20", { now: NOW }); assert.equal(b.ok, true, JSON.stringify(b.violations));
+  const t = b.state.transactions.find((x) => x.id === "sch:r1:2026-10");
+  assert.deepEqual([t.status, t.date, t.schedule_key], ["draft", "2026-10-05", "2026-10"], "a draft on its own due day");
+  assert.equal(skippedOf(b.state, b.state.schedules[0], "2026-10-20").length, 0, "no longer skipped");
+  assert.equal(b.state.scheduleChanges.length, s.scheduleChanges.length, "no row was removed or added");
+  assert.equal(payKey(b.state, "r1", "2026-10", "2026-10-20").ok, false, "already a draft");
+  assert.equal(payKey(s, "r1", "2026-09", "2026-10-20").ok, false, "never skipped");
+});
+
+test("the amount of a scheduled payment with an interest part can be corrected in Verify: the plan's part moves, the interest stays", () => {
+  const s = add(base(), plan({ total: 600000, count: 3, interest: 30000 }));
+  const d = makeDueDrafts(s, "2026-10-10", { now: NOW }).state;
+  const e = editDraftFields(d, "sch:p1:1", { amount: 210000 }, {}, NOW); assert.equal(e.ok, true, JSON.stringify(e.violations));
+  const es = e.state.entries.filter((x) => x.transaction_id === "sch:p1:1");
+  assert.equal(es.reduce((n, x) => n + x.amount, 0), 0);
+  const role = (x) => e.state.categories.find((c) => c.id === x.category_id)?.role;
+  assert.deepEqual(es.filter((x) => x.category_id).map((x) => [role(x), x.amount]).sort(), [[INTEREST_ROLE, 10000], ["shopping", 200000]], "the interest part is unchanged");
+  assert.equal(es.find((x) => x.account_id).amount, -210000);
+  assert.equal(e.state.transactions.find((x) => x.id === "sch:p1:1").schedule_key, "1", "it is still that payment");
+  assert.equal(editDraftFields(d, "sch:p1:1", { amount: 10000 }, {}, NOW).ok, false, "not less than the interest part");
+  const note = editDraftFields(d, "sch:p1:1", { memo: "covers Sept to Oct" }, {}, NOW);
+  assert.equal(note.state.transactions.find((x) => x.id === "sch:p1:1").memo, "covers Sept to Oct", "the note is kept");
+});
+
+test("Skip means the next payment that has no draft yet, even when the next one due already is a draft", () => {
+  let s = add(base(), plan()); s = payNext(s, "p1", "2026-10-01", { now: NOW }).state;
+  assert.equal(viewOf(s, s.schedules[0], "2026-10-01").next.key, "1", "payment 1 is the next due and is already a draft");
+  assert.equal(nextOpenPayment(s, s.schedules[0], "2026-10-01").key, "2", "but payment 2 is the next that can be skipped");
+  const k = skipPayment(s, "p1", nextOpenPayment(s, s.schedules[0], "2026-10-01").key, "2026-10-01", NOW).state;
+  assert.deepEqual(skippedOf(k, k.schedules[0], "2026-10-01").map((p) => p.key), ["2"]);
+  assert.equal(nextOpenPayment(markPaidOff(s, "p1", "2026-10-01", NOW).state, s.schedules[0], "2026-10-01"), null, "nothing left once paid off");
+  let r = add(base(), rent()); r = endSchedule(r, "r1", "2026-08-31", NOW).state;
+  assert.equal(nextOpenPayment(r, r.schedules[0], "2026-10-01"), null, "nothing after the end");
 });

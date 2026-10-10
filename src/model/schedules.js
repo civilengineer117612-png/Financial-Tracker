@@ -14,6 +14,7 @@ import { isDue, datesBetween, parseSchedule } from "./templates.js";
 import { planExpense, discardDraft } from "./drafts.js";
 import { validateShape } from "./schema.js";
 import { phTimestamp } from "./util.js";
+import { checkTransactionSave } from "./index.js";
 
 export const INTEREST_ROLE = "interest_fees";
 export const SCHEDULE_WINDOW_DAYS = 0;   // a payment becomes a draft this many days before it is due (0: on its due date, where Verify lists it)
@@ -101,7 +102,7 @@ export function makeDueDrafts(state, today, { reserve_source_id, now = new Date(
 export function draftFor(state, s, p, { reserve_source_id, now = new Date(), date = p.due } = {}) {
   const id = draftIdFor(s.id, p.key);
   const input = { transaction_id: id, date, payee: s.name, category_id: s.category_id, amount: p.amount, account_id: s.account_id, source: "template", reserve_source_id };
-  const planned = planExpense(state, input, now);
+  const planned = planExpense(state, { ...input, reserve_source_id: reserved(state, s) ? undefined : reserve_source_id }, now);   // a card plan with its reserve already set aside needs no more per payment
   if (!planned.ok) return { ok: false, violations: planned.violations, state };
   let drafts = planned.drafts;
   const tx0 = drafts[0].transaction;
@@ -116,6 +117,25 @@ export function draftFor(state, s, p, { reserve_source_id, now = new Date(), dat
     out = { ...out, foreignAmounts: [...(out.foreignAmounts ?? []).filter((f) => f.transaction_id !== id), { transaction_id: id, currency: s.foreign_currency, foreign_amount: s.foreign_amount, rate: p.amount / s.foreign_amount }] };
   }
   return { ok: true, violations: [], state: out };
+}
+
+// A plan on a credit card: the part billed each month counts when billed, and the card's reserve covers the amount still owed. So when the plan is made, ONE
+// draft transfer puts the whole amount still to be billed into the reserve (verified like any other); the payments after it then add no reserve of their own.
+export const reserveIdFor = (scheduleId) => "sch-rsv:" + scheduleId;
+const reserved = (state, s) => state.transactions.some((t) => t.id === reserveIdFor(s.id));
+export function reserveForPlan(state, s, { reserve_source_id, today, now = new Date() } = {}) {
+  const card = state.accounts.find((a) => a.id === s.account_id);
+  const none = { ok: true, violations: [], state, id: null, amount: 0 };
+  if (s.kind !== "installment" || card?.class !== "liability" || !reserve_source_id || reserved(state, s)) return none;
+  const reserve = state.accounts.find((a) => a.reserve_for === card.id);
+  if (!reserve || reserve.id === reserve_source_id || !state.accounts.some((a) => a.id === reserve_source_id)) return none;
+  const amount = paymentsOf(state, s, { through: addDaysIso(today, 800) }).filter((p) => paymentState(state, s, p.key) === "open").reduce((n, p) => n + p.amount, 0);
+  if (amount <= 0) return none;
+  const id = reserveIdFor(s.id), t = { id, date: today, payee: "Reserve for " + s.name, memo: "", status: "draft", source: "template", created_at: phTimestamp(now) };
+  const es = [{ transaction_id: id, account_id: reserve.id, amount }, { transaction_id: id, account_id: reserve_source_id, amount: -amount }];
+  const check = checkTransactionSave(state, { transaction: t, entries: es });
+  if (!check.ok) return { ok: false, violations: check.violations, state, id: null, amount: 0 };
+  return { ok: true, violations: check.violations, state: { ...state, transactions: [...state.transactions, t], entries: [...state.entries, ...es] }, id, amount };
 }
 
 // The category "Interest and fees": the one with the role interest_fees; made on first use. Nothing finds it by name.
@@ -200,6 +220,24 @@ export function payNext(state, scheduleId, today, { reserve_source_id, now = new
   const r = draftFor(state, s, next, { reserve_source_id, now, date: next.due < today ? next.due : today });   // a skipped payment stays skipped in its rows; having a draft is what counts
   if (!r.ok) return { ok: false, violations: r.violations, state: null };
   return { ok: true, violations: [], state: r.state, payment: next };
+}
+// A skipped (or deleted) payment can be brought back: it becomes a draft now. (Having a draft is what counts, so no row is removed.)
+export function payKey(state, scheduleId, key, today, { reserve_source_id, now = new Date() } = {}) {
+  const s = (state.schedules ?? []).find((x) => x.id === scheduleId);
+  if (!s) return fail("UNKNOWN_SCHEDULE", "no schedule " + scheduleId);
+  const p = paymentsOf(state, s, { through: addDaysIso(today, 400) }).find((x) => x.key === key);
+  if (!p || paymentState(state, s, key) !== "skipped") return fail("NOT_SKIPPED", "that payment is not skipped");
+  const r = draftFor(state, s, p, { reserve_source_id, now, date: p.due < today ? p.due : today });
+  return r.ok ? { ok: true, violations: [], state: r.state, payment: p } : { ok: false, violations: r.violations, state: null };
+}
+// The next payment that has no draft yet (and is not skipped or after the end): the one "Skip" and "Pay ahead" mean. The next DUE payment may already be a draft.
+export function nextOpenPayment(state, s, today) {
+  const h = historyOf(state, s);
+  return paymentsOf(state, s, { through: addDaysIso(today, 400) }).find((p) => (h.endedOn === null || p.due <= h.endedOn) && !h.paidOff && paymentState(state, s, p.key) === "open") ?? null;
+}
+// The skipped payments of a schedule, newest first: [{key, due, amount}].
+export function skippedOf(state, s, today) {
+  return paymentsOf(state, s, { through: addDaysIso(today, 400) }).filter((p) => paymentState(state, s, p.key) === "skipped").reverse();
 }
 // A due draft that is deleted in Verify is not made again: its payment is skipped.
 export function skipOnDelete(state, tx, today, now = new Date()) {

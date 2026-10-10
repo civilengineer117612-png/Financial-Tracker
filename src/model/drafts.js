@@ -133,7 +133,7 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
     next = entries.map((e) => ({ ...e, amount: Math.sign(e.amount) * changes.amount }));
     if (Math.sign(a.amount) === Math.sign(b.amount)) return { ok: false, violations: fail("NOT_EDITABLE", "unexpected entry signs").violations, state };
   }
-  const updated = { ...t, date: changes.date ?? t.date, payee: changes.payee ?? t.payee };
+  const updated = { ...t, date: changes.date ?? t.date, payee: changes.payee ?? t.payee, ...(changes.memo !== undefined && t.schedule_id ? { memo: changes.memo } : {}) };   // a scheduled payment's note can be changed on any shape
   if (t.source === "photo" || t.source === "voice") updated.edited_before_verify = t.edited_before_verify === true || updated.date !== t.date || updated.payee !== t.payee || (changes.amount !== undefined && changes.amount !== Math.abs(entries[0]?.amount));
   const probe = discardDraft(state, id).state;
   const result = checkTransactionSave(probe, { transaction: updated, entries: next });

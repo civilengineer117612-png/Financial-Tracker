@@ -1366,6 +1366,19 @@ await page.click('button:has-text("Delete")'); await page.click('button:has-text
   check(req && req.status === "draft" && l2.state.entries.some((e) => e.transaction_id === req.id && e.amount === 250000) && l2.state.scheduleChanges.some((c) => c.kind === "due" && c.amount === 250000), "it waits in Verify for the asked amount, as a draft, and the plan itself is unchanged");
   check(l2.state.schedules.find((x) => x.name === "Test Phone").total === 600000, "the plan's total is untouched");
 
+  // skip a payment, then bring it back
+  await menuGo(page, "Scheduled");
+  await page.click('button[data-action="open-schedule"]:has-text("Test Phone")'); await page.click('#sheet button[data-action="sch-skip"]');
+  check(await seen(page, "#toast", "Skipped payment 2"), "the next payment can be skipped");
+  const l2b = JSON.parse((await stored(page)).local), plan2 = l2b.state.schedules.find((x) => x.name === "Test Phone");
+  check(l2b.state.scheduleChanges.some((c) => c.schedule_id === plan2.id && c.kind === "skip" && c.key === "2") && !l2b.state.transactions.some((t) => t.id === "sch:" + plan2.id + ":2"), "a skip is a row, and no draft is made for it");
+  await page.click('button[data-action="open-schedule"]:has-text("Test Phone")');
+  check((await text(page, "#sheet")).toLowerCase().includes("skipped") && await page.locator('#sheet button[data-action="sch-unskip"]').count() === 1, "the plan lists what was skipped, with a way back");
+  await page.click('#sheet button[data-action="sch-unskip"]');
+  check(await seen(page, "#toast", "Brought back"), "a skipped payment is brought back");
+  const l2c = JSON.parse((await stored(page)).local);
+  check(l2c.state.transactions.some((t) => t.id === "sch:" + plan2.id + ":2" && t.status === "draft") && l2c.state.scheduleChanges.length === l2b.state.scheduleChanges.length, "it is a draft again, and no row was removed");
+
   // stopping: future only
   await menuGo(page, "Scheduled");
   await page.click('button[data-action="open-schedule"]:has-text("Test Rent")'); await page.click('#sheet button[data-action="sch-end"]');
