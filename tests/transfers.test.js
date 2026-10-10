@@ -230,7 +230,9 @@ test("Bank fees reads as a need from its name, so it is not asked", () => {
 
 test("the screens: Move money on Log, last 4 beside an account on Cards, a rate hint in the scan window", () => {
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
-  assert.ok(app.includes('data-action="open-move">Move money between accounts</button>') && app.includes('case "save-move"') && app.includes('source: "manual"'), "Log can type a transfer");
+  assert.ok(app.includes('data-action="open-move" style="width:100%">Move money between accounts</button>') && app.includes('case "save-move"') && app.includes('source: "manual"'), "a transfer can be typed");
+  const log = app.slice(app.indexOf("function viewLog()"), app.indexOf("function viewVerify()")), cards = app.slice(app.indexOf("function viewCards()"), app.indexOf("function viewMoney()"));
+  assert.ok(!log.includes("open-move") && cards.includes("open-move"), "it lives on Cards, with the accounts, not on the Log home where few would know what it is");
   assert.ok(/class="l4" aria-label="ends in/.test(app), "Cards shows the last 4 beside the name");
   assert.ok(app.includes("function rateHint") && app.includes("M.lastRate(S(), fx.currency)") && app.includes("${rateHint(f.foreign)}"), "a hint, shown under the foreign note");
   assert.ok(app.includes('(t.source === "photo" || t.source === "manual")'), "Verify edits both ends of a typed transfer too");
