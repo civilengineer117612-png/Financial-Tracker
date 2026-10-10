@@ -91,9 +91,7 @@
   @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
   #screen.swap { animation: fadein .15s ease-out; } .viewbody.fade { animation: fadein .18s ease-out; }
   @media (prefers-reduced-motion: reduce) { #screen.swap, .viewbody.fade { animation: none; } }
-  .moneyswitch { display: flex; gap: 6px; margin: 4px 0 10px; } .moneyswitch button { flex: 1; min-height: 44px; } .moneyswitch button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   .paytitle { display: flex; align-items: center; justify-content: space-between; gap: 8px; } .editbtn { width: 44px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: none; border: 0; color: var(--mid); border-radius: 10px; } .editbtn:active { background: var(--wash); }
-  .yearlabel { display: flex; align-items: center; justify-content: center; }
   .tile { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
   .tile .tcat { display: block; font-style: normal; font-size: 11px; color: var(--soft); opacity: .8; margin-top: 1px; }
   .tiles.arranging .tile { touch-action: none; cursor: grab; transition: transform .18s ease, opacity .2s ease; position: relative; background: var(--wash); border: 1px solid var(--line); padding: 12px 14px; }   /* a div here, so it gets the look of the button tiles */
@@ -252,7 +250,6 @@
   .mrow.mline { display: flex; align-items: center; gap: 10px; min-height: 52px; border-bottom: 1px solid var(--line); } .mrow.mline .mv { margin-right: 28px; }
   .notes { margin: 0; padding-left: 22px; } .notes li { margin: 10px 0; line-height: 1.4; }
   .mn { font-size: 17px; } .mn.wn { font-size: 15px; } .mn.wn small { display: block; font-size: 12px; color: var(--mid); }
-  .daylabel { color: var(--mid); margin: -6px 0 2px; font-size: 14px; }
   #first-run p:first-child { margin-top: 0; } .mv { margin-left: auto; font-size: 18px; font-variant-numeric: tabular-nums; }
   .mpart { display: flex; justify-content: space-between; padding: 8px 4px 8px 16px; color: var(--mid); font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--line); }
   .mpart.sub { font-weight: 700; color: var(--ink); }
