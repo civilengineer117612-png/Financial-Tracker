@@ -10,8 +10,6 @@ review (Checks), Scan and import of old spending, Help, Setup, encrypted backup 
 - Suggested schedules (from history or the Pay plan): waiting for the owner's pick.
 - Savings ratchet screen, money owed to me, CSV export: ideas only.
 - By account and Trends views: owner's comments pending.
-- Storage probe files at the repo root (`index.html`, `sw.js`, `manifest.json`, icons): remove only after the storage
-  test of Oct 13 has passed.
 
 ## Back up and restore
 Setup > Back up now makes one encrypted file (keep the passphrase: it cannot be recovered). Setup > Restore replaces the

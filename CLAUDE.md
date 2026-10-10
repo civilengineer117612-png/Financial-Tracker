@@ -5,8 +5,8 @@ iPhone (local-first, no server, no sync). This repository is PUBLIC: never commi
 payslips, account numbers or balances, and never ship brand logos (account pictures are chosen on the phone).
 
 ## Layout and checks
-- `src/model/` all money rules, pure and tested. `app/` the screens. `index.html`, `sw.js` at the root are the storage
-  probe, which must stay untouched while it is still running.
+- `src/model/` all money rules, pure and tested. `app/` the screens. `index.html`, `sw.js` at the root only forward to the app and retire the old
+  storage probe (the storage test passed Oct 10, 2026).
 - Screens: Log and Verify on the bottom bar; everything else is in the menu at the upper left (Cash flow, Cards, Budget with Goals and Pay plan, Scheduled,
   Weekly review with Checks, Scan, Trips, Buffer, Help, Setup; the names live in `src/model/names.js`). The menu is plain icon-and-text rows, no filled highlight.
 - Real plan numbers, paydays and account balances live only in the owner's phone (settings and ledger), never in this

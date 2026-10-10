@@ -25,8 +25,8 @@ jobs:
       - name: Stage only the site files
         run: |
           mkdir -p _site/app _site/src
-          # The storage probe stays at the site root, untouched.
-          cp index.html manifest.json sw.js icon-180.png icon-512.png _site/
+          # The site root only forwards to the app (the storage test is finished); sw.js there retires the old probe worker.
+          cp index.html sw.js _site/
           # The finance app and the model code it imports live under /app and /src.
           cp -r app/* _site/app/
           cp -r src/model _site/src/model
