@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-10-reader-cache", date: "2026-10-10", text: "The photo reader now downloads once and stays on your phone, so a scan after an update no longer re-downloads it." },
   { id: "2026-10-10-final-more", date: "2026-10-10", text: "An account with entries can be hidden at a zero balance, a move with its fee can be put right at the Weekly review, and cancelled entries stay out of the lists unless you ask." },
   { id: "2026-10-10-final", date: "2026-10-10", text: "A verified entry is now clearly final: the first-run notice, Verify and Help say so, and a mistake from the last two weeks can be cancelled and entered again at the Weekly review." },
   { id: "2026-10-10-quiet-budget", date: "2026-10-10", text: "Spending, Budget: one slim line per category (tap one to see what is left), a shorter key, and Move money between accounts now lives on Cards, not on Log." },
