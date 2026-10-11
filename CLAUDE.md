@@ -31,6 +31,7 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
 - Keep building without asking. Ask only when an answer changes how the app behaves or needs the owner's own
   experience. Put questions in ONE copy-paste box, at most 4, each with an `ANSWER:` line, and no recommendation under
   a question. Keep replies short and in plain words; no jargon without a one-line explanation.
+- SCREENSHOT FIRST (owner, Oct 11, for the rest of the build): the app is stable and has what is most needed. Before changing anything the owner can see (a suggestion, a rename, a new screen or button), send a screenshot of how it would look and WAIT for the owner's yes. Draw it from the real app in a scratch copy (never commit it). Fixes for something broken, tests and documents need no screenshot.
 - A major change: say so, or give a PDF. Calendar and other outward actions need an explicit yes.
 - The owner is a VISUAL person: charts and account pictures matter. Charts: one color for a single series, values at the
   bar tip, a list twin for every chart (see the dataviz skill's rules).
