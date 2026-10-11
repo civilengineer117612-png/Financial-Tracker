@@ -1176,6 +1176,7 @@ function viewSetup() {
     <p><button data-action="open-check-backup" style="width:100%">Check a backup file</button></p>${(S().attachments ?? []).length ? `
     <p><button data-action="open-pic-backup" style="width:100%">Back up pictures</button></p>
     <p><button data-action="open-pic-restore" style="width:100%">Put pictures back from a file</button></p>
+    <p><button data-action="open-pic-check" style="width:100%">Check a pictures file</button></p>
     ${ledger.settings.last_pictures_backup_at ? `<p class="note">Pictures last backed up ${esc(longDate(ledger.settings.last_pictures_backup_at.slice(0, 10)))}.</p>` : ""}` : ""}
     ${why("The file is encrypted. Keep a second copy off this phone, like iCloud Drive or a computer.", "Where to keep it")}`;
   const aboutHtml = `    <h2>This app</h2>
@@ -1183,7 +1184,7 @@ function viewSetup() {
     <h2>Photo reader and space</h2>
     <p class="note" id="about-reader">Checking the photo reader\u2026</p>
     <p><button data-action="warm-reader" id="warm-btn" style="width:100%" hidden>Download the photo reader now</button></p>
-    <p class="note" id="about-storage"></p>${(() => { const g = M.shrinkProgress(S().attachments ?? [], today(), ledger.settings.photos_shrunk_through ?? ""); return g.old ? `<p class="note">Pictures older than 3 months are shrunk to save space, one time each: ${g.done} of ${g.old} done.</p>` : ""; })()}
+    <p class="note" id="about-storage"></p>${(() => { const g = M.shrinkProgress(S().attachments ?? [], today(), ledger.settings.photos_shrunk_through ?? ""); return g.old ? `<p class="note" id="shrink-note">Pictures older than 3 months are shrunk to save space, one time each: ${g.done} of ${g.old} done.</p>${g.waiting ? `<p><button data-action="shrink-now" style="width:100%">Shrink them now</button></p>` : ""}` : ""; })()}
     ${(ui.copies ?? []).map((c, i) => `<p><button data-action="restore-copy" data-id="${i}" style="width:100%">${ui.confirmCopy === i ? "Tap again to restore. Entries made since then will be lost." : i === 0 ? "Restore the copy from before the last update" : "Restore the copy from before the update before that"}</button></p><p class="note small">Saved ${esc(fullDate(c.at.slice(0, 10)))}, before your data was updated from format ${c.from_version}.</p>`).join("")}`;
   const reserveHtml = `    ${reserveExists ? `<h2>Card reserve</h2><label for="r-src">Reserve transfers come out of</label><select id="r-src" data-action-change="set-reserve-source"><option value="">Choose an account</option>${hosts.map((a) => `<option value="${esc(a.id)}"${ledger.settings.reserve_source_id === a.id ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select>` : ""}`;
   const flat = setupFlat();   // one long page, kept for the tests; the phone shows a short list of pages
@@ -1704,7 +1705,7 @@ function viewCheckin() {
   const fix = `<h2 class="today">A mistake in something verified?</h2><p class="note">A verified entry is final. Here, and only here, you can cancel one from the last two weeks and enter it again.</p>
     <button class="choice" data-action="open-correct"${fixable ? "" : " disabled"}><span>Put right a verified entry</span><span class="bval">${fixable ? fixable + " can be put right" : "none to put right"}</span></button>`;
   return `<h1>Weekly review</h1><p class="sub">Week of ${esc(longDate(w.week_start))} to ${esc(longDate(w.week_end))}</p>
-    <p class="note">Open each account, look at the real balance, and type it in. ${done} of ${accts.length} counted.</p>${backupLine}${rows}${gapNote}${fix}${questions}
+    <p class="note">Open each account, look at the real balance, and type it in. ${done} of ${accts.length} counted.</p>${backupLine}${(() => { const l = M.picturesBackupLine((S().attachments ?? []).length, ledger.settings.last_pictures_backup_at ?? "", today()); return l ? `<p class="note">${esc(l)} <button class="link" data-action="tab" data-tab="setup" data-page="backup">Back up pictures</button></p>` : ""; })()}${rows}${gapNote}${fix}${questions}
     ${why("Money the ledger cannot explain is recorded as Unlogged. It never blocks anything.")}`;
 }
 
@@ -1862,12 +1863,13 @@ async function refreshAbout() {
 // Pictures older than 3 months are shrunk a few at a time while the app is open and visible. Nothing is deleted: the entries and the pictures stay, smaller.
 // Each picture is replaced only after the smaller copy has been checked; the setting `photos_shrunk_through` remembers how far it got.
 let shrinking = false;
-async function shrinkOldPictures() {
+// manual: the "Shrink them now" button: no round limit, and it reports its progress. Otherwise a few rounds, quietly. Both say so once when nothing is left.
+async function shrinkOldPictures({ manual = false } = {}) {
   if (shrinking || !device.allowEntry || document.visibilityState !== "visible" || ui.upgrade?.failed) return;
-  shrinking = true;
+  shrinking = true; let did = 0;
   try {
     const { shrinkBlob } = await import("./shrink.js");
-    for (let round = 0; round < 40; round++) {   // a few pictures at a time; at most 40 rounds in one go
+    for (let round = 0; manual || round < 40; round++) {   // a few pictures at a time; the automatic run stops after 40 rounds
       const due = M.shrinkDue(S().attachments ?? [], today(), ledger.settings.photos_shrunk_through ?? "");
       if (!due.length || document.visibilityState !== "visible") break;
       for (const a of due) {
@@ -1875,10 +1877,14 @@ async function shrinkOldPictures() {
         const small = blob ? await shrinkBlob(blob) : null;
         if (small) await putPhoto(a.id, small).catch(() => {});
       }
+      did += due.length;
       await commit(S(), { ...ledger.settings, photos_shrunk_through: due[due.length - 1].file_timestamp }, { quiet: true });
-      await new Promise((r) => setTimeout(r, 300));   // a pause, so the screen stays quick
+      const g = M.shrinkProgress(S().attachments ?? [], today(), ledger.settings.photos_shrunk_through ?? ""), note = document.getElementById("shrink-note");
+      if (note) note.textContent = "Shrinking old pictures\u2026 " + g.done + " of " + g.old;
+      await new Promise((r) => setTimeout(r, manual ? 50 : 300));   // a pause, so the screen stays quick
     }
-  } finally { shrinking = false; }
+    if (did && M.shrinkProgress(S().attachments ?? [], today(), ledger.settings.photos_shrunk_through ?? "").waiting === 0) showToast("Old pictures are shrunk to save space.");
+  } finally { shrinking = false; if (manual) renderScreen(); }
 }
 
 function backupAgeText() {
@@ -2380,12 +2386,12 @@ function renderSheet() {
   } else if (sh.type === "restorepics") {
     const r = ui.form.picsFound;
     body = r
-      ? `<h3>This pictures file opens</h3><div class="card" style="border:0;padding:0"><dl><dt>The file</dt><dd>${r.count} ${r.count === 1 ? "picture" : "pictures"}${r.parts > 1 ? `, part ${r.part} of ${r.parts}` : ""}${r.saved_at ? "<br>saved " + esc(longDate(r.saved_at)) : ""}</dd><dt>Missing here</dt><dd>${r.missing} ${r.missing === 1 ? "picture" : "pictures"} that belong to your entries</dd></dl></div>
+      ? `<h3>This pictures file opens</h3>${sh.check ? `<p class="note">The passphrase works and every picture is whole. Nothing on this phone was changed.</p>` : ""}<div class="card" style="border:0;padding:0"><dl><dt>The file</dt><dd>${r.count} ${r.count === 1 ? "picture" : "pictures"}${r.parts > 1 ? `, part ${r.part} of ${r.parts}` : ""}${r.saved_at ? "<br>saved " + esc(longDate(r.saved_at)) : ""}</dd><dt>Missing here</dt><dd>${r.missing} ${r.missing === 1 ? "picture" : "pictures"} that belong to your entries</dd></dl></div>
         <p class="note">Pictures already on this phone stay exactly as they are. Nothing else changes.</p>
         <p id="f-msg" role="alert" class="note"></p>
-        <p><button class="primary" id="f-save" data-action="restore-pics"${r.missing ? "" : " disabled"}>Put ${r.missing === 1 ? "it" : "them"} back</button></p>`
-      : `<h3>Put pictures back</h3>
-        <p class="note">Choose a pictures file made by Back up pictures. Only pictures that are missing on this phone and belong to your entries are added.</p>
+        ${sh.check ? "" : `<p><button class="primary" id="f-save" data-action="restore-pics"${r.missing ? "" : " disabled"}>Put ${r.missing === 1 ? "it" : "them"} back</button></p>`}`
+      : `<h3>${sh.check ? "Check a pictures file" : "Put pictures back"}</h3>
+        <p class="note">${sh.check ? "This opens the file to prove the passphrase works and every picture is whole. Nothing on this phone changes." : "Choose a pictures file made by Back up pictures. Only pictures that are missing on this phone and belong to your entries are added."}</p>
         <label for="r-file">Pictures file</label><input id="r-file" data-field="file" type="file" accept=".fpics,application/octet-stream">
         <input class="sr" type="text" name="username" autocomplete="username" value="Finance backup" readonly tabindex="-1" aria-hidden="true">
         <label for="r-pass">Passphrase</label><input id="r-pass" data-field="pass" name="password" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false">
@@ -3323,6 +3329,7 @@ async function onClick(el) {
     }
     case "open-pic-backup": ui.sheet = { type: "backup", pictures: true }; ui.form = {}; renderSheet(); break;
     case "make-pic-backup": await makePicturesBackup(); break;
+    case "open-pic-check": ui.sheet = { type: "restorepics", check: true }; ui.form = {}; renderSheet(); break;
     case "open-pic-restore": ui.sheet = { type: "restorepics" }; ui.form = {}; renderSheet(); break;
     case "open-pic-file": await openPicturesFile(); break;
     case "restore-pics": await restorePictures(); break;
@@ -3334,6 +3341,7 @@ async function onClick(el) {
     case "setup-page": ui.setupPage = el.dataset.id || null; ui.setupAdd = false; renderScreen(); window.scrollTo(0, 0); break;
     case "toggle-add-account": ui.setupAdd = !ui.setupAdd; renderScreen(); break;
     case "add-account": await addAccount(); break;
+    case "shrink-now": { const b = el; b.disabled = true; await shrinkOldPictures({ manual: true }); break; }
     case "warm-reader": {
       const btn = $("warm-btn"), note = $("about-reader"); if (btn) btn.disabled = true;
       try {
