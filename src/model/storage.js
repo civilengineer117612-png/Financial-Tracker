@@ -23,3 +23,11 @@ export function readerStatus(stored, total) {
 
 // "This app uses about 48 MB of the phone's space (the reader, pictures and ledger)." Empty when the phone does not say.
 export const usageLine = (bytes) => (formatSize(bytes) ? "This app uses " + (bytes < 1048576 ? "" : "about ") + formatSize(bytes) + " of the phone's space (the reader, pictures and ledger)." : "");
+
+// How old the last Pictures file is, said only when it matters: none made yet, or older than `days`. Empty when there are no pictures or the file is recent.
+export function picturesBackupLine(count, lastIso, today, days = 30) {
+  if (!Number.isInteger(count) || count <= 0) return "";
+  if (!lastIso) return "Your pictures have not been backed up yet.";
+  const age = Math.round((Date.parse(today + "T00:00:00Z") - Date.parse(lastIso.slice(0, 10) + "T00:00:00Z")) / 86400000);
+  return age >= days ? "The last pictures file is " + age + (age === 1 ? " day" : " days") + " old." : "";
+}

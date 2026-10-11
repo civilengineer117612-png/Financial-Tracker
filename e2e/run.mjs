@@ -2606,6 +2606,7 @@ console.log("Space, pictures and the photo reader");
   check(await seen(page, "#about-reader", "The photo reader is on this phone.") && await page.locator("#warm-btn").isHidden(), "and the line changes, with no button left");
   await menuGo(page, "Weekly review");
   check((await text(page, "#screen")).includes("One reminder") && (await text(page, "#screen")).includes("2 pictures are kept on this phone only"), "a due backup reminder at the Weekly review names the pictures");
+  check((await text(page, "#screen")).includes("Your pictures have not been backed up yet."), "and says the pictures have never been backed up");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
@@ -2629,6 +2630,7 @@ console.log("Shrink old pictures");
     db.close(); return out;
   });
   await page.reload(); await page.waitForSelector("#nav button");
+  const doneToast = seen(page, "#toast", "Old pictures are shrunk to save space", 40000);
   const read = () => page.evaluate(async () => {
     const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; });
     const get = (id) => new Promise((res) => { const q = db.transaction("photos").objectStore("photos").get(id); q.onsuccess = () => res(q.result); });
@@ -2638,10 +2640,37 @@ console.log("Shrink old pictures");
   for (let i = 0; i < 40 && !(got && got["pic-old"].w <= 1600); i++) { await page.waitForTimeout(1000); got = await read(); }
   check(got["pic-old"].w === 1600 && got["pic-old"].h === 1200 && got["pic-old"].size < sizes["pic-old"] / 2, "a picture older than 3 months is shrunk to 1600 on its longest side and is much smaller (" + sizes["pic-old"] + " to " + got["pic-old"].size + ")");
   check(got["pic-new"].w === 3200 && got["pic-new"].size === sizes["pic-new"], "a recent picture is left exactly as it was");
+  check(await doneToast, "the app says once that the old pictures are shrunk");
   const l = JSON.parse((await stored(page)).local);
   check(l.settings.photos_shrunk_through === TS && l.state.attachments.length === 2 && l.state.transactions.length === 2, "the marker is saved and no entry or picture record changed");
   await menuGo(page, "Setup");
   check(await seen(page, "#screen", "shrunk to save space, one time each: 1 of 1 done"), "Setup says how far the shrinking got");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
+// ===== 5x2. "Shrink them now" =====
+console.log("Shrink now");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-04-01" };
+  const mk = (id, date) => { const ts = date + "T09:00:00.000+08:00"; return { tx: { id: "t" + id, date, payee: "Corner Cafe", memo: "", status: "verified", source: "manual", created_at: ts, verified_at: ts }, es: [{ transaction_id: "t" + id, category_id: "cat-food", amount: 5000 }, { transaction_id: "t" + id, account_id: "w", amount: -5000 }], at: { id: "pic-" + id, transaction_id: "t" + id, type: "photo", file: "pic-" + id, file_timestamp: ts } }; };
+  const rows = [mk("a", "2026-04-02"), mk("b", "2026-05-02"), mk("c", "2026-06-02"), mk("d", "2026-06-12"), mk("e", "2026-06-22")];
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: rows.map((r) => r.tx), entries: rows.flatMap((r) => r.es), attachments: rows.map((r) => r.at) } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await page.evaluate(async (ids) => {
+    const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; });
+    for (const id of ids) { const c = document.createElement("canvas"); c.width = 2400; c.height = 1800; const x = c.getContext("2d"); const d = x.createImageData(c.width, c.height);
+      for (let i = 0; i < d.data.length; i += 4) { d.data[i] = Math.random() * 255; d.data[i + 1] = Math.random() * 255; d.data[i + 2] = Math.random() * 255; d.data[i + 3] = 255; }
+      x.putImageData(d, 0, 0); const b = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.9)); await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").put(b, id); t.oncomplete = res; }); }
+    db.close(); }, rows.map((r) => r.at.id));
+  await page.reload(); await page.waitForSelector("#nav button");
+  await menuGo(page, "Setup");
+  check(await seen(page, "#screen", "0 of 5 done") && await page.locator('button[data-action="shrink-now"]').count() === 1, "Setup shows how many old pictures wait, with a Shrink them now button");
+  await page.click('button[data-action="shrink-now"]');
+  check(await seen(page, "#toast", "Old pictures are shrunk to save space", 60000), "it shrinks all five in one go and says so");
+  const dims = await page.evaluate(async (ids) => {
+    const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; });
+    const out = []; for (const id of ids) { const b = await new Promise((res) => { const q = db.transaction("photos").objectStore("photos").get(id); q.onsuccess = () => res(q.result); }); const m = await createImageBitmap(b); out.push(m.width); m.close(); } db.close(); return out; }, rows.map((r) => r.at.id));
+  check(dims.every((w) => w === 1600), "every one is 1600 wide (" + dims.join(",") + ")");
+  check((await text(page, "#screen")).includes("5 of 5 done") && await page.locator('button[data-action="shrink-now"]').count() === 0, "and the line says 5 of 5, with no button left");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
@@ -2683,6 +2712,12 @@ console.log("Pictures file");
   await menuGo(page, "Setup"); await page.click('button[data-action="open-pic-restore"]');
   await page.setInputFiles("#r-file", file); await page.fill("#r-pass", PW); await page.click("#f-save");
   check(await seen(page, "#sheet", "0 pictures that belong") && await page.locator("#f-save").isDisabled(), "a second time there is nothing missing, and nothing to do");
+  await page.click("#scrim");
+  await menuGo(page, "Setup"); await page.click('button[data-action="open-pic-check"]');
+  await page.setInputFiles("#r-file", file); await page.fill("#r-pass", "not the passphrase at all"); await page.click("#f-save");
+  check(await seen(page, "#f-msg", "Wrong passphrase, or the file is damaged"), "Check a pictures file refuses a wrong passphrase");
+  await page.fill("#r-pass", PW); await page.click("#f-save");
+  check(await seen(page, "#sheet", "every picture is whole. Nothing on this phone was changed") && await page.locator("#f-save").count() === 0, "and with the right one says it is whole, with no button to change anything");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 

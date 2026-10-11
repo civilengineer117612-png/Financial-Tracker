@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-11-pictures-more", date: "2026-10-11", text: "You can check a pictures file without restoring it, shrink old pictures all at once, and the Weekly review tells you when your pictures have not been backed up lately." },
   { id: "2026-10-10-hints", date: "2026-10-10", text: "Scheduled now suggests payments you make every month, found in your history and your Pay plan; you tap Add to check and save one, or Not this." },
   { id: "2026-10-10-pictures-file", date: "2026-10-10", text: "Setup can back up your pictures in a separate encrypted file and put back only the ones missing on this phone." },
   { id: "2026-10-10-shrink", date: "2026-10-10", text: "Pictures older than 3 months are now shrunk once to save space; nothing is deleted and the entries stay as they were." },

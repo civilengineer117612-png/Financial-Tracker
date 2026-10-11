@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatSize, picturesNote, readerStatus, usageLine } from "../src/model/index.js";
+import { formatSize, picturesNote, readerStatus, usageLine, picturesBackupLine } from "../src/model/index.js";
 
 test("sizes read in plain megabytes and gigabytes", () => {
   assert.equal(formatSize(0), "less than 1 MB"); assert.equal(formatSize(1048575), "less than 1 MB");
@@ -22,4 +22,12 @@ test("the usage line is empty when the phone does not say, and never claims 'abo
   assert.equal(usageLine(undefined), "");
   assert.equal(usageLine(50 * 1048576), "This app uses about 50 MB of the phone's space (the reader, pictures and ledger).");
   assert.match(usageLine(100), /^This app uses less than 1 MB/);
+});
+test("the pictures backup line speaks only when there are pictures and the last file is missing or old", () => {
+  assert.equal(picturesBackupLine(0, null, "2026-10-11"), ""); assert.equal(picturesBackupLine(undefined, null, "2026-10-11"), "");
+  assert.equal(picturesBackupLine(5, null, "2026-10-11"), "Your pictures have not been backed up yet.");
+  assert.equal(picturesBackupLine(5, "2026-10-01T09:00:00.000+08:00", "2026-10-11"), "", "10 days old is recent");
+  assert.equal(picturesBackupLine(5, "2026-09-11T09:00:00.000+08:00", "2026-10-11"), "The last pictures file is 30 days old.", "30 days is the line");
+  assert.equal(picturesBackupLine(5, "2026-09-12T09:00:00.000+08:00", "2026-10-11"), "", "29 days is not");
+  assert.equal(picturesBackupLine(5, "2026-09-10T09:00:00.000+08:00", "2026-10-11", 14), "The last pictures file is 31 days old.");
 });

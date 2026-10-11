@@ -50,7 +50,7 @@ export function checkRulesSave(previousRules, nextRules) {
 export { ruleInEffect, rulesInEffect, reportingCategory, checkCategoryMapSave } from "./rules.js";
 export { validateRatchetParams, wasMet, nextRatchet, ratchetSchedule, splitRatchet } from "./ratchet.js";
 export { planCheckIn, ledgerBalanceFor, unloggedTotal } from "./checkin.js";
-export { formatSize, picturesNote, readerStatus, usageLine } from "./storage.js";
+export { formatSize, picturesNote, readerStatus, usageLine, picturesBackupLine } from "./storage.js";
 export { KEEP_MONTHS, SHRINK_MAX_SIDE, SHRINK_BATCH, monthsBefore, shrinkDue, shrinkProgress, targetSize } from "./pictures.js";
 export { HISTORY_MONTHS, suggestFromHistory, suggestFromPlan, scheduleHints } from "./schedulehints.js";
 export { PART_BYTES, planParts, partFileName, sealPictures, openPictures } from "./picturebackup.js";
