@@ -1610,9 +1610,11 @@ const paydaysLine = (plan) => (plan.paydays.length === 1
   : `Paydays on ${paydayText(plan.paydays[0].day)} and ${paydayText(plan.paydays[1].day)}. In effect since ${longDate(plan.effective_from)}.`);
 function viewPlan() {
   const plan = planOf(), all = plansOf();
-  if (!plan) return `<h1>Pay plan</h1><p class="note">${all.length ? "Your plan starts " + esc(longDate([...all].sort((x, y) => (x.effective_from < y.effective_from ? -1 : 1))[0].effective_from)) + "." : "Your plan for each payday: how much goes to rent, daily spending and savings. You can skip it. Budget works without it."}</p>`;
+  const howto = `<h2>How to use it</h2><p class="note">Use it when you are paid in parts and want each payday planned.</p><p class="note">Each line is tracked only when its name matches one of your categories, such as Rent or Food.</p><p class="note">Every payday's lines must add up to that payday's pay.</p>`;
+  const buttons = (first) => `<p><button class="${first ? "primary" : ""}" data-action="open-planform" style="${first ? "" : "width:100%"}">${first ? "Type in a pay plan" : "Add a newer plan"}</button></p><p class="center"><button class="link" data-action="open-plan">Or load it from a file</button></p>`;
+  if (!plan) return `<h1>Pay plan</h1><p class="note">${all.length ? "Your plan starts " + esc(longDate([...all].sort((x, y) => (x.effective_from < y.effective_from ? -1 : 1))[0].effective_from)) + "." : "Your plan for each payday: how much goes to rent, daily spending and savings. You can skip it. Budget works without it."}</p>${all.length ? "" : buttons(true) + howto}`;
   return `<h1>Pay plan</h1><p class="sub">This divides each payday. Budget sets your limit per category for the month.</p><p class="sub">${esc(paydaysLine(plan))}</p>
-    ${planBody(plan, all)}`;
+    ${planBody(plan, all)}${buttons(false)}${howto}`;
 }
 // The plan's tables: lines by payday, income against what arrived, this cutoff. Shared by the Pay plan screen and the Budget's "By payday" section.
 function planBody(plan, all) {
@@ -2083,6 +2085,26 @@ function renderSheet() {
       <label>Arrived in</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
       <p class="note">Pay, interest or a refund. For a full payslip, use Add a payslip in Income. Saved as verified, since you copy it from paper.</p>
       <p><button class="primary" id="f-save" data-action="save-income" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "planform") {
+    const f = ui.form, st = M.planFormStatus(f), two = f.twice;
+    const n = f.count ?? 0, kinds = Object.entries(M.KIND_NAMES);
+    body = `<h3>Type in a pay plan</h3>
+      <p class="note">Say what each payday is worth, then where it goes. Each payday's lines must add up to its pay.</p>
+      <label for="pf-start">Starts on</label><input id="pf-start" type="date" data-field="start" value="${esc(f.start ?? "")}">
+      <div class="chips"><button class="chip" data-action="plan-once" aria-pressed="${!two}">Paid once a month</button><button class="chip" data-action="plan-twice" aria-pressed="${two}">Paid twice a month</button></div>
+      <label for="pf-d1">${two ? "1st payday" : "Payday"}: day of the month (1 to 28)</label><input id="pf-d1" data-field="d1" inputmode="numeric" value="${esc(f.d1 ?? "")}" autocomplete="off">
+      <label for="pf-p1">Pay on that day (\u20B1)</label><input id="pf-p1" data-field="p1" inputmode="decimal" value="${esc(f.p1 ?? "")}" autocomplete="off">
+      ${two ? `<label for="pf-d2">2nd payday: a day after the first, or last</label><input id="pf-d2" data-field="d2" value="${esc(f.d2 ?? "")}" autocomplete="off" autocapitalize="off">
+      <label for="pf-p2">Pay on that day (\u20B1)</label><input id="pf-p2" data-field="p2" inputmode="decimal" value="${esc(f.p2 ?? "")}" autocomplete="off">` : ""}
+      <h2>Where it goes</h2>
+      <p class="note">Name a line like one of your categories (Rent, Food) so it can be tracked. A goal line fills a goal.</p>
+      ${Array.from({ length: n }, (_, i) => `<div class="card" style="padding:10px"><label for="pf-n${i}">Line ${i + 1}</label><input id="pf-n${i}" data-field="n${i}" value="${esc(f["n" + i] ?? "")}" autocomplete="off" placeholder="Rent">
+        <select data-field="k${i}" aria-label="Kind of line ${i + 1}">${kinds.map(([k, nm]) => `<option value="${k}"${(f["k" + i] ?? "expense") === k ? " selected" : ""}>${nm}</option>`).join("")}</select>
+        <label for="pf-a${i}">${two ? "From the 1st payday" : "Each month"} (\u20B1)</label><input id="pf-a${i}" data-field="a${i}" inputmode="decimal" value="${esc(f["a" + i] ?? "")}" autocomplete="off">
+        ${two ? `<label for="pf-b${i}">From the 2nd payday (\u20B1)</label><input id="pf-b${i}" data-field="b${i}" inputmode="decimal" value="${esc(f["b" + i] ?? "")}" autocomplete="off">` : ""}</div>`).join("")}
+      ${n < M.MAX_FORM_LINES ? `<p><button data-action="plan-add-line" style="width:100%">Add a line</button></p>` : ""}
+      <div id="pf-status" role="status"></div>
+      <p><button class="primary" id="f-save" data-action="save-planform" style="margin-top:10px" disabled>Use this plan</button></p>`;
   } else if (sh.type === "plan") {
     body = `<h3>Load a pay plan</h3>
       <p class="note">Choose the plan file or paste its text. It stays on this phone and in your backups.</p>
@@ -2543,6 +2565,12 @@ function refreshSave() {
   } else if (type === "income") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && f.account_id && f.date);
+  } else if (type === "planform") {
+    const t = M.planTextFromForm(f), r = t.ok ? M.parsePlan(t.text) : null, out = $("pf-status");
+    btn.disabled = !r?.ok;
+    const st = M.planFormStatus(f), left = (x) => x.left === 0 ? "all placed" : x.left > 0 ? peso(x.left) + " left to place" : peso(-x.left) + " too much";
+    if (out) out.innerHTML = `<p class="note">${st.map((x, i) => (f.twice ? (i ? "2nd payday" : "1st payday") : "Payday") + ": " + peso(x.placed) + " of " + peso(x.pay) + ", " + left(x)).map(esc).join("<br>")}</p>`
+      + (!t.ok ? `<p role="alert" class="note"><b>${esc(t.error)}</b></p>` : r.ok ? `<p class="note"><b>Looks good.</b></p>` : `<p role="alert" class="note"><b>${esc(r.error)}</b></p>`);
   } else if (type === "plan") {
     const r = (f.text ?? "").trim() ? M.parsePlan(f.text) : null, out = $("p-prev");
     btn.disabled = !r?.ok;
@@ -2942,6 +2970,12 @@ async function onClick(el) {
       break;
     }
     case "open-plan": ui.sheet = { type: "plan" }; ui.form = { text: "" }; renderSheet(); break;
+    case "open-planform": ui.sheet = { type: "planform" }; ui.form = M.newPlanForm(today()); renderSheet(); break;
+    case "plan-once": ui.form.twice = false; renderSheet(); break;
+    case "plan-twice": ui.form.twice = true; renderSheet(); break;
+    case "plan-add-line": { const i = ui.form.count ?? 0; if (i < M.MAX_FORM_LINES) ui.form = { ...ui.form, count: i + 1, ["n" + i]: "", ["k" + i]: "expense", ["a" + i]: "", ["b" + i]: "" }; renderSheet(); break; }
+    case "save-planform": { const t = M.planTextFromForm(ui.form); if (!t.ok) { showToast(t.error); break; } ui.form.text = t.text; }   // then the same steps as a loaded file
+    // falls through
     case "save-plan": {
       const r = M.parsePlan(ui.form.text ?? "");
       if (!r.ok) { showToast(r.error); break; }

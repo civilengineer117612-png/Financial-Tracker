@@ -416,14 +416,15 @@ check(await seen(page, "#toast", "Backup file created"), "the app says what to d
 check(await seen(page, "#screen", "Last backup: today"), "Setup shows when the last backup was made");
 await page.click("details.why summary");
 check((await text(page, "#screen")).includes("Keep a second copy off this phone"), "Setup reminds you to keep a second copy off the phone (under Where to keep it)");
-{ const before = (await stored(page)).local;
+{ const core = (txt) => { const l = JSON.parse(txt); delete l.rev; delete l.saved_at; for (const k of ["bankLogos", "bankLogosTried", "bankLogosBlocked"]) delete l.settings[k]; return JSON.stringify(l); };   // the bank logos are fetched in the background and may land at any moment: they are not what a check could change
+  const before = core((await stored(page)).local);
   await page.click('button:has-text("Check a backup file")');
   await page.setInputFiles("#r-file", file); await page.fill("#r-pass", "a different passphrase"); await page.click('button:has-text("Check backup")');
   check(await seen(page, "#sheet", "Wrong passphrase, or the file is damaged"), "checking a backup with a wrong passphrase says so");
   await page.fill("#r-pass", PASS); await page.click('button:has-text("Check backup")');
   check(await seen(page, "#sheet", "This backup opens") && (await text(page, "#sheet")).includes("2 accounts, 1 entry") && (await page.locator('#sheet button:has-text("Replace")').count()) === 0, "the right passphrase shows what the backup holds, with no way to replace anything");
   await page.click('#sheet button:has-text("Cancel")');
-  check((await stored(page)).local === before, "checking changed nothing on the phone"); }
+  check(core((await stored(page)).local) === before, "checking changed nothing on the phone"); }
 await page.click('#nav button:has-text("Log")');
 check(!(await text(page, "#screen")).includes("No backup yet"), "the Log page stops mentioning it");
 
@@ -1072,7 +1073,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 // ---- the pay plan ----
 await menuGo(page, "Pay plan");
 check((await text(page, "#screen")).includes("You can skip it. Budget works without it."), "the pay plan starts empty");
-check((await page.locator('button:has-text("Load a plan")').count()) === 0 && (await page.locator("#screen button").count()) === (await page.locator("#screen .hub button").count()), "there is no Load a plan button anywhere (only the picture strip): nobody has a plan file yet");
+check((await page.locator('button:has-text("Load a plan")').count()) === 0 && (await page.locator('#screen button[data-action="open-planform"]').count()) === 1 && (await page.locator("#screen button").count()) === (await page.locator("#screen .hub button").count()) + 2, "the Pay plan screen offers typing a plan in and loading a file, and nothing else besides the picture strip: nobody has a plan file yet");
 const plan = { schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-10-01",
   paydays: [{ id: "first", day: 15, expected_income: 5100 }, { id: "second", day: "last", expected_income: 7100 }],
   lines: [{ name: "Food", first: 3000, second: 3000 }, { name: "Shopping", first: 1000, second: 1000 }, { name: "Rent", first: 0, second: 2000 },
@@ -2745,6 +2746,35 @@ console.log("Suggested scheduled payments");
   check(!(await text(page, "#screen")).includes("Maybe add") && !(await text(page, "#screen")).includes("MAYBE ADD"), "no suggestion is left");
   await page.reload(); await page.waitForSelector("#nav button"); await menuGo(page, "Scheduled");
   check(!(await text(page, "#screen")).toLowerCase().includes("maybe add"), "and they stay gone after a restart");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
+// ===== 5pf. typing in a Pay plan by hand =====
+console.log("Type in a pay plan");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [], entries: [], attachments: [] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Pay plan");
+  let st = (await text(page, "#screen")).replace(/\s+/g, " ");
+  check(st.includes("You can skip it. Budget works without it.") && st.toLowerCase().includes("how to use it") && st.includes("must add up to that payday's pay"), "the empty Pay plan screen keeps its words and adds a how-to note");
+  check(await page.locator('#screen button.primary').count() === 1 && await page.locator('button[data-action="open-planform"]').count() === 1, "with one filled button: Type in a pay plan");
+  await page.click('button[data-action="open-planform"]');
+  await page.fill("#pf-d1", "15"); await page.fill("#pf-p1", "10000"); await page.fill("#pf-p2", "24000");
+  await page.fill("#pf-n0", "Rent"); await page.fill("#pf-b0", "5000");
+  await page.fill("#pf-n1", "Food"); await page.fill("#pf-a1", "6000"); await page.fill("#pf-b1", "6000");
+  check((await text(page, "#pf-status")).includes("4000") || (await text(page, "#pf-status")).includes("\u20B14,000.00 left to place"), "while typing it shows what is left to place on the 1st payday");
+  check(await page.locator("#f-save").isDisabled(), "and the plan cannot be used while the lines do not add up");
+  await page.click('button[data-action="plan-add-line"]');
+  await page.fill("#pf-n2", "Apartment Fund"); await page.selectOption('select[data-field="k2"]', "goal"); await page.fill("#pf-a2", "4000"); await page.fill("#pf-b2", "13000");
+  check((await text(page, "#pf-status")).includes("Looks good") && !(await page.locator("#f-save").isDisabled()), "when every payday adds up it says Looks good and the button opens up");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "Plan loaded"), "the plan is saved");
+  const l = JSON.parse((await stored(page)).local), pl = l.settings.plans?.[0];
+  check(l.settings.plans.length === 1 && pl.lines.length === 3 && pl.paydays[0].income === 1000000 && pl.paydays[1].day === "last" && pl.lines.find((x) => x.name === "Rent").second === 500000, "it holds the paydays and the three lines in centavos (" + JSON.stringify(pl.paydays.map((p) => p.income)) + ")");
+  st = (await text(page, "#screen")).replace(/\s+/g, " ");
+  check(st.includes("Rent") && st.includes("Apartment Fund") && st.includes("Add a newer plan"), "the Pay plan screen now shows it, with a way to add a newer one");
+  await menuGo(page, "Help"); await page.locator("#screen details.mrow summary", { hasText: "Pay plan" }).click();
+  check((await text(page, "#screen")).includes("Budget or Pay plan?") && (await text(page, "#screen")).includes("Budget is enough on its own"), "Help compares Budget and Pay plan");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
