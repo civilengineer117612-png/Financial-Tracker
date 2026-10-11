@@ -92,7 +92,7 @@ test("Stage C: the Pay plan menu entry is hidden only when the new Budget is on;
   assert.ok(app.includes('ui.tab === "plan" ? viewPlan()'), "the old Pay plan screen is still routed for one more release");
 });
 
-test("the Pay plan can be typed in or loaded from a file, only from its own screen: no button on Budget or Setup, and no By payday or Setup section when there is no plan", () => {
+test("the Pay plan is typed in, only from its own screen: no button on Budget or Setup, and no By payday or Setup section when there is no plan", () => {
   const view = app.slice(app.indexOf("function byPaydaySection()"), app.indexOf("function viewBudgetOld()"));
   assert.match(view, /if \(!plan\) return "";/, "By payday is not shown without a plan");
   assert.ok(!/data-action="open-plan(form)?"/.test(view), "By payday offers no plan button");
@@ -100,6 +100,6 @@ test("the Pay plan can be typed in or loaded from a file, only from its own scre
   assert.match(app, /3 months of your rent, food and essentials, from your budgets/, "the emergency fund hint points at Budget, not at loading a plan");
   const plan = app.slice(app.indexOf("function viewPlan()"), app.indexOf("function planBody("));
   assert.equal((plan.match(/data-action="open-planform"/g) ?? []).length, 1, "the Pay plan screen has one way to type a plan in");
-  assert.equal((plan.match(/data-action="open-plan"/g) ?? []).length, 1, "and one way to load a file");
+  assert.ok(!/data-action="open-plan"|id="p-file"|id="p-text"|load it from a file/i.test(app), "and no way to load a plan file: it is typed in");
   assert.match(plan, /How to use it/, "with a how-to note");
 });

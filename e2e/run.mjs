@@ -1073,7 +1073,7 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 // ---- the pay plan ----
 await menuGo(page, "Pay plan");
 check((await text(page, "#screen")).includes("You can skip it. Budget works without it."), "the pay plan starts empty");
-check((await page.locator('button:has-text("Load a plan")').count()) === 0 && (await page.locator('#screen button[data-action="open-planform"]').count()) === 1 && (await page.locator("#screen button").count()) === (await page.locator("#screen .hub button").count()) + 2, "the Pay plan screen offers typing a plan in and loading a file, and nothing else besides the picture strip: nobody has a plan file yet");
+check((await page.locator('button:has-text("Load a plan")').count()) === 0 && (await page.locator('#screen button[data-action="open-planform"]').count()) === 1 && (await page.locator("#screen button").count()) === (await page.locator("#screen .hub button").count()) + 1, "the Pay plan screen offers typing a plan in, and nothing else besides the picture strip (there is no plan file to load)");
 const plan = { schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-10-01",
   paydays: [{ id: "first", day: 15, expected_income: 5100 }, { id: "second", day: "last", expected_income: 7100 }],
   lines: [{ name: "Food", first: 3000, second: 3000 }, { name: "Shopping", first: 1000, second: 1000 }, { name: "Rent", first: 0, second: 2000 },
