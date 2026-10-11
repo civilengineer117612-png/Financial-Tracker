@@ -94,8 +94,8 @@ test("Stage C: the Pay plan menu entry is hidden only when the new Budget is on;
 
 test("the Pay plan is typed in, only from its own screen: no button on Budget or Setup, and no By payday or Setup section when there is no plan", () => {
   const view = app.slice(app.indexOf("function byPaydaySection()"), app.indexOf("function viewBudgetOld()"));
-  assert.match(view, /if \(!plan\) return "";/, "By payday is not shown without a plan");
-  assert.ok(!/data-action="open-plan(form)?"/.test(view), "By payday offers no plan button");
+  assert.match(view, /if \(!plan\) return `<p class="note">Paid in parts\? <button class="link" data-action="tab" data-tab="plan">Plan each payday<\/button><\/p>`;/, "without a plan, By payday is only a link to the Pay plan screen");
+  assert.ok(!/data-action="open-plan(form)?"/.test(view), "By payday offers no plan form or file button");
   assert.match(app, /\$\{planOf\(\) \? `<h2>Pay plan<\/h2>/, "Setup's Pay plan section only appears when a plan exists");
   assert.match(app, /3 months of your rent, food and essentials, from your budgets/, "the emergency fund hint points at Budget, not at loading a plan");
   const plan = app.slice(app.indexOf("function viewPlan()"), app.indexOf("function planBody("));
