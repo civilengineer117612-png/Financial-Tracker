@@ -2609,6 +2609,110 @@ console.log("Space, pictures and the photo reader");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
+// ===== 5x. old pictures are shrunk, recent ones are not =====
+console.log("Shrink old pictures");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-04-01" };
+  const TS = "2026-05-02T09:00:00.000+08:00", TS2 = "2026-09-20T09:00:00.000+08:00";
+  const tx = (id, date, ts) => ({ id, date, payee: "Corner Cafe", memo: "", status: "verified", source: "manual", created_at: ts, verified_at: ts });
+  const es = (id) => [{ transaction_id: id, category_id: "cat-food", amount: 5000 }, { transaction_id: id, account_id: "w", amount: -5000 }];
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [tx("old", "2026-05-02", TS), tx("new", "2026-09-20", TS2)], entries: [...es("old"), ...es("new")],
+    attachments: [{ id: "pic-old", transaction_id: "old", type: "photo", file: "pic-old", file_timestamp: TS }, { id: "pic-new", transaction_id: "new", type: "photo", file: "pic-new", file_timestamp: TS2 }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  // two big pictures of noise (so they do not compress to nothing), put in the phone's own picture store as the app would
+  const sizes = await page.evaluate(async () => {
+    const make = async () => { const c = document.createElement("canvas"); c.width = 3200; c.height = 2400; const x = c.getContext("2d");
+      const d = x.createImageData(c.width, c.height); for (let i = 0; i < d.data.length; i += 4) { d.data[i] = Math.random() * 255; d.data[i + 1] = Math.random() * 255; d.data[i + 2] = Math.random() * 255; d.data[i + 3] = 255; }
+      x.putImageData(d, 0, 0); return await new Promise((r) => c.toBlob(r, "image/jpeg", 0.9)); };
+    const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; });
+    const out = {};
+    for (const id of ["pic-old", "pic-new"]) { const b = await make(); out[id] = b.size; await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").put(b, id); t.oncomplete = res; }); }
+    db.close(); return out;
+  });
+  await page.reload(); await page.waitForSelector("#nav button");
+  const read = () => page.evaluate(async () => {
+    const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; });
+    const get = (id) => new Promise((res) => { const q = db.transaction("photos").objectStore("photos").get(id); q.onsuccess = () => res(q.result); });
+    const out = {}; for (const id of ["pic-old", "pic-new"]) { const b = await get(id); const m = await createImageBitmap(b); out[id] = { size: b.size, w: m.width, h: m.height }; m.close(); } db.close(); return out;
+  });
+  let got = null;
+  for (let i = 0; i < 40 && !(got && got["pic-old"].w <= 1600); i++) { await page.waitForTimeout(1000); got = await read(); }
+  check(got["pic-old"].w === 1600 && got["pic-old"].h === 1200 && got["pic-old"].size < sizes["pic-old"] / 2, "a picture older than 3 months is shrunk to 1600 on its longest side and is much smaller (" + sizes["pic-old"] + " to " + got["pic-old"].size + ")");
+  check(got["pic-new"].w === 3200 && got["pic-new"].size === sizes["pic-new"], "a recent picture is left exactly as it was");
+  const l = JSON.parse((await stored(page)).local);
+  check(l.settings.photos_shrunk_through === TS && l.state.attachments.length === 2 && l.state.transactions.length === 2, "the marker is saved and no entry or picture record changed");
+  await menuGo(page, "Setup");
+  check(await seen(page, "#screen", "shrunk to save space, one time each: 1 of 1 done"), "Setup says how far the shrinking got");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
+// ===== 5y. the Pictures file: back up, lose the pictures, put them back =====
+console.log("Pictures file");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" };
+  const TS = "2026-09-20T09:00:00.000+08:00";
+  const tx = { id: "slip", date: "2026-09-20", payee: "Corner Cafe", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [tx], entries: [{ transaction_id: "slip", category_id: "cat-food", amount: 5000 }, { transaction_id: "slip", account_id: "w", amount: -5000 }],
+    attachments: [{ id: "pic-a", transaction_id: "slip", type: "photo", file: "pic-a", file_timestamp: TS }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  const idb = (fn, arg) => page.evaluate(async ([src, a]) => {
+    const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; });
+    const out = await (new Function("db", "arg", "return (" + src + ")(db, arg)"))(db, a); db.close(); return out; }, [fn.toString(), arg]);
+  const made = await idb(async (db) => { const c = document.createElement("canvas"); c.width = 300; c.height = 200; const x = c.getContext("2d"); x.fillStyle = "#c33"; x.fillRect(0, 0, 300, 200); x.fillStyle = "#fff"; x.fillText("INVENTED RECEIPT", 20, 100);
+    const b = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.9)); await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").put(b, "pic-a"); t.oncomplete = res; }); return b.size; });
+  await page.reload(); await page.waitForSelector("#nav button");
+  await menuGo(page, "Setup");
+  check(await page.locator('button[data-action="open-pic-backup"]').count() === 1, "Setup offers Back up pictures when there are pictures");
+  await page.click('button[data-action="open-pic-backup"]');
+  const PW = "a long passphrase for the pictures";
+  await page.fill("#b-pass", PW); await page.fill("#b-pass2", PW);
+  const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.click("#f-save")]);
+  const file = join(tmpdir(), "pics-" + Date.now() + ".fpics"); await dl.saveAs(file);
+  check(/^finance-pictures-.*\.fpics$/.test(dl.suggestedFilename()) && readFileSync(file).length > made, "a pictures file is made (" + dl.suggestedFilename() + ")");
+  check(!readFileSync(file).toString("latin1").includes("INVENTED RECEIPT") && !readFileSync(file).toString("latin1").includes("pic-a"), "and it is encrypted");
+  check(await seen(page, "#toast", "Pictures file created"), "the app says so");
+  await idb(async (db) => { await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").delete("pic-a"); t.oncomplete = res; }); });
+  await menuGo(page, "Setup");
+  await page.click('button[data-action="open-pic-restore"]');
+  await page.setInputFiles("#r-file", file); await page.fill("#r-pass", "not the passphrase at all"); await page.click("#f-save");
+  check(await seen(page, "#f-msg", "Wrong passphrase, or the file is damaged"), "a wrong passphrase is refused in plain words");
+  await page.fill("#r-pass", PW); await page.click("#f-save");
+  check(await seen(page, "#sheet", "This pictures file opens") && (await text(page, "#sheet")).includes("1 picture that belong"), "the right passphrase shows what is inside and what is missing here");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "1 picture is back"), "the picture is put back");
+  const back = await idb(async (db) => { const b = await new Promise((res) => { const q = db.transaction("photos").objectStore("photos").get("pic-a"); q.onsuccess = () => res(q.result); }); return b ? b.size : null; });
+  check(back === made, "it is the same picture, byte for byte in size (" + back + " of " + made + ")");
+  await menuGo(page, "Setup"); await page.click('button[data-action="open-pic-restore"]');
+  await page.setInputFiles("#r-file", file); await page.fill("#r-pass", PW); await page.click("#f-save");
+  check(await seen(page, "#sheet", "0 pictures that belong") && await page.locator("#f-save").isDisabled(), "a second time there is nothing missing, and nothing to do");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
+// ===== 5z. suggested scheduled payments (from history), the owner decides =====
+console.log("Suggested scheduled payments");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 900000, opening_date: "2026-04-01" };
+  const pay = (id, payee, date, amount) => [{ id, date, payee, memo: "", status: "verified", source: "manual", created_at: date + "T09:00:00.000+08:00", verified_at: date + "T09:00:00.000+08:00" }, [{ transaction_id: id, category_id: "cat-food", amount }, { transaction_id: id, account_id: "w", amount: -amount }]];
+  const rows = [...["2026-06-08", "2026-07-08", "2026-08-09", "2026-09-08"].map((d, i) => pay("s" + i, "Stream Plus", d, 29900)), ...["2026-07-15", "2026-08-15", "2026-09-16"].map((d, i) => pay("g" + i, "Gym Fee", d, 80000))];
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: rows.map((r) => r[0]), entries: rows.flatMap((r) => r[1]) } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Scheduled");
+  let st = (await text(page, "#screen")).replace(/\s+/g, " ");
+  check(st.toLowerCase().includes("maybe add") && st.includes("Stream Plus") && st.includes("paid in 4 of the last 6 months") && st.includes("Gym Fee"), "Scheduled suggests the two payments found in the history");
+  check(st.includes("Nothing is added until you save it") && await page.locator('#screen button.primary').count() === 1, "it says nothing is added by itself, and the screen still has one filled button");
+  await page.click('button[data-action="hint-no"][data-id="hist:gym fee"]');
+  check(await seen(page, "#toast", "will not be suggested again") && !(await text(page, "#screen")).includes("Gym Fee"), "Not this removes a suggestion");
+  await page.click('button[data-action="hint-add"][data-id="hist:stream plus"]');
+  check(await page.inputValue("#s-name") === "Stream Plus" && await page.inputValue("#s-amount") === "299.00" && await page.inputValue("#s-day") === "8", "Add opens the usual form with the name, amount and day filled in");
+  const before = JSON.parse((await stored(page)).local).state.schedules.length;
+  check(before === 0, "nothing has been saved yet");
+  await page.click("#f-save");
+  await seen(page, "#toast", "is scheduled");
+  const l = JSON.parse((await stored(page)).local);
+  check(l.state.schedules.length === 1 && l.state.schedules[0].name === "Stream Plus" && l.state.schedules[0].amount === 29900 && l.settings.schedule_hints_dismissed.join() === "hist:gym fee", "saving it makes the schedule; the dismissed one is remembered");
+  check(!(await text(page, "#screen")).includes("Maybe add") && !(await text(page, "#screen")).includes("MAYBE ADD"), "no suggestion is left");
+  await page.reload(); await page.waitForSelector("#nav button"); await menuGo(page, "Scheduled");
+  check(!(await text(page, "#screen")).toLowerCase().includes("maybe add"), "and they stay gone after a restart");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
 // ===== 5u. importing old spending from a spreadsheet =====
 console.log("Import old spending");
 { const { deflateRawSync } = await import("node:zlib");

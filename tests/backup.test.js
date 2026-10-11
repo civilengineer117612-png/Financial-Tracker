@@ -90,7 +90,7 @@ test("the suggested passphrase really opens a backup made with it", async () => 
 test("the backup sheet asks the phone to offer a new password; the restore sheet asks for the saved one; the app never writes a passphrase anywhere", () => {
   assert.match(appJs, /id="b-pass"[^>]*autocomplete="new-password"/); assert.match(appJs, /id="b-pass2"[^>]*autocomplete="new-password"/);
   assert.match(appJs, /id="r-pass"[^>]*autocomplete="current-password"/);
-  assert.equal((appJs.match(/autocomplete="username"/g) ?? []).length, 2, "a username field lets the phone label the saved entry");
+  assert.equal((appJs.match(/autocomplete="username"/g) ?? []).length, 3, "a username field (backup, restore and check, pictures restore) lets the phone label the saved entry");
   assert.ok(!/localStorage[^\n]*pass|settings[^\n]*\.pass\b|commit\([^\n]*(form\.pass|made)/.test(appJs), "the passphrase is never saved by the app");
   assert.match(appJs, /case "make-passphrase"[^\n]*M\.makePassphrase\(\)[^\n]*pass: made, pass2: made, made/, "both fields get the same passphrase");
 });
