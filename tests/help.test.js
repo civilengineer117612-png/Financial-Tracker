@@ -64,7 +64,8 @@ test("Pay plan words: the label, the empty state, the line under the title and t
   assert.ok(app.includes(`<h1>Pay plan</h1><p class="sub">${LINE}</p>`), "the line sits right under the title when a plan exists");
   const t = TOPICS.find((x) => x.tab === "plan");
   assert.equal(t.label, "Pay plan (optional)");
-  assert.deepEqual(t.lines, [EMPTY, LINE, "With the new Budget switched on (Setup), the plan lives in Budget, under By payday."]);
+  assert.deepEqual(t.lines.slice(0, 3), [EMPTY, LINE, "With the new Budget switched on (Setup), the plan lives in Budget, under By payday."], "the owner's three lines stay first and word for word");
+  assert.ok(t.lines.length > 3 && t.lines.join(" ").includes("Budget or Pay plan?"), "and the Budget or Pay plan comparison follows them");
   assert.ok(MENU_GROUPS.some(([, ids]) => ids.includes("plan")), "it is still a menu screen, and so still needs (and has) its Help topic");
 });
 
@@ -91,13 +92,14 @@ test("Stage C: the Pay plan menu entry is hidden only when the new Budget is on;
   assert.ok(app.includes('ui.tab === "plan" ? viewPlan()'), "the old Pay plan screen is still routed for one more release");
 });
 
-test("there is no way to load a plan file in the app: no button anywhere, and no By payday or Setup section when there is no plan", () => {
-  assert.ok(!/data-action="open-plan"/.test(app), "no Load a plan / Load a newer plan button is drawn");
-  assert.ok(!/Load a plan|Load a newer plan|Load a pay plan \(Menu/.test(app.replace(/<h3>Load a pay plan<\/h3>/, "")), "no words offer it");
+test("the Pay plan can be typed in or loaded from a file, only from its own screen: no button on Budget or Setup, and no By payday or Setup section when there is no plan", () => {
   const view = app.slice(app.indexOf("function byPaydaySection()"), app.indexOf("function viewBudgetOld()"));
   assert.match(view, /if \(!plan\) return "";/, "By payday is not shown without a plan");
+  assert.ok(!/data-action="open-plan(form)?"/.test(view), "By payday offers no plan button");
   assert.match(app, /\$\{planOf\(\) \? `<h2>Pay plan<\/h2>/, "Setup's Pay plan section only appears when a plan exists");
   assert.match(app, /3 months of your rent, food and essentials, from your budgets/, "the emergency fund hint points at Budget, not at loading a plan");
   const plan = app.slice(app.indexOf("function viewPlan()"), app.indexOf("function planBody("));
-  assert.ok(!/<button/.test(plan), "the empty Pay plan screen has no button");
+  assert.equal((plan.match(/data-action="open-planform"/g) ?? []).length, 1, "the Pay plan screen has one way to type a plan in");
+  assert.equal((plan.match(/data-action="open-plan"/g) ?? []).length, 1, "and one way to load a file");
+  assert.match(plan, /How to use it/, "with a how-to note");
 });
