@@ -1614,7 +1614,7 @@ function viewPlan() {
   const buttons = (first) => `<p><button class="${first ? "primary" : ""}" data-action="open-planform" style="${first ? "" : "width:100%"}">${first ? "Type in a pay plan" : "Add a newer plan"}</button></p>`;
   if (!plan) return `<h1>Pay plan</h1><p class="note">${all.length ? "Your plan starts " + esc(longDate([...all].sort((x, y) => (x.effective_from < y.effective_from ? -1 : 1))[0].effective_from)) + "." : "Your plan for each payday: how much goes to rent, daily spending and savings. You can skip it. Budget works without it."}</p>${all.length ? "" : buttons(true) + howto}`;
   return `<h1>Pay plan</h1><p class="sub">This divides each payday. Budget sets your limit per category for the month.</p><p class="sub">${esc(paydaysLine(plan))}</p>
-    ${planBody(plan, all)}${buttons(false)}${howto}`;
+    ${planAgreeHtml(plan)}${planBody(plan, all)}${buttons(false)}${howto}`;
 }
 // The plan's tables: lines by payday, income against what arrived, this cutoff. Shared by the Pay plan screen and the Budget's "By payday" section.
 function planBody(plan, all) {
@@ -1820,15 +1820,22 @@ async function savePinsFromForm() {
 }
 
 // "By payday": the pay plan, inside Budget. The plan and the budgets it implies are written by ONE save (M.planWithBudgets), and this says whether they agree.
-function byPaydaySection() {
-  const plan = planOf(), all = plansOf(), month = M.monthOf(today()), next = M.addMonths(month, 1);
-  if (!plan) return "";   // nobody can load a plan file yet, so with no plan there is nothing to show here
+// Says whether the plan and the budgets agree (and offers to make them match). Shared by Budget's By payday and the Pay plan screen.
+function planAgreeHtml(plan) {
+  const month = M.monthOf(today()), next = M.addMonths(month, 1);
   const now = M.planBudgetMismatches(S(), ledger.settings, month), then = M.planBudgetMismatches(S(), ledger.settings, next);
   const miss = now.unmatched.length ? ` No budget for ${esc(now.unmatched.join(", "))}: no spending category has that name.` : "";
   const agree = !now.plan ? "" : then.mismatches.length === 0 ? (now.mismatches.length === 0 ? `<p class="note" id="plan-agree">Your plan and your budgets agree for ${esc(M.monthLabel(month))}.${miss}</p>`
       : `<p class="note" id="plan-agree">Your budgets will match your plan from ${esc(M.monthLabel(next))}.${miss}</p>`)
     : `<p class="note" id="plan-differ"><b>Your budgets differ from your plan:</b> ${esc(then.mismatches.map((m) => `${m.name} budget ${m.budget === null ? "none" : peso(m.budget)}, plan ${peso(m.planned)}`).join("; "))}.${miss}</p>
       <p><button data-action="sync-plan-budgets" style="width:100%">Make the budgets match the plan, from ${esc(M.monthLabel(next))}</button></p>`;
+  return agree;
+}
+
+function byPaydaySection() {
+  const plan = planOf(), all = plansOf(), month = M.monthOf(today()), next = M.addMonths(month, 1);
+  if (!plan) return `<p class="note">Paid in parts? <button class="link" data-action="tab" data-tab="plan">Plan each payday</button></p>`;   // with no plan, only a way to the Pay plan screen
+  const agree = planAgreeHtml(plan);
   return `<h2 id="by-payday">By payday</h2><p class="sub">This divides each payday. Budget sets your limit per category for the month.</p><p class="sub">${esc(paydaysLine(plan))}</p>${agree}
     ${planBody(plan, all)}`;
 }
@@ -2956,7 +2963,7 @@ async function onClick(el) {
       showToast("Recorded: " + peso(amount.centavos));
       break;
     }
-    case "open-planform": ui.sheet = { type: "planform" }; ui.form = M.newPlanForm(today()); renderSheet(); break;
+    case "open-planform": { const cur = planOf(); ui.sheet = { type: "planform" }; ui.form = cur ? M.formFromPlan(cur, today()) : M.newPlanForm(today()); renderSheet(); break; }
     case "plan-once": ui.form.twice = false; renderSheet(); break;
     case "plan-twice": ui.form.twice = true; renderSheet(); break;
     case "plan-add-line": { const i = ui.form.count ?? 0; if (i < M.MAX_FORM_LINES) ui.form = { ...ui.form, count: i + 1, ["n" + i]: "", ["k" + i]: "expense", ["a" + i]: "", ["b" + i]: "" }; renderSheet(); break; }

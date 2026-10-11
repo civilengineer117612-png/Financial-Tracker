@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parsePlan, newPlanForm, planTextFromForm, planFormStatus } from "../src/model/index.js";
+import { parsePlan, newPlanForm, planTextFromForm, planFormStatus, formFromPlan, addPlan, planInEffect, encryptLedgerBackup, decryptLedgerBackup, upgradeLedger, selfCheck, LEDGER_VERSION } from "../src/model/index.js";
 
 // Invented names and amounts only.
 const twice = (over = {}) => ({ ...newPlanForm("2026-10-15"), p1: "10000", d1: "15", p2: "24000", d2: "last", count: 3,
@@ -39,4 +39,26 @@ test("the status shows what is left to place on each payday, and goes negative w
   assert.deepEqual(planFormStatus(twice({ a1: "7000" }))[0], { pay: 1000000, placed: 1100000, left: -100000 });
   assert.deepEqual(planFormStatus({ ...twice(), twice: false }).length, 1);
   assert.deepEqual(planFormStatus(twice({ p1: "oops" }))[0].pay, 0, "an unreadable pay counts as zero in the helper; the text step names the problem");
+});
+
+test("a saved plan fills the form again: typing nothing new gives back the same plan, only dated later", () => {
+  const first = parsePlan(planTextFromForm(twice({ p1: "10000.50", a1: "6000.50" })).text).plan;
+  const f = formFromPlan(first, "2026-12-01");
+  assert.equal(f.start, "2026-12-01"); assert.equal(f.p1, "10000.50"); assert.equal(f.a1, "6000.50"); assert.equal(f.b0, "5000"); assert.equal(f.k2, "goal"); assert.equal(f.count, 3);
+  const again = parsePlan(planTextFromForm(f).text);
+  assert.equal(again.ok, true, again.error);
+  assert.deepEqual({ ...again.plan, effective_from: first.effective_from }, first, "the same paydays and lines to the centavo");
+  const one = parsePlan(planTextFromForm({ ...newPlanForm("2026-10-01"), twice: false, d1: "5", p1: "20000", count: 1, n0: "Rent", a0: "20000" }).text).plan;
+  const g = formFromPlan(one, "2026-11-01"); assert.equal(g.twice, false); assert.equal(g.d2, "last");
+  assert.equal(parsePlan(planTextFromForm(g).text).ok, true);
+});
+test("a typed plan survives an encrypted backup and an upgrade, and is still the plan in effect", async () => {
+  const typed = parsePlan(planTextFromForm(twice()).text).plan, added = addPlan([], typed); assert.equal(added.ok, true);
+  const state = Object.fromEntries(["accounts", "goals", "envelopes", "transactions", "entries", "categories", "categoryMaps", "rules", "templates", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions", "presets", "schedules", "scheduleChanges"].map((k) => [k, []]));
+  const ledger = { v: LEDGER_VERSION - 1, rev: 3, saved_at: "2026-10-11T09:00:00.000+08:00", state, settings: { plans: added.plans } };
+  const back = await decryptLedgerBackup(await encryptLedgerBackup(ledger, "correct horse battery"), "correct horse battery");
+  assert.deepEqual(back.settings.plans, added.plans, "the plan comes back exactly");
+  const up = upgradeLedger(back, { now: new Date("2026-10-11T00:00:00Z") });
+  assert.equal(up.ok, true, up.error); assert.deepEqual(up.ledger.settings.plans, added.plans);
+  assert.equal(planInEffect(up.ledger.settings.plans, "2026-10-20").lines.length, 3, "and it is the plan in effect");
 });

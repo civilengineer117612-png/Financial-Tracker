@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-11-plan-polish", date: "2026-10-11", text: "Budget points to the Pay plan, the Pay plan shows whether it agrees with your budgets, and a newer plan starts from your current one." },
   { id: "2026-10-11-plan-typed", date: "2026-10-11", text: "The Pay plan is now only typed in (the plan file option is gone); a plan you already saved stays as it was." },
   { id: "2026-10-11-planform", date: "2026-10-11", text: "The Pay plan can now be typed in by hand, with a how-to note, and Help compares Budget and Pay plan in a few lines." },
   { id: "2026-10-11-pictures-more", date: "2026-10-11", text: "You can check a pictures file without restoring it, shrink old pictures all at once, and the Weekly review tells you when your pictures have not been backed up lately." },

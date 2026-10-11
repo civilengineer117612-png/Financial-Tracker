@@ -38,3 +38,12 @@ export function planFormStatus(f) {
   }
   return rows;
 }
+
+// The form filled from a plan already saved, to start a newer one from it: same paydays, same lines, a new start date. Amounts come back as typed pesos.
+const pesoText = (c) => (c % 100 === 0 ? String(c / 100) : (c / 100).toFixed(2));
+export function formFromPlan(plan, today) {
+  const two = plan.paydays.length === 2, f = { start: today, twice: two, d1: String(plan.paydays[0].day), p1: pesoText(plan.paydays[0].income),
+    d2: two ? String(plan.paydays[1].day) : "last", p2: two ? pesoText(plan.paydays[1].income) : "", count: Math.min(plan.lines.length, MAX_FORM_LINES) };
+  plan.lines.slice(0, MAX_FORM_LINES).forEach((l, i) => { f["n" + i] = l.name; f["k" + i] = l.kind; f["a" + i] = pesoText(l.first); f["b" + i] = two ? pesoText(l.second) : ""; });
+  return f;
+}
