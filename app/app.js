@@ -674,7 +674,7 @@ async function importFile(file) {
       const pages = await readPdfPages(file, askPdfPassword);
       const r = M.parseStatement(pages);
       if (!r.ok) throw new Error(r.message);
-      statement = { bank: r.bank, period: r.period, check: r.check, lines: r.lines.length, leftOut: M.statementLeftOut(r.lines) };
+      statement = { bank: r.bank, bankId: r.bankId, period: r.period, check: r.check, lines: r.lines.length, leftOut: M.statementLeftOut(r.lines) };
       items = M.statementItems(r.lines); notRead = [];
     } else if (/\.xlsx$/i.test(file.name) || /spreadsheetml/.test(file.type)) ({ items, notRead } = tableOrThrow(await M.readXlsx(await file.arrayBuffer())));
     else if (/\.csv$/i.test(file.name) || /csv/.test(file.type)) ({ items, notRead } = tableOrThrow(M.parseCsv(await file.text())));
@@ -683,13 +683,17 @@ async function importFile(file) {
       ({ items, notRead } = M.parseNotes(page.boxes ? M.linesByRow(page.boxes) : page.text));
     }
     if (!items.length) throw new Error(statement ? "This statement has no spending in it: only money in and moves between your own accounts." : "No dated spending was found. A notes list needs a date line (02/10/2026) above lines like \"Lunch - 100\".");
-    ui.form = { items, notRead, statement, skip: {}, order: M.dateOrder(items.map((x) => x.dateRaw), today0), account_id: cashFirst(activeAccounts())[0]?.id ?? null };
+    // a statement goes to the account linked to its bank when there is one (chosen for you; you can change it)
+    const auto = statement?.bankId ? activeAccounts().find((a) => a.class === "asset" && a.bank === statement.bankId)?.id ?? null : null;
+    ui.form = { items, notRead, statement, choice: {}, looked: false, autoAccount: auto, order: M.dateOrder(items.map((x) => x.dateRaw), today0), account_id: auto ?? cashFirst(activeAccounts())[0]?.id ?? null };
   } catch (err) { if (err instanceof PdfCancelled) { ui.sheet = null; renderSheet(); return; } ui.form = { error: String(err?.message ?? err) }; }
   if (ui.sheet?.type === "import") renderSheet();
 }
 // A locked PDF: the import window asks for the password and waits. The password is used once and not kept.
 let pdfPasswordResolve = null;
 const askPdfPassword = (wrong) => new Promise((resolve) => { pdfPasswordResolve = resolve; ui.form = { askPassword: true, wrong }; renderSheet(); setTimeout(() => $("pdf-pw")?.focus(), 50); });
+// The lines an import adds: everything read, except money out that does not say what it was, until you choose Spending for it.
+const importKept = (f) => f.items.filter((x) => x.meaning !== "unsure" || f.choice?.[x.id] === "spending");
 const tableOrThrow = (rows) => { const t = M.parseTable(rows); if (!t.ok) throw new Error(t.message); return t; };
 const photoButtons = (mode, busy = false) => `<label class="filebtn" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="12.5" r="3.5"/></svg>&nbsp;${busy ? "Reading..." : "Take a photo"}<input type="file" accept="image/*" capture="environment" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>
   <label class="filebtn alt" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>&nbsp;Choose from photos or files<input type="file" accept="image/*" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>`;
@@ -1340,7 +1344,7 @@ function viewCards() {
   const listView = `<h2>Credit cards</h2>${cards}
     <h2>Debit, savings and cash</h2>${money}`;
   const cardView = `<div class="swipe" tabindex="0" aria-label="Your accounts and cards, swipe sideways">${seq.map(swipe).join("")}</div>
-    <div class="dots" aria-hidden="true">${seq.map((_, i) => `<span${i === 0 ? ' class="on"' : ""}></span>`).join("")}</div>`;
+    <div class="dots" aria-hidden="true">${seq.length > 6 ? `<span class="dotcount" data-of="${seq.length}">1 of ${seq.length}</span>` : seq.map((_, i) => `<span${i === 0 ? ' class="on"' : ""}></span>`).join("")}</div>`;   // many cards: a count, not a long row of dots
   return `<h1>Cards</h1>${periodStepper(p)}
     ${netCard}${setAside}
     ${ui.cardsList ? listView : cardView}
@@ -2331,7 +2335,7 @@ function renderSheet() {
     else if (f.busy) body = `<h3>Import old spending</h3><p class="note" id="imp-msg" role="status">${esc(f.busy)}</p>`;
     else if (f.error) body = `<h3>Import old spending</h3><p class="note" role="alert"><b>${esc(f.error)}</b></p>`;
     else {
-      const kept = f.items.filter((x) => !f.skip?.[x.id]);
+      const kept = importKept(f), waiting = f.items.filter((x) => x.meaning === "unsure" && !f.choice?.[x.id]).length, held = !!f.statement && !f.statement.check.ok && !f.looked;
       const p = f.order ? M.previewImport(S(), kept, f.order) : null, acct = S().accounts.find((a) => a.id === f.account_id);
       const sample = f.items.find((x) => M.readDate(x.dateRaw) && !M.readDate(x.dateRaw).iso)?.dateRaw;
       const orderLine = sample ? `<p class="note" id="imp-order">${f.order ? `Dates read as <b>${f.order === "dmy" ? "day/month" : "month/day"}</b>: ${esc(sample)} is <b>${esc(longDate(M.previewImport(S(), [{ dateRaw: sample, name: "x", amount: 1 }], f.order).lines[0]?.date ?? today()))}</b>.` : `<b>Which comes first in ${esc(sample)}?</b>`}</p>
@@ -2339,14 +2343,15 @@ function renderSheet() {
       const st = f.statement, unsure = st ? f.items.filter((x) => x.meaning === "unsure") : [];
       const stBlock = st ? `<div class="card" style="border:0;padding:0"><dl><dt>Statement</dt><dd>${esc(st.bank ?? "Bank statement")}</dd>${st.period ? `<dt>Period</dt><dd>${esc(longDate(st.period.from))} to ${esc(longDate(st.period.to))}</dd>` : ""}<dt>Lines found</dt><dd>${st.lines}</dd><dt>Balance check</dt><dd id="stm-check">${st.check.ok ? "\u2713 " : ""}${esc(st.check.message)}${st.check.ok ? "" : " Look at each amount before you verify it."}</dd></dl></div>
         ${st.leftOut.moves + st.leftOut.moneyIn ? `<p class="note small" id="stm-left">${[st.leftOut.moves ? `${st.leftOut.moves} ${st.leftOut.moves === 1 ? "move" : "moves"} between your own accounts` : "", st.leftOut.moneyIn ? `${st.leftOut.moneyIn} money in` : ""].filter(Boolean).join(" and ")} left out: not spending.</p>` : ""}
-        ${unsure.length ? `<label>Which is it?</label><p class="note small">Money out that does not say what it was. Choose Not spending for any that was not.</p>${unsure.map((x) => `<div class="mrow"><span class="mn">${esc(x.name)}<small>${esc(longDate(x.dateRaw))} \u00b7 ${peso(x.amount)}</small></span><span class="chips"><button class="chip" data-action="stm-toggle" data-id="${esc(x.id)}" aria-pressed="${!f.skip?.[x.id]}">Spending</button><button class="chip" data-action="stm-toggle" data-id="${esc(x.id)}" aria-pressed="${!!f.skip?.[x.id]}">Not spending</button></span></div>`).join("")}` : ""}` : "";
+        ${unsure.length ? `<label>Which is it?</label><p class="note small">Money out that does not say what it was. Each waits until you choose.</p>${unsure.map((x) => `<div class="mrow mimp ask"><span class="mn">${esc(x.name)}<small>${esc(longDate(x.dateRaw))} \u00b7 ${peso(x.amount)}</small></span><span class="chips"><button class="chip" data-action="stm-choose" data-id="${esc(x.id)}" data-pick="spending" aria-pressed="${f.choice?.[x.id] === "spending"}">Spending</button><button class="chip" data-action="stm-choose" data-id="${esc(x.id)}" data-pick="not" aria-pressed="${f.choice?.[x.id] === "not"}">Not spending</button></span></div>`).join("")}` : ""}` : "";
       body = `<h3>Import old spending</h3>${stBlock}${orderLine}
-        <label>Paid from</label>${paidChips(f.account_id)}
-        ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
-          <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline"><span class="mn">${esc(longDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
+        <label>Paid from${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}</label>${paidChips(f.account_id)}
+        ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${waiting ? `. <b>${waiting} ${waiting === 1 ? "line needs" : "lines need"} your choice</b>: left out until you choose` : ""}${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
+          <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline mimp"><span class="mn">${esc(longDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline mimp"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
           ${f.notRead.length ? `<details><summary>Not read (${f.notRead.length})</summary>${f.notRead.slice(0, 20).map((l) => `<p class="note">${esc(l)}</p>`).join("")}</details>` : ""}
           ${acct ? `<p class="note">Lines dated before you added ${esc(acct.name)} are history only: they do not change its balance.</p>` : ""}
-          <p><button class="primary" id="f-save" data-action="save-import"${p.lines.length && acct ? "" : " disabled"}>Add ${p.lines.length} ${p.lines.length === 1 ? "draft" : "drafts"} to Verify</button></p>` : ""}`;
+          ${f.statement && !f.statement.check.ok ? `<p><button class="chip wide" data-action="stm-looked" aria-pressed="${!!f.looked}">I looked at the amounts</button></p>` : ""}
+          <p><button class="primary" id="f-save" data-action="save-import"${p.lines.length && acct && !held ? "" : " disabled"}>Add ${p.lines.length} ${p.lines.length === 1 ? "draft" : "drafts"} to Verify</button></p>` : ""}`;
     }
   } else if (sh.type === "payslipchoice") {
     body = `<h3>Add income</h3>
@@ -3358,10 +3363,12 @@ async function onClick(el) {
     case "pick-to": form.to_id = id; renderSheet(); break;
     case "pdf-open": { const typed = $("pdf-pw")?.value ?? ""; const go = pdfPasswordResolve; pdfPasswordResolve = null; ui.form = { busy: "Opening the PDF..." }; renderSheet(); go?.(typed); break; }
     case "pdf-cancel": { const go = pdfPasswordResolve; pdfPasswordResolve = null; go?.(null); ui.sheet = null; renderSheet(); break; }
-    case "stm-toggle": ui.form.skip = { ...(ui.form.skip ?? {}), [id]: el.textContent.trim() === "Not spending" }; renderSheet(); break;
+    case "stm-choose": ui.form.choice = { ...(ui.form.choice ?? {}), [id]: el.dataset.pick }; renderSheet(); break;
+    case "stm-looked": ui.form.looked = !ui.form.looked; renderSheet(); break;
     case "import-order": form.order = id; renderSheet(); break;
     case "save-import": {
-      const p = M.previewImport(S(), form.items.filter((x) => !form.skip?.[x.id]), form.order), r = M.planImport(S(), p.lines, { account_id: form.account_id, newId: () => newId("tx") });
+      if (form.statement && !form.statement.check.ok && !form.looked) break;   // held until "I looked at the amounts"
+      const p = M.previewImport(S(), importKept(form), form.order), r = M.planImport(S(), p.lines, { account_id: form.account_id, newId: () => newId("tx") });
       if (!r.ok) { showToast(r.message); break; }
       ui.sheet = null; renderSheet();
       if (await commit(r.state)) showToast(`${r.count} ${r.count === 1 ? "draft is" : "drafts are"} waiting in Verify.`);
@@ -3557,7 +3564,9 @@ document.addEventListener("scroll", (e) => {   // the dots under the swipe cards
   const t = e.target; if (!t?.classList?.contains("swipe")) return;
   const first = t.firstElementChild; if (!first) return;
   const i = Math.max(0, Math.min(t.children.length - 1, Math.round(t.scrollLeft / (first.getBoundingClientRect().width + 12))));
-  t.parentElement.querySelectorAll(".dots span").forEach((d, k) => d.classList.toggle("on", k === i));
+  const count = t.parentElement.querySelector(".dots .dotcount");
+  if (count) count.textContent = `${i + 1} of ${count.dataset.of}`;
+  else t.parentElement.querySelectorAll(".dots span").forEach((d, k) => d.classList.toggle("on", k === i));
 }, true);
 document.addEventListener("pointerdown", (e) => {
   const stage = e.target.closest?.("#i-stage");

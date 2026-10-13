@@ -141,6 +141,27 @@ test("the PDF import: the reader is our own copy, a locked file asks for its pas
   assert.match(app, /accept="image\/\*,\.pdf,application\/pdf,/, "the one Import button takes a PDF too: no new button");
   assert.match(app, /case "pdf-open": \{ const typed = \$\("pdf-pw"\)\?\.value \?\? ""; const go = pdfPasswordResolve; pdfPasswordResolve = null;/, "the password is handed over once and the box is gone");
   assert.ok(!/pdf_password|pdfPassword\s*=|settings[^\n]*pdf-pw/.test(app), "the password is never stored");
-  assert.match(app, /const kept = f\.items\.filter\(\(x\) => !f\.skip\?\.\[x\.id\]\);/, "lines turned off are not added");
-  assert.match(app, /form\.items\.filter\(\(x\) => !form\.skip\?\.\[x\.id\]\), form\.order\), r = M\.planImport/, "and not saved");
+  assert.match(app, /const importKept = \(f\) => f\.items\.filter\(\(x\) => x\.meaning !== "unsure" \|\| f\.choice\?\.\[x\.id\] === "spending"\);/, "an unsure line counts only once you choose Spending");
+  assert.match(app, /const kept = importKept\(f\)/, "the preview counts what will be added");
+  assert.match(app, /M\.previewImport\(S\(\), importKept\(form\), form\.order\), r = M\.planImport/, "and only that is saved");
+});
+
+test("statement follow-ups: unsure lines wait for your choice, a failed check holds Add until you say you looked, the account is chosen by the statement's bank, and many cards show a count", () => {
+  assert.match(app, /data-action="stm-choose" data-id="\$\{esc\(x\.id\)\}" data-pick="spending" aria-pressed="\$\{f\.choice\?\.\[x\.id\] === "spending"\}"/, "neither choice is pressed at first");
+  assert.match(app, /lines need"\} your choice<\/b>: left out until you choose/);
+  assert.match(app, /held = !!f\.statement && !f\.statement\.check\.ok && !f\.looked;/);
+  assert.match(app, /p\.lines\.length && acct && !held \? "" : " disabled"/, "Add stays off while held");
+  assert.match(app, /if \(form\.statement && !form\.statement\.check\.ok && !form\.looked\) break;/, "and saving is refused too, not just greyed");
+  assert.match(app, /data-action="stm-looked" aria-pressed="\$\{!!f\.looked\}">I looked at the amounts</);
+  assert.match(app, /activeAccounts\(\)\.find\(\(a\) => a\.class === "asset" && a\.bank === statement\.bankId\)/, "the account linked to the statement's bank");
+  assert.match(app, /chosen for you/);
+  assert.match(app, /seq\.length > 6 \? `<span class="dotcount" data-of="\$\{seq\.length\}">1 of \$\{seq\.length\}<\/span>`/);
+});
+
+test("a listed bank's name near the top of the first page is shown and used to choose the account; an unknown name is not", () => {
+  const items = creditDebitPage({ opening: 100000, rows: CD_ROWS, totals: { ...CD_TOTALS, closing: 100000 + CD_TOTALS.closing } });
+  const named = parseStatement([[t(40, 790, "GoTyme Bank"), ...items]]);
+  assert.deepEqual([named.bank, named.bankId], ["GoTyme", "gotyme"]);
+  const plain = parseStatement([items]);
+  assert.deepEqual([plain.bank, plain.bankId], [null, null]);
 });
