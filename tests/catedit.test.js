@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { emptyState, removeKind, removeCategory, categoryInUse, hideCategory, showCategory, hiddenCategoryIds, pickable, UNLOGGED_CATEGORY_ID } from "../src/model/index.js";
+import { emptyState, removeKind, removeCategory, restoreCategory, categoryInUse, hideCategory, showCategory, hiddenCategoryIds, pickable, UNLOGGED_CATEGORY_ID } from "../src/model/index.js";
 import { account } from "./fixtures.js";
 
 // Invented names and amounts only.
@@ -84,4 +84,38 @@ test("the welcome card: centred, after the notice on a new install only, with Ma
   assert.match(app, /welcome_off: true/);
   assert.match(css, /\.sheet\.center \{ top: 50%;/, "it sits in the middle, not at the bottom");
   assert.match(css, /@media \(prefers-reduced-motion: no-preference\) \{\s*\.wl-type \{ width: 0;/, "Reduce Motion shows the finished frame");
+});
+
+test("a removed category can be put back exactly where it was, unless its name has been taken since", () => {
+  const s = base(), r = removeCategory(s, "c-free");
+  assert.deepEqual(r.removed, { category: s.categories[1], index: 1 });
+  const back = restoreCategory(r.state, r.removed);
+  assert.ok(back.ok);
+  assert.deepEqual(back.state.categories, s.categories, "same categories in the same order");
+  const taken = { ...r.state, categories: [...r.state.categories, { id: "other", name: " FREE ", kind: "expense" }] };
+  assert.equal(restoreCategory(taken, r.removed).ok, false, "the same name is not made twice");
+  assert.equal(restoreCategory(back.state, r.removed).ok, false, "putting it back twice does nothing");
+});
+
+test("Undo after a removal, Monthly payment, and the one-time card for ledgers that were already in use", () => {
+  assert.match(app, /showToast\("Removed " \+ r\.removed\.category\.name, id, null, "undo-cat"\)/);
+  assert.match(app, /case "undo-cat": \{[\s\S]*?M\.restoreCategory\(S\(\), u\)/);
+  assert.match(app, /aria-pressed="\$\{!inst\}">Monthly payment<\/button>/);
+  assert.ok(!app.includes("Repeats each month"));
+  assert.match(app, /!ledger\.settings\.cat_card_seen && !ledger\.settings\.welcome_pending\) \{ ui\.sheet = \{ type: "catcard" \}/, "only an old ledger that has not seen it, never a new install");
+  assert.match(app, /welcome_pending: true, cat_card_seen: M\.phTimestamp\(\)/, "a new install is marked as having seen it");
+  assert.match(app, /case "cat-card-later": [^\n]*cat_card_seen: M\.phTimestamp\(\)/, "Not now also counts: it never comes back");
+  assert.match(app, /data-action="cat-card-show">Show me/);
+});
+
+test("an entry in a hidden category still shows it (marked hidden) while it is edited; a reserve account can be paid from", () => {
+  assert.match(app, /const pickCategoriesWith = \(id\) => \{[^\n]*name: c\.name \+ " \(hidden\)"/);
+  assert.ok((app.match(/pickCategoriesWith\(/g) ?? []).length >= 5, "every form that edits an entry uses it");
+  assert.match(app, /return activeAccounts\(\)\.sort\(/, "the pickers no longer leave out a reserve account");
+  assert.ok(!/activeAccounts\(\)\.filter\(\(a\) => !a\.reserve_for\)/.test(app));
+});
+
+test("the other forms that need something carry the same * and line: tile, scheduled payment, money received and the Verify edit", () => {
+  for (const label of ['pay-name">Name${REQ}', 's-name">${inst ? "Item" : "Name (rent, a subscription)"}${REQ}', 's-amount">Amount each month (\\u20B1)${REQ}', 'Amount received (\\u20B1)${REQ}', '<label>Arrived in${REQ}</label>', '<label>Paid from${REQ}</label>']) assert.ok(app.includes(label), label);
+  assert.ok((app.match(/\$\{REQNOTE\}/g) ?? []).length >= 6, "each of those forms says what the * means");
 });
