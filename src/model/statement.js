@@ -76,6 +76,26 @@ export function classifyLine({ text, type = "", direction }) {
   return { meaning: "unsure", payee: t };
 }
 
+// ---------- your own name ----------
+// A transfer to or from the statement's own holder is money moving between your own accounts, not spending and not income. The holder's name is printed
+// near the top of the first page in capitals, on a line of its own (no digits, a few words). Two names are the same person when their first and last
+// words match, ignoring initials, punctuation and Jr/Sr/II/III ("Sample P. Dela Cruz, Jr." is "SAMPLE PEDRO DELA CRUZ JR").
+const NOT_A_NAME = /\b(statement|account|summary|bank|contact|savings|period|details|date|transaction|balance|total|page|opening|closing|credit|debit|deposit|address|philippines|city|street|avenue|barangay|call|email|incoming|outgoing|starting|ending|php)\b/i;
+const SUFFIX = new Set(["jr", "sr", "ii", "iii", "iv"]);
+export function nameKey(s) {
+  const words = String(s ?? "").toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !SUFFIX.has(w));
+  return words.length >= 2 ? { first: words[0], last: words[words.length - 1] } : null;
+}
+export function holderNames(rows) {
+  return rows.slice(0, 25).map(textOf).filter((t) => /^[A-Z][A-Z.,'\- ]+$/.test(t) && t.split(/\s+/).length >= 2 && t.split(/\s+/).length <= 6 && !NOT_A_NAME.test(t)).map(nameKey).filter(Boolean);
+}
+// The person a description names: "Transfer to SAMPLE P. GoTyme Bank, Account No. 0000" names "SAMPLE P."; a payee line names itself.
+const personIn = (text) => String(text ?? "").replace(/^transfer\s+(to|from)\s+/i, "").split(",")[0].replace(new RegExp("\\b(" + BANKS.map((b) => b.name).join("|") + ")\\b", "gi"), " ").replace(/\bbank\b/gi, " ");
+export function isOwnName(text, holders) {
+  const k = nameKey(personIn(text));
+  return !!k && holders.some((h) => h.first === k.first && h.last === k.last);
+}
+
 // ---------- the whole statement ----------
 // pages: [[{x, y, w, str}]]. Returns {ok, style, period, summary, lines, check, message}. Each line: {date, text, payee, type, amount (centavos, > 0), direction ("in"|"out"),
 // balance (centavos, or null), meaning}.
@@ -115,7 +135,11 @@ export function parseStatement(pages) {
   }
   // "Net Interest" is the month's interest added up, a total of the lines above it, not money moving: it is not a line.
   for (let i = lines.length - 1; i >= 0; i--) if (/^net interest$/i.test(lines[i].type)) lines.splice(i, 1);
-  for (const l of lines) Object.assign(l, classifyLine(l));
+  const holders = holderNames(allRows[0] ?? []);
+  for (const l of lines) {
+    Object.assign(l, classifyLine(l));
+    if ((l.meaning === "unsure" || l.meaning === "in") && isOwnName(l.payee || l.text, holders)) { l.meaning = "move"; l.own = true; }   // to or from yourself
+  }
   if (!header || !lines.length) return { ok: false, message: "No transactions were found in this PDF. It may not be a bank statement the app knows." };
   const top = allRows[0].slice(0, 25).map(textOf).join(" ").toLowerCase();   // the first lines of the first page: the bank's name is usually there
   const found = BANKS.find((b) => top.includes(b.name.toLowerCase())) ?? null, bank = found?.name ?? null, bankId = found?.id ?? null;
@@ -159,4 +183,15 @@ export function statementItems(lines) {
   return lines.map((l, i) => ({ l, i })).filter(({ l }) => l.direction === "out" && (l.meaning === "spending" || l.meaning === "fee" || l.meaning === "unsure"))
     .map(({ l, i }) => ({ id: "s" + i, dateRaw: l.date, name: l.payee || l.text, amount: l.amount, meaning: l.meaning, label: l.meaning === "fee" ? null : undefined }));
 }
-export const statementLeftOut = (lines) => ({ moves: lines.filter((l) => l.meaning === "move").length, moneyIn: lines.filter((l) => l.meaning === "in").length });
+export const statementLeftOut = (lines) => ({ moves: lines.filter((l) => l.meaning === "move" && !l.own).length, own: lines.filter((l) => l.own).length, moneyIn: lines.filter((l) => l.meaning === "in").length });
+
+// The unsure lines, one group per person (the same name, ignoring case, spaces and punctuation), the biggest total first: one choice answers all of a person's lines.
+export function unsureByPerson(items) {
+  const groups = new Map();
+  for (const x of items.filter((i) => i.meaning === "unsure")) {
+    const key = String(x.name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() || "?";
+    const g = groups.get(key) ?? { key, name: x.name, ids: [], lines: [], total: 0 };
+    g.ids.push(x.id); g.lines.push(x); g.total += x.amount; groups.set(key, g);
+  }
+  return [...groups.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+}

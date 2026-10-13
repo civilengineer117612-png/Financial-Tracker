@@ -112,7 +112,7 @@ test("what the importer takes: spending, fees and the unsure (turned off one by 
   const items = statementItems(r.lines);
   assert.deepEqual(items.map((i) => [i.name, i.amount, i.meaning]), [["SAMPLE STORE", 56800, "spending"], ["Interbank transfer fee", 800, "fee"], ["Outbound interbank transfer", 10000, "unsure"]]);
   assert.ok(items.every((i) => /^s\d+$/.test(i.id) && /^\d{4}-\d{2}-\d{2}$/.test(i.dateRaw)));
-  assert.deepEqual(statementLeftOut(r.lines), { moves: 1, moneyIn: 1 });
+  assert.deepEqual(statementLeftOut(r.lines), { moves: 1, own: 0, moneyIn: 1 });
 });
 
 test("a PDF with no table of transactions says so plainly", () => {
@@ -147,7 +147,7 @@ test("the PDF import: the reader is our own copy, a locked file asks for its pas
 });
 
 test("statement follow-ups: unsure lines wait for your choice, a failed check holds Add until you say you looked, the account is chosen by the statement's bank, and many cards show a count", () => {
-  assert.match(app, /data-action="stm-choose" data-id="\$\{esc\(x\.id\)\}" data-pick="spending" aria-pressed="\$\{f\.choice\?\.\[x\.id\] === "spending"\}"/, "neither choice is pressed at first");
+  assert.match(app, /data-action="stm-choose" data-id="\$\{esc\(g\.key\)\}" data-pick="spending" aria-pressed="\$\{all\("spending"\)\}"/, "neither choice is pressed at first: one row per person");
   assert.match(app, /lines need"\} your choice<\/b>: left out until you choose/);
   assert.match(app, /held = !!f\.statement && !f\.statement\.check\.ok && !f\.looked;/);
   assert.match(app, /p\.lines\.length && acct && !held \? "" : " disabled"/, "Add stays off while held");
@@ -164,4 +164,39 @@ test("a listed bank's name near the top of the first page is shown and used to c
   assert.deepEqual([named.bank, named.bankId], ["GoTyme", "gotyme"]);
   const plain = parseStatement([items]);
   assert.deepEqual([plain.bank, plain.bankId], [null, null]);
+});
+
+import { nameKey, holderNames, isOwnName, unsureByPerson } from "../src/model/index.js";
+
+test("your own name: initials, punctuation and Jr do not matter; the first and last words do", () => {
+  assert.deepEqual(nameKey("Sample P. Dela Cruz, Jr."), { first: "sample", last: "cruz" });
+  const holders = holderNames(groupRows([t(40, 760, "BANK STATEMENT"), t(40, 723, "SAMPLE PEDRO DELA CRUZ JR"), t(40, 708, "ACCOUNT NUMBER 0000"), t(40, 690, "12 Sample Street, Sample City")]));
+  assert.deepEqual(holders, [{ first: "sample", last: "cruz" }], "only the name line counts: not the title, the account line or the address");
+  assert.ok(isOwnName("Sample P. Dela Cruz, Jr.", holders));
+  assert.ok(isOwnName("Transfer to SAMPLE D. CRUZ GoTyme Bank, Account No. 0000", holders), "a transfer description naming you, with the bank's name in it");
+  assert.ok(!isOwnName("Sample Friend", holders), "another person with the same first name is not you");
+  assert.ok(!isOwnName("Other Cruz", holders), "nor someone with the same last name");
+  assert.ok(!isOwnName("Atome", holders), "nor a one-word payee");
+});
+
+test("a transfer to or from your own name is a move between your accounts: never spending, never income, and never asked", () => {
+  const page = outInPage({ rows: [["03 MAY", "Sample P. Dela Cruz, Jr.", "Transfer", 0, 100000], ["04 MAY", "Sample P. Dela Cruz, Jr.", "Transfer", 50000, 0], ["05 MAY", "Sample Friend", "Transfer", 20000, 0], ["06 MAY", "Sample Cafe", "Payment", 10000, 0]],
+    summary: { opening: 500000, outgoing: 80000, incoming: 100000, closing: 520000 } });
+  const r = parseStatement([[t(40, 723, "SAMPLE PEDRO DELA CRUZ JR"), ...page]]);
+  assert.deepEqual(r.lines.map((l) => l.meaning), ["move", "move", "unsure", "spending"]);
+  assert.ok(r.lines[0].own && r.lines[1].own);
+  assert.deepEqual(statementLeftOut(r.lines), { moves: 0, own: 2, moneyIn: 0 }, "said as transfers to your own name");
+  assert.equal(statementItems(r.lines).filter((i) => i.meaning === "unsure").length, 1, "only the friend is asked about");
+  const noName = parseStatement([page]);
+  assert.deepEqual(noName.lines.map((l) => l.meaning), ["in", "unsure", "unsure", "spending"], "with no name at the top, nothing is guessed");
+});
+
+test("one choice per person: a person's unsure lines are one group with a count and a total, the biggest first; one tap answers them all", () => {
+  const items = [{ id: "s1", name: "Sample Friend", amount: 1000, meaning: "unsure", dateRaw: "2025-01-02" }, { id: "s2", name: "SAMPLE  FRIEND.", amount: 2500, meaning: "unsure", dateRaw: "2025-01-09" },
+    { id: "s3", name: "Sample Lender", amount: 4000, meaning: "unsure", dateRaw: "2025-01-05" }, { id: "s4", name: "Sample Cafe", amount: 300, meaning: "spending", dateRaw: "2025-01-06" }];
+  const g = unsureByPerson(items);
+  assert.deepEqual(g.map((x) => [x.name, x.ids, x.total]), [["Sample Lender", ["s3"], 4000], ["Sample Friend", ["s1", "s2"], 3500]], "spending lines are not asked; case and dots do not split a person");
+  assert.match(app, /case "stm-choose": \{ const g = M\.unsureByPerson\(ui\.form\.items\)\.find\(\(x\) => x\.key === id\); if \(g\) ui\.form\.choice = \{ \.\.\.\(ui\.form\.choice \?\? \{\}\), \.\.\.Object\.fromEntries\(g\.ids\.map/, "the choice is written for every line of that person");
+  assert.match(app, /Show the \$\{n\} lines/);
+  assert.match(app, /transfers"\} to your own name/);
 });
