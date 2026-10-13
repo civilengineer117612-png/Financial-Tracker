@@ -2263,6 +2263,7 @@ console.log("Buckets");
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.categories.some((c) => c.name === "Zzyzx"));
   led = JSON.parse((await stored(page)).local); const zz = led.state.categories.find((c) => c.name === "Zzyzx");
   check(led.settings.bucket_overrides?.[zz.id] === "savings", "the answer is remembered for the new category");
+  await page.click('button[data-action="cat-edit"]');
   await page.locator('.row:has-text("Coffee") button[data-action="rename-cat"]').click();
   check(await page.locator('#c-edit-bucket button[data-bucket="want"][aria-pressed="true"]').count() === 1, "the change window shows the bucket the name reads as");
   await page.click('#c-edit-bucket button[data-bucket="need"]'); await page.click("#f-save");
