@@ -33,7 +33,8 @@ const browser = await chromium.launch();
 // Every request for a bank logo goes through this, so the network is faked: by default nothing answers.
 let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
-const dismissNotice = async (page) => { try { await page.waitForSelector('#sheet button:has-text("I understand")', { timeout: 2500 }); await page.click('#sheet button:has-text("I understand")'); } catch { /* an old ledger shows no notice */ } };
+const dismissNotice = async (page) => { try { await page.waitForSelector('#sheet button:has-text("I understand")', { timeout: 2500 }); await page.click('#sheet button:has-text("I understand")'); } catch { /* an old ledger shows no notice */ }
+  try { await page.waitForSelector('#sheet button:has-text("Skip for now")', { timeout: 700 }); await page.click('#sheet button:has-text("Skip for now")'); } catch { /* the welcome card only shows on a new install */ } };
 async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false } = {}) {
   if (seed === undefined) seed = styled ? OWNER_STYLE : null;
   if (seed && !whatsNew) seed = { ...seed, settings: { ...(seed.settings ?? {}), whatsnew_seen: seed.settings?.whatsnew_seen ?? CHANGES[0].id, start_rule_seen: seed.settings?.start_rule_seen ?? "2026-10-01T08:00:00.000+08:00" } };   // the What's new pop-up is tested on its own
@@ -2135,6 +2136,7 @@ console.log("Friend fixes 1");
   const cats = await text(page, "#screen");
   check(["Food", "Essentials", "Transport", "Rent", "Subscription", "Shopping", "Health", "Fun", "Other"].every((c) => cats.includes(c)) && !/Lakat|Family|Upskill/.test(cats), "the starter categories are plain, none carries the owner's names");
   await page.click('button[data-action="add-cat"]'); await page.fill("#c-name", "Pets"); await page.click("#f-save"); await seen(page, "#screen", "Pets");
+  await page.click('button[data-action="cat-edit"]');
   await page.locator('.row:has-text("Fun") button[data-action="rename-cat"]').click(); await page.fill("#c-name", "Games"); await page.click("#f-save"); await seen(page, "#screen", "Games");
   const cs = JSON.parse((await stored(page)).local).state.categories;
   check(cs.some((c) => c.name === "Pets") && cs.find((c) => c.id === "cat-fun")?.name === "Games" && cs.find((c) => c.id === "cat-food")?.role === "food", "a category can be added and renamed; the id and the role stay");
@@ -2259,9 +2261,9 @@ console.log("Buckets");
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.categories.some((c) => c.name === "Zzyzx"));
   led = JSON.parse((await stored(page)).local); const zz = led.state.categories.find((c) => c.name === "Zzyzx");
   check(led.settings.bucket_overrides?.[zz.id] === "savings", "the answer is remembered for the new category");
-  await page.click('button[data-action="cat-bucket"][data-id="cat-coffee"]');
-  check((await text(page, "#sheet")).includes("reads as Wants"), "Bucket shows what the name reads as");
-  await page.click('#sheet button[data-action="set-bucket"][data-bucket="need"]');
+  await page.locator('.row:has-text("Coffee") button[data-action="rename-cat"]').click();
+  check(await page.locator('#c-edit-bucket button[data-bucket="want"][aria-pressed="true"]').count() === 1, "the change window shows the bucket the name reads as");
+  await page.click('#c-edit-bucket button[data-bucket="need"]'); await page.click("#f-save");
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.bucket_overrides?.["cat-coffee"] === "need");
   await page.locator('.row:has-text("Coffee") button[data-action="rename-cat"]').click(); await page.fill("#c-name", "Kape"); await page.click("#f-save");
   check(await seen(page, "#sheet", "You set this to Needs. The new name reads as Wants."), "renaming against a bucket set by hand asks which to keep");
@@ -2272,7 +2274,7 @@ console.log("Buckets");
   await seen(page, "#sheet", "The new name reads as Wants.");
   await page.click('#sheet button:has-text("Use Wants")');
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.bucket_overrides?.["cat-coffee"] === undefined);
-  check(await seen(page, "#screen", "Coffee beans \u00b7 Wants"), "Use takes the bucket the new name reads as");
+  check(await page.waitForFunction(() => document.getElementById("screen").innerText.replace(/\s+/g, " ").includes("Coffee beans Wants"), null, { timeout: 4000 }).then(() => true, () => false), "Use takes the bucket the new name reads as");
   check(errors.length === 0, "no script errors in the buckets flow");
   await ctx.close(); }
 
@@ -2865,6 +2867,72 @@ await ctx.close();
 check(!(await text(page, "#banner")).includes("Trial copy"), "the iPhone Home Screen app ignores ?trial, so the real ledger cannot be swapped for a trial");
 check((await page.evaluate(() => Object.keys(localStorage))).every((k) => k !== "financialTracker.trial.ledger"), "and writes nothing under the trial names");
 await ctx.close();
+
+// ===== 6w. the welcome card, editing categories, required marks =====
+console.log("Welcome card, category editing, required marks");
+{
+  const settingsOf = async () => JSON.parse((await stored(page)).local).settings;
+  ({ ctx, page, errors } = await open({ blockSw: true, styled: false, keepNotice: true }));
+  await page.click('#sheet button:has-text("I understand")');
+  check(await seen(page, "#sheet", "Make it yours"), "after the first-run notice a new install gets the welcome card");
+  const box = await page.locator("#sheet .sheet").boundingBox(), vh = page.viewportSize().height;
+  check(box.y > 60 && box.y + box.height < vh - 60, "the card sits in the middle of the screen, not at the bottom");
+  check(await page.locator('#sheet button[data-action="welcome-mine"]').count() === 1 && await page.locator('#sheet button[data-action="welcome-skip"]').count() === 1, "it offers Make it mine and Skip for now");
+  await page.click('#sheet button[data-action="welcome-skip"]');
+  check(await page.locator("#sheet .sheet").count() === 0, "Skip for now closes it");
+  await page.reload(); await page.waitForSelector("#nav button"); await page.click('#sheet button:has-text("Skip for now")', { timeout: 3000 }).catch(() => {});
+  await page.reload(); await page.waitForSelector("#nav button");
+  check(await seen(page, "#sheet", "Make it yours"), "skipped without the check, it comes back at the next start");
+  await page.click('#sheet button[data-action="welcome-off"]');
+  check(await page.locator('#sheet button[role="checkbox"][aria-checked="true"]').count() === 1, "the check can be ticked");
+  await page.click('#sheet button[data-action="welcome-skip"]');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger") ?? "{}").settings?.welcome_off === true, null, { timeout: 4000 });
+  await page.reload(); await page.waitForSelector("#nav button"); await page.waitForTimeout(600);
+  check(await page.locator("#sheet .sheet").count() === 0, "with Don't show this again ticked it never returns");
+  await ctx.close();
+  ({ ctx, page, errors } = await open({ blockSw: true, styled: false, keepNotice: true }));
+  await page.click('#sheet button:has-text("I understand")'); await page.click('#sheet button[data-action="welcome-mine"]');
+  check(await seen(page, "#screen", "Categories") && await page.locator('button[data-action="cat-done"]').count() === 1, "Make it mine opens the categories already in edit mode");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger") ?? "{}").settings?.welcome_pending === false, null, { timeout: 4000 });
+  await page.reload(); await page.waitForSelector("#nav button"); await page.waitForTimeout(600);
+  check(await page.locator("#sheet .sheet").count() === 0, "after Make it mine the card does not come back");
+  await ctx.close();
+  // an existing ledger is never greeted
+  ({ ctx, page, errors } = await open({ blockSw: true }));
+  check(await page.locator("#sheet .sheet").count() === 0, "an existing ledger gets no welcome card");
+  await ctx.close();
+  // editing categories: remove an unused one (asks twice), hide a used one, show it again
+  const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 900000, opening_date: "2026-09-01" };
+  const TSW = "2026-10-02T09:00:00.000+08:00";
+  const seedW = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct],
+    transactions: [{ id: "d1", date: "2026-10-02", payee: "Lunch", memo: "", status: "draft", source: "manual", created_at: TSW }],
+    entries: [{ transaction_id: "d1", category_id: "cat-food", amount: 9500 }, { transaction_id: "d1", account_id: "w", amount: -9500 }], attachments: [] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: seedW }));
+  await menuGo(page, "Setup");
+  check(await page.locator('.row:has-text("Food") button').count() === 0 && await page.locator('button[data-action="cat-edit"]').count() === 1, "the categories show no row links, only the pencil");
+  await page.click('button[data-action="cat-edit"]');
+  check(await page.locator('.row:has-text("Food") button[data-action="hide-cat"]').count() === 1 && await page.locator('.row:has-text("Lakat/Date") button[data-action="remove-cat"]').count() === 1, "a used category offers hide, an unused one offers remove");
+  await page.click('.row:has-text("Lakat/Date") button[data-action="remove-cat"]');
+  check(await seen(page, "#screen", "Tap again to remove") && JSON.parse((await stored(page)).local).state.categories.some((c) => c.id === "cat-lakat"), "the first tap only asks");
+  await page.click('.row:has-text("Lakat/Date") button[data-action="remove-cat"]');
+  await page.waitForFunction(() => !JSON.parse(localStorage.getItem("financialTracker.ledger")).state.categories.some((c) => c.id === "cat-lakat"), null, { timeout: 4000 });
+  check(true, "the second tap removes it");
+  await page.click('.row:has-text("Food") button[data-action="hide-cat"]');
+  await page.waitForFunction(() => (JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.hidden_categories ?? []).includes("cat-food"), null, { timeout: 4000 });
+  check(await seen(page, "#screen", "Hidden categories") && JSON.parse((await stored(page)).local).state.entries.some((e) => e.category_id === "cat-food"), "hiding keeps the entries and lists the category under Hidden categories");
+  await page.click('button[data-action="cat-done"]');
+  await page.click('#nav button:has-text("Log")'); await page.click('button[data-action="open-other"]'); await page.waitForSelector("#sheet #f-amount");
+  check(!(await page.locator("#sheet .chips").first().innerText()).includes("Food"), "a hidden category is not offered when adding an expense");
+  const reqs = await page.evaluate(() => [...document.querySelectorAll("#sheet .req")].map((r) => getComputedStyle(r).color));
+  const ink = await page.evaluate(() => getComputedStyle(document.querySelector("#sheet h3")).color);
+  check(reqs.length >= 4 && reqs.every((c) => c === ink), "the required marks are in the ink colour, never red");
+  check((await text(page, "#sheet")).includes("needed before you can save"), "and one line says what they mean");
+  await page.click('#scrim', { position: { x: 5, y: 5 } }).catch(() => {});
+  await menuGo(page, "Setup"); await page.click('button[data-action="show-cat"]');
+  await page.waitForFunction(() => !(JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.hidden_categories ?? []).includes("cat-food"), null, { timeout: 4000 });
+  check(true, "Show again puts it back");
+  await ctx.close();
+}
 
 // ===== 7. offline =====
 console.log("Offline");
