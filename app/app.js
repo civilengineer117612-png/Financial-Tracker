@@ -2112,27 +2112,30 @@ function renderSheet() {
       <p class="note">Days in bold have entries.</p>`;
   } else if (sh.type === "bufsetup") {
     body = `<h3>Set up the buffer</h3>
-      <label>Which account holds the buffer?</label>${paidChips(ui.form.account_id)}
+      <label>Which account holds the buffer?${REQ}</label>${paidChips(ui.form.account_id)}
       <p class="note" id="b-held"></p>
       <label for="b-buf">Overrun buffer (\u20B1)</label><input id="b-buf" data-field="buf" inputmode="decimal" value="${esc(ui.form.buf ?? "")}" autocomplete="off">
       <label for="b-allow">Everyday allowance (\u20B1)</label><input id="b-allow" data-field="allow" inputmode="decimal" value="${esc(ui.form.allow ?? "")}" autocomplete="off">
       <p class="note">Together they cannot be more than the wallet holds. Its total stays the same.</p>
       <p id="f-msg" role="alert" class="note"></p>
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-bufsetup" style="margin-top:6px" disabled>Split the wallet</button></p>`;
   } else if (sh.type === "bufund") {
     body = `<h3>Add to the buffer</h3>
-      <label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
-      <label>Take it from</label>${chips(accountsFor(null).filter((a) => a.id !== gcashOf().account_id), ui.form.account_id, "pick-acct")}
+      <label for="f-amount">Amount (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label>Take it from${REQ}</label>${chips(accountsFor(null).filter((a) => a.id !== gcashOf().account_id), ui.form.account_id, "pick-acct")}
       <p class="note">Saved as verified, because you are choosing to set this money aside.</p>
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-bufund" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "trip") {
     body = `<h3>New trip</h3>
-      <label for="t-name">Name</label><input id="t-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
+      <label for="t-name">Name${REQ}</label><input id="t-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
       <label for="f-amount">Trip budget (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <label for="t-start">First day (optional)</label><input id="t-start" data-field="start" type="date" value="${esc(ui.form.start ?? "")}">
       <label for="t-end">Last day (optional, included)</label><input id="t-end" data-field="end" type="date" value="${esc(ui.form.end ?? "")}">
       <p class="note">With dates, entries on those days join by themselves. Without, you start and stop it by hand.</p>
       ${ui.form.error ? `<p id="f-msg" role="alert"><b>${esc(ui.form.error)}</b></p>` : ""}
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-trip" style="margin-top:14px" disabled>Save trip</button></p>`;
   } else if (sh.type === "trip-dates") {
     const t = S().tags.find((x) => x.id === sh.id);
@@ -2164,12 +2167,12 @@ function renderSheet() {
     const n = f.count ?? 0, kinds = Object.entries(M.KIND_NAMES);
     body = `<h3>Type in a pay plan</h3>
       <p class="note">Say what each payday is worth, then where it goes. Each payday's lines must add up to its pay.</p>
-      <label for="pf-start">Starts on</label><input id="pf-start" type="date" data-field="start" value="${esc(f.start ?? "")}">
+      <label for="pf-start">Starts on${REQ}</label><input id="pf-start" type="date" data-field="start" value="${esc(f.start ?? "")}">
       <div class="chips"><button class="chip" data-action="plan-once" aria-pressed="${!two}">Paid once a month</button><button class="chip" data-action="plan-twice" aria-pressed="${two}">Paid twice a month</button></div>
-      <label for="pf-d1">${two ? "1st payday" : "Payday"}: day of the month (1 to 28)</label><input id="pf-d1" data-field="d1" inputmode="numeric" value="${esc(f.d1 ?? "")}" autocomplete="off">
-      <label for="pf-p1">Pay on that day (\u20B1)</label><input id="pf-p1" data-field="p1" inputmode="decimal" value="${esc(f.p1 ?? "")}" autocomplete="off">
-      ${two ? `<label for="pf-d2">2nd payday: a day after the first, or last</label><input id="pf-d2" data-field="d2" value="${esc(f.d2 ?? "")}" autocomplete="off" autocapitalize="off">
-      <label for="pf-p2">Pay on that day (\u20B1)</label><input id="pf-p2" data-field="p2" inputmode="decimal" value="${esc(f.p2 ?? "")}" autocomplete="off">` : ""}
+      <label for="pf-d1">${two ? "1st payday" : "Payday"}: day of the month (1 to 28)${REQ}</label><input id="pf-d1" data-field="d1" inputmode="numeric" value="${esc(f.d1 ?? "")}" autocomplete="off">
+      <label for="pf-p1">Pay on that day (\u20B1)${REQ}</label><input id="pf-p1" data-field="p1" inputmode="decimal" value="${esc(f.p1 ?? "")}" autocomplete="off">
+      ${two ? `<label for="pf-d2">2nd payday: a day after the first, or last${REQ}</label><input id="pf-d2" data-field="d2" value="${esc(f.d2 ?? "")}" autocomplete="off" autocapitalize="off">
+      <label for="pf-p2">Pay on that day (\u20B1)${REQ}</label><input id="pf-p2" data-field="p2" inputmode="decimal" value="${esc(f.p2 ?? "")}" autocomplete="off">` : ""}
       <h2>Where it goes</h2>
       <p class="note">Name a line like one of your categories (Rent, Food) so it can be tracked. A goal line fills a goal.</p>
       ${Array.from({ length: n }, (_, i) => `<div class="card" style="padding:10px"><label for="pf-n${i}">Line ${i + 1}</label><input id="pf-n${i}" data-field="n${i}" value="${esc(f["n" + i] ?? "")}" autocomplete="off" placeholder="Rent">
@@ -2178,14 +2181,16 @@ function renderSheet() {
         ${two ? `<label for="pf-b${i}">From the 2nd payday (\u20B1)</label><input id="pf-b${i}" data-field="b${i}" inputmode="decimal" value="${esc(f["b" + i] ?? "")}" autocomplete="off">` : ""}</div>`).join("")}
       ${n < M.MAX_FORM_LINES ? `<p><button data-action="plan-add-line" style="width:100%">Add a line</button></p>` : ""}
       <div id="pf-status" role="status"></div>
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-planform" style="margin-top:10px" disabled>Use this plan</button></p>`;
   } else if (sh.type === "goal") {
     body = `<h3>${sh.savings ? "New savings category" : "New goal"}</h3>${sh.savings ? `<p class="note">Each savings category is a goal. It shares what you set aside each month. You can type its own amount.</p>` : ""}
-      <label for="g-name">Name</label><input id="g-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
+      <label for="g-name">Name${REQ}</label><input id="g-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
       <label for="f-amount">Target (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <label for="g-date">Finish by (optional)</label><input id="g-date" type="date" data-field="deadline" value="${esc(ui.form.deadline ?? "")}">
       <label>Where the money sits (optional: you can choose it later)</label>${paidChips(ui.form.account_id)}
       <label>What it is for (optional)</label><div class="chips"><button class="chip" data-action="pick-goal-role" aria-pressed="${ui.form.role === "emergency"}">My emergency fund</button></div>
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-goal" style="margin-top:14px" disabled>Save goal</button></p>`;
   } else if (sh.type === "goal-account") {
     const g = S().goals.find((x) => x.id === sh.id);
@@ -2194,9 +2199,10 @@ function renderSheet() {
   } else if (sh.type === "deposit") {
     const g = S().goals.find((x) => x.id === sh.id);
     body = `<h3>Put money in ${esc(g.name)}</h3>
-      <label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
-      <label>Take it from</label>${chips(accountsFor(null).filter((a) => a.id !== g.account_id), ui.form.account_id, "pick-acct")}
+      <label for="f-amount">Amount (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label>Take it from${REQ}</label>${chips(accountsFor(null).filter((a) => a.id !== g.account_id), ui.form.account_id, "pick-acct")}
       <p class="note">This is saved as a draft transfer. Verify it like any other entry.</p>
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-deposit" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "checkin") {
     const a = S().accounts.find((x) => x.id === sh.id);
@@ -2230,21 +2236,24 @@ function renderSheet() {
   } else if (sh.type === "budget") {
     const c = S().categories.find((x) => x.id === sh.id), thisM = M.monthOf(today()), nextM = M.addMonths(thisM, 1);
     body = `<h3>Budget for ${esc(c.name)}</h3>
-      <label for="f-amount">Per month (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label for="f-amount">Per month (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <label>Starts</label>
       <div class="seg" role="group" aria-label="When it starts">${[[thisM, "This month"], [nextM, "Next month"]].map(([m, t]) => `<button data-action="budget-start" data-month="${m}" aria-pressed="${ui.form.start === m}">${t}</button>`).join("")}</div>
       <p class="note">${esc(M.monthLabel(ui.form.start))}. Enter 0 to remove the budget.</p>
       <p><button class="chip" data-action="toggle-sinking" aria-pressed="${Boolean(M.sinkingStart(ledger.settings, sh.id))}">${esc(M.SINKING_LABEL)}</button></p>
       <p class="note">${esc(M.SINKING_HELP)}</p>
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-budget" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "budget-income") {
     body = `<h3>Income (base)</h3><p class="note">The monthly figure every share is measured against. It stays until you tap "Use my payslips again".</p>
-      <label for="f-amount">Per month (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label for="f-amount">Per month (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-income-base" style="margin-top:6px" disabled>Use this figure</button></p>`;
   } else if (sh.type === "goal-monthly") {
     const g = S().goals.find((x) => x.id === sh.id), typed = ledger.settings.goal_monthly?.[sh.id] !== undefined;
     body = `<h3>${esc(g.name)}: a month</h3><p class="note">Type how much to set aside for this goal each month. Other goals share what is left.</p>
-      <label for="f-amount">Per month (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label for="f-amount">Per month (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-goal-monthly" style="margin-top:6px" disabled>Use this amount</button></p>
       ${typed ? `<p><button data-action="clear-goal-monthly" style="width:100%">Use the suggestion again</button></p>` : ""}`;
   } else if (sh.type === "shares") {
@@ -2305,21 +2314,22 @@ function renderSheet() {
         ${M.DEDUCTIONS.map((k) => field("d_", k)).join("")}
       </details>
       </div>
-      <label>Landed in</label>${paidChips(f.account_id)}
-      <label for="p-emp">Employer</label><input id="p-emp" data-field="employer" value="${esc(f.employer ?? "")}" autocomplete="off">
-      <label for="p-from">Pay period from</label><input id="p-from" data-field="period_from" type="date" value="${esc(f.period_from)}">
-      <label for="p-to">Pay period to</label><input id="p-to" data-field="period_to" type="date" value="${esc(f.period_to)}">
-      <label for="p-date">Pay date</label><input id="p-date" data-field="pay_date" type="date" value="${esc(f.pay_date)}">
+      <label>Landed in${REQ}</label>${paidChips(f.account_id)}
+      <label for="p-emp">Employer${REQ}</label><input id="p-emp" data-field="employer" value="${esc(f.employer ?? "")}" autocomplete="off">
+      <label for="p-from">Pay period from${REQ}</label><input id="p-from" data-field="period_from" type="date" value="${esc(f.period_from)}">
+      <label for="p-to">Pay period to${REQ}</label><input id="p-to" data-field="period_to" type="date" value="${esc(f.period_to)}">
+      <label for="p-date">Pay date${REQ}</label><input id="p-date" data-field="pay_date" type="date" value="${esc(f.pay_date)}">
       <details data-keep="t"${open("t")}><summary>As printed on the payslip</summary>
-        <label for="p-gross">Gross pay (\u20B1)</label><input id="p-gross" data-field="gross" inputmode="decimal" value="${esc(f.gross ?? "")}" autocomplete="off">
-        <label for="p-net">Net pay (\u20B1)</label><input id="p-net" data-field="net" inputmode="decimal" value="${esc(f.net ?? "")}" autocomplete="off">
+        <label for="p-gross">Gross pay (\u20B1)${REQ}</label><input id="p-gross" data-field="gross" inputmode="decimal" value="${esc(f.gross ?? "")}" autocomplete="off">
+        <label for="p-net">Net pay (\u20B1)${REQ}</label><input id="p-net" data-field="net" inputmode="decimal" value="${esc(f.net ?? "")}" autocomplete="off">
         <label for="p-ded">Total deductions (\u20B1), if printed (optional)</label><input id="p-ded" data-field="ded" inputmode="decimal" value="${esc(f.ded ?? "")}" autocomplete="off">
-        <label for="p-dep">What really arrived in the account (\u20B1)</label><input id="p-dep" data-field="deposit" inputmode="decimal" value="${esc(f.deposit ?? "")}" autocomplete="off">
+        <label for="p-dep">What really arrived in the account (\u20B1)${REQ}</label><input id="p-dep" data-field="deposit" inputmode="decimal" value="${esc(f.deposit ?? "")}" autocomplete="off">
         <label for="p-words">Net pay in words, if written (optional)</label><input id="p-words" data-field="words" value="${esc(f.words ?? "")}" autocomplete="off" autocapitalize="off">
       </details>
       <div id="p-flags" role="status"></div>
       <p id="p-fold" hidden><button class="link" data-action="fold-lines">Checked against the photo? Fold the fields.</button></p>
       <p class="note">Do not type any employee, tax or account number.</p>
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>${sh.editId ? "Save changes" : "Save payslip"}</button></p>
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
   } else if (sh.type === "scanpick") {
@@ -2347,7 +2357,7 @@ function renderSheet() {
           return `<div class="mrow mimp ask"><span class="mn">${esc(g.name)}<small>${n} ${n === 1 ? "line" : "lines"} \u00b7 ${peso(g.total)}</small></span><span class="chips"><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="spending" aria-pressed="${all("spending")}">Spending</button><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="not" aria-pressed="${all("not")}">Not spending</button></span>
           ${n > 1 ? `<button class="link small" data-action="stm-show" data-id="${esc(g.key)}">${f.open?.[g.key] ? "Hide the lines" : `Show the ${n} lines`}</button>${f.open?.[g.key] ? `<div class="stmlines">${g.lines.map((x) => `<div class="mrow mline mimp"><span class="mn">${esc(longDate(x.dateRaw))}</span><span class="mv">${peso(x.amount)}</span></div>`).join("")}</div>` : ""}` : `<small class="hiddennote">${esc(longDate(g.lines[0].dateRaw))}</small>`}</div>`; }).join("")}` : ""}` : "";
       body = `<h3>Import old spending</h3>${stBlock}${orderLine}
-        <label>Paid from${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}</label>${paidChips(f.account_id)}
+        <label>Paid from${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}${REQ}</label>${paidChips(f.account_id)}${REQNOTE}
         ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${waiting ? `. <b>${waiting} ${waiting === 1 ? "line needs" : "lines need"} your choice</b>: left out until you choose` : ""}${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
           <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline mimp"><span class="mn">${esc(longDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline mimp"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
           ${f.notRead.length ? `<details><summary>Not read (${f.notRead.length})</summary>${f.notRead.slice(0, 20).map((l) => `<p class="note">${esc(l)}</p>`).join("")}</details>` : ""}
@@ -2463,9 +2473,10 @@ function renderSheet() {
       <p><button data-action="set-bucket" data-bucket="" style="width:100%">Use ${M.BUCKET_LABELS[sh.read]}</button></p>`;
   } else if (sh.type === "cat") {
     body = `<h3>${sh.id ? "Change this category" : "Add a category"}</h3>
-      <label for="c-name">Name</label><input id="c-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off" enterkeyhint="done">
+      <label for="c-name">Name${REQ}</label><input id="c-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off" enterkeyhint="done">
       <p class="note">${sh.id ? "Its entries, budget and everything else stay with it." : "For spending. You can rename it later."}</p>
       ${sh.id ? `<label>Bucket</label><div class="chips" id="c-edit-bucket">${bucketChips(sh.id, ui.form.bucket, "pick-edit-bucket")}</div>` : `<p class="note" id="c-read">${esc(readLine(ui.form.name))}</p><div class="chips" id="c-bucket"${M.readBucket(ui.form.name).bucket === null && (ui.form.name ?? "").trim() ? "" : ' style="display:none"'}>${bucketChips(null, ui.form.bucket, "pick-new-bucket")}</div>`}
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-cat" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "sweeporder") {
     const f = ui.form, goals = S().goals, picked = f.order ?? [];

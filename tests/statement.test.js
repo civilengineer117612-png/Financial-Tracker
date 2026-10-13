@@ -69,8 +69,11 @@ test("the check: every line must follow from the balance before it, and in and o
 });
 
 // "Outgoing / Incoming": the payee above, the date and one amount, the kind below; a month alone for net interest; a day and month only.
-function outInPage({ rows, period = "01 MAY 2026 to 31 MAY 2026", summary }) {
-  const items = [t(230, 640, period), t(49, 608, "ACCOUNT"), t(146, 608, "STARTING BALANCE"), t(265, 608, "TOTAL OUTGOING"), t(376, 608, "TOTAL INCOMING"), t(477, 608, "ENDING BALANCE"),
+function outInPage({ rows, period = "01 MAY 2026 to 31 MAY 2026", summary, wrapped = false }) {
+  const titles = wrapped   // the titles break over two lines, with "(PHP)" and a word for the account kind
+    ? [t(49, 608, "ACCOUNT"), t(146, 608, "STARTING SAVINGS"), t(160, 594, "BALANCE (PHP)"), t(265, 608, "TOTAL OUTGOING (PHP)"), t(376, 608, "TOTAL INCOMING (PHP)"), t(477, 608, "ENDING SAVINGS"), t(490, 594, "BALANCE (PHP)")]
+    : [t(49, 608, "ACCOUNT"), t(146, 608, "STARTING BALANCE"), t(265, 608, "TOTAL OUTGOING"), t(376, 608, "TOTAL INCOMING"), t(477, 608, "ENDING BALANCE")];
+  const items = [t(230, 640, period), ...titles,
     t(49, 567, "SAVINGS"), t(200, 567, money(summary.opening)), t(300, 567, money(summary.outgoing)), t(410, 567, money(summary.incoming)), t(520, 567, money(summary.closing)),
     t(49, 457, "DATE"), t(169, 457, "TRANSACTION"), t(364, 457, "OUTGOING"), t(406, 457, "(PHP)"), t(485, 457, "INCOMING"), t(526, 457, "(PHP)")];
   let y = 430;
@@ -199,4 +202,13 @@ test("one choice per person: a person's unsure lines are one group with a count 
   assert.match(app, /case "stm-choose": \{ const g = M\.unsureByPerson\(ui\.form\.items\)\.find\(\(x\) => x\.key === id\); if \(g\) ui\.form\.choice = \{ \.\.\.\(ui\.form\.choice \?\? \{\}\), \.\.\.Object\.fromEntries\(g\.ids\.map/, "the choice is written for every line of that person");
   assert.match(app, /Show the \$\{n\} lines/);
   assert.match(app, /transfers"\} to your own name/);
+});
+
+test("totals titles that wrap over two lines are still read, so the check can run", () => {
+  const summary = { opening: 500000, outgoing: 39000 + 20000 + 280000, incoming: 100000 + 40 + 41, closing: 500000 + 100081 - 339000 };
+  const r = parseStatement([outInPage({ rows: OI_ROWS, summary, wrapped: true })]);
+  assert.deepEqual(r.summary, { opening: summary.opening, outgoing: summary.outgoing, incoming: summary.incoming, closing: summary.closing });
+  assert.equal(r.check.ok, true);
+  const off = parseStatement([outInPage({ rows: OI_ROWS, summary: { ...summary, outgoing: summary.outgoing + 100 }, wrapped: true })]);
+  assert.equal(off.check.ok, false);
 });
