@@ -4,6 +4,7 @@ import * as M from "../src/model/index.js";
 import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto, useTrialStorage, clearTrialStorage, readCopies, writeCopies } from "./store.js";
 import { preparePhoto, readPage, evenedCopy } from "./ocr.js";
 import { speechSupported, listen, firstLanguage, other } from "./voice.js";
+import { readPdfPages, PdfCancelled } from "./pdftext.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -668,18 +669,27 @@ async function importFile(file) {
   const today0 = today(), say = (m) => { ui.form = { busy: m }; renderSheet(); };
   ui.sheet = { type: "import" }; say("Reading " + file.name + "...");
   try {
-    let items, notRead;
-    if (/\.xlsx$/i.test(file.name) || /spreadsheetml/.test(file.type)) ({ items, notRead } = tableOrThrow(await M.readXlsx(await file.arrayBuffer())));
+    let items, notRead, statement = null;
+    if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") {
+      const pages = await readPdfPages(file, askPdfPassword);
+      const r = M.parseStatement(pages);
+      if (!r.ok) throw new Error(r.message);
+      statement = { bank: r.bank, period: r.period, check: r.check, lines: r.lines.length, leftOut: M.statementLeftOut(r.lines) };
+      items = M.statementItems(r.lines); notRead = [];
+    } else if (/\.xlsx$/i.test(file.name) || /spreadsheetml/.test(file.type)) ({ items, notRead } = tableOrThrow(await M.readXlsx(await file.arrayBuffer())));
     else if (/\.csv$/i.test(file.name) || /csv/.test(file.type)) ({ items, notRead } = tableOrThrow(M.parseCsv(await file.text())));
     else {
       const page = await readPage(file, (fr, what) => { const el = $("imp-msg"); if (el) el.textContent = `${what ?? "Reading"} ${Math.round((fr ?? 0) * 100)}%`; });
       ({ items, notRead } = M.parseNotes(page.boxes ? M.linesByRow(page.boxes) : page.text));
     }
-    if (!items.length) throw new Error("No dated spending was found. A notes list needs a date line (02/10/2026) above lines like \"Lunch - 100\".");
-    ui.form = { items, notRead, order: M.dateOrder(items.map((x) => x.dateRaw), today0), account_id: cashFirst(activeAccounts())[0]?.id ?? null };
-  } catch (err) { ui.form = { error: String(err?.message ?? err) }; }
+    if (!items.length) throw new Error(statement ? "This statement has no spending in it: only money in and moves between your own accounts." : "No dated spending was found. A notes list needs a date line (02/10/2026) above lines like \"Lunch - 100\".");
+    ui.form = { items, notRead, statement, skip: {}, order: M.dateOrder(items.map((x) => x.dateRaw), today0), account_id: cashFirst(activeAccounts())[0]?.id ?? null };
+  } catch (err) { if (err instanceof PdfCancelled) { ui.sheet = null; renderSheet(); return; } ui.form = { error: String(err?.message ?? err) }; }
   if (ui.sheet?.type === "import") renderSheet();
 }
+// A locked PDF: the import window asks for the password and waits. The password is used once and not kept.
+let pdfPasswordResolve = null;
+const askPdfPassword = (wrong) => new Promise((resolve) => { pdfPasswordResolve = resolve; ui.form = { askPassword: true, wrong }; renderSheet(); setTimeout(() => $("pdf-pw")?.focus(), 50); });
 const tableOrThrow = (rows) => { const t = M.parseTable(rows); if (!t.ok) throw new Error(t.message); return t; };
 const photoButtons = (mode, busy = false) => `<label class="filebtn" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="12.5" r="3.5"/></svg>&nbsp;${busy ? "Reading..." : "Take a photo"}<input type="file" accept="image/*" capture="environment" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>
   <label class="filebtn alt" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>&nbsp;Choose from photos or files<input type="file" accept="image/*" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>`;
@@ -2310,18 +2320,27 @@ function renderSheet() {
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
   } else if (sh.type === "scanpick") {
     body = `<h3>Scan</h3><p class="note">A receipt, payment screen or payslip. Take a photo or choose one. If the app is sure, it saves a draft; otherwise it asks.</p>${photoButtons("quick")}
-      <p class="note">Old spending from somewhere else: a screenshot of your notes, or a CSV or Excel (.xlsx) file. Every line waits in Verify.</p>
-      <label class="filebtn alt" id="imp-pick">Import old spending<input type="file" accept="image/*,.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-import="1" hidden></label>`;
+      <p class="note">Old spending from somewhere else: a bank statement (PDF), a screenshot of your notes, or a CSV or Excel (.xlsx) file. Every line waits in Verify.</p>
+      <label class="filebtn alt" id="imp-pick">Import old spending<input type="file" accept="image/*,.pdf,application/pdf,.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-import="1" hidden></label>`;
   } else if (sh.type === "import") {
     const f = ui.form;
-    if (f.busy) body = `<h3>Import old spending</h3><p class="note" id="imp-msg" role="status">${esc(f.busy)}</p>`;
+    if (f.askPassword) body = `<h3>Import old spending</h3><p class="note">${f.wrong ? "That password did not open it. Try again." : "This PDF is locked. Type its password; it is used once to open the file and is not kept."}</p>
+      <label for="pdf-pw">Password</label><input id="pdf-pw" type="password" autocomplete="off" autocapitalize="off" enterkeyhint="go">
+      <p><button class="primary" data-action="pdf-open" style="margin-top:14px">Open</button></p>
+      <p><button data-action="pdf-cancel" style="width:100%">Cancel</button></p>`;
+    else if (f.busy) body = `<h3>Import old spending</h3><p class="note" id="imp-msg" role="status">${esc(f.busy)}</p>`;
     else if (f.error) body = `<h3>Import old spending</h3><p class="note" role="alert"><b>${esc(f.error)}</b></p>`;
     else {
-      const p = f.order ? M.previewImport(S(), f.items, f.order) : null, acct = S().accounts.find((a) => a.id === f.account_id);
+      const kept = f.items.filter((x) => !f.skip?.[x.id]);
+      const p = f.order ? M.previewImport(S(), kept, f.order) : null, acct = S().accounts.find((a) => a.id === f.account_id);
       const sample = f.items.find((x) => M.readDate(x.dateRaw) && !M.readDate(x.dateRaw).iso)?.dateRaw;
       const orderLine = sample ? `<p class="note" id="imp-order">${f.order ? `Dates read as <b>${f.order === "dmy" ? "day/month" : "month/day"}</b>: ${esc(sample)} is <b>${esc(longDate(M.previewImport(S(), [{ dateRaw: sample, name: "x", amount: 1 }], f.order).lines[0]?.date ?? today()))}</b>.` : `<b>Which comes first in ${esc(sample)}?</b>`}</p>
         <div class="seg" role="group" aria-label="Date order">${[["dmy", "Day / month"], ["mdy", "Month / day"]].map(([o, t]) => `<button data-action="import-order" data-id="${o}" aria-pressed="${f.order === o}">${t}</button>`).join("")}</div>` : "";
-      body = `<h3>Import old spending</h3>${orderLine}
+      const st = f.statement, unsure = st ? f.items.filter((x) => x.meaning === "unsure") : [];
+      const stBlock = st ? `<div class="card" style="border:0;padding:0"><dl><dt>Statement</dt><dd>${esc(st.bank ?? "Bank statement")}</dd>${st.period ? `<dt>Period</dt><dd>${esc(longDate(st.period.from))} to ${esc(longDate(st.period.to))}</dd>` : ""}<dt>Lines found</dt><dd>${st.lines}</dd><dt>Balance check</dt><dd id="stm-check">${st.check.ok ? "\u2713 " : ""}${esc(st.check.message)}${st.check.ok ? "" : " Look at each amount before you verify it."}</dd></dl></div>
+        ${st.leftOut.moves + st.leftOut.moneyIn ? `<p class="note small" id="stm-left">${[st.leftOut.moves ? `${st.leftOut.moves} ${st.leftOut.moves === 1 ? "move" : "moves"} between your own accounts` : "", st.leftOut.moneyIn ? `${st.leftOut.moneyIn} money in` : ""].filter(Boolean).join(" and ")} left out: not spending.</p>` : ""}
+        ${unsure.length ? `<label>Which is it?</label><p class="note small">Money out that does not say what it was. Choose Not spending for any that was not.</p>${unsure.map((x) => `<div class="mrow"><span class="mn">${esc(x.name)}<small>${esc(longDate(x.dateRaw))} \u00b7 ${peso(x.amount)}</small></span><span class="chips"><button class="chip" data-action="stm-toggle" data-id="${esc(x.id)}" aria-pressed="${!f.skip?.[x.id]}">Spending</button><button class="chip" data-action="stm-toggle" data-id="${esc(x.id)}" aria-pressed="${!!f.skip?.[x.id]}">Not spending</button></span></div>`).join("")}` : ""}` : "";
+      body = `<h3>Import old spending</h3>${stBlock}${orderLine}
         <label>Paid from</label>${paidChips(f.account_id)}
         ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
           <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline"><span class="mn">${esc(longDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
@@ -3337,9 +3356,12 @@ async function onClick(el) {
     case "dup-new": form.dup = "new"; form.dupOf = null; await saveScan(); break;
     case "pick-from": form.from_id = id; renderSheet(); break;
     case "pick-to": form.to_id = id; renderSheet(); break;
+    case "pdf-open": { const typed = $("pdf-pw")?.value ?? ""; const go = pdfPasswordResolve; pdfPasswordResolve = null; ui.form = { busy: "Opening the PDF..." }; renderSheet(); go?.(typed); break; }
+    case "pdf-cancel": { const go = pdfPasswordResolve; pdfPasswordResolve = null; go?.(null); ui.sheet = null; renderSheet(); break; }
+    case "stm-toggle": ui.form.skip = { ...(ui.form.skip ?? {}), [id]: el.textContent.trim() === "Not spending" }; renderSheet(); break;
     case "import-order": form.order = id; renderSheet(); break;
     case "save-import": {
-      const p = M.previewImport(S(), form.items, form.order), r = M.planImport(S(), p.lines, { account_id: form.account_id, newId: () => newId("tx") });
+      const p = M.previewImport(S(), form.items.filter((x) => !form.skip?.[x.id]), form.order), r = M.planImport(S(), p.lines, { account_id: form.account_id, newId: () => newId("tx") });
       if (!r.ok) { showToast(r.message); break; }
       ui.sheet = null; renderSheet();
       if (await commit(r.state)) showToast(`${r.count} ${r.count === 1 ? "draft is" : "drafts are"} waiting in Verify.`);
