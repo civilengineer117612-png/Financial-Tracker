@@ -8,7 +8,7 @@ export const KINDS = [   // order = who wins a tie
   { id: "payslip", label: "Payslip", direction: "in" },
   { id: "rent", label: "Rent", direction: "out" },
   { id: "ride", label: "Ride", direction: "out" },
-  { id: "gcash", label: "GCash payment", direction: "out" },
+  { id: "gcash", label: "Payment", direction: "out" },
   { id: "bank", label: "Bank transfer", direction: "out" },
   { id: "received", label: "Money received", direction: "in" },
   { id: "bill", label: "Bill", direction: "out" },
