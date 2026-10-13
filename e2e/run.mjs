@@ -2976,6 +2976,11 @@ console.log("Welcome card, category editing, required marks");
   await page.click('#nav button:has-text("Log")'); await page.click('button[data-action="open-other"]'); await page.waitForSelector("#sheet #f-amount");
   check(await page.locator("#sheet .coverrow .cover").count() === 1, "and under Paid from");
   await ctx.close();
+  // Budget keeps a hidden category in its place with a quiet word
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...seedC, settings: { ...seedC.settings, hidden_categories: ["cat-lakat"] } } }));
+  await menuGo(page, "Budget");
+  check(await page.locator('#screen .choice:has-text("Lakat/Date") small.hiddennote').count() === 1 && await page.locator("#screen small.hiddennote").count() === 1, "Budget marks only the hidden category, in its own place, with one quiet word");
+  await ctx.close();
 }
 
 // ===== 7. offline =====

@@ -119,3 +119,10 @@ test("the other forms that need something carry the same * and line: tile, sched
   for (const label of ['pay-name">Name${REQ}', 's-name">${inst ? "Item" : "Name (rent, a subscription)"}${REQ}', 's-amount">Amount each month (\\u20B1)${REQ}', 'Amount received (\\u20B1)${REQ}', '<label>Arrived in${REQ}</label>', '<label>Paid from${REQ}</label>']) assert.ok(app.includes(label), label);
   assert.ok((app.match(/\$\{REQNOTE\}/g) ?? []).length >= 6, "each of those forms says what the * means");
 });
+
+test("Budget keeps a hidden category in its place with one quiet word under its name, no separate group", () => {
+  assert.match(app, /const hiddenTag = \(id\) => M\.isHiddenCategory\(ledger\.settings, id\) \? `<small class="hiddennote">hidden<\/small>` : "";/);
+  assert.ok((app.match(/\$\{hiddenTag\(/g) ?? []).length >= 3, "every Budget row shows it");
+  assert.match(css, /small\.hiddennote \{ display: block; color: var\(--muted\); font-size: 12px; \}/);
+  assert.ok(!/<h2>Hidden<\/h2>/.test(app), "rows stay plain: no group label");
+});
