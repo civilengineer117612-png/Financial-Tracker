@@ -360,7 +360,7 @@ function viewLog() {
   const todays = S().transactions.filter((t) => t.date === shown && !isGenerated(t)).sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
   const age = M.daysSinceBackup(ledger.settings, today());
   const backupLink = age === null || age >= BACKUP_NOTE_DAYS ? `<button class="link" data-action="tab" data-tab="setup" data-page="backup">${age === null ? "No backup yet" : "Last backup " + age + " days ago"}</button>` : "";   // said only when a backup is due
-  const dueNote = due ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">${due} ${due === 1 ? "entry" : "entries"} from before today ${due === 1 ? "needs" : "need"} verifying</button></p>` : "";
+  const dueNote = due ? `<p class="note"><button class="link" data-action="tab" data-tab="verify">${due} earlier ${due === 1 ? "entry is" : "entries are"} waiting for you to verify</button></p>` : "";
   const trip = S().tags.find((t) => t.id === ledger.settings.active_tag_id);
   const tripNote = trip ? `<p class="note">Tagging new entries: ${esc(trip.name)}. <button class="link" data-action="stop-trip">Stop</button></p>` : "";
   const waitingPhotos = scanQueue().filter((q) => !q.needs).length, needLook = scanQueue().filter((q) => q.needs).length;

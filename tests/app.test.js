@@ -262,3 +262,10 @@ test("pictures and signs instead of little sentences under figures: Cards", () =
   assert.match(js, /m\.spent > 0 \? flow\(true, m\.spent\) : ""/, "an account that spent nothing shows nothing");
   assert.match(js, /aria-label="In your accounts \$\{esc\(peso\(o\.held\)\)\}"/); assert.match(js, /aria-label="Owed on cards /);
 });
+
+test("the Log says earlier entries are waiting for you to verify, and the scan chip is simply Payment", () => {
+  const js = read("app/app.js"), scan = read("src/model/scan.js");
+  assert.ok(js.includes('earlier ${due === 1 ? "entry is" : "entries are"} waiting for you to verify'), "the Log line is plain about what is waiting");
+  assert.ok(!js.includes("from before today ${due"), "the old awkward wording is gone");
+  assert.match(scan, /id: "gcash", label: "Payment"/, "the e-wallet kind is shown as Payment (its id and reading rules stay)");
+});
