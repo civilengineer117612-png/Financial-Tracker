@@ -54,7 +54,9 @@ function readSummary(rows) {
     const t = textOf(r), amts = r.items.filter((i) => AMOUNT.test(i.str.trim())).map((i) => centavos(i.str));
     const one = (re, key) => { if (re.test(t) && amts.length && out[key] === undefined) out[key] = amts[amts.length - 1]; };
     one(/opening balance/i, "opening"); one(/total credit/i, "credits"); one(/total debit/i, "debits"); one(/closing balance/i, "closing");
-    if (/starting balance/i.test(t) && /ending balance/i.test(t) && /outgoing/i.test(t) && /incoming/i.test(t)) {   // titles in a row, the amounts in a row below, in the same order
+    // titles in a row (or wrapped over two rows: "STARTING SAVINGS" above "BALANCE (PHP)"), the amounts in a row below, in the same order
+    const both = n + 1 < rows.length ? t + " " + textOf(rows[n + 1]) : t;
+    if (/starting\b.*\bbalance/i.test(both) && /ending\b.*\bbalance/i.test(both) && /outgoing/i.test(both) && /incoming/i.test(both) && out.outgoing === undefined) {
       const below = rows.slice(n + 1, n + 4).map((x) => x.items.filter((i) => AMOUNT.test(i.str.trim())).map((i) => centavos(i.str))).find((a) => a.length >= 4);
       if (below) { out.opening = below[0]; out.outgoing = below[1]; out.incoming = below[2]; out.closing = below[3]; }
     }

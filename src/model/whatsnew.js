@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-13-import-star", date: "2026-10-13", text: "Statement totals that are printed over two lines are now read so the check can run, and Import old spending marks Paid from with the * as the other forms do." },
   { id: "2026-10-13-statement-person", date: "2026-10-13", text: "In a statement import, transfers to your own name are left out by themselves, and unclear money out is one choice per person instead of one per line." },
   { id: "2026-10-13-statement-more", date: "2026-10-13", text: "Statement imports pick the account for you, wait for your choice on unclear money out, hold when the statement does not add up, and learn categories from your past entries." },
   { id: "2026-10-13-bar-stays", date: "2026-10-13", text: "The Log and Verify bar now stays at the bottom of the screen when you scroll, instead of drifting up the page on the iPhone." },
