@@ -1,0 +1,146 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { groupRows, parseStatement, classifyLine, checkStatement, statementItems, statementLeftOut } from "../src/model/index.js";
+
+// Invented statements only (names, amounts, dates). A piece of text is {x (from the left), y (from the bottom), w (width), str}.
+const t = (x, y, str, w = str.length * 5) => ({ x, y, w, str });
+const money = (c) => (c / 100).toLocaleString("en-US", { minimumFractionDigits: 2 });
+const rightAt = (edge, y, str) => t(edge - str.length * 5, y, str);
+
+// "Credits / Debits / Running Balance": a full date, the description, then the three amounts, right-aligned.
+function creditDebitPage({ opening, rows, period = "01 Jan 2025 - 31 Jan 2025", totals }) {
+  const items = [t(40, 760, "Statement of Account"), t(40, 730, "Period: " + period), t(300, 700, "Summary"),
+    t(300, 686, "Opening balance"), rightAt(560, 686, "PHP " + money(opening)), t(300, 672, "Total Credit"), rightAt(560, 672, "PHP " + money(totals.credits)),
+    t(300, 658, "Total Debit"), rightAt(560, 658, "PHP " + money(totals.debits)), t(300, 644, "Closing balance"), rightAt(560, 644, "PHP " + money(totals.closing))];
+  items.push(t(40, 600, "Date"), t(140, 600, "Details"), t(400, 600, "Credits"), t(470, 600, "Debits"), t(520, 600, "Running"), t(560, 600, "Balance"));
+  let y = 580, balance = opening;
+  for (const [date, text, credit, debit] of rows) {
+    balance += credit - debit;
+    items.push(t(40, y, date), t(140, y, text), rightAt(430, y, money(credit)), rightAt(495, y, money(debit)), rightAt(600, y, money(balance)));
+    y -= 18;
+  }
+  items.push(t(40, y - 6, "All figures are in PHP."));
+  return items;
+}
+const CD_ROWS = [["02 Jan 2025", "Transfer from SAMPLE PERSON, Account No. 1234", 50000, 0], ["02 Jan 2025", "Transfer to Go Save account", 0, 500], ["04 Jan 2025", "Card payment at SAMPLE STORE, Card 0000", 0, 56800],
+  ["16 Jan 2025", "Interbank transfer fee", 0, 800], ["20 Jan 2025", "Outbound interbank transfer", 0, 10000]];
+const CD_TOTALS = { credits: 50000, debits: 500 + 56800 + 800 + 10000, closing: 50000 - 500 - 56800 - 800 - 10000 + 0 };
+const cdOk = () => parseStatement([creditDebitPage({ opening: 100000, rows: CD_ROWS, totals: { ...CD_TOTALS, closing: 100000 + CD_TOTALS.closing } })]);
+
+test("rows: pieces within a couple of points of height are one row, read left to right, top to bottom", () => {
+  const rows = groupRows([t(200, 100, "b"), t(10, 101, "a"), t(10, 50, "c"), t(30, 100, " ")]);
+  assert.deepEqual(rows.map((r) => r.items.map((i) => i.str).join("")), ["ab", "c"]);
+});
+
+test("a Credits / Debits / Running Balance statement: dates, descriptions, amounts, direction, balances and the period", () => {
+  const r = cdOk();
+  assert.ok(r.ok);
+  assert.equal(r.style, "credit-debit");
+  assert.deepEqual(r.period, { from: "2025-01-01", to: "2025-01-31" });
+  assert.deepEqual(r.lines.map((l) => [l.date, l.direction, l.amount]), [["2025-01-02", "in", 50000], ["2025-01-02", "out", 500], ["2025-01-04", "out", 56800], ["2025-01-16", "out", 800], ["2025-01-20", "out", 10000]]);
+  assert.equal(r.lines[0].balance, 150000);
+  assert.equal(r.lines[2].payee, "SAMPLE STORE", "the card number after the store is dropped");
+});
+
+test("what each line means: spending, a fee, a move to your own pocket (always), money in, and money out that does not say", () => {
+  const m = cdOk().lines.map((l) => l.meaning);
+  assert.deepEqual(m, ["in", "move", "spending", "fee", "unsure"]);
+  assert.equal(classifyLine({ text: "Transfer from Go Save account", direction: "in" }).meaning, "move", "a Go Save line is a move, in either direction");
+  assert.equal(classifyLine({ text: "Transfer to Go Save account", direction: "out" }).meaning, "move");
+  assert.equal(classifyLine({ text: "Sample Cafe", type: "Card Payment", direction: "out" }).meaning, "spending");
+  assert.equal(classifyLine({ text: "Sample Shop", type: "Payment", direction: "out" }).payee, "Sample Shop");
+  assert.equal(classifyLine({ text: "Sample Person", type: "Transfer", direction: "out" }).meaning, "unsure");
+  assert.equal(classifyLine({ text: "Sample Person", type: "Transfer", direction: "in" }).meaning, "in");
+  assert.equal(classifyLine({ text: "Account upkeep", type: "Service fee", direction: "out" }).meaning, "fee");
+});
+
+test("the check: every line must follow from the balance before it, and in and out must match the totals", () => {
+  const good = cdOk();
+  assert.ok(good.check.ok && good.check.kind === "lines", good.check.message);
+  const items = creditDebitPage({ opening: 100000, rows: CD_ROWS, totals: { ...CD_TOTALS, closing: 100000 + CD_TOTALS.closing } });
+  const wrong = items.map((i) => (i.str === money(150000) ? { ...i, str: money(150100) } : i));   // one balance misread by 1.00
+  const r = parseStatement([wrong]);
+  assert.equal(r.check.ok, false);
+  assert.ok(r.check.bad.length >= 1 && /do not follow|does not follow/.test(r.check.message));
+  const noTotals = checkStatement("credit-debit", good.lines.map((l) => ({ ...l, balance: null })), {});
+  assert.equal(noTotals.ok, false); assert.match(noTotals.message, /no totals/);
+  const off = parseStatement([creditDebitPage({ opening: 100000, rows: CD_ROWS, totals: { ...CD_TOTALS, debits: CD_TOTALS.debits + 100, closing: 100000 + CD_TOTALS.closing } })]);
+  assert.equal(off.check.ok, false, "totals that do not match the lines are caught");
+});
+
+// "Outgoing / Incoming": the payee above, the date and one amount, the kind below; a month alone for net interest; a day and month only.
+function outInPage({ rows, period = "01 MAY 2026 to 31 MAY 2026", summary }) {
+  const items = [t(230, 640, period), t(49, 608, "ACCOUNT"), t(146, 608, "STARTING BALANCE"), t(265, 608, "TOTAL OUTGOING"), t(376, 608, "TOTAL INCOMING"), t(477, 608, "ENDING BALANCE"),
+    t(49, 567, "SAVINGS"), t(200, 567, money(summary.opening)), t(300, 567, money(summary.outgoing)), t(410, 567, money(summary.incoming)), t(520, 567, money(summary.closing)),
+    t(49, 457, "DATE"), t(169, 457, "TRANSACTION"), t(364, 457, "OUTGOING"), t(406, 457, "(PHP)"), t(485, 457, "INCOMING"), t(526, 457, "(PHP)")];
+  let y = 430;
+  for (const [date, payee, type, out, inn] of rows) {
+    items.push(t(169, y, payee), t(49, y - 7, date), t(169, y - 14, type));
+    if (out) items.push(rightAt(425, y - 7, money(out))); else items.push(rightAt(545, y - 7, money(inn)));
+    y -= 46;
+  }
+  items.push(t(500, 42, "page"), t(529, 42, "1"));
+  return items;
+}
+const OI_ROWS = [["MAY", "Interest", "Net Interest", 0, 81], ["03 MAY", "Sample Person", "Transfer", 0, 100000], ["04 MAY", "Sample Cafe", "Card Payment", 39000, 0], ["05 MAY", "Sample Shop", "Payment", 20000, 0],
+  ["06 MAY", "Sample Person", "Transfer", 280000, 0], ["07 MAY", "Interest", "Interest", 0, 40], ["07 MAY", "Interest", "Interest", 0, 41]];
+const oiOk = () => parseStatement([outInPage({ rows: OI_ROWS, summary: { opening: 500000, outgoing: 39000 + 20000 + 280000, incoming: 100000 + 40 + 41, closing: 500000 + 100081 - 339000 } })]);
+
+test("an Outgoing / Incoming statement: the payee above, the kind below, a day and month only, the year from the period", () => {
+  const r = oiOk();
+  assert.ok(r.ok); assert.equal(r.style, "out-in");
+  assert.deepEqual(r.lines.map((l) => [l.date, l.payee, l.type, l.direction, l.amount]).slice(0, 4),
+    [["2026-05-03", "Sample Person", "Transfer", "in", 100000], ["2026-05-04", "Sample Cafe", "Card Payment", "out", 39000], ["2026-05-05", "Sample Shop", "Payment", "out", 20000], ["2026-05-06", "Sample Person", "Transfer", "out", 280000]]);
+  assert.deepEqual(r.lines.map((l) => l.meaning), ["in", "spending", "spending", "unsure", "in", "in"]);
+});
+
+test("'Net Interest' is the month's interest added up, so it is not a line (it would count the interest twice)", () => {
+  const r = oiOk();
+  assert.equal(r.lines.length, 6, "seven rows, the Net Interest one left out");
+  assert.ok(!r.lines.some((l) => /net interest/i.test(l.type)));
+  assert.ok(r.check.ok, r.check.message);
+  assert.equal(r.check.kind, "total", "no balance after each line here: the totals are the check");
+});
+
+test("a statement across New Year gives each month its own year, and a month alone is dated the last day", () => {
+  const r = parseStatement([outInPage({ period: "01 DEC 2025 to 31 JAN 2026", rows: [["15 DEC", "Sample Cafe", "Card Payment", 100, 0], ["05 JAN", "Sample Cafe", "Card Payment", 200, 0], ["JAN", "Interest", "Interest", 0, 5]], summary: { opening: 0, outgoing: 300, incoming: 5, closing: -295 } })]);
+  assert.deepEqual(r.lines.map((l) => l.date), ["2025-12-15", "2026-01-05", "2026-01-31"]);
+});
+
+test("what the importer takes: spending, fees and the unsure (turned off one by one); moves and money in are counted and left out", () => {
+  const r = cdOk();
+  const items = statementItems(r.lines);
+  assert.deepEqual(items.map((i) => [i.name, i.amount, i.meaning]), [["SAMPLE STORE", 56800, "spending"], ["Interbank transfer fee", 800, "fee"], ["Outbound interbank transfer", 10000, "unsure"]]);
+  assert.ok(items.every((i) => /^s\d+$/.test(i.id) && /^\d{4}-\d{2}-\d{2}$/.test(i.dateRaw)));
+  assert.deepEqual(statementLeftOut(r.lines), { moves: 1, moneyIn: 1 });
+});
+
+test("a PDF with no table of transactions says so plainly", () => {
+  const r = parseStatement([[t(40, 700, "Hello"), t(40, 680, "Nothing here")]]);
+  assert.equal(r.ok, false); assert.match(r.message, /No transactions/);
+});
+
+test("a long description that wraps onto the next row is one line, not a stray one", () => {
+  const items = creditDebitPage({ opening: 100000, rows: CD_ROWS, totals: { ...CD_TOTALS, closing: 100000 + CD_TOTALS.closing } });
+  items.push(t(140, 580 - 9, "WRAPPED PART"));   // under the first row, in the description column
+  const r = parseStatement([items]);
+  assert.match(r.lines[0].text, /Transfer from SAMPLE PERSON, Account No. 1234 WRAPPED PART$/);
+  assert.equal(r.lines.length, 5, "the wrapped part did not become a sixth line");
+  assert.ok(r.check.ok);
+});
+
+import { readFileSync, existsSync } from "node:fs";
+const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8"), pdftext = readFileSync(new URL("../app/pdftext.js", import.meta.url), "utf8");
+
+test("the PDF import: the reader is our own copy, a locked file asks for its password once, nothing is kept, and the lines go to the same preview and Verify as other imports", () => {
+  assert.ok(existsSync(new URL("../src/vendor/pdf/pdf.min.mjs", import.meta.url)) && existsSync(new URL("../src/vendor/pdf/LICENSE", import.meta.url)), "pdf.js and its licence are in the repo");
+  assert.match(pdftext, /import\("\.\.\/src\/vendor\/pdf\/pdf\.min\.mjs"\)/, "loaded from this site");
+  assert.ok(!/https?:\/\//.test(pdftext.replace(/\/\/.*$/gm, "")), "no address outside this site in the PDF reader's loader");
+  assert.match(pdftext, /task\.onPassword = async \(update, reason\) => \{[\s\S]*?askPassword\(reason === pdfjs\.PasswordResponses\.INCORRECT_PASSWORD\)/, "asks again when the password was wrong");
+  assert.match(app, /const pages = await readPdfPages\(file, askPdfPassword\);/);
+  assert.match(app, /accept="image\/\*,\.pdf,application\/pdf,/, "the one Import button takes a PDF too: no new button");
+  assert.match(app, /case "pdf-open": \{ const typed = \$\("pdf-pw"\)\?\.value \?\? ""; const go = pdfPasswordResolve; pdfPasswordResolve = null;/, "the password is handed over once and the box is gone");
+  assert.ok(!/pdf_password|pdfPassword\s*=|settings[^\n]*pdf-pw/.test(app), "the password is never stored");
+  assert.match(app, /const kept = f\.items\.filter\(\(x\) => !f\.skip\?\.\[x\.id\]\);/, "lines turned off are not added");
+  assert.match(app, /form\.items\.filter\(\(x\) => !form\.skip\?\.\[x\.id\]\), form\.order\), r = M\.planImport/, "and not saved");
+});

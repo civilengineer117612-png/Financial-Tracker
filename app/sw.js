@@ -8,12 +8,12 @@ const CACHE = "finance-app-" + VERSION;
 // cache-first: it downloads once, not again after every update. If the reader is ever replaced, change this name so the new files are fetched.
 const READER = "finance-reader-v1";
 const FILES = [
-  "./", "index.html", "app.js", "store.js", "ocr.js", "paddle.js", "shrink.js", "voice.js", "manifest.json", "icon-180.png", "icon-512.png", "fonts/OFL.txt", "fonts/ibm-plex-sans-latin-400-normal.woff2", "fonts/ibm-plex-sans-latin-500-normal.woff2", "fonts/ibm-plex-sans-latin-600-normal.woff2", "fonts/ibm-plex-sans-latin-ext-400-normal.woff2", "fonts/ibm-plex-sans-latin-ext-500-normal.woff2", "fonts/ibm-plex-sans-latin-ext-600-normal.woff2",
+  "./", "index.html", "app.js", "store.js", "ocr.js", "paddle.js", "shrink.js", "pdftext.js", "voice.js", "manifest.json", "icon-180.png", "icon-512.png", "fonts/OFL.txt", "fonts/ibm-plex-sans-latin-400-normal.woff2", "fonts/ibm-plex-sans-latin-500-normal.woff2", "fonts/ibm-plex-sans-latin-600-normal.woff2", "fonts/ibm-plex-sans-latin-ext-400-normal.woff2", "fonts/ibm-plex-sans-latin-ext-500-normal.woff2", "fonts/ibm-plex-sans-latin-ext-600-normal.woff2",
   "../src/model/index.js", "../src/model/util.js", "../src/model/schema.js", "../src/model/balances.js",
   "../src/model/invariants.js", "../src/model/rules.js", "../src/model/ratchet.js", "../src/model/checkin.js", "../src/model/corrections.js", "../src/model/storage.js", "../src/model/pictures.js", "../src/model/planform.js", "../src/model/schedulehints.js", "../src/model/picturebackup.js",
   "../src/model/buffer.js", "../src/model/templates.js", "../src/model/budget.js", "../src/model/inbox.js",
   "../src/model/goals.js", "../src/model/backup.js", "../src/model/survey.js", "../src/model/device.js",
-  "../src/model/reminders.js", "../src/model/money.js", "../src/model/seed.js", "../src/model/catedit.js", "../src/model/drafts.js",
+  "../src/model/reminders.js", "../src/model/money.js", "../src/model/seed.js", "../src/model/catedit.js", "../src/model/statement.js", "../src/model/drafts.js",
   "../src/model/persist.js", "../src/model/migrate.js", "../src/model/version.js", "../src/model/help.js", "../src/model/names.js", "../src/model/helpart.js", "../src/model/suggest.js", "../src/model/types.js", "../src/model/bucketwords.js", "../src/model/whatsnew.js", "../src/model/tips.js", "../src/model/importer.js", "../src/model/howto.js", "../src/model/buckets.js", "../src/model/savings.js", "../src/model/sinking.js", "../src/model/transfers.js", "../src/model/schedules.js", "../src/model/suggest-settings.js", "../src/model/budgetview.js", "../src/model/planwrite.js", "../src/model/validate.js", "../src/model/reports.js", "../src/model/plan.js", "../src/model/trips.js", "../src/model/banks.js", "../src/model/scan.js", "../src/model/income.js", "../src/model/summary.js", "../src/model/speech.js",
 ];
 

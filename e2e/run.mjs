@@ -2981,6 +2981,38 @@ console.log("Welcome card, category editing, required marks");
   await menuGo(page, "Budget");
   check(await page.locator('#screen .choice:has-text("Lakat/Date") small.hiddennote').count() === 1 && await page.locator("#screen small.hiddennote").count() === 1, "Budget marks only the hidden category, in its own place, with one quiet word");
   await ctx.close();
+  // A bank statement (PDF) read on the phone: an open one, then a locked one (invented statements in e2e/fixtures)
+  const FX = (n) => new URL("./fixtures/" + n, import.meta.url).pathname;
+  const accS = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-10-02" };
+  const importer = async (file) => { ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [accS] } } })); await page.click('button[data-action="open-scan-pick"]'); await page.setInputFiles("input[data-import]", FX(file)); };
+  await importer("sample-open.pdf");
+  check(await seen(page, "#sheet", "Balance check"), "a PDF statement is read and shown before anything is added");
+  let st = await text(page, "#sheet");
+  check(st.includes("Everything in and out matches the totals at the top") && st.includes("Lines found") && /6\b/.test(st), "it says the statement adds up, and how many lines it found");
+  check(st.includes("6 money in left out") === false && st.includes("3 lines"), "spending and the unsure line are offered: 3 lines");
+  check((await text(page, "#stm-left")).includes("3 money in left out"), "money in is counted and left out");
+  check(st.includes("Which is it?") && st.includes("Sample Person"), "the money out that does not say what it was is asked about");
+  await page.click('#sheet button[data-action="stm-toggle"]:has-text("Not spending")');
+  check((await text(page, "#imp-count")).includes("2 lines"), "turning one off takes it out of the count");
+  await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.filter((t) => t.source === "import").length === 2, null, { timeout: 5000 });
+  const imp = JSON.parse((await stored(page)).local).state;
+  check(imp.transactions.filter((t) => t.source === "import" && t.status === "draft").map((t) => t.date).sort().join() === "2026-05-04,2026-05-05" && imp.entries.filter((e) => e.category_id && imp.transactions.find((t) => t.id === e.transaction_id)?.source === "import").map((e) => e.amount).sort((x, y) => x - y).join() === "20000,39000", "two drafts wait in Verify, dated from the statement, with its amounts");
+  await ctx.close();
+  await importer("sample-locked.pdf");
+  check(await seen(page, "#sheet", "This PDF is locked"), "a locked PDF asks for its password");
+  await page.fill("#pdf-pw", "nope"); await page.click('#sheet button[data-action="pdf-open"]');
+  check(await seen(page, "#sheet", "That password did not open it"), "a wrong password is said plainly and asked again");
+  await page.fill("#pdf-pw", "test1234"); await page.click('#sheet button[data-action="pdf-open"]');
+  check(await seen(page, "#sheet", "Every line follows from the balance before it"), "the right password opens it, and every balance line checks");
+  st = await text(page, "#sheet");
+  check(st.includes("3 lines") && (await text(page, "#stm-left")).includes("1 move between your own accounts and 1 money in left out"), "spending, a fee and the unsure line are offered; the Go Save move and the money in are left out");
+  check(!(await page.content()).includes("test1234") && !JSON.stringify(await page.evaluate(() => ({ ...localStorage }))).includes("test1234"), "the password is not kept anywhere");
+  await ctx.close();
+  await importer("sample-locked.pdf"); await seen(page, "#sheet", "This PDF is locked");
+  await page.click('#sheet button[data-action="pdf-cancel"]');
+  check(await page.locator("#sheet .sheet").count() === 0, "Cancel at the password closes the window");
+  await ctx.close();
 }
 
 // ===== 7. offline =====
