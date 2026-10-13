@@ -2976,6 +2976,12 @@ console.log("Welcome card, category editing, required marks");
   await page.click('#nav button:has-text("Log")'); await page.click('button[data-action="open-other"]'); await page.waitForSelector("#sheet #f-amount");
   check(await page.locator("#sheet .coverrow .cover").count() === 1, "and under Paid from");
   await ctx.close();
+  // The bottom bar stays pinned to the bottom of the screen when a long page is scrolled (it drifted up the page on the iPhone)
+  ({ ctx, page, errors } = await open({ blockSw: true }));
+  await menuGo(page, "Help"); await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await page.waitForTimeout(300);
+  { const nb = await page.locator("#nav").boundingBox(), vh = page.viewportSize().height; check(Math.abs(nb.y + nb.height - vh) <= 1, "the Log and Verify bar stays at the bottom of the screen when Help is scrolled"); }
+  check(await page.evaluate(() => getComputedStyle(document.body).overflowX) === "visible" && await page.evaluate(() => getComputedStyle(document.documentElement).overflowX) === "hidden", "only the page hides sideways overflow, not the body too");
+  await ctx.close();
   // Budget keeps a hidden category in its place with a quiet word
   ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...seedC, settings: { ...seedC.settings, hidden_categories: ["cat-lakat"] } } }));
   await menuGo(page, "Budget");

@@ -110,6 +110,7 @@ test("windows cannot scroll sideways: the phone's date box is held inside the wi
   assert.match(css, /\.sheet \{[^}]*overflow-x: hidden/);
   assert.match(css, /input\[type=date\] \{[^}]*appearance: none[^}]*max-width: 100%/);
   assert.match(css, /html \{[^}]*overflow-x: hidden/);
+  assert.ok(!/\n\s*body \{[^}]*overflow-x: hidden/.test(css.split("LEDGER PAPER")[0]), "only the page hides sideways overflow: hidden on the body too makes iPhone Safari let the pinned bottom bar drift up the screen");
 });
 
 test("a window holds the page still behind it and keeps its place when redrawn", () => {
