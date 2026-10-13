@@ -18,7 +18,15 @@ export function removeKind(state, id) {
 
 export function removeCategory(state, id) {
   if (removeKind(state, id) !== "remove") return { ok: false, violations: [{ code: "IN_USE", message: "That category has entries or settings, so it can only be hidden." }] };
-  return { ok: true, violations: [], state: { ...state, categories: state.categories.filter((c) => c.id !== id) } };
+  const index = state.categories.findIndex((c) => c.id === id);
+  return { ok: true, violations: [], removed: { category: state.categories[index], index }, state: { ...state, categories: state.categories.filter((c) => c.id !== id) } };
+}
+
+// Puts a just-removed category back exactly as it was, in its old place (the Undo after a removal).
+export function restoreCategory(state, { category, index }) {
+  if (state.categories.some((c) => c.id === category.id || c.name.trim().toLowerCase() === category.name.trim().toLowerCase())) return { ok: false, violations: [{ code: "TAKEN", message: "A category with that name is already there." }] };
+  const next = [...state.categories]; next.splice(Math.min(index, next.length), 0, category);
+  return { ok: true, violations: [], state: { ...state, categories: next } };
 }
 
 export const hiddenCategoryIds = (settings) => settings?.hidden_categories ?? [];

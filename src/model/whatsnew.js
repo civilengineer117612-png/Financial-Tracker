@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-13-categories-more", date: "2026-10-13", text: "A removed category can be put back with Undo, a hidden category still shows on an entry that uses it, a reserve account can be paid from, and \"Repeats each month\" is now \"Monthly payment\"." },
   { id: "2026-10-13-categories", date: "2026-10-13", text: "Categories have one pencil to edit them, the bucket sits quietly under each name, required fields carry a *, and a new install opens with a welcome card." },
   { id: "2026-10-13-wording", date: "2026-10-13", text: "The Log says \"1 earlier entry is waiting for you to verify\", and the photo reader's payment choice is now simply called Payment." },
   { id: "2026-10-11-plan-polish", date: "2026-10-11", text: "Budget points to the Pay plan, the Pay plan shows whether it agrees with your budgets, and a newer plan starts from your current one." },

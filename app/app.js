@@ -88,6 +88,8 @@ const REQNOTE = `<p class="note small"><span class="req" aria-hidden="true">*</s
 const readLine = (name) => { if (!(name ?? "").trim()) return "The bucket is read from the name."; const r = M.readBucket(name).bucket;
   return r ? `Reads as ${M.BUCKET_LABELS[r]}. You can change it later in Setup.` : "Not clear from the name. Choose one now, or it waits in Other and is asked on Budget."; };
 const bucketChips = (id, current, action = "pick-bucket") => M.CHOICES.map((b) => `<button class="chip" data-action="${action}" data-id="${esc(id ?? "")}" data-bucket="${b}" aria-pressed="${current === b}">${b === "other" ? "Keep in Other" : b === "need" ? "Need" : b === "want" ? "Want" : "Savings"}</button>`).join(" ");
+// An entry already in a hidden category keeps showing it (marked hidden) while it is edited, so it can be kept or changed.
+const pickCategoriesWith = (id) => { const list = pickCategories(), c = id ? expenseCategories().find((x) => x.id === id) : null; return c && !list.includes(c) ? [...list, { ...c, name: c.name + " (hidden)" }] : list; };
 const pickCategories = () => M.pickable(expenseCategories(), ledger.settings);   // the pickers leave out the categories you hid
 const expenseCategories = () => S().categories.filter((c) => c.kind === "expense" && c.id !== M.UNLOGGED_CATEGORY_ID);
 
@@ -116,8 +118,9 @@ const cashFirst = (list) => [...list.filter(isCash), ...list.filter((a) => !isCa
 function accountsFor(presetId) {
   const { last_account_by_preset: byPreset = {}, last_account_id: last } = ledger.settings;
   const rank = (a) => (a.id === byPreset[presetId] ? 0 : a.id === last ? 1 : 2);
-  // A reserve only holds money set aside for a card; you never pay from it.
-  return activeAccounts().filter((a) => !a.reserve_for).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  // A reserve account can be paid from (a QR payment from the debit account that backs a card is real spending); when that leaves it short of what the
+  // card owes, the usual reserve warning says so. It never blocks.
+  return activeAccounts().sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
 // A transfer's lines in Verify and in its detail: where from, where to, its fee, and the foreign amount a paper showed.
@@ -1506,18 +1509,19 @@ function scheduleInput(f) {
 function scheduleSheet(f) {
   const inst = f.skind === "installment";
   return `<h3>Add a scheduled payment</h3>
-    <label>Kind</label><div class="chips"><button class="chip" data-action="pick-skind" data-id="repeating" aria-pressed="${!inst}">Repeats each month</button><button class="chip" data-action="pick-skind" data-id="installment" aria-pressed="${inst}">Installment plan</button></div>
-    <label for="s-name">${inst ? "Item" : "Name (rent, a subscription)"}</label><input id="s-name" data-field="sname" value="${esc(f.sname ?? "")}" autocomplete="off">
-    ${inst ? `<label for="s-total">Total to pay, interest included (\u20B1)</label><input id="s-total" data-field="stotal" inputmode="decimal" value="${esc(f.stotal ?? "")}" autocomplete="off">
-      <label for="s-count">Number of payments</label><div class="chips">${[1, 3, 6].map((n) => `<button class="chip" data-action="pick-scount" data-id="${n}" aria-pressed="${String(f.scount) === String(n)}">${n}</button>`).join("")}</div><input id="s-count" data-field="scount" inputmode="numeric" value="${esc(f.scount ?? "")}" autocomplete="off">
+    <label>Kind</label><div class="chips"><button class="chip" data-action="pick-skind" data-id="repeating" aria-pressed="${!inst}">Monthly payment</button><button class="chip" data-action="pick-skind" data-id="installment" aria-pressed="${inst}">Installment plan</button></div>
+    <label for="s-name">${inst ? "Item" : "Name (rent, a subscription)"}${REQ}</label><input id="s-name" data-field="sname" value="${esc(f.sname ?? "")}" autocomplete="off">
+    ${inst ? `<label for="s-total">Total to pay, interest included (\u20B1)${REQ}</label><input id="s-total" data-field="stotal" inputmode="decimal" value="${esc(f.stotal ?? "")}" autocomplete="off">
+      <label for="s-count">Number of payments${REQ}</label><div class="chips">${[1, 3, 6].map((n) => `<button class="chip" data-action="pick-scount" data-id="${n}" aria-pressed="${String(f.scount) === String(n)}">${n}</button>`).join("")}</div><input id="s-count" data-field="scount" inputmode="numeric" value="${esc(f.scount ?? "")}" autocomplete="off">
       <label for="s-made">Payments already made</label><input id="s-made" data-field="smade" inputmode="numeric" value="${esc(f.smade ?? "")}" autocomplete="off">
-      <label for="s-first">First payment due</label><input id="s-first" data-field="sfirst" type="date" value="${esc(f.sfirst ?? "")}">
+      <label for="s-first">First payment due${REQ}</label><input id="s-first" data-field="sfirst" type="date" value="${esc(f.sfirst ?? "")}">
       <label for="s-int">Interest part of the total (\u20B1, optional)</label><input id="s-int" data-field="sinterest" inputmode="decimal" value="${esc(f.sinterest ?? "")}" autocomplete="off">`
-    : `<label for="s-amount">Amount each month (\u20B1)</label><input id="s-amount" data-field="samount" inputmode="decimal" value="${esc(f.samount ?? "")}" autocomplete="off">
-      <label for="s-day">Due around day</label><input id="s-day" data-field="sday" inputmode="numeric" value="${esc(f.sday ?? "")}" autocomplete="off">
+    : `<label for="s-amount">Amount each month (\u20B1)${REQ}</label><input id="s-amount" data-field="samount" inputmode="decimal" value="${esc(f.samount ?? "")}" autocomplete="off">
+      <label for="s-day">Due around day${REQ}</label><input id="s-day" data-field="sday" inputmode="numeric" value="${esc(f.sday ?? "")}" autocomplete="off">
       <details><summary>In another currency</summary><label for="s-cur">Currency (like USD)</label><input id="s-cur" data-field="scur" value="${esc(f.scur ?? "")}" autocomplete="off"><label for="s-fx">Amount in that currency</label><input id="s-fx" data-field="sfx" inputmode="decimal" value="${esc(f.sfx ?? "")}" autocomplete="off"><p class="note">The pesos above are an estimate. You fix them in Verify.</p></details>`}
-    <label>Category</label>${chips(pickCategories(), f.category_id, "pick-cat")}
-    <label>Paid from</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
+    <label>Category${REQ}</label>${chips(pickCategoriesWith(f.category_id), f.category_id, "pick-cat")}
+    <label>Paid from${REQ}</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
+    ${REQNOTE}
     <p class="note" id="sch-line" role="status"></p>
     <p class="note" id="scan-why" role="status"></p>
     <p><button class="primary" id="f-save" data-action="save-schedule" style="margin-top:6px" disabled>Save</button></p>`;
@@ -1971,14 +1975,15 @@ function renderSheet() {
     const f = ui.form ?? {}, isNew = !sh.id;
     body = `<h3 class="paytitle"><span>${isNew ? "Add a tile" : "Change this tile"}</span>${isNew ? "" : `<button class="editbtn" data-action="remove-tile" aria-label="Remove this tile"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TRASH}</svg></button>`}</h3>
       ${ui.confirmRemoveTile ? `<p class="note">Remove this tile? <button class="link" data-action="remove-tile-yes">Yes, remove it</button></p>` : `<p class="note small">This changes the tile on the Log screen. Nothing is logged.</p>`}
-      <label for="pay-name">Name</label><input id="pay-name" data-field="name" value="${esc(f.name ?? "")}" autocomplete="off">
-      <label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
-      <label>Category</label>${chips(pickCategories(), f.category_id, "pick-cat")}
+      <label for="pay-name">Name${REQ}</label><input id="pay-name" data-field="name" value="${esc(f.name ?? "")}" autocomplete="off">
+      <label for="f-amount">Amount (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
+      <label>Category${REQ}</label>${chips(pickCategoriesWith(f.category_id), f.category_id, "pick-cat")}
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-tile" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "other") {
     body = `<h3>Add expense</h3>
       <label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
-      <label>Category${REQ}</label>${chips(pickCategories(), ui.form.category_id, "pick-cat")}
+      <label>Category${REQ}</label>${chips(pickCategoriesWith(ui.form.category_id), ui.form.category_id, "pick-cat")}
       <label>Paid from${REQ}</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-other" style="margin-top:14px" disabled>Save</button></p>`;
@@ -2011,12 +2016,13 @@ function renderSheet() {
   } else if (sh.type === "edit") {
     const t = S().transactions.find((x) => x.id === sh.id), d = describe(t);
     body = `<h3>Edit entry</h3>
-      ${d.editable || d.kind === "transfer" || d.kind === "income" || (t.schedule_id && d.kind === "split") ? `<label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">` : ""}
+      ${d.editable || d.kind === "transfer" || d.kind === "income" || (t.schedule_id && d.kind === "split") ? `<label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">` : ""}
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}">
       <label for="f-payee">Name (optional)</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
       ${t.schedule_id ? `<label for="f-memo">Note (optional, like "covers Sept to Oct")</label><input id="f-memo" data-field="memo" value="${esc(ui.form.memo ?? "")}" autocomplete="off">` : ""}
-      ${d.editable ? `<label>Category</label>${chips(pickCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
+      ${d.editable ? `<label>Category${REQ}</label>${chips(pickCategoriesWith(ui.form.category_id), ui.form.category_id, "pick-cat")}<label>Paid from${REQ}</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${chips(accountsFor(null), ui.form.from_id, "pick-from")}<label>To</label>${chips(accountsFor(null), ui.form.to_id, "pick-to")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
   if (sh.type === "banks") {
@@ -2105,10 +2111,11 @@ function renderSheet() {
     body = `<h3>Add an entry to this trip</h3><p class="note">The latest 40 entries that are not on it. Adding one works on any date.</p>${cands.map(rowOf).join("") || `<p class="note">Every entry is already on this trip.</p>`}<p><button data-action="close-sheet">Done</button></p>`;
   } else if (sh.type === "income") {
     body = `<h3>Money received</h3>
-      <label for="f-amount">Amount received (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off" placeholder="e.g. 9776.98">
+      <label for="f-amount">Amount received (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off" placeholder="e.g. 9776.98">
       <label for="f-date">Date it arrived</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}" max="${esc(today())}">
-      <label>What it is</label>${chips(incomeCategories(), ui.form.category_id, "pick-cat")}
-      <label>Arrived in</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <label>What it is${REQ}</label>${chips(incomeCategories(), ui.form.category_id, "pick-cat")}
+      <label>Arrived in${REQ}</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      ${REQNOTE}
       <p class="note">Pay, interest or a refund. For a full payslip, use Add a payslip in Income. Saved as verified, since you copy it from paper.</p>
       <p><button class="primary" id="f-save" data-action="save-income" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "planform") {
@@ -2322,7 +2329,7 @@ function renderSheet() {
       <label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(f.date)}">
       <label for="f-payee">${move ? "Name" : into ? "From" : "Paid to"} (optional)</label><input id="f-payee" data-field="payee" value="${esc(f.payee ?? "")}" autocomplete="off">
-      ${move ? moveFields(f) : `<label>Category${REQ}</label>${chips(into ? incomeCategories() : pickCategories(), f.category_id, "pick-cat")}`}
+      ${move ? moveFields(f) : `<label>Category${REQ}</label>${chips(into ? incomeCategories() : pickCategoriesWith(f.category_id), f.category_id, "pick-cat")}`}
       ${into || move ? "" : `<p><button class="link" data-action="toggle-split" aria-pressed="${f.split === true}">${f.split ? "Do not split this receipt" : "Split between two categories"}</button></p>
       ${f.split ? `<label>Second category</label>${chips(pickCategories().filter((c) => c.id !== f.category_id), f.split_cat, "pick-split")}
         <label for="f-split">Amount that belongs to the second category (\u20B1)</label><input id="f-split" data-field="split_amt" inputmode="decimal" value="${esc(f.split_amt ?? "")}" autocomplete="off">
@@ -2423,6 +2430,12 @@ function renderSheet() {
       <button class="wl-check" role="checkbox" aria-checked="${ui.form.welcomeOff === true}" data-action="welcome-off"><span class="box" aria-hidden="true"></span>Don't show this again</button>
       <p><button class="primary" data-action="welcome-mine">Make it mine</button></p>
       <p><button data-action="welcome-skip" style="width:100%">Skip for now</button></p>`;
+  } else if (sh.type === "catcard") {
+    body = `<h3 class="wl-title">New: edit your categories</h3>
+      <p class="note">Rename them, change each one's bucket, hide one you no longer use, or remove one you never used.</p>
+      <div class="wl" aria-hidden="true"><div class="wl-row">Food<small>Needs</small></div><div class="wl-row"><span class="wl-type">Weekend trips</span><small class="wl-bucket">Wants</small></div></div>
+      <p><button class="primary" data-action="cat-card-show">Show me</button></p>
+      <p><button data-action="cat-card-later" style="width:100%">Not now</button></p>`;
   } else if (sh.type === "notice") {
     body = `<h3>${esc(M.FIRST_RUN_NOTICE.title)}</h3>${figure("data")}<ol class="notes">${M.FIRST_RUN_NOTICE.lines.map((n) => `<li>${esc(n)}</li>`).join("")}</ol>
       <p><button class="primary" data-action="close-sheet">I understand</button></p>`;
@@ -2461,8 +2474,8 @@ function renderSheet() {
       <p class="note">Anything entered since this backup was made will be gone. Pictures are not in a backup, so those entries will say "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  const closer = sh.type === "notice" ? "" : sh.type === "welcome" ? "" : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
-  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
+  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "catcard" ? "" : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "catcard" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
   refreshSave();
@@ -2612,9 +2625,9 @@ function refreshSave() {
 }
 
 // ---------- toast ----------
-function showToast(text, undoId, extra) {
+function showToast(text, undoId, extra, undoAction = "undo") {
   clearTimeout(toastTimer);
-  $("toast").innerHTML = `${extra ? `<div class="extra">${esc(extra)}</div>` : ""}<div class="bar"><span>${esc(text)}</span>${undoId ? `<button data-action="undo" data-id="${esc(undoId)}">Undo</button>` : ""}</div>`;
+  $("toast").innerHTML = `${extra ? `<div class="extra">${esc(extra)}</div>` : ""}<div class="bar"><span>${esc(text)}</span>${undoId ? `<button data-action="${undoAction}" data-id="${esc(undoId)}">Undo</button>` : ""}</div>`;
   toastTimer = setTimeout(() => { $("toast").innerHTML = ""; }, 8000);
 }
 
@@ -2893,11 +2906,18 @@ async function onClick(el) {
     case "cat-edit": ui.catEdit = true; ui.confirmRemoveCat = null; renderScreen(); break;
     case "cat-done": ui.catEdit = false; ui.confirmRemoveCat = null; renderScreen(); break;
     case "remove-cat": {
-      if (ui.confirmRemoveCat !== id) { ui.confirmRemoveCat = id; renderScreen(); break; }   // a removal cannot be undone, so it asks once more
+      if (ui.confirmRemoveCat !== id) { ui.confirmRemoveCat = id; renderScreen(); break; }   // a removal asks once more, then offers Undo
       const r = M.removeCategory(S(), id); ui.confirmRemoveCat = null;
       if (!r.ok) { showToast(r.violations[0].message); renderScreen(); break; }
-      const name = S().categories.find((c) => c.id === id)?.name;
-      await commit(r.state, M.withBucket(ledger.settings, id, null)); showToast("Removed " + name); break;
+      ui.removedCat = { ...r.removed, bucket: ledger.settings.bucket_overrides?.[id] ?? null };
+      await commit(r.state, M.withBucket(ledger.settings, id, null)); showToast("Removed " + r.removed.category.name, id, null, "undo-cat"); break;
+    }
+    case "undo-cat": {
+      const u = ui.removedCat; ui.removedCat = null;
+      if (!u || u.category.id !== id) { showToast("That can no longer be undone."); break; }
+      const r = M.restoreCategory(S(), u);
+      if (!r.ok) { showToast(r.violations[0].message); break; }
+      await commit(r.state, u.bucket ? M.withBucket(ledger.settings, id, u.bucket) : ledger.settings); showToast("Put back " + u.category.name); break;
     }
     case "hide-cat": { const name = S().categories.find((c) => c.id === id)?.name; ui.confirmRemoveCat = null; await commit(S(), M.hideCategory(ledger.settings, id)); showToast("Hidden " + name + ". Show it again under Hidden categories."); break; }
     case "show-cat": await commit(S(), M.showCategory(ledger.settings, id)); break;
@@ -3298,6 +3318,8 @@ async function onClick(el) {
       break;
     }
     case "close-sheet": { voiceListener?.stop(); if (ui.sheet?.type === "budget-suggest") await savePinsFromForm(); const wasNotice = ui.sheet?.type === "notice"; ui.sheet = null; renderSheet(); if (wasNotice) maybeWelcome(); break; }
+    case "cat-card-later": ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, cat_card_seen: M.phTimestamp() }, { quiet: true }); break;
+    case "cat-card-show": { ui.sheet = null; ui.menu = false; ui.tab = "setup"; ui.setupPage = "categories"; ui.catEdit = true; renderAll(); window.scrollTo(0, 0); await commit(S(), { ...ledger.settings, cat_card_seen: M.phTimestamp() }, { quiet: true }); break; }
     case "welcome-off": ui.form.welcomeOff = !ui.form.welcomeOff; el.setAttribute("aria-checked", String(ui.form.welcomeOff)); break;
     case "welcome-skip": { const off = ui.form?.welcomeOff === true; ui.sheet = null; renderSheet(); if (off) await commit(S(), { ...ledger.settings, welcome_off: true }, { quiet: true }); break; }
     case "welcome-mine": { ui.sheet = null; ui.menu = false; ui.tab = "setup"; ui.setupPage = "categories"; ui.catEdit = true; renderAll(); window.scrollTo(0, 0); await commit(S(), { ...ledger.settings, welcome_pending: false }, { quiet: true }); break; }
@@ -3799,7 +3821,7 @@ async function start() {
   renderAll();
   if (ui.upgrade?.done) showToast("Your data was updated to the newest format. A copy of the old data is kept in Setup.");
   // A brand-new install shows the notice once: the moment is remembered in the settings, which are saved with the first save. Help shows it again on request.
-  if (device.allowEntry && boot.status === "NONE" && !ledger.settings.notice_seen_at) { ledger.settings = { ...ledger.settings, notice_seen_at: M.phTimestamp(), welcome_pending: true }; ui.sheet = { type: "notice" }; renderSheet(); }
+  if (device.allowEntry && boot.status === "NONE" && !ledger.settings.notice_seen_at) { ledger.settings = { ...ledger.settings, notice_seen_at: M.phTimestamp(), welcome_pending: true, cat_card_seen: M.phTimestamp() }; ui.sheet = { type: "notice" }; renderSheet(); }
   else if (device.allowEntry && boot.status === "OK" && !ui.sheet) maybeWelcome();
   // After an update: the latest changes, once. "Got it" (or closing the window) remembers it, saved at once so it is not shown again.
   // The start-date rule (balances skip spending dated before an account was added) is told once, with the accounts whose balance it changed.
@@ -3808,6 +3830,8 @@ async function start() {
     ui.sheet = { type: "whatsnew", changes: early }; renderSheet();
     await commit(S(), { ...ledger.settings, whatsnew_seen: M.CHANGES[0].id, start_rule_seen: M.phTimestamp() }, { quiet: true });
   } else if (device.allowEntry && boot.status === "OK" && !ui.upgrade?.failed && !ledger.settings.start_rule_seen) ledger.settings = { ...ledger.settings, start_rule_seen: M.phTimestamp() };   // nothing changed: kept with the next save
+  // A ledger that was already in use before categories could be edited gets one card about it, once (a new install has the welcome card instead).
+  if (device.allowEntry && boot.status === "OK" && !ui.sheet && !ui.upgrade?.failed && ledger.v === M.LEDGER_VERSION && ledger.settings.notice_seen_at && !ledger.settings.cat_card_seen && !ledger.settings.welcome_pending) { ui.sheet = { type: "catcard" }; renderSheet(); }
   if (device.allowEntry && boot.status === "OK") {
     // Grey placeholder pictures saved by earlier versions are dropped at once, so a letter tile shows instead of a wrong one;
     // then the listed banks' logos are loaded in the background, so they are there from the start. (On a brand-new phone

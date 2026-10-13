@@ -82,7 +82,7 @@ export { EARNINGS, DEDUCTIONS, GOVERNMENT, LOST, SOURCES, OVERTIME_SHARE, linesO
 export { homeSummary } from "./summary.js";
 export { parseSpoken } from "./speech.js";
 export { BUCKETS, CHOICES, BUCKET_LABELS, INVESTED_LABEL, DEFAULT_TARGETS, TARGET_SOURCE, resolveTargets, parseTargets, bucketOf, bucketMap, unclear, renameConflict, withBucket, starterFromTargets, bucketRows } from "./buckets.js";
-export { categoryInUse, removeKind, removeCategory, hiddenCategoryIds, isHiddenCategory, hideCategory, showCategory, pickable } from "./catedit.js";
+export { categoryInUse, removeKind, removeCategory, restoreCategory, hiddenCategoryIds, isHiddenCategory, hideCategory, showCategory, pickable } from "./catedit.js";
 export { BUCKET_WORDS, readBucket } from "./bucketwords.js";
 export { splitSavings, parseShares, shareableGoals, UNPLACED_NAME } from "./savings.js";
 export { guessType, typeOf, kindOf } from "./types.js";

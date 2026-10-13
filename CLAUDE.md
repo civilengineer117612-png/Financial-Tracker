@@ -78,6 +78,8 @@ Setup, Categories: ONE pencil edits the whole list; in edit mode a row opens the
 Required fields (amount, category, paid from) carry a `*` in the ink colour (class `req`, NEVER red: red stays for over-budget charts) with one line "* needed before you can save".
 Welcome card (new installs only, setting `welcome_pending`, set with the first-run notice): centred card "Make it yours" with a short looping animation (the finished frame under Reduce Motion), "Make it mine" (opens Categories in edit mode), "Skip for now" and a "Don't show this again" check (`welcome_off`). It returns at the next start until one of those, or the first entry. Existing ledgers never see it.
 
+Follow-ups (owner, Oct 13): removing a category offers Undo (it goes back in its old place); an entry in a hidden category still shows that category (marked hidden) when edited; the `*` also marks the tile, scheduled payment, money received and Verify edit forms; "Monthly payment" (not "Repeats each month"); a ledger already in use gets ONE card "New: edit your categories" (setting `cat_card_seen`; a new install is marked seen); a card RESERVE account CAN be paid from (a QR payment from the debit that backs a card is real spending): the usual reserve warning says when it leaves the card short, and never blocks.
+
 ## Every PR message starts with a MERGE CHECK (owner's rule)
 The PR message must START with a block titled "MERGE CHECK", exactly these six lines, each answered in one short line:
 1. Data version: before -> after (or "unchanged").

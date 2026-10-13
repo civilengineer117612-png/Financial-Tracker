@@ -35,9 +35,10 @@ let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
 const dismissNotice = async (page) => { try { await page.waitForSelector('#sheet button:has-text("I understand")', { timeout: 2500 }); await page.click('#sheet button:has-text("I understand")'); } catch { /* an old ledger shows no notice */ }
   try { await page.waitForSelector('#sheet button:has-text("Skip for now")', { timeout: 700 }); await page.click('#sheet button:has-text("Skip for now")'); } catch { /* the welcome card only shows on a new install */ } };
-async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false } = {}) {
+async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false, keepCatCard = false } = {}) {
   if (seed === undefined) seed = styled ? OWNER_STYLE : null;
   if (seed && !whatsNew) seed = { ...seed, settings: { ...(seed.settings ?? {}), whatsnew_seen: seed.settings?.whatsnew_seen ?? CHANGES[0].id, start_rule_seen: seed.settings?.start_rule_seen ?? "2026-10-01T08:00:00.000+08:00" } };   // the What's new pop-up is tested on its own
+  if (seed && !keepCatCard) seed = { ...seed, settings: { ...(seed.settings ?? {}), cat_card_seen: seed.settings?.cat_card_seen ?? "2026-10-01T08:00:00.000+08:00" } };   // the one-time card about editing categories is tested on its own
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((o) => { try { if (o) sessionStorage.setItem("logOpen", "1"); } catch {} }, logOpen);
   await ctx.addInitScript((o) => { try { if (o) sessionStorage.setItem("setupFlat", "1"); } catch {} }, setupFlat);   // most tests read the old one long Setup page; the real list of pages has its own test   // the day's entries are folded away until tapped; most tests read them, so they start unfolded
@@ -155,7 +156,7 @@ await shot(page, "03-log");
 await page.click('button.tile:has-text("Lunch")');
 check((await text(page, "#sheet")).includes("Paid from"), "a preset asks only which account");
 await shot(page, "04-pay-sheet");
-check(!(await text(page, "#sheet")).includes("Test Reserve"), "a reserve account is never offered as something to pay from");
+check((await text(page, "#sheet")).includes("Test Reserve"), "a reserve account can be paid from (a QR payment from the debit that backs a card is real spending)");
 await page.click('#sheet .chip:has-text("Test Cash")');
 check(await seen(page, "#toast", "Saved Lunch ₱95.00 · Test Cash"), "saving is one more tap and says so plainly");
 check(await seen(page, "#screen", "₱95.00"), "today's list shows it");
@@ -2934,6 +2935,28 @@ console.log("Welcome card, category editing, required marks");
   await menuGo(page, "Setup"); await page.click('button[data-action="show-cat"]');
   await page.waitForFunction(() => !(JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.hidden_categories ?? []).includes("cat-food"), null, { timeout: 4000 });
   check(true, "Show again puts it back");
+  await ctx.close();
+  // Undo after a removal puts the category back in its old place
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: seedW }));
+  await menuGo(page, "Setup"); await page.click('button[data-action="cat-edit"]');
+  const orderBefore = JSON.parse((await stored(page)).local).state.categories.map((c) => c.id).join();
+  await page.click('.row:has-text("Lakat/Date") button[data-action="remove-cat"]'); await page.click('.row:has-text("Lakat/Date") button[data-action="remove-cat"]');
+  check(await seen(page, "#toast", "Removed Lakat/Date") && await page.locator('#toast button[data-action="undo-cat"]').count() === 1, "removing a category offers Undo");
+  await page.click('#toast button[data-action="undo-cat"]');
+  await page.waitForFunction((was) => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.categories.map((c) => c.id).join() === was, orderBefore, { timeout: 4000 });
+  check(true, "Undo puts it back where it was");
+  await ctx.close();
+  // an old ledger gets the one-time card about editing categories; Not now also counts
+  ({ ctx, page, errors } = await open({ blockSw: true, keepCatCard: true }));
+  check(await seen(page, "#sheet", "New: edit your categories"), "a ledger already in use gets the one-time card about editing categories");
+  await page.click('#sheet button[data-action="cat-card-later"]');
+  await page.waitForFunction(() => !!JSON.parse(localStorage.getItem("financialTracker.ledger") ?? "{}").settings?.cat_card_seen, null, { timeout: 4000 });
+  await page.reload(); await page.waitForSelector("#nav button"); await page.waitForTimeout(600);
+  check(await page.locator("#sheet .sheet").count() === 0, "Not now, and it never comes back");
+  await ctx.close();
+  ({ ctx, page, errors } = await open({ blockSw: true, keepCatCard: true }));
+  await page.click('#sheet button[data-action="cat-card-show"]');
+  check(await page.locator('button[data-action="cat-done"]').count() === 1, "Show me opens the categories in edit mode");
   await ctx.close();
 }
 
