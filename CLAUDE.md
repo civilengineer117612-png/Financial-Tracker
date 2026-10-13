@@ -80,6 +80,8 @@ Welcome card (new installs only, setting `welcome_pending`, set with the first-r
 
 Follow-ups (owner, Oct 13): removing a category offers Undo (it goes back in its old place); an entry in a hidden category still shows that category (marked hidden) when edited; the `*` also marks the tile, scheduled payment, money received and Verify edit forms; "Monthly payment" (not "Repeats each month"); a ledger already in use gets ONE card "New: edit your categories" (setting `cat_card_seen`; a new install is marked seen); a card RESERVE account CAN be paid from (a QR payment from the debit that backs a card is real spending): the usual reserve warning says when it leaves the card short, and never blocks.
 
+CARDS SCREEN (owner, Oct 13): the net on top ("free" = what is in your accounts minus what the cards are owed, with ONE thin bar: dark = owed, light = free), then swipe cards (an account that backs a card sits right before that card; each shows its picture, name, amount), a quiet "Show as a list" link (the list twin: Credit cards, then Debit, savings and cash), then Move money and Add or change accounts at the bottom. The same wordless bar (`cover`, ink on the track colour, never red; words only for a screen reader) shows under a debit account that backs a card: on its swipe card, in Setup and under Paid from. `reserveCover` and `netPosition` in `src/model/balances.js` compute it; nothing is stored.
+
 ## Every PR message starts with a MERGE CHECK (owner's rule)
 The PR message must START with a block titled "MERGE CHECK", exactly these six lines, each answered in one short line:
 1. Data version: before -> after (or "unchanged").

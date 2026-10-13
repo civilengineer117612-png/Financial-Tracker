@@ -1413,7 +1413,7 @@ check(quick && quick.edited_before_verify === false && q.state.attachments.some(
 const quickEntries = q.state.entries.filter((e) => e.transaction_id === quick.id), mari = q.state.accounts.find((a) => a.name === "MariBank \u00b7 Credit card");
 check(quickEntries.some((e) => e.account_id === mari.id && e.amount === -59250) && quickEntries.some((e) => e.category_id === "cat-essentials" && e.amount === 59250), "it chose MariBank, ₱592.50 and Essentials without being asked");
 await menuGo(page, "Cards");
-check((await text(page, "#top")).includes("Cards") && (await text(page, "#screen")).includes("MariBank \u00b7 Credit card") && await page.locator(".row small:has-text('you owe'), .tile span").count() === 0 && !(await text(page, "#screen")).includes("in it") && !(await text(page, "#screen")).includes("owed on cards") && await page.locator('.tile[aria-label^="Owed on cards"]').count() === 1 && await page.locator('.tile[aria-label^="In your accounts"]').count() === 1, "the Cards screen lists the credit card (its debt with a minus) and the other accounts, with pictures and no little sentences");
+check((await text(page, "#top")).includes("Cards") && (await text(page, "#screen")).includes("MariBank \u00b7 Credit card") && await page.locator(".row small:has-text('you owe'), .tile span").count() === 0 && !(await text(page, "#screen")).includes("in it") && !(await text(page, "#screen")).includes("owed on cards") && await page.locator('.netcard[aria-label^="Free"]').count() === 1 && await page.locator(".swipe .swcard").count() >= 2, "the Cards screen shows the net on top, then a card for each account and credit card, with pictures and no little sentences");
 await page.click('#nav button:has-text("Log")');
 await page.click('#nav button:has-text("Verify")');
 check(await page.waitForSelector("img.shot[data-photo]:not([hidden])", { timeout: 4000 }).then(() => true, () => false) && (await text(page, "#screen")).includes("Essentials"), "Verify shows the photo beside what was read");
@@ -2957,6 +2957,29 @@ console.log("Welcome card, category editing, required marks");
   ({ ctx, page, errors } = await open({ blockSw: true, keepCatCard: true }));
   await page.click('#sheet button[data-action="cat-card-show"]');
   check(await page.locator('button[data-action="cat-done"]').count() === 1, "Show me opens the categories in edit mode");
+  await ctx.close();
+  // Cards: the net, swipe cards with the backing account before its card, the bar, a list twin; the bar in Setup and under Paid from
+  const acc2 = (id, name, cls, extra = {}) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-09-01", ...extra });
+  const seedC = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc2("d", "Test Debit", "asset", { opening_balance: 1000000, reserve_for: "c" }), acc2("c", "Test Card", "liability"), acc2("w", "Test Wallet", "asset", { opening_balance: 250000 })],
+    transactions: [{ id: "t1", date: "2026-10-02", payee: "Sample Store", memo: "", status: "verified", source: "manual", created_at: TSW, verified_at: TSW }],
+    entries: [{ transaction_id: "t1", category_id: "cat-food", amount: 300000 }, { transaction_id: "t1", account_id: "c", amount: -300000 }], attachments: [] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: seedC }));
+  await menuGo(page, "Cards");
+  check((await text(page, ".netcard")).replace(/\s+/g, " ").includes("\u20B19,500.00"), "Cards opens with what is free: what is in the accounts minus what the cards are owed");
+  const names = await page.locator(".swipe .swcard .swname").allInnerTexts();
+  check(names.join("|") === "Test Debit|Test Card|Test Wallet", "the account that backs the card sits right before it (" + names.join("|") + ")");
+  check(await page.locator(".swipe .swcard:first-child .cover").count() === 1 && await page.locator(".swipe .swcard:first-child .cover span").evaluate((e) => e.style.width) === "30%", "the debit card carries the bar, 30% owed");
+  await page.click('[data-action="cards-list"]');
+  check((await text(page, "#screen")).toLowerCase().includes("credit cards") && await page.locator(".swipe").count() === 0, "Show as a list gives the plain list");
+  await menuGo(page, "Setup");
+  check(await page.locator("#screen .coverwrap .cover").count() === 1, "Setup shows the same bar under the account that backs a card");
+  await page.click('#nav button:has-text("Log")'); await page.click('button[data-action="open-other"]'); await page.waitForSelector("#sheet #f-amount");
+  check(await page.locator("#sheet .coverrow .cover").count() === 1, "and under Paid from");
+  await ctx.close();
+  // Budget keeps a hidden category in its place with a quiet word
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...seedC, settings: { ...seedC.settings, hidden_categories: ["cat-lakat"] } } }));
+  await menuGo(page, "Budget");
+  check(await page.locator('#screen .choice:has-text("Lakat/Date") small.hiddennote').count() === 1 && await page.locator("#screen small.hiddennote").count() === 1, "Budget marks only the hidden category, in its own place, with one quiet word");
   await ctx.close();
 }
 

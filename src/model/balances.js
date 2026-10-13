@@ -54,3 +54,19 @@ export function reserveShortfalls(accounts, entries) {
   }
   return out;
 }
+
+// For every reserve account: how much of it the card it covers is owed (kept) and how much is free to spend, and the owed part as a share of it (0 to 1, for a bar).
+// A reserve with nothing in it that is owed something is a full bar. Reads what reserveShortfalls reads; nothing is stored.
+export function reserveCover(accounts, entries) {
+  return reserveShortfalls(accounts, entries).map((r) => {
+    const balance = Math.max(0, r.reserve), kept = Math.min(balance, Math.max(0, r.outstanding));
+    return { reserve_id: r.reserve_id, card_id: r.card_id, balance: r.reserve, owed: Math.max(0, r.outstanding), kept, free: balance - kept,
+      share: balance > 0 ? kept / balance : r.outstanding > 0 ? 1 : 0 };
+  });
+}
+
+// The net of the Cards screen: what you have, what the cards are owed, what is truly free, and the owed part of what you have as a share (0 to 1) for the bar.
+export function netPosition(held, owe) {
+  const have = Math.max(0, held), owed = Math.max(0, owe);
+  return { have, owed, free: held - owed, share: have > 0 ? Math.min(1, owed / have) : owed > 0 ? 1 : 0 };
+}

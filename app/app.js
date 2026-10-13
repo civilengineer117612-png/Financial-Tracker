@@ -90,6 +90,8 @@ const readLine = (name) => { if (!(name ?? "").trim()) return "The bucket is rea
 const bucketChips = (id, current, action = "pick-bucket") => M.CHOICES.map((b) => `<button class="chip" data-action="${action}" data-id="${esc(id ?? "")}" data-bucket="${b}" aria-pressed="${current === b}">${b === "other" ? "Keep in Other" : b === "need" ? "Need" : b === "want" ? "Want" : "Savings"}</button>`).join(" ");
 // An entry already in a hidden category keeps showing it (marked hidden) while it is edited, so it can be kept or changed.
 const pickCategoriesWith = (id) => { const list = pickCategories(), c = id ? expenseCategories().find((x) => x.id === id) : null; return c && !list.includes(c) ? [...list, { ...c, name: c.name + " (hidden)" }] : list; };
+// Budget keeps a hidden category in its place, plain, with one quiet word under the name.
+const hiddenTag = (id) => M.isHiddenCategory(ledger.settings, id) ? `<small class="hiddennote">hidden</small>` : "";
 const pickCategories = () => M.pickable(expenseCategories(), ledger.settings);   // the pickers leave out the categories you hid
 const expenseCategories = () => S().categories.filter((c) => c.kind === "expense" && c.id !== M.UNLOGGED_CATEGORY_ID);
 
@@ -1142,7 +1144,7 @@ function viewSetup() {
   const reserveExists = S().accounts.some((a) => a.reserve_for);
   const hosts = activeAccounts().filter((a) => a.class === "asset" && !a.reserve_for);
   const rows = cashFirst(S().accounts.filter((a) => !a.archived)).map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? "Bank, wallet or cash" : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"} · <button class="link" data-action="edit-last4" data-id="${esc(a.id)}">${a.last4 ? "ends in " + esc(a.last4) : "add last 4 digits"}</button></small></div></div>
-      <div class="amt">${peso(M.naturalBalance(a, M.countedEntries(S())))}${!used.has(a.id) ? `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`
+      <div class="amt">${peso(M.naturalBalance(a, M.countedEntries(S())))}${(() => { const cv = reserveCovers().find((x) => x.reserve_id === a.id); return cv ? `<div class="coverwrap">${coverBar(cv.share, coverLabel(cv))}</div>` : ""; })()}${!used.has(a.id) ? `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`
         : M.naturalBalance(a, M.countedEntries(S())) === 0 ? `<br><button class="link" data-action="hide-account" data-id="${esc(a.id)}">Hide</button>` : ""}</div></div>`).join("");
   const hiddenAccts = S().accounts.filter((a) => a.archived);
   const hiddenHtml = hiddenAccts.length ? `<h2>Hidden accounts</h2><p class="note">Their entries and history stay. They are left out of pickers and totals.</p>${hiddenAccts.map((a) => `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}</div></div><div class="amt"><button class="link" data-action="show-account" data-id="${esc(a.id)}">Show again</button></div></div>`).join("")}` : "";
@@ -1294,6 +1296,13 @@ function flipChart(rows, total, { shape = "bars" } = {}) {
 // A small arrow beside an amount: up is money spent, down is money paid in (the words are read aloud, not shown).
 const arrow = (up) => `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${up ? "M12 19V5M5 12l7-7 7 7" : "M12 5v14M5 12l7 7 7-7"}"/></svg>`;
 const flow = (up, amt) => `<span class="flow">${arrow(up)}<span class="sr">${up ? "spent " : "paid "}</span>${peso(amt)}</span>`;
+// The bar for a debit account that backs a card: the dark part is what the card is owed, the light part is free to spend. No words on screen; a screen reader hears them.
+const coverBar = (share, label) => `<span class="cover" role="img" aria-label="${esc(label)}"><span style="width:${Math.round(share * 100)}%"></span></span>`;
+const coverLabel = (c) => `${peso(c.kept)} kept for ${accountName(c.card_id)}, ${peso(c.free)} free to spend`;
+const reserveCovers = () => M.reserveCover(S().accounts, M.countedEntries(S()));
+// Under a "Paid from" row of chips: one thin bar for each reserve account, with its picture, so the owed and free parts are seen before choosing.
+const reserveStrip = () => reserveCovers().map((c) => { const a = S().accounts.find((x) => x.id === c.reserve_id); return a && !a.archived ? `<div class="coverrow">${iconOf(a, 20)}${coverBar(c.share, a.name + ": " + coverLabel(c))}</div>` : ""; }).join("");
+const paidChips = (selected) => chips(accountsFor(null), selected, "pick-acct") + reserveStrip();
 // The Cards screen (menu): every account in one place. Credit cards show what you owe and what was spent on and paid toward each in the
 // period; debit cards, savings, wallets and cash show their balance and what was spent from them. A card is just one of the accounts.
 function viewCards() {
@@ -1303,11 +1312,29 @@ function viewCards() {
   const row = (a, main, small) => `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}${small ? `<small>${small}</small>` : ""}</div></div><div class="amt">${main}</div></div>`;
   const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), `${c.owe > 0 ? "\u2212" : ""}${peso(c.owe)}<span class="sr"> you owe</span>`, [c.spent > 0 ? flow(true, c.spent) : "", c.paid > 0 ? flow(false, c.paid) : ""].filter(Boolean).join(" ")) ).join("") : `<p class="note">No credit cards yet. In Setup, add an account and choose "Credit card".</p>`;
   const money = o.money.length ? [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))).map((m) => row(acct(m.account_id), peso(m.balance), m.spent > 0 ? flow(true, m.spent) : "")).join("") : `<p class="note">No accounts yet.</p>`;
+  const net = M.netPosition(o.held, o.owe), covers = reserveCovers();
+  const sorted = [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id))));
+  // The swipe cards: a debit account that backs a card sits right before that card, then the other accounts.
+  const seq = [], used = new Set();
+  for (const c of o.cards) { for (const m of sorted) if (acct(m.account_id)?.reserve_for === c.account_id) { seq.push({ m }); used.add(m.account_id); } seq.push({ c }); }
+  for (const m of sorted) if (!used.has(m.account_id)) seq.push({ m });
+  const swipe = (it) => {
+    const id = (it.c ?? it.m).account_id, a = acct(id), cv = covers.find((x) => x.reserve_id === id);
+    const amount = it.c ? `${peso(it.c.owe)}<span class="sr"> you owe</span>` : peso(it.m.balance);
+    const small = it.c ? [it.c.spent > 0 ? flow(true, it.c.spent) : "", it.c.paid > 0 ? flow(false, it.c.paid) : ""].filter(Boolean).join(" ") : (it.m.spent > 0 ? flow(true, it.m.spent) : "");
+    return `<div class="swcard"><div class="swtop">${iconOf(a, 40)}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${it.c ? ICONS.cards : ICONS.buffer}</svg></div>
+      <div class="swname">${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}</div><div class="swamt">${amount}</div>${cv ? coverBar(cv.share, coverLabel(cv)) : small ? `<div class="swsmall">${small}</div>` : ""}</div>`;
+  };
+  const netCard = `<div class="netcard" role="group" aria-label="Free ${esc(peso(net.free))}: in your accounts ${esc(peso(o.held))}, owed on cards ${esc(peso(o.owe))}"><div class="netbig">${net.free < 0 ? "\u2212" : ""}${peso(Math.abs(net.free))}</div>${coverBar(net.share, "Owed on cards is " + Math.round(net.share * 100) + "% of what is in your accounts")}<div class="netsides"><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.buffer}</svg>${peso(o.held)}</span><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.cards}</svg>${peso(o.owe)}</span></div></div>`;
+  const setAside = (() => { const w = M.setAsideForSpending(M.sinkingFunds(S(), ledger.settings, { month: M.monthOf(today()), asOf: today() })); return w > 0 ? `<p class="note" id="cards-setaside">${peso(w)} of this is set aside for planned spending, not savings.</p>` : ""; })();
+  const listView = `<h2>Credit cards</h2>${cards}
+    <h2>Debit, savings and cash</h2>${money}`;
+  const cardView = `<div class="swipe" tabindex="0" aria-label="Your accounts and cards, swipe sideways">${seq.map(swipe).join("")}</div>
+    <div class="dots" aria-hidden="true">${seq.map((_, i) => `<span${i === 0 ? ' class="on"' : ""}></span>`).join("")}</div>`;
   return `<h1>Cards</h1>${periodStepper(p)}
-    <div class="tiles two"><div class="tile" role="group" aria-label="In your accounts ${esc(peso(o.held))}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.buffer}</svg><b>${peso(o.held)}</b></div><div class="tile" role="group" aria-label="Owed on cards ${esc(peso(o.owe))}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.cards}</svg><b>${o.owe > 0 ? "\u2212" : ""}${peso(o.owe)}</b></div></div>
-    ${(() => { const w = M.setAsideForSpending(M.sinkingFunds(S(), ledger.settings, { month: M.monthOf(today()), asOf: today() })); return w > 0 ? `<p class="note" id="cards-setaside">${peso(w)} of this is set aside for planned spending, not savings.</p>` : ""; })()}
-    <h2>Credit cards</h2>${cards}
-    <h2>Debit, savings and cash</h2>${money}
+    ${netCard}${setAside}
+    ${ui.cardsList ? listView : cardView}
+    <p class="center"><button class="link" data-action="cards-list">${ui.cardsList ? "Show as cards" : "Show as a list"}</button></p>
     ${why(`Paying a card bill is not spending: the purchases were counted when you made them. The amounts spent and paid are for ${esc(periodLabel(p))}.`)}
     <p><button data-action="open-move" style="width:100%">Move money between accounts</button></p>
     <p><button class="link" data-action="tab" data-tab="setup" data-page="accounts">Add or change accounts</button></p>`;
@@ -1520,7 +1547,7 @@ function scheduleSheet(f) {
       <label for="s-day">Due around day${REQ}</label><input id="s-day" data-field="sday" inputmode="numeric" value="${esc(f.sday ?? "")}" autocomplete="off">
       <details><summary>In another currency</summary><label for="s-cur">Currency (like USD)</label><input id="s-cur" data-field="scur" value="${esc(f.scur ?? "")}" autocomplete="off"><label for="s-fx">Amount in that currency</label><input id="s-fx" data-field="sfx" inputmode="decimal" value="${esc(f.sfx ?? "")}" autocomplete="off"><p class="note">The pesos above are an estimate. You fix them in Verify.</p></details>`}
     <label>Category${REQ}</label>${chips(pickCategoriesWith(f.category_id), f.category_id, "pick-cat")}
-    <label>Paid from${REQ}</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
+    <label>Paid from${REQ}</label>${paidChips(f.account_id)}
     ${REQNOTE}
     <p class="note" id="sch-line" role="status"></p>
     <p class="note" id="scan-why" role="status"></p>
@@ -1755,13 +1782,13 @@ function viewBudgetNew() {
     const sf = funds.get(r.c.id);   // saving up: the bar and "over" use what was set aside since it began, not just this month
     if (sf) {
       const t = Math.min(1000, sf.setAside > 0 ? M.tenths(Math.max(0, sf.spent), sf.setAside) : 0);
-      return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${t / 10}%"></span></span><small>${sf.over ? glyph("critical") + " Over by " + peso(sf.spent - sf.setAside) : peso(sf.available) + " saved up to spend"} \u00b7 ${peso(sf.spent)} spent</small></span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month"}<small>saving up</small></span></button>`;
+      return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}${hiddenTag(r.c.id)}<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${t / 10}%"></span></span><small>${sf.over ? glyph("critical") + " Over by " + peso(sf.spent - sf.setAside) : peso(sf.available) + " saved up to spend"} \u00b7 ${peso(sf.spent)} spent</small></span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month"}<small>saving up</small></span></button>`;
     }
     const over = r.st?.over && r.now !== null;
     const change = (r.later !== r.now ? `<small>${r.later === null ? "ends" : peso(r.later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "")
       + (M.committedIn(S(), r.c.id, month, today()) ? `<small>Committed by installments this month: ${peso(M.committedIn(S(), r.c.id, month, today()))}</small>` : "");
     const bar = r.now > 0 ? (() => { const sp = Math.max(0, r.st?.spent ?? 0), t = Math.min(1000, M.tenths(sp, r.now)); return `<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${t / 10}%"></span></span><small>${flow(true, sp)}${M.showTenths(t)}</small>`; })() : "";
-    return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}${bar}${change}${over ? `<small class="overnote">${glyph("critical")} Over budget by ${peso(r.st.spent - r.now)}</small>` : ""}</span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month" + share(r.now)}</span></button>`;
+    return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}${hiddenTag(r.c.id)}${bar}${change}${over ? `<small class="overnote">${glyph("critical")} Over budget by ${peso(r.st.spent - r.now)}</small>` : ""}</span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month" + share(r.now)}</span></button>`;
   }).join("");
   const savedHtml = saved.length ? saved.map((r) => `<div class="row"><div>${esc(r.name)}<small>${esc(r.pinned ? "The amount you typed" : r.label)}</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}${r.goal_id && !plan ? `<button class="link" data-action="open-goal-monthly" data-id="${esc(r.goal_id)}">Change</button>` : ""}</div></div>`).join("")
     : `<p class="note">${plan ? "Your plan has no savings, goal or buffer lines." : income ? (sug?.code === "NEEDS_RENT" ? "Suggest a budget asks for your rent first, then shows what to set aside." : "Nothing suggested yet. Suggest a budget to see it.") : "Add income first."}</p>`;
@@ -1867,7 +1894,7 @@ function viewBudgetOld() {
   const rows = expenseCategories().map((c) => {
     const now = M.budgetFor(S().rules, c.id, month), later = M.budgetFor(S().rules, c.id, next);
     const change = later !== now ? `<small>${later === null ? "ends" : peso(later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "";
-    return `<button class="choice" data-action="open-budget" data-id="${esc(c.id)}"><span>${esc(c.name)}${change}</span><span class="bval">${now === null ? "No budget" : peso(now) + " a month"}</span></button>`;
+    return `<button class="choice" data-action="open-budget" data-id="${esc(c.id)}"><span>${esc(c.name)}${hiddenTag(c.id)}${change}</span><span class="bval">${now === null ? "No budget" : peso(now) + " a month"}</span></button>`;
   }).join("");
   return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${rows}
     <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
@@ -1984,7 +2011,7 @@ function renderSheet() {
     body = `<h3>Add expense</h3>
       <label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <label>Category${REQ}</label>${chips(pickCategoriesWith(ui.form.category_id), ui.form.category_id, "pick-cat")}
-      <label>Paid from${REQ}</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <label>Paid from${REQ}</label>${paidChips(ui.form.account_id)}
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-other" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "schedule-new") {
@@ -2020,7 +2047,7 @@ function renderSheet() {
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}">
       <label for="f-payee">Name (optional)</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
       ${t.schedule_id ? `<label for="f-memo">Note (optional, like "covers Sept to Oct")</label><input id="f-memo" data-field="memo" value="${esc(ui.form.memo ?? "")}" autocomplete="off">` : ""}
-      ${d.editable ? `<label>Category${REQ}</label>${chips(pickCategoriesWith(ui.form.category_id), ui.form.category_id, "pick-cat")}<label>Paid from${REQ}</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
+      ${d.editable ? `<label>Category${REQ}</label>${chips(pickCategoriesWith(ui.form.category_id), ui.form.category_id, "pick-cat")}<label>Paid from${REQ}</label>${paidChips(ui.form.account_id)}` : ""}
       ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${chips(accountsFor(null), ui.form.from_id, "pick-from")}<label>To</label>${chips(accountsFor(null), ui.form.to_id, "pick-to")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
@@ -2071,7 +2098,7 @@ function renderSheet() {
       <p class="note">Days in bold have entries.</p>`;
   } else if (sh.type === "bufsetup") {
     body = `<h3>Set up the buffer</h3>
-      <label>Which account holds the buffer?</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <label>Which account holds the buffer?</label>${paidChips(ui.form.account_id)}
       <p class="note" id="b-held"></p>
       <label for="b-buf">Overrun buffer (\u20B1)</label><input id="b-buf" data-field="buf" inputmode="decimal" value="${esc(ui.form.buf ?? "")}" autocomplete="off">
       <label for="b-allow">Everyday allowance (\u20B1)</label><input id="b-allow" data-field="allow" inputmode="decimal" value="${esc(ui.form.allow ?? "")}" autocomplete="off">
@@ -2114,7 +2141,7 @@ function renderSheet() {
       <label for="f-amount">Amount received (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off" placeholder="e.g. 9776.98">
       <label for="f-date">Date it arrived</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}" max="${esc(today())}">
       <label>What it is${REQ}</label>${chips(incomeCategories(), ui.form.category_id, "pick-cat")}
-      <label>Arrived in${REQ}</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <label>Arrived in${REQ}</label>${paidChips(ui.form.account_id)}
       ${REQNOTE}
       <p class="note">Pay, interest or a refund. For a full payslip, use Add a payslip in Income. Saved as verified, since you copy it from paper.</p>
       <p><button class="primary" id="f-save" data-action="save-income" style="margin-top:6px" disabled>Save</button></p>`;
@@ -2143,12 +2170,12 @@ function renderSheet() {
       <label for="g-name">Name</label><input id="g-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
       <label for="f-amount">Target (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <label for="g-date">Finish by (optional)</label><input id="g-date" type="date" data-field="deadline" value="${esc(ui.form.deadline ?? "")}">
-      <label>Where the money sits (optional: you can choose it later)</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <label>Where the money sits (optional: you can choose it later)</label>${paidChips(ui.form.account_id)}
       <label>What it is for (optional)</label><div class="chips"><button class="chip" data-action="pick-goal-role" aria-pressed="${ui.form.role === "emergency"}">My emergency fund</button></div>
       <p><button class="primary" id="f-save" data-action="save-goal" style="margin-top:14px" disabled>Save goal</button></p>`;
   } else if (sh.type === "goal-account") {
     const g = S().goals.find((x) => x.id === sh.id);
-    body = `<h3>Where does ${esc(g.name)} sit?</h3><p class="note">Choose the account that holds this goal's money. Its balance is the goal's balance.</p>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+    body = `<h3>Where does ${esc(g.name)} sit?</h3><p class="note">Choose the account that holds this goal's money. Its balance is the goal's balance.</p>${paidChips(ui.form.account_id)}
       <p><button class="primary" id="f-save" data-action="save-goal-account" style="margin-top:14px" disabled>Use this account</button></p>`;
   } else if (sh.type === "deposit") {
     const g = S().goals.find((x) => x.id === sh.id);
@@ -2264,7 +2291,7 @@ function renderSheet() {
         ${M.DEDUCTIONS.map((k) => field("d_", k)).join("")}
       </details>
       </div>
-      <label>Landed in</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
+      <label>Landed in</label>${paidChips(f.account_id)}
       <label for="p-emp">Employer</label><input id="p-emp" data-field="employer" value="${esc(f.employer ?? "")}" autocomplete="off">
       <label for="p-from">Pay period from</label><input id="p-from" data-field="period_from" type="date" value="${esc(f.period_from)}">
       <label for="p-to">Pay period to</label><input id="p-to" data-field="period_to" type="date" value="${esc(f.period_to)}">
@@ -2295,7 +2322,7 @@ function renderSheet() {
       const orderLine = sample ? `<p class="note" id="imp-order">${f.order ? `Dates read as <b>${f.order === "dmy" ? "day/month" : "month/day"}</b>: ${esc(sample)} is <b>${esc(longDate(M.previewImport(S(), [{ dateRaw: sample, name: "x", amount: 1 }], f.order).lines[0]?.date ?? today()))}</b>.` : `<b>Which comes first in ${esc(sample)}?</b>`}</p>
         <div class="seg" role="group" aria-label="Date order">${[["dmy", "Day / month"], ["mdy", "Month / day"]].map(([o, t]) => `<button data-action="import-order" data-id="${o}" aria-pressed="${f.order === o}">${t}</button>`).join("")}</div>` : "";
       body = `<h3>Import old spending</h3>${orderLine}
-        <label>Paid from</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
+        <label>Paid from</label>${paidChips(f.account_id)}
         ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
           <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline"><span class="mn">${esc(longDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
           ${f.notRead.length ? `<details><summary>Not read (${f.notRead.length})</summary>${f.notRead.slice(0, 20).map((l) => `<p class="note">${esc(l)}</p>`).join("")}</details>` : ""}
@@ -2334,7 +2361,7 @@ function renderSheet() {
       ${f.split ? `<label>Second category</label>${chips(pickCategories().filter((c) => c.id !== f.category_id), f.split_cat, "pick-split")}
         <label for="f-split">Amount that belongs to the second category (\u20B1)</label><input id="f-split" data-field="split_amt" inputmode="decimal" value="${esc(f.split_amt ?? "")}" autocomplete="off">
         <p class="note" id="split-note" role="status"></p>` : ""}`}
-      ${move ? "" : `<label>${into ? "Arrived in" : "Paid from"}${REQ}</label>${chips(accountsFor(null), f.account_id, "pick-acct")}`}
+      ${move ? "" : `<label>${into ? "Arrived in" : "Paid from"}${REQ}</label>${paidChips(f.account_id)}`}
       ${f.dupOf ? dupBlock(f.dupOf) : ""}
       <details${sh.voice ? " hidden" : ""}><summary>What the reader saw</summary><pre class="rawtext">${esc(f.text || "(nothing)")}</pre></details>
       <p class="note" id="scan-why" role="status"></p>
@@ -2903,6 +2930,7 @@ async function onClick(el) {
     case "add-cat": ui.sheet = { type: "cat", id: null }; ui.form = { name: "" }; renderSheet(); break;
     case "rename-cat": { const c = S().categories.find((x) => x.id === id), b = c ? M.bucketOf(c, ledger.settings.bucket_overrides ?? {}) : null; ui.sheet = { type: "cat", id }; ui.form = { name: c?.name ?? "", bucket: b, bucket0: b }; renderSheet(); break; }
     case "pick-edit-bucket": ui.form.bucket = el.dataset.bucket; for (const b of document.querySelectorAll("#c-edit-bucket button")) b.setAttribute("aria-pressed", String(b.dataset.bucket === ui.form.bucket)); break;
+    case "cards-list": ui.cardsList = !ui.cardsList; renderScreen(); break;
     case "cat-edit": ui.catEdit = true; ui.confirmRemoveCat = null; renderScreen(); break;
     case "cat-done": ui.catEdit = false; ui.confirmRemoveCat = null; renderScreen(); break;
     case "remove-cat": {
@@ -3503,6 +3531,12 @@ function zoomTo(zoom) {
 }
 
 let drag = null;
+document.addEventListener("scroll", (e) => {   // the dots under the swipe cards follow the card in view
+  const t = e.target; if (!t?.classList?.contains("swipe")) return;
+  const first = t.firstElementChild; if (!first) return;
+  const i = Math.max(0, Math.min(t.children.length - 1, Math.round(t.scrollLeft / (first.getBoundingClientRect().width + 12))));
+  t.parentElement.querySelectorAll(".dots span").forEach((d, k) => d.classList.toggle("on", k === i));
+}, true);
 document.addEventListener("pointerdown", (e) => {
   const stage = e.target.closest?.("#i-stage");
   if (!stage || !ui.form.crop) return;

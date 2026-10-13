@@ -260,7 +260,7 @@ test("pictures and signs instead of little sentences under figures: Cards", () =
   assert.match(js, /\$\{c\.owe > 0 \? "\\u2212" : ""\}\$\{peso\(c\.owe\)\}<span class="sr"> you owe<\/span>/, "a card's debt has a minus, and a screen reader still hears 'you owe'");
   assert.match(js, /const flow = \(up, amt\) => `<span class="flow">\$\{arrow\(up\)\}<span class="sr">\$\{up \? "spent " : "paid "\}<\/span>\$\{peso\(amt\)\}<\/span>`;/, "an arrow up is spent, an arrow down is paid; both are read aloud");
   assert.match(js, /m\.spent > 0 \? flow\(true, m\.spent\) : ""/, "an account that spent nothing shows nothing");
-  assert.match(js, /aria-label="In your accounts \$\{esc\(peso\(o\.held\)\)\}"/); assert.match(js, /aria-label="Owed on cards /);
+  assert.match(js, /aria-label="Free \$\{esc\(peso\(net\.free\)\)\}: in your accounts \$\{esc\(peso\(o\.held\)\)\}, owed on cards \$\{esc\(peso\(o\.owe\)\)\}"/, "the net on top is read as one sentence: free, what you have, what is owed");
 });
 
 test("the Log says earlier entries are waiting for you to verify, and the scan chip is simply Payment", () => {
