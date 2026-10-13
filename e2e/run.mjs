@@ -98,6 +98,7 @@ const stored = (page) => page.evaluate(async () => {
   return { local, idb };
 });
 const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: SHOTS + "/" + name + ".png" }); };
+const stars = async (page) => page.locator("#sheet label .req").count();   // how many fields in the open window carry the * (needed before saving)
 
 
 // The app has no way to load a plan file any more (nobody has one yet), so tests that need a plan put one in the phone's settings, as parsed by the model.
@@ -643,6 +644,7 @@ const setBudget = async (cat, amount, startLabel) => {
 await page.click('.choice:has-text("Shopping")');
 check((await page.inputValue("#f-amount")) === "" && (await page.getAttribute('#sheet button:has-text("This month")', "aria-pressed")) === "true", "a first budget starts this month by default");
 check(await page.locator("#f-save").isDisabled(), "saving is off until there is an amount");
+check(await stars(page) === 1 && (await text(page, "#sheet")).includes("needed before you can save"), "a budget marks the amount with the *");
 await page.fill("#f-amount", "350"); await page.click("#f-save");
 check(await seen(page, "#toast", "Budget saved for Shopping"), "a budget is saved");
 check(await seen(page, "#screen", "₱350.00 a month"), "and shown beside the category");
@@ -886,6 +888,7 @@ await menuGo(page, "Trips");
 check((await text(page, "#screen")).includes("No trips yet"), "trips start empty");
 await page.click('button:has-text("Add a trip")');
 check(await page.locator("#f-save").isDisabled(), "a trip needs a name first");
+check(await stars(page) === 1 && (await text(page, "#sheet")).includes("needed before you can save"), "a trip marks only its name with the *");
 await page.fill("#t-name", "Test Trip"); await page.fill("#f-amount", "1000");
 await page.click("#f-save"); await seen(page, "#toast", "Trip added");
 check((await text(page, "#screen")).includes("₱0.00 of ₱1,000.00") && (await text(page, "#screen")).includes("On track"), "a new trip shows its budget in words and as a graded meter");
@@ -1057,7 +1060,8 @@ check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors
 await menuGo(page, "Goals");
 check((await text(page, "#screen")).includes("No goals yet"), "goals start empty");
 await page.click('button:has-text("Add a goal")');
-check(await page.locator("#f-save").isDisabled(), "a goal needs a name and a place first");
+check(await page.locator("#f-save").isDisabled(), "a goal needs a name first");
+check(await stars(page) === 1 && (await text(page, "#sheet")).includes("needed before you can save"), "a goal marks only its name with the *");
 await page.fill("#g-name", "Apartment"); await page.fill("#f-amount", "20000"); await page.click('#sheet .chip:has-text("Wallet")');
 await page.click("#f-save"); await seen(page, "#toast", "Goal added");
 check((await text(page, "#screen")).includes("Hidden") && !(await text(page, "#screen")).includes("20,000"), "a new goal hides its balance");
@@ -1066,6 +1070,7 @@ check((await text(page, "#screen")).includes("of ₱20,000.00") && (await text(p
 await shot(page, "25-goals");
 await page.click('button:has-text("Put money in")');
 check(!(await text(page, "#sheet")).includes("Wallet"), "you cannot take the money from the goal's own account");
+check(await stars(page) === 2, "putting money in a goal marks the amount and where it comes from with the *");
 await page.fill("#f-amount", "500");
 await page.click("#f-save"); await seen(page, "#toast", "set for Apartment");
 ledgerNow = JSON.parse((await stored(page)).local);
@@ -1465,6 +1470,7 @@ const choice = await text(page, "#sheet");
 check(choice.includes("Type a payslip") && choice.includes("Take a photo") && choice.includes("Choose from photos or files") && await page.locator('#sheet input[data-scan="payslip"][capture="environment"]').count() === 1, "Add a payslip offers two ways: type it in, or read it from a photo (camera, or photos and files)");
 await page.click('#sheet button:has-text("Type a payslip")');
 check(await page.locator("#p-emp").count() === 1, "'Type a payslip' opens the payslip form");
+check(await stars(page) === 8, "the payslip marks what is needed with the * (" + await stars(page) + ")");
 await page.click('#sheet button:has-text("Cancel")');
 await addPayslipFlow(page);
 await page.setInputFiles('#sheet input[data-scan="payslip"]:not([capture])', { name: "any.png", mimeType: "image/png", buffer: Buffer.from(receiptPngForSlip, "base64") });
@@ -2769,6 +2775,7 @@ console.log("Type in a pay plan");
   check(await page.locator('#screen button.primary').count() === 1 && await page.locator('button[data-action="open-planform"]').count() === 1, "with one filled button: Type in a pay plan");
   await page.click('button[data-action="open-planform"]');
   await page.fill("#pf-start", "2026-09-01");
+  check(await stars(page) === 3 && (await text(page, "#sheet")).includes("needed before you can save"), "the pay plan form marks its start, payday and pay with the *");
   await page.fill("#pf-d1", "15"); await page.fill("#pf-p1", "10000"); await page.fill("#pf-p2", "24000");
   await page.fill("#pf-n0", "Rent"); await page.fill("#pf-b0", "5000");
   await page.fill("#pf-n1", "Food"); await page.fill("#pf-a1", "6000"); await page.fill("#pf-b1", "6000");
