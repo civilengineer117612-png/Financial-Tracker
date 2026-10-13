@@ -2761,6 +2761,22 @@ console.log("Suggested scheduled payments");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
+// ===== 5vd. the same amount on the same day, noted in Verify =====
+console.log("Same amount in Verify");
+{ ({ ctx, page, errors } = await open());
+  await addAccount(page, "Test Cash", "asset", "500"); await addAccount(page, "Test Debit", "asset", "1000");
+  await logOther("150", "Food", "Test Cash");
+  await page.click('#nav button:has-text("Verify")');
+  check(!(await text(page, "#screen")).includes("Same amount on the same day"), "one entry alone has no note");
+  await logOther("150", "Food", "Test Debit");
+  await page.click('#nav button:has-text("Verify")');
+  const both = await text(page, "#screen");
+  check(both.includes("Same amount on the same day as another entry") && both.includes("a draft") && (both.includes("Test Cash") || both.includes("Test Debit")), "two drafts of the same amount on the same day: Verify notes it and names the other, with its account");
+  await page.click('button[data-action="verify-ok"]');
+  check(await seen(page, "#screen", "already verified"), "after one is verified, the other says it is already verified, so you can delete the double");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
 // ===== 5pf. typing in a Pay plan by hand =====
 console.log("Type in a pay plan");
 { const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" };

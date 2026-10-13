@@ -186,3 +186,19 @@ export function planSplitExpense(state, input, now = new Date()) {
   const result = checkTransactionSave(applyDrafts(state, others), { transaction: main.transaction, entries });
   return { ok: result.ok, violations: result.violations, drafts: [{ transaction: main.transaction, entries }, ...others] };
 }
+
+// Other entries on the same day with the same amount as this one, so Verify can ask "is this the same payment shown twice?". Only a note: nothing is
+// refused or merged. An entry's size is the sum of its positive legs. Left out: the app's own partners (a card reserve transfer, a transfer's fee,
+// a scheduled payment's reserve) and an entry that was cancelled together with the entry that cancels it.
+// Returns [{id, status}] (status "draft" or "verified"), oldest first.
+export function sameAmountElsewhere(state, id) {
+  const mine = state.transactions.find((t) => t.id === id);
+  if (!mine) return [];
+  const size = (tid) => state.entries.filter((e) => e.transaction_id === tid && e.amount > 0).reduce((n, e) => n + e.amount, 0);
+  const amount = size(id);
+  if (!amount) return [];
+  const cancelled = new Set(state.transactions.filter((t) => t.reverses).map((t) => t.reverses));
+  const generated = (t) => t.id.startsWith("rsv:") || t.id.startsWith("sch-rsv:") || t.id.startsWith("fee:");
+  return state.transactions.filter((t) => t.id !== id && t.date === mine.date && !generated(t) && !t.reverses && !cancelled.has(t.id) && size(t.id) === amount)
+    .map((t) => ({ id: t.id, status: t.status === "verified" ? "verified" : "draft" }));
+}
