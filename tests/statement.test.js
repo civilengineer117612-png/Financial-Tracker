@@ -165,3 +165,28 @@ test("a listed bank's name near the top of the first page is shown and used to c
   const plain = parseStatement([items]);
   assert.deepEqual([plain.bank, plain.bankId], [null, null]);
 });
+
+import { nameKey, holderNames, isOwnName } from "../src/model/index.js";
+
+test("your own name: initials, punctuation and Jr do not matter; the first and last words do", () => {
+  assert.deepEqual(nameKey("Sample P. Dela Cruz, Jr."), { first: "sample", last: "cruz" });
+  const holders = holderNames(groupRows([t(40, 760, "BANK STATEMENT"), t(40, 723, "SAMPLE PEDRO DELA CRUZ JR"), t(40, 708, "ACCOUNT NUMBER 0000"), t(40, 690, "12 Sample Street, Sample City")]));
+  assert.deepEqual(holders, [{ first: "sample", last: "cruz" }], "only the name line counts: not the title, the account line or the address");
+  assert.ok(isOwnName("Sample P. Dela Cruz, Jr.", holders));
+  assert.ok(isOwnName("Transfer to SAMPLE D. CRUZ GoTyme Bank, Account No. 0000", holders), "a transfer description naming you, with the bank's name in it");
+  assert.ok(!isOwnName("Sample Friend", holders), "another person with the same first name is not you");
+  assert.ok(!isOwnName("Other Cruz", holders), "nor someone with the same last name");
+  assert.ok(!isOwnName("Atome", holders), "nor a one-word payee");
+});
+
+test("a transfer to or from your own name is a move between your accounts: never spending, never income, and never asked", () => {
+  const page = outInPage({ rows: [["03 MAY", "Sample P. Dela Cruz, Jr.", "Transfer", 0, 100000], ["04 MAY", "Sample P. Dela Cruz, Jr.", "Transfer", 50000, 0], ["05 MAY", "Sample Friend", "Transfer", 20000, 0], ["06 MAY", "Sample Cafe", "Payment", 10000, 0]],
+    summary: { opening: 500000, outgoing: 80000, incoming: 100000, closing: 520000 } });
+  const r = parseStatement([[t(40, 723, "SAMPLE PEDRO DELA CRUZ JR"), ...page]]);
+  assert.deepEqual(r.lines.map((l) => l.meaning), ["move", "move", "unsure", "spending"]);
+  assert.ok(r.lines[0].own && r.lines[1].own);
+  assert.deepEqual(statementLeftOut(r.lines), { moves: 2, moneyIn: 0 });
+  assert.equal(statementItems(r.lines).filter((i) => i.meaning === "unsure").length, 1, "only the friend is asked about");
+  const noName = parseStatement([page]);
+  assert.deepEqual(noName.lines.map((l) => l.meaning), ["in", "unsure", "unsure", "spending"], "with no name at the top, nothing is guessed");
+});
