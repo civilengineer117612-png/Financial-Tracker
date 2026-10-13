@@ -437,7 +437,9 @@ function viewVerify() {
   const sched = t.schedule_id ? (S().schedules ?? []).find((x) => x.id === t.schedule_id) : null;
   const schedNote = sched ? `<p class="note">Scheduled payment${sched.kind === "installment" ? ", " + t.schedule_key + " of " + sched.count : ""}. Check the amount and date.</p>` : "";
   const finalNote = t.corrects ? `<p class="note">Replaces an entry you cancelled at the Weekly review.</p>` : "";
-  const fromPhoto = schedNote + finalNote + (t.source === "photo" ? `<p class="note">Read from the photo. Compare each line with the paper before you tap Correct.</p>`
+  const twins = M.sameAmountElsewhere(S(), t.id);   // only a note: the same payment can arrive as a receipt photo and as the bank's own screen
+  const twinNote = twins.length ? `<p class="note">\u25B2 Same amount on the same day as ${twins.length === 1 ? "another entry" : twins.length + " other entries"}: ${twins.slice(0, 2).map((x) => { const d = describe(S().transactions.find((y) => y.id === x.id)); return esc(d.title) + (d.detail ? " (" + esc(d.detail) + ")" : "") + (x.status === "verified" ? ", already verified" : ", a draft"); }).join("; ")}. If it is the same payment shown twice, delete this one.</p>` : "";
+  const fromPhoto = twinNote + schedNote + finalNote + (t.source === "photo" ? `<p class="note">Read from the photo. Compare each line with the paper before you tap Correct.</p>`
     : t.source === "voice" ? `<p class="note">Made from what you said${t.memo ? ": \u201C" + esc(t.memo) + "\u201D" : ""}. Check each line before you tap Correct.</p>` : "");
   return `${head}
     <div class="card">${shot ? `<button class="shotbtn" data-action="open-photo" data-id="${esc(shot.id)}" aria-label="Open the photo full size"><img class="shot" data-photo="${esc(shot.id)}" alt="The photo this entry was read from" hidden></button>` : ""}${fromPhoto}<div class="what">${esc(d.title)}</div><div class="big">${peso(d.amount)}</div>
