@@ -2775,7 +2775,7 @@ console.log("Type in a pay plan");
   check(await page.locator('#screen button.primary').count() === 1 && await page.locator('button[data-action="open-planform"]').count() === 1, "with one filled button: Type in a pay plan");
   await page.click('button[data-action="open-planform"]');
   await page.fill("#pf-start", "2026-09-01");
-  check(await stars(page) === 3 && (await text(page, "#sheet")).includes("needed before you can save"), "the pay plan form marks its start, payday and pay with the *");
+  check(await stars(page) === 5 && (await text(page, "#sheet")).includes("needed before you can save"), "the pay plan form marks its start, both paydays and both pays with the *");
   await page.fill("#pf-d1", "15"); await page.fill("#pf-p1", "10000"); await page.fill("#pf-p2", "24000");
   await page.fill("#pf-n0", "Rent"); await page.fill("#pf-b0", "5000");
   await page.fill("#pf-n1", "Food"); await page.fill("#pf-a1", "6000"); await page.fill("#pf-b1", "6000");
