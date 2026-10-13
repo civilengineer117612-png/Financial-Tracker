@@ -94,7 +94,7 @@ test("a category with no stored Type whose name is Rent also gets the rent quest
 
 test("the screens show Name and Bucket only, ask the unclear ones with four answers, warn about them with a link, and ask on a clashing rename", () => {
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8"), help = readFileSync(new URL("../src/model/help.js", import.meta.url), "utf8");
-  assert.match(app, /const catLine = \(c\) => `\$\{esc\(c\.name\)\} \\u00b7 \$\{esc\(M\.BUCKET_LABELS\[M\.bucketOf\(c, /);
+  assert.match(app, /<div>\$\{esc\(c\.name\)\}<small>\$\{bucketLine\(c\)\}<\/small><\/div>/, "the bucket sits under the name in a small quiet line, not after a dot");
   assert.match(app, /b === "other" \? "Keep in Other"/);
   assert.match(app, /Includes \$\{peso\(bk\.unconfirmed\.amount\)\} from \$\{bk\.unconfirmed\.count\} unconfirmed/);
   assert.match(app, /data-action="goto-confirm">confirm them/);
@@ -102,7 +102,7 @@ test("the screens show Name and Bucket only, ask the unclear ones with four answ
   assert.match(app, /M\.renameConflict\(cat, ui\.form\.name/);
   assert.match(app, /You set this to \$\{M\.BUCKET_LABELS\[sh\.mine\]\}\. The new name reads as \$\{M\.BUCKET_LABELS\[sh\.read\]\}/);
   assert.ok(!/>Type</.test(app) && !/>Role</.test(app) && !/\(guess\)/.test(app), "no Type, no Role and no guesses on the screens");
-  assert.ok(/tap Bucket/.test(help) && !/tap Type/.test(help));
+  assert.ok(/tap the pencil, then a category/.test(help) && !/tap Type/.test(help));
 });
 
 test("the bucket bars have a list twin: the same rows as a table, switched by a tap", () => {

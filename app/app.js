@@ -81,12 +81,14 @@ function tipsBlock(starter) {
   const yours = tipsYoursNow();
   return `<div class="tips" id="sug-tips"><h4>Budgeting tips</h4><ul>${first}${M.BUDGET_TIPS.map((x) => `<li><b>${esc(x.rule)}:</b> <i>${esc(x.text)}</i>${yours[x.rule] ? ` <span class="yours">Yours: <b>${esc(yours[x.rule])}</b></span>` : ""} <small>${esc(x.source)}</small></li>`).join("")}</ul><p class="note"><i>${esc(M.TIPS_NOTE)}</i></p></div>`;
 }
-const catLine = (c) => `${esc(c.name)} \u00b7 ${esc(M.BUCKET_LABELS[M.bucketOf(c, ledger.settings.bucket_overrides ?? {})])}`;
+const REQ = ' <span class="req" aria-hidden="true">*</span>';   // marks what is needed before an entry can be saved (ink colour, never red)
+const REQNOTE = `<p class="note small"><span class="req" aria-hidden="true">*</span> needed before you can save</p>`;
 // The four buttons for choosing a bucket by hand; the one in force is pressed.
 // What the name says, in the add window: the bucket it reads as, or that it is not clear and will be asked.
 const readLine = (name) => { if (!(name ?? "").trim()) return "The bucket is read from the name."; const r = M.readBucket(name).bucket;
   return r ? `Reads as ${M.BUCKET_LABELS[r]}. You can change it later in Setup.` : "Not clear from the name. Choose one now, or it waits in Other and is asked on Budget."; };
 const bucketChips = (id, current, action = "pick-bucket") => M.CHOICES.map((b) => `<button class="chip" data-action="${action}" data-id="${esc(id ?? "")}" data-bucket="${b}" aria-pressed="${current === b}">${b === "other" ? "Keep in Other" : b === "need" ? "Need" : b === "want" ? "Want" : "Savings"}</button>`).join(" ");
+const pickCategories = () => M.pickable(expenseCategories(), ledger.settings);   // the pickers leave out the categories you hid
 const expenseCategories = () => S().categories.filter((c) => c.kind === "expense" && c.id !== M.UNLOGGED_CATEGORY_ID);
 
 // The picture the owner chose for an account, or a plain first-letter tile until they do.
@@ -1161,9 +1163,19 @@ function viewSetup() {
     <h2>Your accounts</h2>
     ${rows || `<p class="note">No accounts yet.</p>`}${keepNote}${hiddenHtml}
     ${formOpen ? "" : `<p><button id="add-account-open" data-action="toggle-add-account" style="width:100%">Add an account</button></p>`}`;
-  const categoriesHtml = `    <h2>Categories</h2>
-    ${expenseCategories().map((c) => `<div class="row"><div>${catLine(c)}</div><div class="amt"><button class="link" data-action="cat-bucket" data-id="${esc(c.id)}">Bucket</button> <button class="link" data-action="rename-cat" data-id="${esc(c.id)}">Rename</button></div></div>`).join("")}
-    <p><button data-action="add-cat" style="width:100%">Add a category</button></p>`;
+  const bucketLine = (c) => esc(M.BUCKET_LABELS[M.bucketOf(c, ledger.settings.bucket_overrides ?? {})]);
+  const catRow = (c) => ui.catEdit
+    ? `<div class="row catedit"><button class="rowbtn" data-action="rename-cat" data-id="${esc(c.id)}"><span>${esc(c.name)}<small>${bucketLine(c)}</small></span><span class="chev" aria-hidden="true">\u203A</span></button>${M.removeKind(S(), c.id) === "remove"
+        ? `<button class="catx" data-action="remove-cat" data-id="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">${ui.confirmRemoveCat === c.id ? "Tap again to remove" : "\u00D7"}</button>`
+        : `<button class="catx" data-action="hide-cat" data-id="${esc(c.id)}" aria-label="Hide ${esc(c.name)}">\u2013</button>`}</div>`
+    : `<div class="row"><div>${esc(c.name)}<small>${bucketLine(c)}</small></div></div>`;
+  const pencilSvg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+  const hiddenCats = expenseCategories().filter((c) => M.isHiddenCategory(ledger.settings, c.id));
+  const categoriesHtml = `    <div class="h2row"><h2>Categories</h2>${ui.catEdit ? `<button class="link done" data-action="cat-done">Done</button>` : `<button class="iconbtn" data-action="cat-edit" aria-label="Edit categories">${pencilSvg}</button>`}</div>
+    ${ui.catEdit ? `<p class="note small">Tap a category to change it. \u00D7 removes one with no entries; \u2013 hides one that has entries (its history stays).</p>` : ""}
+    ${pickCategories().map(catRow).join("")}
+    <p><button data-action="add-cat" style="width:100%">Add a category</button></p>
+    ${hiddenCats.length ? `<h2>Hidden categories</h2><p class="note">Their entries, budgets and history stay. They are left out of the pickers.</p>${hiddenCats.map((c) => `<div class="row"><div>${esc(c.name)}</div><div class="amt"><button class="link" data-action="show-cat" data-id="${esc(c.id)}">Show again</button></div></div>`).join("")}` : ""}`;
   const budgetHtml = `    ${planOf() ? `<h2>Pay plan</h2>
     <p class="note">A plan is in effect. <button class="link" data-action="tab" data-tab="${ledger.settings.try_new_budget ? "budget" : "plan"}">${ledger.settings.try_new_budget ? "Open it in Budget" : "Open it"}</button></p>` : ""}
     <h2>Try the new Budget</h2>
@@ -1504,7 +1516,7 @@ function scheduleSheet(f) {
     : `<label for="s-amount">Amount each month (\u20B1)</label><input id="s-amount" data-field="samount" inputmode="decimal" value="${esc(f.samount ?? "")}" autocomplete="off">
       <label for="s-day">Due around day</label><input id="s-day" data-field="sday" inputmode="numeric" value="${esc(f.sday ?? "")}" autocomplete="off">
       <details><summary>In another currency</summary><label for="s-cur">Currency (like USD)</label><input id="s-cur" data-field="scur" value="${esc(f.scur ?? "")}" autocomplete="off"><label for="s-fx">Amount in that currency</label><input id="s-fx" data-field="sfx" inputmode="decimal" value="${esc(f.sfx ?? "")}" autocomplete="off"><p class="note">The pesos above are an estimate. You fix them in Verify.</p></details>`}
-    <label>Category</label>${chips(expenseCategories(), f.category_id, "pick-cat")}
+    <label>Category</label>${chips(pickCategories(), f.category_id, "pick-cat")}
     <label>Paid from</label>${chips(accountsFor(null), f.account_id, "pick-acct")}
     <p class="note" id="sch-line" role="status"></p>
     <p class="note" id="scan-why" role="status"></p>
@@ -1939,6 +1951,11 @@ function lockPage(on) {
   if (on && lockY === null) { lockY = window.scrollY; document.body.style.top = -lockY + "px"; document.body.classList.add("locked"); }
   else if (!on && lockY !== null) { const y = lockY; lockY = null; document.body.classList.remove("locked"); document.body.style.top = ""; window.scrollTo(0, y); }
 }
+// The welcome card of a new install: shown after the first-run notice and again on later starts until you tap Make it mine, or tick "Don't show this again", or log something.
+function maybeWelcome() {
+  if (!ledger.settings.welcome_pending || ledger.settings.welcome_off || S().transactions.length) return;
+  ui.sheet = { type: "welcome" }; ui.form = { welcomeOff: false }; renderSheet();
+}
 function renderSheet() {
   const sh = ui.sheet;
   if (!sh) { $("sheet").innerHTML = ""; lastSheetKey = null; lockPage(false); return; }
@@ -1956,13 +1973,14 @@ function renderSheet() {
       ${ui.confirmRemoveTile ? `<p class="note">Remove this tile? <button class="link" data-action="remove-tile-yes">Yes, remove it</button></p>` : `<p class="note small">This changes the tile on the Log screen. Nothing is logged.</p>`}
       <label for="pay-name">Name</label><input id="pay-name" data-field="name" value="${esc(f.name ?? "")}" autocomplete="off">
       <label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
-      <label>Category</label>${chips(expenseCategories(), f.category_id, "pick-cat")}
+      <label>Category</label>${chips(pickCategories(), f.category_id, "pick-cat")}
       <p><button class="primary" id="f-save" data-action="save-tile" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "other") {
     body = `<h3>Add expense</h3>
-      <label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
-      <label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}
-      <label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      <label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label>Category${REQ}</label>${chips(pickCategories(), ui.form.category_id, "pick-cat")}
+      <label>Paid from${REQ}</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}
+      ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-other" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "schedule-new") {
     body = scheduleSheet(ui.form);
@@ -1986,6 +2004,7 @@ function renderSheet() {
       <label>From</label>${chips(accountsFor(null), ui.form.from_id, "pick-from")}
       <label>To</label>${chips(accountsFor(null), ui.form.to_id, "pick-to")}
       <label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">
+      ${REQNOTE}
       <p class="note" id="scan-why" role="status"></p>
       <p><button class="primary" id="f-save" data-action="save-move" style="margin-top:6px" disabled>Save</button></p>
       <p class="note">For money you move between your own accounts, like cash out or a top-up. It is not spending. Verify it to count it.</p>`;
@@ -1996,7 +2015,7 @@ function renderSheet() {
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}">
       <label for="f-payee">Name (optional)</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
       ${t.schedule_id ? `<label for="f-memo">Note (optional, like "covers Sept to Oct")</label><input id="f-memo" data-field="memo" value="${esc(ui.form.memo ?? "")}" autocomplete="off">` : ""}
-      ${d.editable ? `<label>Category</label>${chips(expenseCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
+      ${d.editable ? `<label>Category</label>${chips(pickCategories(), ui.form.category_id, "pick-cat")}<label>Paid from</label>${chips(accountsFor(null), ui.form.account_id, "pick-acct")}` : ""}
       ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${chips(accountsFor(null), ui.form.from_id, "pick-from")}<label>To</label>${chips(accountsFor(null), ui.form.to_id, "pick-to")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
@@ -2300,15 +2319,15 @@ function renderSheet() {
       ${f.kind === "choose" ? `<p class="note flag">\u25B2 ${esc(M.CHOOSE_MESSAGE)}: tap one above. I will not guess.</p>` : ""}
       ${f.notes.map((n) => `<p class="note">${esc(n)}</p>`).join("")}
       ${f.plan ? `<div class="card"><p class="note">This looks like a payment request for ${esc(f.plan.name)}. It is a reminder, not an expense.</p><p><button data-action="mark-due" style="width:100%">Mark its next payment due</button></p></div>` : ""}
-      <label for="f-amount">Amount (₱)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
+      <label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(f.date)}">
       <label for="f-payee">${move ? "Name" : into ? "From" : "Paid to"} (optional)</label><input id="f-payee" data-field="payee" value="${esc(f.payee ?? "")}" autocomplete="off">
-      ${move ? moveFields(f) : `<label>Category</label>${chips(into ? incomeCategories() : expenseCategories(), f.category_id, "pick-cat")}`}
+      ${move ? moveFields(f) : `<label>Category${REQ}</label>${chips(into ? incomeCategories() : pickCategories(), f.category_id, "pick-cat")}`}
       ${into || move ? "" : `<p><button class="link" data-action="toggle-split" aria-pressed="${f.split === true}">${f.split ? "Do not split this receipt" : "Split between two categories"}</button></p>
-      ${f.split ? `<label>Second category</label>${chips(expenseCategories().filter((c) => c.id !== f.category_id), f.split_cat, "pick-split")}
+      ${f.split ? `<label>Second category</label>${chips(pickCategories().filter((c) => c.id !== f.category_id), f.split_cat, "pick-split")}
         <label for="f-split">Amount that belongs to the second category (\u20B1)</label><input id="f-split" data-field="split_amt" inputmode="decimal" value="${esc(f.split_amt ?? "")}" autocomplete="off">
         <p class="note" id="split-note" role="status"></p>` : ""}`}
-      ${move ? "" : `<label>${into ? "Arrived in" : "Paid from"}</label>${chips(accountsFor(null), f.account_id, "pick-acct")}`}
+      ${move ? "" : `<label>${into ? "Arrived in" : "Paid from"}${REQ}</label>${chips(accountsFor(null), f.account_id, "pick-acct")}`}
       ${f.dupOf ? dupBlock(f.dupOf) : ""}
       <details${sh.voice ? " hidden" : ""}><summary>What the reader saw</summary><pre class="rawtext">${esc(f.text || "(nothing)")}</pre></details>
       <p class="note" id="scan-why" role="status"></p>
@@ -2377,21 +2396,16 @@ function renderSheet() {
     body = `<h3>What's new</h3><div class="wnlist">${M.whatsNew({}, 3).map((c) => `<div class="wnitem"><small>${esc(longDate(c.date))}</small>${esc(c.text)}</div>`).join("")}</div>${moved}
       <p class="note">Help has the full list and the how-to clips.</p>
       <p><button class="primary" data-action="close-sheet">Got it</button></p>`;
-  } else if (sh.type === "bucket-pick") {
-    const c = S().categories.find((x) => x.id === sh.id), mine = ledger.settings.bucket_overrides?.[sh.id], read = M.readBucket(c.name).bucket;
-    body = `<h3>${esc(c.name)}</h3><p class="note">${read ? `The name reads as ${M.BUCKET_LABELS[read]}.` : "The name does not say clearly."} ${mine ? `You set it to ${M.BUCKET_LABELS[mine]}.` : ""}</p>
-      <div class="chips">${M.CHOICES.map((b) => `<button class="chip" data-action="set-bucket" data-bucket="${b}" aria-pressed="${M.bucketOf(c, ledger.settings.bucket_overrides ?? {}) === b}">${b === "other" ? "Keep in Other" : M.BUCKET_LABELS[b]}</button>`).join(" ")}</div>
-      ${mine && read ? `<p><button data-action="set-bucket" data-bucket="" style="width:100%">Read it from the name again (${M.BUCKET_LABELS[read]})</button></p>` : ""}`;
   } else if (sh.type === "bucket-clash") {
     const c = S().categories.find((x) => x.id === sh.id);
     body = `<h3>${esc(c.name)}</h3><p class="note">You set this to ${M.BUCKET_LABELS[sh.mine]}. The new name reads as ${M.BUCKET_LABELS[sh.read]}.</p>
       <p><button class="primary" data-action="set-bucket" data-bucket="${sh.mine}">Keep ${M.BUCKET_LABELS[sh.mine]}</button></p>
       <p><button data-action="set-bucket" data-bucket="" style="width:100%">Use ${M.BUCKET_LABELS[sh.read]}</button></p>`;
   } else if (sh.type === "cat") {
-    body = `<h3>${sh.id ? "Rename this category" : "Add a category"}</h3>
+    body = `<h3>${sh.id ? "Change this category" : "Add a category"}</h3>
       <label for="c-name">Name</label><input id="c-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off" enterkeyhint="done">
       <p class="note">${sh.id ? "Its entries, budget and everything else stay with it." : "For spending. You can rename it later."}</p>
-      ${sh.id ? "" : `<p class="note" id="c-read">${esc(readLine(ui.form.name))}</p><div class="chips" id="c-bucket"${M.readBucket(ui.form.name).bucket === null && (ui.form.name ?? "").trim() ? "" : ' style="display:none"'}>${bucketChips(null, ui.form.bucket, "pick-new-bucket")}</div>`}
+      ${sh.id ? `<label>Bucket</label><div class="chips" id="c-edit-bucket">${bucketChips(sh.id, ui.form.bucket, "pick-edit-bucket")}</div>` : `<p class="note" id="c-read">${esc(readLine(ui.form.name))}</p><div class="chips" id="c-bucket"${M.readBucket(ui.form.name).bucket === null && (ui.form.name ?? "").trim() ? "" : ' style="display:none"'}>${bucketChips(null, ui.form.bucket, "pick-new-bucket")}</div>`}
       <p><button class="primary" id="f-save" data-action="save-cat" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "sweeporder") {
     const f = ui.form, goals = S().goals, picked = f.order ?? [];
@@ -2402,6 +2416,13 @@ function renderSheet() {
       ${picked.slice(0, -1).map((id) => { const g = goals.find((x) => x.id === id); return `<label for="t_${esc(id)}">Fill ${esc(g.name)} up to (\u20B1). Empty: its own target${g.target != null ? ", " + peso(g.target) : ", none"}</label><input id="t_${esc(id)}" data-field="t_${esc(id)}" inputmode="decimal" value="${esc(f["t_" + id] ?? "")}" autocomplete="off">`; }).join("")}
       <p class="note" id="sweep-msg" role="status"></p>
       <p><button class="primary" id="f-save" data-action="save-sweep" style="margin-top:14px" disabled>Save</button></p>`;
+  } else if (sh.type === "welcome") {
+    body = `<h3 class="wl-title">Make it yours</h3>
+      <p class="note">Your categories, your names. Rename them, set each to Needs, Wants or Savings, add your own and remove what you do not use.</p>
+      <div class="wl" aria-hidden="true"><div class="wl-row">Food<small>Needs</small></div><div class="wl-row"><span class="wl-type">Weekend trips</span><small class="wl-bucket">Wants</small></div><div class="wl-row wl-new">Pet food<small>Needs</small></div></div>
+      <button class="wl-check" role="checkbox" aria-checked="${ui.form.welcomeOff === true}" data-action="welcome-off"><span class="box" aria-hidden="true"></span>Don't show this again</button>
+      <p><button class="primary" data-action="welcome-mine">Make it mine</button></p>
+      <p><button data-action="welcome-skip" style="width:100%">Skip for now</button></p>`;
   } else if (sh.type === "notice") {
     body = `<h3>${esc(M.FIRST_RUN_NOTICE.title)}</h3>${figure("data")}<ol class="notes">${M.FIRST_RUN_NOTICE.lines.map((n) => `<li>${esc(n)}</li>`).join("")}</ol>
       <p><button class="primary" data-action="close-sheet">I understand</button></p>`;
@@ -2440,8 +2461,8 @@ function renderSheet() {
       <p class="note">Anything entered since this backup was made will be gone. Pictures are not in a backup, so those entries will say "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  const closer = sh.type === "notice" ? "" : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
-  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}" role="dialog">${body}${closer}</div>`;
+  const closer = sh.type === "notice" ? "" : sh.type === "welcome" ? "" : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
   refreshSave();
@@ -2867,9 +2888,20 @@ async function onClick(el) {
       break;
     }
     case "add-cat": ui.sheet = { type: "cat", id: null }; ui.form = { name: "" }; renderSheet(); break;
-    case "rename-cat": ui.sheet = { type: "cat", id }; ui.form = { name: S().categories.find((c) => c.id === id)?.name ?? "" }; renderSheet(); break;
+    case "rename-cat": { const c = S().categories.find((x) => x.id === id), b = c ? M.bucketOf(c, ledger.settings.bucket_overrides ?? {}) : null; ui.sheet = { type: "cat", id }; ui.form = { name: c?.name ?? "", bucket: b, bucket0: b }; renderSheet(); break; }
+    case "pick-edit-bucket": ui.form.bucket = el.dataset.bucket; for (const b of document.querySelectorAll("#c-edit-bucket button")) b.setAttribute("aria-pressed", String(b.dataset.bucket === ui.form.bucket)); break;
+    case "cat-edit": ui.catEdit = true; ui.confirmRemoveCat = null; renderScreen(); break;
+    case "cat-done": ui.catEdit = false; ui.confirmRemoveCat = null; renderScreen(); break;
+    case "remove-cat": {
+      if (ui.confirmRemoveCat !== id) { ui.confirmRemoveCat = id; renderScreen(); break; }   // a removal cannot be undone, so it asks once more
+      const r = M.removeCategory(S(), id); ui.confirmRemoveCat = null;
+      if (!r.ok) { showToast(r.violations[0].message); renderScreen(); break; }
+      const name = S().categories.find((c) => c.id === id)?.name;
+      await commit(r.state, M.withBucket(ledger.settings, id, null)); showToast("Removed " + name); break;
+    }
+    case "hide-cat": { const name = S().categories.find((c) => c.id === id)?.name; ui.confirmRemoveCat = null; await commit(S(), M.hideCategory(ledger.settings, id)); showToast("Hidden " + name + ". Show it again under Hidden categories."); break; }
+    case "show-cat": await commit(S(), M.showCategory(ledger.settings, id)); break;
     case "pick-new-bucket": ui.form.bucket = el.dataset.bucket; for (const b of document.querySelectorAll("#c-bucket button")) b.setAttribute("aria-pressed", String(b.dataset.bucket === ui.form.bucket)); break;
-    case "cat-bucket": ui.sheet = { type: "bucket-pick", id }; renderSheet(); break;
     case "set-bucket": { const cid = ui.sheet.id; ui.sheet = null; renderSheet(); await commit(S(), M.withBucket(ledger.settings, cid, el.dataset.bucket || null)); break; }
     case "open-howto": ui.sheet = { type: "howto", id }; renderSheet(); break;
     case "open-whatsnew": ui.sheet = { type: "whatsnew" }; renderSheet(); break;
@@ -2878,10 +2910,11 @@ async function onClick(el) {
       const cat = ui.sheet.id ? S().categories.find((c) => c.id === ui.sheet.id) : null;
       const r = ui.sheet.id ? M.renameCategory(S(), ui.sheet.id, ui.form.name) : M.addCategory(S(), { id: newId("cat"), name: ui.form.name });
       if (!r.ok) { showToast(r.violations[0].message); break; }
-      const clash = cat ? M.renameConflict(cat, ui.form.name, ledger.settings.bucket_overrides ?? {}) : null;
+      const chose = cat && M.CHOICES.includes(ui.form.bucket) && ui.form.bucket !== ui.form.bucket0 ? ui.form.bucket : null;   // a bucket picked in this window is the answer, so nothing is asked
+      const clash = cat && !chose ? M.renameConflict(cat, ui.form.name, ledger.settings.bucket_overrides ?? {}) : null;
       const answer = !ui.sheet.id && M.readBucket(ui.form.name).bucket === null && M.CHOICES.includes(ui.form.bucket) ? ui.form.bucket : null;
       ui.sheet = null; renderSheet();
-      await commit(r.state, answer ? M.withBucket(ledger.settings, r.category.id, answer) : ledger.settings);
+      await commit(r.state, answer ? M.withBucket(ledger.settings, r.category.id, answer) : chose ? M.withBucket(ledger.settings, cat.id, chose) : ledger.settings);
       if (clash) { ui.sheet = { type: "bucket-clash", id: cat.id, ...clash }; renderSheet(); }   // asked only after the rename is saved, so the answer is never overwritten
       break;
     }
@@ -3264,7 +3297,10 @@ async function onClick(el) {
       if (await commit(r.state)) showToast(`${r.count} ${r.count === 1 ? "draft is" : "drafts are"} waiting in Verify.`);
       break;
     }
-    case "close-sheet": voiceListener?.stop(); if (ui.sheet?.type === "budget-suggest") await savePinsFromForm(); ui.sheet = null; renderSheet(); break;
+    case "close-sheet": { voiceListener?.stop(); if (ui.sheet?.type === "budget-suggest") await savePinsFromForm(); const wasNotice = ui.sheet?.type === "notice"; ui.sheet = null; renderSheet(); if (wasNotice) maybeWelcome(); break; }
+    case "welcome-off": ui.form.welcomeOff = !ui.form.welcomeOff; el.setAttribute("aria-checked", String(ui.form.welcomeOff)); break;
+    case "welcome-skip": { const off = ui.form?.welcomeOff === true; ui.sheet = null; renderSheet(); if (off) await commit(S(), { ...ledger.settings, welcome_off: true }, { quiet: true }); break; }
+    case "welcome-mine": { ui.sheet = null; ui.menu = false; ui.tab = "setup"; ui.setupPage = "categories"; ui.catEdit = true; renderAll(); window.scrollTo(0, 0); await commit(S(), { ...ledger.settings, welcome_pending: false }, { quiet: true }); break; }
     case "save-other": {
       const amount = M.parsePesos(form.amount).centavos;
       ui.sheet = null; renderSheet();
@@ -3763,7 +3799,8 @@ async function start() {
   renderAll();
   if (ui.upgrade?.done) showToast("Your data was updated to the newest format. A copy of the old data is kept in Setup.");
   // A brand-new install shows the notice once: the moment is remembered in the settings, which are saved with the first save. Help shows it again on request.
-  if (device.allowEntry && boot.status === "NONE" && !ledger.settings.notice_seen_at) { ledger.settings = { ...ledger.settings, notice_seen_at: M.phTimestamp() }; ui.sheet = { type: "notice" }; renderSheet(); }
+  if (device.allowEntry && boot.status === "NONE" && !ledger.settings.notice_seen_at) { ledger.settings = { ...ledger.settings, notice_seen_at: M.phTimestamp(), welcome_pending: true }; ui.sheet = { type: "notice" }; renderSheet(); }
+  else if (device.allowEntry && boot.status === "OK" && !ui.sheet) maybeWelcome();
   // After an update: the latest changes, once. "Got it" (or closing the window) remembers it, saved at once so it is not shown again.
   // The start-date rule (balances skip spending dated before an account was added) is told once, with the accounts whose balance it changed.
   const early = !ledger.settings.start_rule_seen && boot.status === "OK" ? M.earlyEntryChanges(S()) : [];
