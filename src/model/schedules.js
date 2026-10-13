@@ -261,6 +261,20 @@ export function viewOf(state, s, today) {
   return { kind: "repeating", next: upcoming ? pending[0] ?? null : null, active: upcoming, ended: !upcoming, endedOn: h.endedOn };
 }
 
+// What the suggestion engine reads from the schedules: one entry for each schedule that still has a payment to come, with the day of the month it
+// falls on, so the engine can set it aside on the payday just before it. [{name, kind: "scheduled"|"installment", amount, day, months_left?, category_id}].
+export function suggestInputs(state, today) {
+  const out = [];
+  for (const s of state.schedules ?? []) {
+    const v = viewOf(state, s, today);
+    if (!v.active || !v.next) continue;
+    const day = Number(v.next.due.slice(8));
+    if (s.kind === "installment") out.push({ name: s.name, kind: "installment", amount: v.next.amount, day, months_left: Math.max(0, v.of - v.paid), category_id: s.category_id });
+    else out.push({ name: s.name, kind: "scheduled", amount: v.next.amount, day, category_id: s.category_id });
+  }
+  return out;
+}
+
 // "Due soon" on Log: payments not yet verified and due within `days` (or overdue), as plain facts: name, amount, days left.
 export function dueSoon(state, today, { days = 7 } = {}) {
   const out = [];

@@ -2776,13 +2776,19 @@ console.log("Type in a pay plan");
   await page.click('button[data-action="open-planform"]');
   await page.fill("#pf-start", "2026-09-01");
   check(await stars(page) === 5 && (await text(page, "#sheet")).includes("needed before you can save"), "the pay plan form marks its start, both paydays and both pays with the *");
+  check((await text(page, "#pf-sugnote")).includes("Add a payslip"), "with no payslip and no pay typed, it says why there is no suggestion");
+  check(await page.locator("#sheet .pfhead span").count() >= 6 && await page.locator('#sheet input[data-field^="n"]').count() === 0, "your own categories are listed by name, with no name box to type");
   await page.fill("#pf-d1", "15"); await page.fill("#pf-p1", "10000"); await page.fill("#pf-p2", "24000");
-  await page.fill("#pf-n0", "Rent"); await page.fill("#pf-b0", "5000");
-  await page.fill("#pf-n1", "Food"); await page.fill("#pf-a1", "6000"); await page.fill("#pf-b1", "6000");
+  check((await text(page, "#pf-sugnote")).includes("monthly rent first"), "with the pay typed but no rent known, it says to type the rent once on Budget");
+  const line = (name, which) => page.locator(`[aria-label="${name}, ${which}"]`);
+  await line("Rent", "2nd payday").fill("5000");
+  await line("Food", "1st payday").fill("6000"); await line("Food", "2nd payday").fill("6000");
   check((await text(page, "#pf-status")).includes("4000") || (await text(page, "#pf-status")).includes("\u20B14,000.00 left to place"), "while typing it shows what is left to place on the 1st payday");
   check(await page.locator("#f-save").isDisabled(), "and the plan cannot be used while the lines do not add up");
   await page.click('button[data-action="plan-add-line"]');
-  await page.fill("#pf-n2", "Apartment Fund"); await page.selectOption('select[data-field="k2"]', "goal"); await page.fill("#pf-a2", "4000"); await page.fill("#pf-b2", "13000");
+  const own = page.locator("#sheet .pfline").last();
+  await own.locator('input[data-field^="n"]').fill("Apartment Fund"); await own.locator("select").selectOption("goal");
+  await own.locator('input[placeholder="0"]').nth(0).fill("4000"); await own.locator('input[placeholder="0"]').nth(1).fill("13000");
   check((await text(page, "#pf-status")).includes("Looks good") && !(await page.locator("#f-save").isDisabled()), "when every payday adds up it says Looks good and the button opens up");
   await page.click("#f-save");
   check(await seen(page, "#toast", "Plan loaded"), "the plan is saved");
@@ -2792,10 +2798,32 @@ console.log("Type in a pay plan");
   check(st.includes("Rent") && st.includes("Apartment Fund") && st.includes("Add a newer plan"), "the Pay plan screen now shows it, with a way to add a newer one");
   check(await page.locator("#plan-agree, #plan-differ").count() === 1, "the Pay plan screen says whether the plan agrees with the budgets");
   await page.click('button[data-action="open-planform"]');
-  check(await page.inputValue("#pf-n0") === "Rent" && await page.inputValue("#pf-p1") === "10000" && await page.inputValue("#pf-b2") === "13000" && (await page.inputValue("#pf-start")) === "2026-10-03", "Add a newer plan starts from the current plan, dated today");
+  check(await page.inputValue('[aria-label="Rent, 2nd payday"]') === "5000" && await page.inputValue("#pf-p1") === "10000" && await page.locator("#sheet .pfline").last().locator('input[placeholder="0"]').nth(1).inputValue() === "13000" && (await page.inputValue("#pf-start")) === "2026-10-03", "Add a newer plan starts from the current plan, dated today, with its own line kept");
   await page.locator("#scrim").click({ position: { x: 5, y: 5 } });
   await menuGo(page, "Help"); await page.locator("#screen details.mrow summary", { hasText: "Pay plan" }).click();
   check((await text(page, "#screen")).includes("Budget or Pay plan?") && (await text(page, "#screen")).includes("Budget is enough on its own"), "Help compares Budget and Pay plan");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
+// ===== 5ps. the Pay plan form suggests, from the pay of each payday =====
+console.log("Pay plan suggestions");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" };
+  const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, starter_rent: 500000 }, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [], entries: [], attachments: [] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Budget"); await page.click('#screen button:has-text("Plan each payday")'); await page.click('button[data-action="open-planform"]'); await page.waitForSelector("#pf-p1");
+  check(!(await text(page, "#pf-sugnote")).includes("Use every suggestion"), "no pay yet: no suggestion is offered");
+  await page.fill("#pf-p1", "10000"); await page.fill("#pf-p2", "24000");
+  check((await text(page, "#pf-sugnote")).includes("Use every suggestion") && (await text(page, "#pf-sugnote")).includes("\u20B110,000.00 and \u20B124,000.00 a payday"), "with the pay typed, suggestions are built on exactly that pay");
+  check(await page.locator("#sheet .pfline button[data-action='pf-use']").count() > 0, "and each line shows its grey figure");
+  const first = page.locator('#sheet button[data-action="pf-use"]').first();
+  await first.click();
+  check((await page.locator('#sheet .pfline input[placeholder="0"]').evaluateAll((els) => els.filter((e) => e.value !== "").length)) === 1, "tapping one grey figure fills just that box");
+  await page.click('button[data-action="pf-use-all"]');
+  const placed = await page.locator('#sheet .pfline input[placeholder="0"]').evaluateAll((els) => els.filter((e) => e.value !== "").length);
+  check(placed >= 3, "Use every suggestion fills the boxes (" + placed + ")");
+  check(!(await text(page, "#pf-status")).includes("of \u20B10.00"), "and the paydays' totals follow");
+  await page.fill("#pf-p1", "12000");
+  check((await text(page, "#pf-sugnote")).includes("\u20B112,000.00 and \u20B124,000.00 a payday"), "changing the pay changes what the suggestions are built on");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 

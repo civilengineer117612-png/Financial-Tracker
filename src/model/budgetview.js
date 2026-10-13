@@ -95,6 +95,14 @@ export function savedRows({ plan, suggestion }) {
   return (suggestion?.saved ?? []).map((l) => ({ ...l, label: "Suggested, not saved" }));
 }
 
+// The engine's buckets (the owner's answers, else the role defaults) and its starter ratios from the bucket targets, the buffer coming off the top of savings.
+// Shared by the Budget suggestion (one monthly payday) and the Pay plan form (the real paydays), so the two screens agree.
+export function engineSettings(state, settings, overrides = {}, targets) {
+  const buckets = bucketMap(state.categories, overrides), buffer = settings?.starter?.buffer ?? SUGGEST_DEFAULTS.starter.buffer;
+  const withTargets = targets === undefined ? settings : { ...(settings ?? {}), starter: { ...(settings?.starter ?? {}), ...starterFromTargets(resolveTargets(targets), buffer) } };
+  return { buckets, withTargets };
+}
+
 // A suggested budget for one month, built by the engine for ONE monthly payday on the base income. Lines are mapped by category id, never by name.
 // rent: the monthly rent the owner typed (centavos, 0 for none), needed only while there is too little history to learn it from: without it the answer is {ok: false, code: "NEEDS_RENT"}.
 // pins: {category_id: centavos} the owner typed; they come back as the owner's, and the engine's own figure is kept as the suggestion.
@@ -104,8 +112,7 @@ export function suggestBudgets({ state, plan = null, pin = null, today, month, s
   const names = new Map(state.categories.filter((c) => c.kind === "expense" && c.id !== UNLOGGED_CATEGORY_ID).map((c) => [c.id, c.name]));
   const pinned = Object.entries(pins).filter(([id, v]) => names.has(id) && whole(v)).map(([category_id, v]) => ({ category_id, name: names.get(category_id), first: v, second: 0 }));
   // The buckets (the owner's answers, else the role defaults) say which categories are needs; the bucket targets give the starter ratios, the buffer coming off the top of savings.
-  const buckets = bucketMap(state.categories, overrides), buffer = settings?.starter?.buffer ?? SUGGEST_DEFAULTS.starter.buffer;
-  const withTargets = targets === undefined ? settings : { ...(settings ?? {}), starter: { ...(settings?.starter ?? {}), ...starterFromTargets(resolveTargets(targets), buffer) } };
+  const { buckets, withTargets } = engineSettings(state, settings, overrides, targets);
   const r = suggestPlan({ state, paydays: [{ id: "month", label: "Month", day: 1 }], income: [income.amount], today, month, settings: withTargets, scheduled, pinned, rent, buckets, goalPins, goalShares });
   if (!r.ok) return r;
   const lines = r.paydays[0].lines, diff = new Map(r.differences.filter((d) => d.category_id).map((d) => [d.category_id, d]));

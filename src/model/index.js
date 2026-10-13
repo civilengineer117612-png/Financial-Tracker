@@ -52,7 +52,7 @@ export { validateRatchetParams, wasMet, nextRatchet, ratchetSchedule, splitRatch
 export { planCheckIn, ledgerBalanceFor, unloggedTotal } from "./checkin.js";
 export { formatSize, picturesNote, readerStatus, usageLine, picturesBackupLine } from "./storage.js";
 export { KEEP_MONTHS, SHRINK_MAX_SIDE, SHRINK_BATCH, monthsBefore, shrinkDue, shrinkProgress, targetSize } from "./pictures.js";
-export { MAX_FORM_LINES, KIND_NAMES, newPlanForm, planTextFromForm, planFormStatus, formFromPlan } from "./planform.js";
+export { MAX_FORM_LINES, KIND_NAMES, newPlanForm, planTextFromForm, planFormStatus, formFromPlan, planFormLines, withListedLines, planFormSuggestion, amountText } from "./planform.js";
 export { HISTORY_MONTHS, suggestFromHistory, suggestFromPlan, scheduleHints } from "./schedulehints.js";
 export { PART_BYTES, planParts, partFileName, sealPictures, openPictures } from "./picturebackup.js";
 export { correctable, planCorrection, applyCorrection, isReversed, correctionTag, CORRECTION_DAYS } from "./corrections.js";
@@ -76,7 +76,7 @@ export { planTag, planTripDates, planTripOverride, tripMembership, tripEntries, 
 export { BANKS, CASH, pickerBanks, bankById, bankForName, planAccount, linkAccountBank, setBankIconUrl, bankPicture, isPlaceholderAddress, dropPlaceholderAddresses } from "./banks.js";
 export { MOVE_KINDS, CHOOSE_MESSAGE, FEE_PREFIX, BANK_FEES_ROLE, isFeeId, feeIdOf, normalizeLast4, accountByLast4, setAccountLast4, last4In, recipientKey, readMove, classifyMove, rememberRecipient, ensureBankFees, planTransfer, editTransfer, feeOf, foreignOf, lastRate } from "./transfers.js";
 export { findDuplicate } from "./invariants.js";
-export { INTEREST_ROLE, SCHEDULE_WINDOW_DAYS, CATCH_UP_DAYS, draftIdFor, isScheduleDraftId, monthsAfter, historyOf, paymentsOf, paymentState, makeDueDrafts, draftFor, reserveForPlan, reserveIdFor, payKey, skippedOf, nextOpenPayment, ensureInterestCategory, addSchedule, setNewAmount, skipPayment, endSchedule, markPaidOff, markNextDue, payNext, skipOnDelete, viewOf, dueSoon, daysText, planLine, committedIn, matchDueDraft, linkToDue, planInText } from "./schedules.js";
+export { INTEREST_ROLE, SCHEDULE_WINDOW_DAYS, CATCH_UP_DAYS, draftIdFor, isScheduleDraftId, monthsAfter, historyOf, paymentsOf, paymentState, makeDueDrafts, draftFor, reserveForPlan, reserveIdFor, payKey, suggestInputs, skippedOf, nextOpenPayment, ensureInterestCategory, addSchedule, setNewAmount, skipPayment, endSchedule, markPaidOff, markNextDue, payNext, skipOnDelete, viewOf, dueSoon, daysText, planLine, committedIn, matchDueDraft, linkToDue, planInText } from "./schedules.js";
 export { KINDS, kindById, wordsToCentavos, readScan, readPayslip, linesFromWords, linesFromBoxes, snapEmployer, categoryFromHistory } from "./scan.js";
 export { EARNINGS, DEDUCTIONS, GOVERNMENT, LOST, SOURCES, OVERTIME_SHARE, linesOf, payslipTotals, payslipChecks, planPayslip, overtimeDraft, overtimeFreeDraft, incomeBySource, incomeMonths, slipDate, deletePayslip, updatePayslip, incomeWithoutPayslip, removeIncomeEntry, incomeByMonth, netPerPayday, raiseHistory, deductionsByMonth, employerHistory, PAYSLIP_VERSION, revisionsOf, payslipNotes, missingPayPeriods, samePeriodPayslips, markPayslipChecked, revisionChanges, incomeBreakdown } from "./income.js";
 export { homeSummary } from "./summary.js";

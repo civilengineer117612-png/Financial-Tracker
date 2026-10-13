@@ -1,9 +1,15 @@
 // The Pay plan typed in by hand. The form is turned into the same plan text a plan file holds and then read by `parsePlan`, so one set of rules
 // (the day ranges, each payday's lines adding up to its pay, names not repeated) judges a typed plan and a loaded file alike.
 import { parsePesos } from "./money.js";
+import { suggestPlan } from "./suggest.js";
+import { suggestInputs } from "./schedules.js";
+import { engineSettings, toNearest50 } from "./budgetview.js";
+import { UNLOGGED_CATEGORY_ID } from "./seed.js";
+import { monthOf } from "./reports.js";
 
-export const MAX_FORM_LINES = 40;
-const blankLine = (f, i) => !(f["n" + i] ?? "").trim() && !(f["a" + i] ?? "").trim() && !(f["b" + i] ?? "").trim();
+export const MAX_FORM_LINES = 60;
+// A line with no amount typed on either payday is left out, listed or not: the form lists every category, and only the ones you give money to are in the plan.
+const blankLine = (f, i) => !(f["a" + i] ?? "").trim() && !(f["b" + i] ?? "").trim();
 const KINDS = { expense: "Spending", goal: "Goal", buffer: "Buffer" };
 export const KIND_NAMES = KINDS;
 
@@ -46,4 +52,73 @@ export function formFromPlan(plan, today) {
     d2: two ? String(plan.paydays[1].day) : "last", p2: two ? pesoText(plan.paydays[1].income) : "", count: Math.min(plan.lines.length, MAX_FORM_LINES) };
   plan.lines.slice(0, MAX_FORM_LINES).forEach((l, i) => { f["n" + i] = l.name; f["k" + i] = l.kind; f["a" + i] = pesoText(l.first); f["b" + i] = two ? pesoText(l.second) : ""; });
   return f;
+}
+
+// ---------- the form lists the owner's own categories and goals ----------
+const lower = (x) => String(x ?? "").trim().toLowerCase();
+// Centavos as the pesos a box takes: 6000 for 600000, 6000.50 for 600050.
+export const amountText = (c) => (c % 100 === 0 ? String(c / 100) : (c / 100).toFixed(2));
+
+// The lines the form lists for you: every spending category (not Unlogged, not hidden) and every goal, plus `extra` lines (the overrun buffer) when given.
+// A name is listed once. A line is matched to its category or goal by name, as parsePlan does, so these are the names the plan will use.
+export function planFormLines(state, hidden = [], extra = []) {
+  const out = [], seen = new Set();
+  const add = (l) => { const k = lower(l.name); if (!k || seen.has(k)) return; seen.add(k); out.push(l); };
+  for (const c of state.categories ?? []) if (c.kind === "expense" && c.id !== UNLOGGED_CATEGORY_ID && !hidden.includes(c.id)) add({ name: c.name, kind: "expense" });
+  for (const g of state.goals ?? []) add({ name: g.name, kind: "goal" });
+  for (const x of extra) add({ name: x.name, kind: x.kind ?? "buffer" });
+  return out;
+}
+
+// The form with its lines rebuilt: the listed lines first (their amounts kept when the form already had a line of that name, as when a newer plan starts from
+// the current one), then any line of the form's own that is not listed (marked custom: it keeps a name box). Blank lines are dropped.
+export function withListedLines(form, lines) {
+  const old = new Map();
+  for (let i = 0; i < (form.count ?? 0); i++) if (!blankLine(form, i)) old.set(lower(form["n" + i]), i);
+  const f = Object.fromEntries(Object.entries(form).filter(([k]) => !/^[nkabc]\d+$/.test(k)));
+  let i = 0;
+  const put = (name, kind, from, custom) => { f["n" + i] = name; f["k" + i] = kind; f["a" + i] = from === undefined ? "" : form["a" + from] ?? ""; f["b" + i] = from === undefined ? "" : form["b" + from] ?? ""; f["c" + i] = custom; i++; };
+  for (const l of lines) { const from = old.get(lower(l.name)); old.delete(lower(l.name)); put(l.name, l.kind, from, false); }
+  for (const [, from] of old) put(form["n" + from] ?? "", form["k" + from] ?? "expense", from, true);
+  f.count = Math.min(i, MAX_FORM_LINES);
+  return f;
+}
+
+// A suggestion for each line of the form, from the owner's own history, for the paydays the form describes.
+//  pay:     what each payday has brought in, from the payslips (median of the last 3 of that payday, overtime left out), or null when there is none yet.
+//  income:  what the suggestion was built on: the pay typed in the form, else the payslip figure. Without one for every payday there is no suggestion.
+//  rows:    {lower-case line name: {first, second}} in centavos; the amounts of a scheduled payment go on its category's line.
+//  extras:  lines the engine adds that are not a category or goal (the overrun buffer): [{name, kind}].
+// Nothing here is stored. `settings` is the ledger's settings (suggest_settings, bucket_overrides, goal_monthly and so on).
+export function planFormSuggestion(state, f, { today, settings = {} }) {
+  const day = (v) => (String(v).trim().toLowerCase() === "last" ? "last" : Number(v));
+  const d1 = day(f.d1), d2 = day(f.d2);
+  if (!Number.isInteger(d1) || d1 < 1 || d1 > 28) return { ok: false, pay: null, message: "Type the payday day first (1 to 28)." };
+  if (f.twice && !(d2 === "last" || (Number.isInteger(d2) && d2 > d1 && d2 <= 28))) return { ok: false, pay: null, message: "Type the 2nd payday as a day after the first, or last." };
+  const paydays = [{ id: "first", label: f.twice ? "1st payday" : "Payday", day: d1 }, ...(f.twice ? [{ id: "second", label: "2nd payday", day: d2 }] : [])];
+  const month = monthOf(today), scheduled = suggestInputs(state, today), { buckets, withTargets } = engineSettings(state, settings.suggest_settings, settings.bucket_overrides ?? {}, settings.bucket_targets);
+  const run = (income, rent = settings.starter_rent ?? undefined) => suggestPlan({ state, paydays, income, today, month, settings: withTargets, scheduled, rent, buckets, goalPins: settings.goal_monthly ?? {}, goalShares: settings.goal_shares ?? {} });
+  const slips = run(undefined, 0);   // only to read what each payday has brought in: rent plays no part in that, so it never stops this step
+  if (!slips.ok && slips.code !== "NO_PAYSLIPS") return { ok: false, pay: null, message: slips.message };
+  const pay = slips.ok ? slips.paydays.map((p) => p.income) : null;
+  const typed = [peso(f.p1), f.twice ? peso(f.p2) : 0].map((x) => (Number.isNaN(x) ? 0 : x));
+  const income = paydays.map((_, i) => (typed[i] > 0 ? typed[i] : pay?.[i] ?? 0));
+  if (income.some((x) => !(x > 0))) return { ok: false, pay, message: "Add a payslip for each payday, or type what each one brings in, to see suggestions." };
+  const r = run(income);
+  if (!r.ok) return { ok: false, pay, message: r.code === "NEEDS_RENT" ? "Suggestions need your monthly rent first: tap Suggest a budget on Budget and type it once." : r.message };
+  const forCategory = new Map(scheduled.map((x) => [lower(x.name), x.category_id])), names = new Map((state.categories ?? []).map((c) => [c.id, lower(c.name)]));
+  const rows = {}, extras = [], listed = new Set(planFormLines(state).map((l) => lower(l.name)));
+  // a payday's list leaves out the lines that come to nothing on it, so the two lists are matched by name, never by position
+  const seen = new Map();
+  r.paydays.forEach((p, i) => { for (const l of p.lines) { const e = seen.get(lower(l.name)) ?? { name: l.name, kind: l.kind, amounts: [0, 0] }; e.amounts[i] += l.amount; seen.set(lower(l.name), e); } });
+  for (const [k, e] of seen) {
+    let key = k;
+    if (!listed.has(k) && e.kind === "buffer") extras.push({ name: e.name, kind: "buffer" });
+    else if (!listed.has(k)) key = names.get(forCategory.get(k)) ?? null;   // a scheduled payment sits on its category's line
+    if (!key) continue;
+    const row = rows[key] ?? (rows[key] = { first: 0, second: 0 });
+    row.first += e.amounts[0]; row.second += e.amounts[1];
+  }
+  for (const row of Object.values(rows)) { row.first = toNearest50(row.first); row.second = toNearest50(row.second); }   // rounded to the nearest P50, like the Budget suggestion
+  return { ok: true, pay, income, rows, extras };
 }
