@@ -83,6 +83,14 @@ function tipsBlock(starter) {
   return `<div class="tips" id="sug-tips"><h4>Budgeting tips</h4><ul>${first}${M.BUDGET_TIPS.map((x) => `<li><b>${esc(x.rule)}:</b> <i>${esc(x.text)}</i>${yours[x.rule] ? ` <span class="yours">Yours: <b>${esc(yours[x.rule])}</b></span>` : ""} <small>${esc(x.source)}</small></li>`).join("")}</ul><p class="note"><i>${esc(M.TIPS_NOTE)}</i></p></div>`;
 }
 const REQ = ' <span class="req" aria-hidden="true">*</span>';   // marks what is needed before an entry can be saved (ink colour, never red)
+// The Pay plan form: a suggestion for every listed line, built on what each payday really brought in (see planFormSuggestion). Recalculated only when a
+// payday or a pay amount changes; the grey figures are refreshed in place while typing, so the boxes keep their focus.
+let pfMemo = { key: null, sug: null };
+const pfSug = () => { const f = ui.form, key = [f.twice, f.d1, f.d2, f.p1, f.p2].join("|"); if (pfMemo.key !== key) pfMemo = { key, sug: M.planFormSuggestion(S(), f, { today: today(), settings: ledger.settings }) }; return pfMemo.sug; };
+const pfAmount = (sug, i, k) => { const row = sug?.ok ? sug.rows[String(ui.form["n" + i] ?? "").trim().toLowerCase()] : null; return row ? row[k === "a" ? "first" : "second"] : 0; };
+const pfSugHtml = (sug, i, k) => !sug?.ok ? "" : pfAmount(sug, i, k) > 0 ? `<button class="link small" type="button" data-action="pf-use" data-id="${k}${i}">${peso(pfAmount(sug, i, k))} suggested</button>` : `<small class="hiddennote">none</small>`;
+const pfNoteHtml = (sug) => !sug?.ok ? `<p class="note small">${esc(sug?.message ?? "")}</p>`
+  : `<p class="note small">Suggestions are built on ${sug.income.map((c) => peso(c)).join(" and ")} a payday: ${ui.form.p1 || ui.form.p2 ? "the pay typed above, else " : ""}the median of your last payslips for each payday, overtime left out.</p><p><button class="link" type="button" data-action="pf-use-all">Use every suggestion</button></p>`;
 const REQNOTE = `<p class="note small"><span class="req" aria-hidden="true">*</span> needed before you can save</p>`;
 // The four buttons for choosing a bucket by hand; the one in force is pressed.
 // What the name says, in the add window: the bucket it reads as, or that it is not clear and will be asked.
@@ -2164,7 +2172,7 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-income" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "planform") {
     const f = ui.form, st = M.planFormStatus(f), two = f.twice;
-    const n = f.count ?? 0, kinds = Object.entries(M.KIND_NAMES);
+    const n = f.count ?? 0, kinds = Object.entries(M.KIND_NAMES), sug = pfSug();
     body = `<h3>Type in a pay plan</h3>
       <p class="note">Say what each payday is worth, then where it goes. Each payday's lines must add up to its pay.</p>
       <label for="pf-start">Starts on${REQ}</label><input id="pf-start" type="date" data-field="start" value="${esc(f.start ?? "")}">
@@ -2174,11 +2182,13 @@ function renderSheet() {
       ${two ? `<label for="pf-d2">2nd payday: a day after the first, or last${REQ}</label><input id="pf-d2" data-field="d2" value="${esc(f.d2 ?? "")}" autocomplete="off" autocapitalize="off">
       <label for="pf-p2">Pay on that day (\u20B1)${REQ}</label><input id="pf-p2" data-field="p2" inputmode="decimal" value="${esc(f.p2 ?? "")}" autocomplete="off">` : ""}
       <h2>Where it goes</h2>
-      <p class="note">Name a line like one of your categories (Rent, Food) so it can be tracked. A goal line fills a goal.</p>
-      ${Array.from({ length: n }, (_, i) => `<div class="card" style="padding:10px"><label for="pf-n${i}">Line ${i + 1}</label><input id="pf-n${i}" data-field="n${i}" value="${esc(f["n" + i] ?? "")}" autocomplete="off" placeholder="Rent">
-        <select data-field="k${i}" aria-label="Kind of line ${i + 1}">${kinds.map(([k, nm]) => `<option value="${k}"${(f["k" + i] ?? "expense") === k ? " selected" : ""}>${nm}</option>`).join("")}</select>
-        <label for="pf-a${i}">${two ? "From the 1st payday" : "Each month"} (\u20B1)</label><input id="pf-a${i}" data-field="a${i}" inputmode="decimal" value="${esc(f["a" + i] ?? "")}" autocomplete="off">
-        ${two ? `<label for="pf-b${i}">From the 2nd payday (\u20B1)</label><input id="pf-b${i}" data-field="b${i}" inputmode="decimal" value="${esc(f["b" + i] ?? "")}" autocomplete="off">` : ""}</div>`).join("")}
+      <p class="note">Your categories and goals are listed for you. Type what each takes from each payday, or tap the grey figure under it.</p>
+      <div id="pf-sugnote">${pfNoteHtml(sug)}</div>
+      <div class="pfgrid${two ? "" : " one"} pfcols" aria-hidden="true"><b>${two ? "1st payday" : "Each month"}</b>${two ? "<b>2nd payday</b>" : ""}</div>
+      ${Array.from({ length: n }, (_, i) => `<div class="pfline">${f["c" + i]
+        ? `<label for="pf-n${i}">Line ${i + 1}</label><input id="pf-n${i}" data-field="n${i}" value="${esc(f["n" + i] ?? "")}" autocomplete="off" placeholder="Rent"><select data-field="k${i}" aria-label="Kind of line ${i + 1}">${kinds.map(([k, nm]) => `<option value="${k}"${(f["k" + i] ?? "expense") === k ? " selected" : ""}>${nm}</option>`).join("")}</select>`
+        : `<div class="pfhead"><span>${esc(f["n" + i])}</span><small class="muted">${esc(M.KIND_NAMES[f["k" + i]] ?? "")}</small></div>`}
+        <div class="pfgrid${two ? "" : " one"}">${["a", ...(two ? ["b"] : [])].map((k) => `<div><input id="pf-${k}${i}" data-field="${k}${i}" aria-label="${esc((f["n" + i] ?? "").trim() || "Line " + (i + 1))}, ${k === "a" ? (two ? "1st payday" : "each month") : "2nd payday"}" inputmode="decimal" placeholder="0" value="${esc(f[k + i] ?? "")}" autocomplete="off"><span id="pf-s${k}${i}">${pfSugHtml(sug, i, k)}</span></div>`).join("")}</div></div>`).join("")}
       ${n < M.MAX_FORM_LINES ? `<p><button data-action="plan-add-line" style="width:100%">Add a line</button></p>` : ""}
       <div id="pf-status" role="status"></div>
       ${REQNOTE}
@@ -2666,6 +2676,8 @@ function refreshSave() {
   } else if (type === "planform") {
     const t = M.planTextFromForm(f), r = t.ok ? M.parsePlan(t.text) : null, out = $("pf-status");
     btn.disabled = !r?.ok;
+    const sug = pfSug(), note = $("pf-sugnote");   // the grey figures follow the paydays and the pay as they are typed
+    if (note && note.dataset.key !== pfMemo.key) { note.dataset.key = pfMemo.key; note.innerHTML = pfNoteHtml(sug); for (let i = 0; i < (f.count ?? 0); i++) for (const k of ["a", "b"]) { const sp = $("pf-s" + k + i); if (sp) sp.innerHTML = pfSugHtml(sug, i, k); } }
     const st = M.planFormStatus(f), left = (x) => x.left === 0 ? "all placed" : x.left > 0 ? peso(x.left) + " left to place" : peso(-x.left) + " too much";
     if (out) out.innerHTML = `<p class="note">${st.map((x, i) => (f.twice ? (i ? "2nd payday" : "1st payday") : "Payday") + ": " + peso(x.placed) + " of " + peso(x.pay) + ", " + left(x)).map(esc).join("<br>")}</p>`
       + (!t.ok ? `<p role="alert" class="note"><b>${esc(t.error)}</b></p>` : r.ok ? `<p class="note"><b>Looks good.</b></p>` : `<p role="alert" class="note"><b>${esc(r.error)}</b></p>`);
@@ -3081,10 +3093,16 @@ async function onClick(el) {
       showToast("Recorded: " + peso(amount.centavos));
       break;
     }
-    case "open-planform": { const cur = planOf(); ui.sheet = { type: "planform" }; ui.form = cur ? M.formFromPlan(cur, today()) : M.newPlanForm(today()); renderSheet(); break; }
+    case "open-planform": {   // the form lists your categories and goals; with no plan yet the pay boxes start from what each payday really brought in
+      const cur = planOf(); let f = cur ? M.formFromPlan(cur, today()) : M.newPlanForm(today());
+      const first = M.planFormSuggestion(S(), f, { today: today(), settings: ledger.settings });
+      if (!cur && first.pay) { f.p1 = M.amountText(first.pay[0]); if (f.twice && first.pay[1]) f.p2 = M.amountText(first.pay[1]); }
+      ui.sheet = { type: "planform" }; ui.form = M.withListedLines(f, M.planFormLines(S(), M.hiddenCategoryIds(ledger.settings), first.extras ?? [])); pfMemo = { key: null, sug: null }; renderSheet(); break; }
+    case "pf-use": { const sug = pfSug(), i = el.dataset.id.slice(1), k = el.dataset.id[0], c = pfAmount(sug, i, k), box = $("pf-" + el.dataset.id); if (c > 0 && box) { box.value = M.amountText(c); ui.form[el.dataset.id] = box.value; refreshSave(); } break; }
+    case "pf-use-all": { const sug = pfSug(); if (!sug.ok) break; for (let i = 0; i < (ui.form.count ?? 0); i++) for (const k of ["a", ...(ui.form.twice ? ["b"] : [])]) { const c = pfAmount(sug, i, k), box = $("pf-" + k + i); if (c > 0 && box) { box.value = M.amountText(c); ui.form[k + i] = box.value; } } refreshSave(); break; }
     case "plan-once": ui.form.twice = false; renderSheet(); break;
     case "plan-twice": ui.form.twice = true; renderSheet(); break;
-    case "plan-add-line": { const i = ui.form.count ?? 0; if (i < M.MAX_FORM_LINES) ui.form = { ...ui.form, count: i + 1, ["n" + i]: "", ["k" + i]: "expense", ["a" + i]: "", ["b" + i]: "" }; renderSheet(); break; }
+    case "plan-add-line": { const i = ui.form.count ?? 0; if (i < M.MAX_FORM_LINES) ui.form = { ...ui.form, count: i + 1, ["n" + i]: "", ["k" + i]: "expense", ["a" + i]: "", ["b" + i]: "", ["c" + i]: true }; renderSheet(); break; }
     case "save-planform": {
       const t = M.planTextFromForm(ui.form); if (!t.ok) { showToast(t.error); break; }
       const r = M.parsePlan(t.text);
