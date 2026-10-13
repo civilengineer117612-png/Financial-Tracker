@@ -187,18 +187,20 @@ export function planSplitExpense(state, input, now = new Date()) {
   return { ok: result.ok, violations: result.violations, drafts: [{ transaction: main.transaction, entries }, ...others] };
 }
 
-// Other entries on the same day with the same amount as this one, so Verify can ask "is this the same payment shown twice?". Only a note: nothing is
-// refused or merged. An entry's size is the sum of its positive legs. Left out: the app's own partners (a card reserve transfer, a transfer's fee,
-// a scheduled payment's reserve) and an entry that was cancelled together with the entry that cancels it.
-// Returns [{id, status}] (status "draft" or "verified"), oldest first.
+// Other entries with the same amount as this one, so Verify can ask "is this the same payment shown twice?". Only a note: nothing is refused or merged.
+// An entry's size is the sum of its positive legs. On the same day always; one day apart only when the two came from different sources (a receipt photo
+// dated the day before, the bank's own record the day after). Left out: the app's own partners (a card reserve transfer, a transfer's fee, a scheduled
+// payment's reserve), a cancelled entry together with the entry that cancels it, and anything to do with a scheduled payment, which the app already offers
+// to link. Returns [{id, status, days}] (status "draft" or "verified", days 0 or 1).
 export function sameAmountElsewhere(state, id) {
   const mine = state.transactions.find((t) => t.id === id);
-  if (!mine) return [];
+  if (!mine || mine.schedule_id) return [];
   const size = (tid) => state.entries.filter((e) => e.transaction_id === tid && e.amount > 0).reduce((n, e) => n + e.amount, 0);
   const amount = size(id);
   if (!amount) return [];
   const cancelled = new Set(state.transactions.filter((t) => t.reverses).map((t) => t.reverses));
   const generated = (t) => t.id.startsWith("rsv:") || t.id.startsWith("sch-rsv:") || t.id.startsWith("fee:");
-  return state.transactions.filter((t) => t.id !== id && t.date === mine.date && !generated(t) && !t.reverses && !cancelled.has(t.id) && size(t.id) === amount)
-    .map((t) => ({ id: t.id, status: t.status === "verified" ? "verified" : "draft" }));
+  const apart = (t) => Math.abs(Date.parse(t.date + "T00:00:00Z") - Date.parse(mine.date + "T00:00:00Z")) / 86400000;
+  return state.transactions.filter((t) => t.id !== id && !t.schedule_id && !generated(t) && !t.reverses && !cancelled.has(t.id) && (apart(t) === 0 || (apart(t) === 1 && t.source !== mine.source)) && size(t.id) === amount)
+    .map((t) => ({ id: t.id, status: t.status === "verified" ? "verified" : "draft", days: apart(t) }));
 }
