@@ -2253,7 +2253,7 @@ console.log("Buckets");
   check(await seen(page, "#screen", "Target 50.0%"), "Use 50/30/20 again brings the rule of thumb back");
   await menuGo(page, "Setup");
   const setupText = await text(page, "#screen");
-  check(/Food \u00b7 Needs/.test(setupText) && /Coffee \u00b7 Wants/.test(setupText) && /Kuryente \u00b7 Needs/.test(setupText) && /Misc \u00b7 Other/.test(setupText) && /Shabu Kain \u00b7 Wants/.test(setupText), "Setup rows read Name \u00b7 Bucket");
+  check(/Food\s+Needs/.test(setupText) && /Coffee\s+Wants/.test(setupText) && /Kuryente\s+Needs/.test(setupText) && /Misc\s+Other/.test(setupText) && /Shabu Kain\s+Wants/.test(setupText), "Setup rows read the name with its bucket on a line under it");
   check(!/\bType\b/.test(setupText), "no Type anywhere in Setup");
   await page.click('button[data-action="add-cat"]'); await page.fill("#c-name", "Milk tea");
   check((await text(page, "#c-read")).includes("Reads as Wants") && await page.locator("#c-bucket").isHidden() && await page.locator("#f-save").isEnabled(), "a clear new name is read at once, nothing to tap");
