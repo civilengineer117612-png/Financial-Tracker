@@ -183,4 +183,15 @@ export function statementItems(lines) {
   return lines.map((l, i) => ({ l, i })).filter(({ l }) => l.direction === "out" && (l.meaning === "spending" || l.meaning === "fee" || l.meaning === "unsure"))
     .map(({ l, i }) => ({ id: "s" + i, dateRaw: l.date, name: l.payee || l.text, amount: l.amount, meaning: l.meaning, label: l.meaning === "fee" ? null : undefined }));
 }
-export const statementLeftOut = (lines) => ({ moves: lines.filter((l) => l.meaning === "move").length, moneyIn: lines.filter((l) => l.meaning === "in").length });
+export const statementLeftOut = (lines) => ({ moves: lines.filter((l) => l.meaning === "move" && !l.own).length, own: lines.filter((l) => l.own).length, moneyIn: lines.filter((l) => l.meaning === "in").length });
+
+// The unsure lines, one group per person (the same name, ignoring case, spaces and punctuation), the biggest total first: one choice answers all of a person's lines.
+export function unsureByPerson(items) {
+  const groups = new Map();
+  for (const x of items.filter((i) => i.meaning === "unsure")) {
+    const key = String(x.name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() || "?";
+    const g = groups.get(key) ?? { key, name: x.name, ids: [], lines: [], total: 0 };
+    g.ids.push(x.id); g.lines.push(x); g.total += x.amount; groups.set(key, g);
+  }
+  return [...groups.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+}

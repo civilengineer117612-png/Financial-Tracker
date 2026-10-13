@@ -2997,7 +2997,7 @@ console.log("Welcome card, category editing, required marks");
   check(st.includes("Everything in and out matches the totals at the top") && st.includes("Lines found") && /6\b/.test(st), "it says the statement adds up, and how many lines it found");
   check(st.includes("2 lines") && st.includes("1 line needs your choice"), "spending is offered; the unsure line waits for your choice, left out until then");
   check((await text(page, "#stm-left")).includes("3 money in left out"), "money in is counted and left out");
-  check(st.includes("Which is it?") && st.includes("Sample Person"), "the money out that does not say what it was is asked about");
+  check(st.includes("Which is it?") && st.includes("Sample Person") && /Sample Person\s+1 line/.test(st), "the money out that does not say what it was is asked about, one row per person with its count");
   await page.click('#sheet button[data-action="stm-choose"][data-pick="spending"]');
   check((await text(page, "#imp-count")).includes("3 lines") && !(await text(page, "#imp-count")).includes("needs your choice"), "choosing Spending adds it to the count");
   await page.click('#sheet button[data-action="stm-choose"][data-pick="not"]');
