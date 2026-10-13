@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-13-statement-more", date: "2026-10-13", text: "Statement imports pick the account for you, wait for your choice on unclear money out, hold when the statement does not add up, and learn categories from your past entries." },
   { id: "2026-10-13-bar-stays", date: "2026-10-13", text: "The Log and Verify bar now stays at the bottom of the screen when you scroll, instead of drifting up the page on the iPhone." },
   { id: "2026-10-13-statement-pdf", date: "2026-10-13", text: "Import old spending now reads a bank statement PDF on your phone, asks for its password if it is locked, checks the statement adds up, and adds the spending to Verify." },
   { id: "2026-10-13-cards-net", date: "2026-10-13", text: "Cards now opens with what is free to spend, with a thin bar for what the cards are owed, each account is a card you swipe, and Budget marks a hidden category with a quiet word." },

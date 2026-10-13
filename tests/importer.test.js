@@ -122,3 +122,18 @@ test("the reader's boxes become lines again: the same height is one line, read l
   assert.deepEqual(parseNotes(text).items.map((x) => [x.name, x.amount]), [["LRT", 1500], ["Lunch", 10000]]);
   assert.equal(linesByRow([]), "");
 });
+
+test("a name you have logged before gets the category you gave it most often (verified entries only), after a quick tile and before what the name reads as", () => {
+  const s = ledger();
+  const add = (id, payee, cat, status = "verified") => {
+    s.transactions.push({ id, date: "2026-09-0" + (s.transactions.length + 1), payee, memo: "", status, source: "manual", created_at: "2026-09-01T09:00:00.000+08:00", ...(status === "verified" ? { verified_at: "2026-09-01T09:00:00.000+08:00" } : {}) });
+    s.entries.push({ transaction_id: id, category_id: cat, amount: 1000 }, { transaction_id: id, account_id: "w", amount: -1000 });
+  };
+  add("h1", "Sample Store", "food"); add("h2", "SAMPLE STORE", "food"); add("h3", "Sample Store", "dine");
+  add("h4", "Corner Shop", "fun", "draft");   // a draft is not your answer yet
+  add("h5", "LRT", "food");   // what you did wins over what the name reads as
+  assert.deepEqual(categoryFor(s, { name: "sample store" }), { category_id: "food", how: "your past entries" });
+  assert.deepEqual(categoryFor(s, { name: "Corner Shop" }), { category_id: "cat-unlogged", how: "not known: choose it in Verify" });
+  assert.deepEqual(categoryFor(s, { name: "LRT" }), { category_id: "food", how: "your past entries" });
+  assert.deepEqual(categoryFor(s, { name: "starbucks" }), { category_id: "dine", how: "your quick tile" }, "a quick tile still comes first");
+});

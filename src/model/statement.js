@@ -118,8 +118,8 @@ export function parseStatement(pages) {
   for (const l of lines) Object.assign(l, classifyLine(l));
   if (!header || !lines.length) return { ok: false, message: "No transactions were found in this PDF. It may not be a bank statement the app knows." };
   const top = allRows[0].slice(0, 25).map(textOf).join(" ").toLowerCase();   // the first lines of the first page: the bank's name is usually there
-  const bank = BANKS.find((b) => top.includes(b.name.toLowerCase()))?.name ?? null;
-  return { ok: true, style: header.style, bank, period, summary, lines, check: checkStatement(header.style, lines, summary) };
+  const found = BANKS.find((b) => top.includes(b.name.toLowerCase())) ?? null, bank = found?.name ?? null, bankId = found?.id ?? null;
+  return { ok: true, style: header.style, bank, bankId, period, summary, lines, check: checkStatement(header.style, lines, summary) };
 }
 
 function isoOf(raw, period) {

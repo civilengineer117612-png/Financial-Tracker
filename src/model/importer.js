@@ -5,6 +5,7 @@
 import { planExpense, applyDrafts } from "./drafts.js";
 import { categoriesOfKind, UNLOGGED_CATEGORY_ID } from "./seed.js";
 import { guessType } from "./types.js";
+import { categoryFromHistory } from "./scan.js";
 
 // ---------- dates: the order (day/month or month/day) is decided per picture or file, from the dates themselves ----------
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -155,7 +156,8 @@ async function unzip(b) {
 
 // ---------- making the drafts ----------
 const key = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-// The category of one line: the file's own category name if you have a category so named; else a quick tile with this name; else the kind its name
+// The category of one line: the file's own category name if you have a category so named; else a quick tile with this name; else the category your own
+// verified entries of this name had most often; else the kind its name
 // reads as (LRT is transport, Lunch is food); else Unlogged, to be chosen in Verify. {category_id, how}
 export function categoryFor(state, item) {
   const cats = state.categories.filter((c) => c.kind === "expense" && c.id !== UNLOGGED_CATEGORY_ID);
@@ -163,6 +165,8 @@ export function categoryFor(state, item) {
   if (byLabel) return { category_id: byLabel.id, how: "your file's category" };
   const tile = (state.presets ?? []).find((p) => key(p.name) === key(item.name) && cats.some((c) => c.id === p.category_id));
   if (tile) return { category_id: tile.category_id, how: "your quick tile" };
+  const past = categoryFromHistory(state, item.name);   // the category you gave this same name most often in your own verified entries
+  if (past && cats.some((c) => c.id === past)) return { category_id: past, how: "your past entries" };
   const kind = guessType(item.name) ?? (item.label ? guessType(item.label) : null), byKind = kind ? categoriesOfKind(cats, kind)[0] : null;
   if (byKind) return { category_id: byKind.id, how: "the name" };
   return { category_id: UNLOGGED_CATEGORY_ID, how: "not known: choose it in Verify" };
