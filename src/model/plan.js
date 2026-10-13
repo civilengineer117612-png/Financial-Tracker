@@ -23,6 +23,7 @@ import { checkTransactionSave } from "./index.js";
 import { naturalBalance, countedEntries } from "./balances.js";
 import { categoriesOfKind } from "./seed.js";
 import { budgetFor } from "./budget.js";
+import { formatPesos } from "./money.js";
 
 const fail = (error) => ({ ok: false, error });
 const whole = (n) => Number.isSafeInteger(n) && n >= 0;
@@ -64,7 +65,8 @@ export function parsePlan(text) {
   // Each payday's lines must sum to that payday's income, to the centavo.
   for (const [i, field] of [[0, "first"], [1, "second"]].slice(0, paydays.length)) {
     const sum = lines.reduce((n, l) => n + l[field], 0), income = paydays[i].income;
-    if (sum !== income) return fail("The lines for the " + paydays[i].label + " add up to " + sum / mult + " but its expected income is " + income / mult + " (" + (sum > income ? "over by " : "short by ") + Math.abs(sum - income) / mult + ").");
+    const show = (c) => (mult === 100 ? String(c / mult) : formatPesos(c));   // a file in whole pesos is answered in pesos; anything typed here (centavos) in pesos with the sign
+    if (sum !== income) return fail("The lines for the " + paydays[i].label + " add up to " + show(sum) + " but its expected income is " + show(income) + " (" + (sum > income ? "over by " : "short by ") + show(Math.abs(sum - income)) + ").");
   }
 
   let emergency = null;

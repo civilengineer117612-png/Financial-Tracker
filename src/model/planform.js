@@ -1,7 +1,8 @@
 // The Pay plan typed in by hand. The form is turned into the same plan text a plan file holds and then read by `parsePlan`, so one set of rules
 // (the day ranges, each payday's lines adding up to its pay, names not repeated) judges a typed plan and a loaded file alike.
 import { parsePesos } from "./money.js";
-import { suggestPlan } from "./suggest.js";
+import { suggestPlan, median } from "./suggest.js";
+import { netPerPayday } from "./income.js";
 import { suggestInputs } from "./schedules.js";
 import { engineSettings, toNearest50 } from "./budgetview.js";
 import { UNLOGGED_CATEGORY_ID } from "./seed.js";
@@ -105,7 +106,7 @@ export function planFormSuggestion(state, f, { today, settings = {} }) {
   const income = paydays.map((_, i) => (typed[i] > 0 ? typed[i] : pay?.[i] ?? 0));
   if (income.some((x) => !(x > 0))) return { ok: false, pay, message: "Add a payslip for each payday, or type what each one brings in, to see suggestions." };
   const r = run(income);
-  if (!r.ok) return { ok: false, pay, message: r.code === "NEEDS_RENT" ? "Suggestions need your monthly rent first: tap Suggest a budget on Budget and type it once." : r.message };
+  if (!r.ok) return { ok: false, pay, ...(r.code === "NEEDS_RENT" ? { needsRent: true, message: "Suggestions need your monthly rent first. Type it once; it is kept for the Budget suggestion too." } : { message: r.message }) };
   const forCategory = new Map(scheduled.map((x) => [lower(x.name), x.category_id])), names = new Map((state.categories ?? []).map((c) => [c.id, lower(c.name)]));
   const rows = {}, extras = [], listed = new Set(planFormLines(state).map((l) => lower(l.name)));
   // a payday's list leaves out the lines that come to nothing on it, so the two lists are matched by name, never by position
@@ -121,4 +122,27 @@ export function planFormSuggestion(state, f, { today, settings = {} }) {
   }
   for (const row of Object.values(rows)) { row.first = toNearest50(row.first); row.second = toNearest50(row.second); }   // rounded to the nearest P50, like the Budget suggestion
   return { ok: true, pay, income, rows, extras };
+}
+
+// ---------- do the payslips agree with the paydays typed? ----------
+const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th"));
+
+// One line for each payday (empty when all is well): the last payslips of that payday are dated well away from the day typed for it (more than 5 days),
+// so the pay boxes, built on those payslips, may be for another payday. "last" counts as the 30th. A payslip belongs to the payday its date is nearest.
+export function payslipDayNotes(state, f) {
+  const day = (v) => (String(v).trim().toLowerCase() === "last" ? 30 : Number(v));
+  const typed = [day(f.d1), ...(f.twice ? [day(f.d2)] : [])];
+  if (typed.some((d) => !Number.isInteger(d) || d < 1 || d > 31)) return typed.map(() => "");
+  const days = typed.map(() => []);
+  for (const r of netPerPayday(state)) {
+    const d = Number(r.date.slice(8)), dist = (a) => Math.min(Math.abs(a - d), 31 - Math.abs(a - d));
+    days[typed.length === 1 || dist(typed[0]) <= dist(typed[1]) ? 0 : 1].push(d);
+  }
+  const said = (v) => (String(v).trim().toLowerCase() === "last" ? "the last day" : "the " + ordinal(Number(v)));
+  return days.map((list, i) => {
+    if (!list.length) return "";
+    const m = median(list.slice(-3), "low");
+    if (Math.min(Math.abs(m - typed[i]), 31 - Math.abs(m - typed[i])) <= 5) return "";
+    return "Your last payslips for this payday are dated around the " + ordinal(m) + ", not " + said(i ? f.d2 : f.d1) + ". Check the payday day or the payslip dates.";
+  });
 }
