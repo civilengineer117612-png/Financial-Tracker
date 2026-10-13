@@ -312,6 +312,16 @@
     @keyframes wlfade { 0%, 40% { opacity: 0; } 50%, 90% { opacity: 1; } 100% { opacity: 0; } }
     @keyframes wlslide { 0%, 58% { opacity: 0; transform: translateY(10px); } 70%, 90% { opacity: 1; transform: none; } 100% { opacity: 0; } }
   }
+  .cover { display: flex; height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; flex: 1; } .cover span { display: block; background: var(--ink); }
+  .coverrow { display: flex; align-items: center; gap: 8px; max-width: 60%; margin: 6px 0 10px; } .coverwrap { width: 110px; margin: 8px 0 0 auto; }
+  .netcard { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin: 12px 0; text-align: center; }
+  .netbig { font-size: 34px; font-weight: 600; font-variant-numeric: tabular-nums; margin-bottom: 12px; } .netcard .cover { height: 8px; border-radius: 4px; }
+  .netsides { display: flex; justify-content: space-between; margin-top: 14px; color: var(--muted); font-variant-numeric: tabular-nums; } .netsides span { display: flex; align-items: center; gap: 6px; }
+  .swipe { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 16px -16px 0; padding: 0 16px 6px; -webkit-overflow-scrolling: touch; scrollbar-width: none; } .swipe::-webkit-scrollbar { display: none; }
+  .swcard { min-width: 72%; scroll-snap-align: start; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; } .swcard .cover { margin-top: 12px; }
+  .swtop { display: flex; justify-content: space-between; align-items: center; } .swname { margin-top: 14px; color: var(--muted); } .swamt { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .swsmall { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .dots { display: flex; justify-content: center; gap: 8px; margin: 8px 0 4px; } .dots span { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--muted); } .dots span.on { background: var(--muted); }
   @keyframes sheetup { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes scrimin { from { opacity: 0; } to { opacity: 1; } }
   .sheet.enter { animation: sheetup .22s ease-out; } #scrim.enter { animation: scrimin .2s ease-out; }
