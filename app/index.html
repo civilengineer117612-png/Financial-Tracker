@@ -265,6 +265,9 @@
   button.pickrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 14px; text-align: left; font-size: 17px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; }
   .pickface { display: inline-flex; align-items: center; gap: 10px; min-width: 0; } .pickface .ph { color: var(--muted); } button.pickrow svg { color: var(--muted); flex: none; }
   .picklist { margin-top: 6px; max-height: 330px; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); } .picklist[hidden] { display: none; }
+  .picksearchrow { padding: 8px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
+  input.picksearch { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--ground); color: var(--ink); }
+  .picklist .pickitem[hidden], .picklist .pickh[hidden], .picklist .pickempty[hidden] { display: none; } .pickempty { padding: 12px 14px; margin: 0; }
   .pickh { padding: 8px 14px; font-size: 13px; color: var(--muted); background: var(--ground); border-bottom: 1px solid var(--line); }
   .picklist .chip.pickitem { display: flex; align-items: center; justify-content: space-between; width: 100%; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; color: var(--ink); padding: 12px 14px; font-size: 17px; text-align: left; }
   .picklist .chip.pickitem[aria-pressed="true"] { background: none; color: var(--ink); font-weight: 600; } .picklist .chip.pickitem:last-child { border-bottom: 0; }

@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-14-search-income", date: "2026-10-14", text: "A dropdown list of more than 8 choices has a Search box, and Money received now starts with What it is empty so you choose it." },
   { id: "2026-10-14-backup-big", date: "2026-10-14", text: "Fixed: making a backup file failed with \"Maximum call stack size exceeded\" once the ledger had a long history; it now works for any size." },
   { id: "2026-10-14-last-account", date: "2026-10-14", text: "In the account lists, Last used now counts verified entries only, the same as for categories." },
   { id: "2026-10-14-dropdowns-rest", date: "2026-10-14", text: "Move money (From and To), Take it from, money received and a split's second category are now the same tidy dropdown rows." },
