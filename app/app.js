@@ -229,10 +229,12 @@ const dueDrafts = () => M.pendingDrafts(S(), addDays(today(), -1)).filter((t) =>
 async function commit(state, settings = ledger.settings, { quiet = false } = {}) {
   if (ui.upgrade?.failed) return false;   // the update of the saved data failed: nothing is written until the owner restores the copy or updates the app, so old data is never overwritten
   const next = M.nextLedger(ledger, state, settings);
-  const r = await writeBoth(JSON.stringify(next));
-  ledger = next;   // keep working in memory even if a store failed; the banner says so
-  const failed = [!r.local && "localStorage", !r.idb && "IndexedDB"].filter(Boolean);
-  ui.error = failed.length ? "Could not save to " + failed.join(" and ") + ". What you see is not safely stored yet. The next save tries again." : null;
+  const text = JSON.stringify(next);
+  const r = await writeBoth(text);
+  ledger = next;   // keep working in memory even if the main store failed; the banner says so
+  const out = M.saveOutcome(r);   // IndexedDB is the main store; a full localStorage mirror is not an error
+  ui.error = out.error; ui.mirror = out.mirror; ui.ledgerBytes = M.ledgerBytes(text);
+  const failed = out.ok ? [] : ["x"];
   // A background save (the logos) must not rebuild an open window and lose what is being done in it.
   if (!quiet) renderAll(); else { renderBanner(); if (!document.activeElement?.matches("input, textarea, select")) renderScreen(); if (ui.sheet?.type === "banks") renderSheet(); }   // the screen behind a window may change; the window stays
   if (!ledger.settings.bankLogosTried && !logoRun && failed.length === 0) loadBankLogos();   // a new install: logos after the first save
@@ -1281,6 +1283,7 @@ function viewSetup() {
     ${why("The file is encrypted. Keep a second copy off this phone, like iCloud Drive or a computer.", "Where to keep it")}`;
   const aboutHtml = `    <h2>This app</h2>
     <p class="note">${M.isDevBuild() ? "Version: a development copy." : "Version " + esc(M.APP_BUILD) + ", updated " + esc(fullDate(M.APP_BUILT_ON)) + "."} Your data format: ${ledger.v}.</p>
+    ${ui.ledgerBytes ? `<p class="note" id="about-size">Your ledger: ${esc(M.formatBytes(ui.ledgerBytes))}. ${ui.mirror === false ? "The spare copy is full. The main copy is safe." : "Saved twice: a main copy and a spare."}</p>` : ""}
     <h2>Photo reader and space</h2>
     <p class="note" id="about-reader">Checking the photo reader\u2026</p>
     <p><button data-action="warm-reader" id="warm-btn" style="width:100%" hidden>Download the photo reader now</button></p>
@@ -3820,7 +3823,7 @@ async function restoreNow() {
   if (!ui.form.confirmRestore) { ui.form.confirmRestore = true; renderSheet(); return; }
   const next = M.restoreLedger(ledger, ui.form.restored);
   const r = await writeBoth(JSON.stringify(next));
-  if (r.local && r.idb) { location.reload(); return; }
+  if (M.saveOutcome(r).ok) { location.reload(); return; }   // the mirror may be full; the main store holds the restore
   ui.sheet = null; ui.error = "The restore could not be saved to " + [!r.local && "localStorage", !r.idb && "IndexedDB"].filter(Boolean).join(" and ") + ". Nothing else was changed.";
   renderAll();
 }
@@ -4007,6 +4010,7 @@ async function start() {
   const present = (v) => (v === undefined ? null : v !== null && v.length > 0);
   device = M.assessDevice({ platform, standalone, stores: { local: present(local), idb: present(idb) }, trial });
   boot = M.chooseLedger(local ?? null, idb ?? null);
+  { const main = idb ?? local; if (main) { ui.ledgerBytes = M.ledgerBytes(main); ui.mirror = !!local && local === idb; } }
   if (boot.status === "CORRUPT") {
     device = { status: "CORRUPT", allowEntry: false, message: "The saved data on this phone could not be read, so nothing is shown and nothing will be overwritten. Restore from your encrypted backup." };
   } else {
@@ -4018,7 +4022,7 @@ async function start() {
     ledger.state = M.dropUnusedCardCategory(M.ensureIncomeCategories(ledger.state));   // older ledgers gain Interest, Refund and Other income (saved with the next save)
     if (boot.status === "NONE") { ledger.state = { ...ledger.state, categories: M.defaultCategories(), presets: M.defaultPresets() }; ledger.settings = { ...ledger.settings, roles_notice_seen: M.phTimestamp(), whatsnew_seen: M.CHANGES[0].id, start_rule_seen: M.phTimestamp() }; }   // kept in memory until the first save
     // The two stores disagree on revision only (a save reached one and not the other): repair quietly from the newer.
-    if (boot.status === "REPAIR" && local != null && idb != null && device.allowEntry) {
+    if (boot.status === "REPAIR" && device.allowEntry && ((local != null && idb != null) || (local == null && boot.repairTo === "local"))) {
       await writeBoth(JSON.stringify(ledger), { local: boot.repairTo === "local", idb: boot.repairTo === "idb" });
     }
   }

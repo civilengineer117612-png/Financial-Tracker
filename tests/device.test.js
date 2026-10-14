@@ -46,7 +46,10 @@ test("one store empty and one not is flagged as partial loss, naming the empty o
   assert.equal(a.status, "PARTIAL_LOSS");
   assert.match(a.message, /IndexedDB is empty/);
   assert.equal(a.allowEntry, false);
-  assert.match(assessDevice({ ...ok, stores: { local: false, idb: true } }).message, /localStorage is empty/);
+});
+test("an empty spare copy (localStorage) is not a loss: IndexedDB is the main store, entry stays on", () => {
+  const r = assessDevice({ ...ok, stores: { local: false, idb: true } });
+  assert.equal(r.status, "OK"); assert.equal(r.allowEntry, true); assert.equal(r.message, "");
 });
 test("a store that cannot be read stops saving", () => {
   for (const stores of [{ local: null, idb: true }, { local: true, idb: null }, { local: null, idb: null }]) {
