@@ -259,6 +259,14 @@
   .tbl .n { text-align: right; font-variant-numeric: tabular-nums; }
   @media (max-width: 360px) { .tbl th, .tbl td { padding: 9px 3px; font-size: 14px; } }   /* four columns fit a 320 px phone */
   .tbl tr.total td { font-weight: bold; }
+  /* the dropdown row that replaces a wall of chips: the row shows the choice, a tap opens a short list that scrolls inside its own box */
+  .pick { margin: 6px 0 14px; }
+  button.pickrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 14px; text-align: left; font-size: 17px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; }
+  .pickface { display: inline-flex; align-items: center; gap: 10px; min-width: 0; } .pickface .ph { color: var(--muted); } button.pickrow svg { color: var(--muted); flex: none; }
+  .picklist { margin-top: 6px; max-height: 330px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); } .picklist[hidden] { display: none; }
+  .pickh { padding: 8px 14px; font-size: 13px; color: var(--muted); background: var(--ground); border-bottom: 1px solid var(--line); }
+  .picklist .chip.pickitem { display: flex; align-items: center; justify-content: space-between; width: 100%; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; color: var(--ink); padding: 12px 14px; font-size: 17px; text-align: left; }
+  .picklist .chip.pickitem[aria-pressed="true"] { background: none; color: var(--ink); font-weight: 600; } .picklist .chip.pickitem:last-child { border-bottom: 0; }
   .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   .row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
   button.rowbtn { width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; min-height: 56px; }

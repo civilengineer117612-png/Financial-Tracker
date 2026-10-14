@@ -1385,7 +1385,7 @@ const coverLabel = (c) => `${peso(c.kept)} kept for ${accountName(c.card_id)}, $
 const reserveCovers = () => M.reserveCover(S().accounts, M.countedEntries(S()));
 // Under a "Paid from" row of chips: one thin bar for each reserve account, with its picture, so the owed and free parts are seen before choosing.
 const reserveStrip = () => reserveCovers().map((c) => { const a = S().accounts.find((x) => x.id === c.reserve_id); return a && !a.archived ? `<div class="coverrow">${iconOf(a, 20)}${coverBar(c.share, a.name + ": " + coverLabel(c))}</div>` : ""; }).join("");
-const paidChips = (selected) => chips(accountsFor(null), selected, "pick-acct") + reserveStrip();
+const paidChips = (selected) => accountPicker(accountsFor(null), selected) + reserveStrip();
 // The Cards screen (menu): every account in one place. Credit cards show what you owe and what was spent on and paid toward each in the
 // period; debit cards, savings, wallets and cash show their balance and what was spent from them. A card is just one of the accounts.
 function viewCards() {
@@ -1629,7 +1629,7 @@ function scheduleSheet(f) {
     : `<label for="s-amount">Amount each month (\u20B1)${REQ}</label><input id="s-amount" data-field="samount" inputmode="decimal" value="${esc(f.samount ?? "")}" autocomplete="off">
       <label for="s-day">Due around day${REQ}</label><input id="s-day" data-field="sday" inputmode="numeric" value="${esc(f.sday ?? "")}" autocomplete="off">
       <details><summary>In another currency</summary><label for="s-cur">Currency (like USD)</label><input id="s-cur" data-field="scur" value="${esc(f.scur ?? "")}" autocomplete="off"><label for="s-fx">Amount in that currency</label><input id="s-fx" data-field="sfx" inputmode="decimal" value="${esc(f.sfx ?? "")}" autocomplete="off"><p class="note">The pesos above are an estimate. You fix them in Verify.</p></details>`}
-    <label>Category${REQ}</label>${chips(pickCategoriesWith(f.category_id), f.category_id, "pick-cat")}
+    <label>Category${REQ}</label>${categoryPicker(pickCategoriesWith(f.category_id), f.category_id)}
     <label>Paid from${REQ}</label>${paidChips(f.account_id)}
     ${REQNOTE}
     <p class="note" id="sch-line" role="status"></p>
@@ -2051,6 +2051,33 @@ function dupBlock(otherId) {
     <p><button data-action="link-dup" style="width:100%">Link this photo to it</button></p>
     <p><button data-action="dup-new" style="width:100%">It is a different payment: add it</button></p></div>`;
 }
+// A dropdown row instead of a wall of chips (owner, Oct 14): the row shows what is chosen (or "Choose ..."), a tap opens the list inside the window.
+// The list keeps the choices as buttons (class chip, same actions as before); it is hidden, not left out, while closed. "Last used" comes first,
+// then the rest in alphabetical order. `groups` is [[heading, items]]; `key` names the field so one list is open at a time (kept with the window).
+const CHEVRON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
+const TICK = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>`;
+function picker(key, groups, selectedId, action, placeholder) {
+  const all = groups.flatMap(([, items]) => items), chosen = all.find((i) => i.id === selectedId), open = ui.sheet?.pick === key;
+  const face = chosen ? (chosen.class ? withIcon(chosen, 24) : `<span>${esc(chosen.name)}</span>`) : `<span class="ph">${esc(placeholder)}</span>`;
+  const item = (i) => `<button class="chip pickitem" type="button" data-action="${action}" data-id="${esc(i.id)}" aria-pressed="${i.id === selectedId}">${i.class ? withIcon(i, 24) : `<span>${esc(i.name)}</span>`}${i.id === selectedId ? TICK : ""}</button>`;
+  const list = groups.filter(([, items]) => items.length).map(([h, items]) => (h ? `<div class="pickh">${esc(h)}</div>` : "") + items.map(item).join("")).join("");
+  return `<div class="pick"><button class="pickrow" type="button" data-action="pick-toggle" data-key="${esc(key)}" aria-expanded="${open}"><span class="pickface">${face}</span>${CHEVRON}</button><div class="picklist"${open ? "" : " hidden"}>${list}</div></div>`;
+}
+const byName = (list) => [...list].sort((a, b) => a.name.localeCompare(b.name));
+// The category last used (the newest entry with one of these categories), then every category A to Z.
+function categoryPicker(items, selectedId, key = "cat") {
+  const ids = new Set(items.map((c) => c.id)), lastId = [...S().entries].reverse().find((e) => e.category_id && ids.has(e.category_id))?.category_id;
+  const last = items.filter((c) => c.id === lastId);
+  return picker(key, [["Last used", last], [last.length ? "All categories" : "", byName(items.filter((c) => c.id !== lastId))]], selectedId, "pick-cat", "Choose a category");
+}
+// Accounts: the one used last (the existing rule), then Cash and the rest A to Z, then the cards.
+function accountPicker(items, selectedId, action = "pick-acct", key = "acct", placeholder = "Choose an account") {
+  const { last_account_id: lastAcct } = ledger.settings, last = items.filter((a) => a.id === lastAcct);
+  const rest = items.filter((a) => a.id !== lastAcct), cards = byName(rest.filter((a) => a.class === "liability")), plain = cashFirst(byName(rest.filter((a) => a.class !== "liability")));
+  return picker(key, [["Last used", last], ["Accounts", plain], ["Cards", cards]], selectedId, action, placeholder);
+}
+// What the paper is: A to Z, "Something else" last. The face shows what the app read; "Choose" while it has not decided (and Save stays held).
+const kindPicker = (selectedId) => { const all = [...M.KINDS, ...M.MOVE_KINDS].map((k) => ({ id: k.id, name: k.label })), other = all.filter((k) => k.id === "other"); return picker("kind", [["", [...byName(all.filter((k) => k.id !== "other")), ...other]]], selectedId, "pick-kind", "Choose"); };
 function chips(items, selectedId, action) {
   if (action === "pick-acct") items = cashFirst(items);
   return `<div class="chips">${items.map((i) => `<button class="chip" data-action="${action}" data-id="${esc(i.id)}" aria-pressed="${i.id === selectedId}">${i.class ? withIcon(i, 24) : esc(i.name)}</button>`).join("")}</div>`;
@@ -2087,13 +2114,13 @@ function renderSheet() {
       ${ui.confirmRemoveTile ? `<p class="note">Remove this tile? <button class="link" data-action="remove-tile-yes">Yes, remove it</button></p>` : `<p class="note small">This changes the tile on the Log screen. Nothing is logged.</p>`}
       <label for="pay-name">Name${REQ}</label><input id="pay-name" data-field="name" value="${esc(f.name ?? "")}" autocomplete="off">
       <label for="f-amount">Amount (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
-      <label>Category${REQ}</label>${chips(pickCategoriesWith(f.category_id), f.category_id, "pick-cat")}
+      <label>Category${REQ}</label>${categoryPicker(pickCategoriesWith(f.category_id), f.category_id)}
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-tile" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "other") {
     body = `<h3>Add expense</h3>
       <label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
-      <label>Category${REQ}</label>${chips(pickCategoriesWith(ui.form.category_id), ui.form.category_id, "pick-cat")}
+      <label>Category${REQ}</label>${categoryPicker(pickCategoriesWith(ui.form.category_id), ui.form.category_id)}
       <label>Paid from${REQ}</label>${paidChips(ui.form.account_id)}
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-other" style="margin-top:14px" disabled>Save</button></p>`;
@@ -2130,7 +2157,7 @@ function renderSheet() {
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}">
       <label for="f-payee">Name (optional)</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
       ${t.schedule_id ? `<label for="f-memo">Note (optional, like "covers Sept to Oct")</label><input id="f-memo" data-field="memo" value="${esc(ui.form.memo ?? "")}" autocomplete="off">` : ""}
-      ${d.editable ? `<label>Category${REQ}</label>${chips(pickCategoriesWith(ui.form.category_id), ui.form.category_id, "pick-cat")}<label>Paid from${REQ}</label>${paidChips(ui.form.account_id)}` : ""}
+      ${d.editable ? `<label>Category${REQ}</label>${categoryPicker(pickCategoriesWith(ui.form.category_id), ui.form.category_id)}<label>Paid from${REQ}</label>${paidChips(ui.form.account_id)}` : ""}
       ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${chips(accountsFor(null), ui.form.from_id, "pick-from")}<label>To</label>${chips(accountsFor(null), ui.form.to_id, "pick-to")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
@@ -2440,14 +2467,14 @@ function renderSheet() {
     const f = ui.form, kind = kindOf(f.kind), into = kind.direction === "in", move = isMoveKind(f.kind);
     body = `<h3>${sh.voice ? "Check what I heard" : "Check what I read"}</h3>
       ${sh.voice ? `<p class="note">You said: \u201C${esc(f.text)}\u201D</p>` : `<button class="shotbtn" data-action="view-shot" aria-label="Open the photo full size to compare it with what was read"><img class="shot" src="${esc(pendingPhoto?.url ?? "")}" alt="Your photo"></button>`}
-      <label>It looks like</label>${chips([...M.KINDS.slice(0, 5), ...M.MOVE_KINDS, ...M.KINDS.slice(5)].map((k) => ({ id: k.id, name: k.label })), f.kind, "pick-kind")}
+      <label>It looks like</label>${kindPicker(f.kind)}
       ${f.kind === "choose" ? `<p class="note flag">\u25B2 ${esc(M.CHOOSE_MESSAGE)}: tap one above. I will not guess.</p>` : ""}
       ${f.notes.map((n) => `<p class="note">${esc(n)}</p>`).join("")}
       ${f.plan ? `<div class="card"><p class="note">This looks like a payment request for ${esc(f.plan.name)}. It is a reminder, not an expense.</p><p><button data-action="mark-due" style="width:100%">Mark its next payment due</button></p></div>` : ""}
       <label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(f.date)}">
       <label for="f-payee">${move ? "Name" : into ? "From" : "Paid to"} (optional)</label><input id="f-payee" data-field="payee" value="${esc(f.payee ?? "")}" autocomplete="off">
-      ${move ? moveFields(f) : `<label>Category${REQ}</label>${chips(into ? incomeCategories() : pickCategoriesWith(f.category_id), f.category_id, "pick-cat")}`}
+      ${move ? moveFields(f) : `<label>Category${REQ}</label>${into ? chips(incomeCategories(), f.category_id, "pick-cat") : categoryPicker(pickCategoriesWith(f.category_id), f.category_id)}`}
       ${into || move ? "" : `<p><button class="link" data-action="toggle-split" aria-pressed="${f.split === true}">${f.split ? "Do not split this receipt" : "Split between two categories"}</button></p>
       ${f.split ? `<label>Second category</label>${chips(pickCategories().filter((c) => c.id !== f.category_id), f.split_cat, "pick-split")}
         <label for="f-split">Amount that belongs to the second category (\u20B1)</label><input id="f-split" data-field="split_amt" inputmode="decimal" value="${esc(f.split_amt ?? "")}" autocomplete="off">
@@ -3368,7 +3395,8 @@ async function onClick(el) {
       break;
     }
     case "open-other": ui.sheet = { type: "other" }; ui.form = { amount: "", category_id: null, account_id: accountsFor(null)[0]?.id }; renderSheet(); break;
-    case "pick-cat": form.category_id = id; if (form.split_cat === id) form.split_cat = null; renderSheet(); break;
+    case "pick-toggle": if (ui.sheet) { ui.sheet.pick = ui.sheet.pick === el.dataset.key ? null : el.dataset.key; renderSheet(); } break;
+    case "pick-cat": if (ui.sheet) ui.sheet.pick = null; form.category_id = id; if (form.split_cat === id) form.split_cat = null; renderSheet(); break;
     case "toggle-split": form.split = !form.split; renderSheet(); break;
     case "pick-split": form.split_cat = id; renderSheet(); break;
     case "open-voice": ui.sheet = { type: "voice" }; ui.form = { spoken: "", lang: firstLanguage() }; renderSheet(); break;
@@ -3429,7 +3457,7 @@ async function onClick(el) {
       if (!d?.ok || !d.transaction) { showToast("Could not make the draft."); break; }
       await commit(M.applyDrafts(S(), [d])); showToast("The Emergency Fund draft is waiting in Verify."); break;
     }
-    case "pick-kind": if (id === "payslip" && pendingPhoto && !ui.sheet.voice) { openPayslipFromPhoto(pendingPhoto.blob, form.text ?? "", ui.sheet.queueId ?? null); break; } form.kind = id; form.dupOf = null;
+    case "pick-kind": if (ui.sheet) ui.sheet.pick = null; if (id === "payslip" && pendingPhoto && !ui.sheet.voice) { openPayslipFromPhoto(pendingPhoto.blob, form.text ?? "", ui.sheet.queueId ?? null); break; } form.kind = id; form.dupOf = null;
       if (isMoveKind(id)) {   // a move: no category, two accounts. A withdrawal ends in Cash on hand, a deposit starts from it.
         const cash = cashAccount()?.id ?? null;
         form.from_id = id === "deposit" ? cash : form.from_id ?? null; form.to_id = id === "withdrawal" ? cash : form.to_id ?? null; if (form.from_id === form.to_id) form.to_id = null;
@@ -3441,7 +3469,7 @@ async function onClick(el) {
     case "open-payslips": ui.confirmDelSlip = null; ui.confirmDelInc = null; ui.sheet = { type: "payslips" }; renderSheet(); break;
     case "open-tx": ui.sheet = { type: "txdetail", id }; renderSheet(); break;
     case "open-photo": { const u = photoUrls.get(id) ?? (await getPhoto(id).then((b) => b && URL.createObjectURL(b))); if (u) { photoUrls.set(id, u); viewShot(u); } else showToast("Picture not on this phone. Pictures are not part of the backup file."); break; }
-    case "pick-acct": form.account_id = id; renderSheet(); break;
+    case "pick-acct": if (ui.sheet) ui.sheet.pick = null; form.account_id = id; renderSheet(); break;
     case "own-yes": form.own = "yes"; renderSheet(); break;
     case "own-no": {   // not mine: an ordinary payment after all, and the app remembers that for this name
       form.askNo = form.ask.key; form.ask = null; form.kind = form.origKind ?? "bank"; form.payee = ""; form.dupOf = null;
