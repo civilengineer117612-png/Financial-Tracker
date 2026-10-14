@@ -4,8 +4,11 @@
 //  - Money in that equals a payslip's deposit near its pay date is the payslip arriving, not new income: `matchPayslips`.
 //  - Nothing is added by itself. `planPairedMove` makes ONE draft transfer (source "statement") when the owner taps; a move already in the ledger is not made twice.
 // Pure logic; amounts are centavos, dates are "YYYY-MM-DD".
-import { accountLines } from "./proof.js";
+import { accountLines, proveMonths } from "./proof.js";
 import { accountByLast4, planTransfer } from "./transfers.js";
+import { countedEntries } from "./balances.js";
+import { categoryFor } from "./importer.js";
+import { applyDrafts, planExpense } from "./drafts.js";
 
 const DAY = 86400000;
 const gap = (a, b) => Math.abs(Math.round((Date.parse(a) - Date.parse(b)) / DAY));
@@ -76,4 +79,63 @@ export function matchPayslips(state, { days = 4 } = {}) {
     if (p) { taken.add(p.id); out.push({ line: l, payslip: p }); }
   }
   return out;
+}
+
+// ---------- phase 3: the ledger against the statement, month by month ----------
+const keyOf = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const addDays = (iso, n) => new Date(Date.parse(iso) + n * DAY).toISOString().slice(0, 10);
+const lastOf = (month) => { const [y, m] = month.split("-").map(Number); return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`; };
+
+// For an account that holds money: what the ledger says at the end of a statement month, what the bank's closing balance says, and the lines that explain the
+// difference. difference = ledger - statement (positive: the ledger shows more than the bank). A statement line with no ledger entry of the same amount within 2 days
+// is "missing"; a ledger movement with no statement line is "extra". explained = extra - missing; what is left is carried from before the month (an opening
+// balance that differs, or lines of an earlier month). Drafts count as in the ledger (the balances count them too).
+export function statementDifference(state, accountId, month) {
+  const account = state.accounts.find((a) => a.id === accountId);
+  if (!account) return { ok: false, reason: "There is no such account." };
+  if (account.class !== "asset") return { ok: false, reason: "Only accounts that hold money can be compared with a statement (not cards yet)." };
+  const row = proveMonths(state, accountId).find((r) => r.month === month);
+  if (!row) return { ok: false, reason: "There is no statement for that month." };
+  if (row.closing === null) return { ok: false, reason: "This month has no closing balance to compare with." };
+  const first = month + "-01", last = lastOf(month);
+  const txDate = new Map(state.transactions.map((t) => [t.id, t])), mine = countedEntries(state).filter((e) => e.account_id === accountId);
+  const ledgerBalance = account.opening_balance + mine.filter((e) => (txDate.get(e.transaction_id)?.date ?? "") <= last).reduce((n, e) => n + e.amount, 0);
+  const byTx = new Map();
+  for (const e of mine) { const t = txDate.get(e.transaction_id); if (t && !t.reverses) byTx.set(t.id, { t, amount: (byTx.get(t.id)?.amount ?? 0) + e.amount }); }
+  const moves = [...byTx.values()].filter((m) => m.t.date >= addDays(first, -2) && m.t.date <= addDays(last, 2)).map((m) => ({ id: m.t.id, date: m.t.date, payee: m.t.payee, amount: m.amount, used: false }));
+  const lines = accountLines(state, accountId).filter((l) => l.date >= first && l.date <= last);
+  const missing = [];
+  for (const l of lines) {
+    const signed = l.direction === "in" ? l.amount : -l.amount;
+    const hit = moves.filter((m) => !m.used && m.amount === signed && gap(m.date, l.date) <= 2).sort((a, b) => (keyOf(b.payee) === keyOf(l.payee || l.text)) - (keyOf(a.payee) === keyOf(l.payee || l.text)) || gap(a.date, l.date) - gap(b.date, l.date))[0];
+    if (hit) hit.used = true; else missing.push({ line: { ...l, account_id: accountId }, signed, action: l.direction === "out" && (l.meaning === "spending" || l.meaning === "fee") ? "expense" : l.meaning === "unsure" ? "choose" : l.meaning === "move" ? "move" : "in" });
+  }
+  const extra = moves.filter((m) => !m.used && m.date >= first && m.date <= last);
+  const explained = extra.reduce((n, m) => n + m.amount, 0) - missing.reduce((n, m) => n + m.signed, 0), difference = ledgerBalance - row.closing;
+  return { ok: true, month, asOf: last, status: row.status, statementClosing: row.closing, ledgerBalance, difference, explained, carried: difference - explained, missing, extra };
+}
+
+// One draft expense for a statement line the ledger lacks (spending or a fee): in the category the import would choose, source "statement", never verified by itself.
+export function planMissingDraft(state, line, { newId, now = new Date() }) {
+  if (line.direction !== "out" || (line.meaning !== "spending" && line.meaning !== "fee")) return { ok: false, message: "Only spending and fees can be added in one tap." };
+  const name = line.payee || line.text, id = newId();
+  const r = planExpense(state, { transaction_id: id, date: line.date, payee: name, category_id: categoryFor(state, { name }).category_id, amount: line.amount, account_id: line.account_id, source: "statement" }, now);
+  return r.ok ? { ok: true, state: applyDrafts(state, r.drafts) } : { ok: false, message: r.violations[0].message };
+}
+
+// Start an account from its statement: the account's opening balance and date become the FIRST statement month's opening balance and the day its statement starts,
+// so the ledger and the bank begin together. The first month must be proved. Entries dated before that day become history only (they stop counting in the balance,
+// as for any account), and how many is returned so it can be said first.
+export function startFromStatement(state, accountId) {
+  const account = state.accounts.find((a) => a.id === accountId);
+  if (!account) return { ok: false, message: "There is no such account." };
+  if (account.class !== "asset") return { ok: false, message: "Only accounts that hold money can start from a statement." };
+  const rows = proveMonths(state, accountId), first = rows[0];
+  if (!first) return { ok: false, message: "There is no statement for this account." };
+  if (first.status !== "proved" || first.opening === null) return { ok: false, message: "The first month must be proved before the account can start from it." };
+  const recs = (state.statementRecords ?? []).filter((r) => r.account_id === accountId && r.period_from);
+  const from = [...recs.map((r) => r.period_from), accountLines(state, accountId)[0].date].sort()[0];
+  const dateOf = new Map(state.transactions.map((t) => [t.id, t.date]));
+  const ignored = new Set(state.entries.filter((e) => e.account_id === accountId && (dateOf.get(e.transaction_id) ?? "9") < from).map((e) => e.transaction_id)).size;
+  return { ok: true, ignored, from, opening: first.opening, state: { ...state, accounts: state.accounts.map((a) => (a.id === accountId ? { ...a, opening_balance: first.opening, opening_date: from } : a)) } };
 }
