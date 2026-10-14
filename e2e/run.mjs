@@ -58,11 +58,10 @@ async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone 
   // Category, Paid from and "It looks like" are dropdown rows now: a test that taps a choice by its text first opens the list that holds it.
   const rawClick = page.click.bind(page);
   page.click = async (selector, options) => {
-    if (typeof selector === "string" && /^#sheet (?:button)?\.chip:has-text\(/.test(selector)) {
-      const inner = selector.replace(/^#sheet /, ""), item = page.locator("#sheet " + inner).first();
-      if (await item.count() && !(await item.isVisible())) await page.locator("#sheet .pick", { has: page.locator(inner) }).first().locator(".pickrow").click();
+    if (typeof selector === "string" && selector.startsWith("#sheet") && (selector.includes(".chip") || selector.includes("data-action=\"pick-"))) {
+      const item = page.locator(selector).first();
+      if (await item.count() && !(await item.isVisible())) await item.locator("xpath=ancestor::div[contains(@class,'pick')][1]").locator(".pickrow").click();
     }
-    if (selector === "#sheet .chip >> nth=0" && !(await page.locator(selector).isVisible())) await page.locator("#sheet .pickrow").first().click();
     return rawClick(selector, options);
   };
   const errors = [];
