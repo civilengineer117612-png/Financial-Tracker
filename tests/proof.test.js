@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { emptyState, validateState, selfCheck, recordFromParse, proveMonths, acceptMonth, accountLines, monthSummary, alreadyKept } from "../src/model/index.js";
+import { emptyState, validateState, selfCheck, recordFromParse, proveMonths, acceptMonth, accountLines, monthSummary, alreadyKept, removeStatement } from "../src/model/index.js";
 import { UNLOGGED_CATEGORY_ID } from "../src/model/seed.js";
 
 // Invented statements only: a bank, its months, its lines. Amounts in centavos.
@@ -136,4 +136,38 @@ test("the same statement kept twice is recognised, a different one is not", () =
   assert.equal(alreadyKept(s, other.record, other.lines), false);
   const changed = recordFromParse({ ...AUG, lines: AUG.lines.map((l, i) => (i ? { ...l, amount: l.amount + 1 } : l)) }, { account_id: "gt", id: "rec7", now: new Date(TS) });
   assert.equal(alreadyKept(s, changed.record, changed.lines), false, "same dates, different amounts: not the same");
+});
+
+test("a month the statement only partly covers says which days it covers, not just 'no balances'", () => {
+  const part = { ...parsed({ from: "2026-06-12", to: "2026-06-30" }, { opening: 100000, closing: 90500 }, [line("2026-06-15", "Corner Cafe", 9500, "out", null)]), lines: [{ ...line("2026-06-15", "Corner Cafe", 9500, "out", null) }] };
+  const r = proveMonths(withStatements(part), "gt")[0];
+  assert.equal(r.status, "no-balance"); assert.match(r.reason, /runs from Jun 12 to Jun 30, so this month is only partly covered/);
+  const wide = { ...parsed({ from: "2026-07-01", to: "2026-09-30" }, { opening: 100000, closing: 90500 }, []), lines: [line("2026-07-05", "Corner Cafe", 9500, "out", null)] };
+  assert.match(proveMonths(withStatements(wide), "gt")[0].reason, /no balance on each line, so this month cannot be proved on its own \(it covers Jul 1 to Sep 30\)/);
+});
+
+test("a kept statement can be removed unless a month it touches was accepted; its entries and drafts are never touched", () => {
+  const s = withStatements(AUG, SEP);
+  const r = removeStatement(s, "rec1");
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.state.statementRecords.map((x) => x.id), ["rec2"]);
+  assert.ok(r.state.statementLines.every((l) => l.record_id === "rec2"), "its lines go with it");
+  assert.equal(r.state.transactions.length, s.transactions.length);
+  const acc = acceptMonth(s, "gt", "2026-08", { newId: seqId(), now: new Date(TS) });
+  const blocked = removeStatement(acc.state, "rec1");
+  assert.equal(blocked.ok, false); assert.match(blocked.message, /was accepted/);
+  assert.equal(removeStatement(acc.state, "rec2").ok, true, "a statement of another month is free to remove");
+  assert.equal(removeStatement(s, "nope").ok, false);
+  assert.equal(s.statementRecords.length, 2, "the input is never changed");
+});
+
+test("a FIRST statement that starts from a zero balance mid-month covers that month in full (the account was opened that day)", () => {
+  const first = { ...parsed({ from: "2026-06-04", to: "2026-06-30" }, { opening: 0, closing: 90500 }, []), lines: [line("2026-06-10", "Pay in", 100000, "in", null, "in"), line("2026-06-15", "Corner Cafe", 9500, "out", null)] };
+  const r = proveMonths(withStatements(first), "gt")[0];
+  assert.equal(r.status, "proved", r.reason); assert.deepEqual([r.opening, r.closing], [0, 90500]);
+  const notZero = { ...first, summary: { opening: 5000, closing: 95500 } };
+  assert.equal(proveMonths(withStatements(notZero), "gt")[0].status, "no-balance", "a mid-month start from a non-zero balance leaves the first days unknown");
+  const later = { ...parsed({ from: "2026-07-04", to: "2026-07-31" }, { opening: 0, closing: 90500 }, []), lines: first.lines.map((l) => ({ ...l, date: l.date.replace("-06-", "-07-") })) };
+  const withEarlier = keep(keep(base(), first, 1), later, 2);
+  assert.equal(proveMonths(withEarlier, "gt").find((x) => x.month === "2026-07").status, "no-balance", "only the account's FIRST statement is treated this way");
 });

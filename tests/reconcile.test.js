@@ -84,3 +84,16 @@ test("one arrival is claimed by ONE send, even when two identical sends could fi
   const r = pairMoves(both(w, BANK()));
   assert.equal(r.pairs.length, 1); assert.equal(r.loneOut.length, 1);
 });
+
+test("a move is also found from the RECEIVING end: money in that names your account (by its last four) pairs with the send in that account, which names only you", () => {
+  // the bank's own statement shows the send under your own name (no digits); the wallet's statement says "Received from Test Bank ending 2222"
+  const bank = stmt([line("2023-02-01", "Own name transfer", 100000, "out", 50000, "move", { own: true })], 150000);
+  const wallet = stmt([line("2023-02-01", "Cash in from Test Bank ending 2222", 100000, "in", 100000, "in", { last4: "2222" })], 0);
+  const r = pairMoves(keep(keep(base(), "bk", bank, 1), "gc", wallet, 2));
+  assert.equal(r.pairs.length, 1);
+  assert.deepEqual([r.pairs[0].from_id, r.pairs[0].to_id, r.pairs[0].amount], ["bk", "gc", 100000]);
+  // a receiving line that names a THIRD account does not pair with it
+  const wrong = stmt([line("2023-02-01", "Cash in from Test Wallet ending 1111", 100000, "in", 100000, "in", { last4: "1111" })], 0);
+  const r2 = pairMoves(keep(keep(base(), "bk", bank, 1), "gc", wrong, 2));
+  assert.equal(r2.pairs.length, 0, "it names the wallet itself, not the bank the money left");
+});

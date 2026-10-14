@@ -42,6 +42,19 @@ export function accountLines(state, accountId) {
   return out;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const shortDate = (iso) => `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${Number(iso.slice(8, 10))}`;
+// A first statement that starts from a ZERO balance (the account was opened that day): nothing came before it, so it covers its first month in full even though its period starts mid-month.
+const firstFromZero = (records, r) => r.opening === 0 && r.period_from && !records.some((x) => x.period_from && x.period_from < r.period_from);
+const coversWhole = (records, r, month) => r.period_to === lastDay(month) && (r.period_from === month + "-01" || (firstFromZero(records, r) && r.period_from.slice(0, 7) === month));
+// Why a month has nothing to be checked against: the statement does not cover all of it, or it covers it but prints no balance on each line.
+function noBalanceReason(records, month) {
+  const first = month + "-01", last = lastDay(month), over = records.find((r) => r.period_from && r.period_to && r.period_from <= last && r.period_to >= first);
+  if (!over) return "This statement has no balances to check this month against.";
+  if (!coversWhole(records, over, month) && (over.period_from > first || over.period_to < last)) return `The statement runs from ${shortDate(over.period_from)} to ${shortDate(over.period_to)}, so this month is only partly covered.`;
+  return `The statement has no balance on each line, so this month cannot be proved on its own (it covers ${shortDate(over.period_from)} to ${shortDate(over.period_to)}).`;
+}
+
 // Every month an account has statement lines for, with its proof. status:
 //   "proved"     the lines add up to the closing balance and the opening is the closing of the month before (or it is the first month).
 //   "broken"     the lines do not add up, or a line does not follow from the balance before it.
@@ -57,8 +70,8 @@ export function proveMonths(state, accountId) {
   for (const month of months) {
     const ml = lines.filter((l) => l.date.slice(0, 7) === month);
     const moneyIn = ml.filter((l) => l.direction === "in").reduce((n, l) => n + l.amount, 0), moneyOut = ml.filter((l) => l.direction === "out").reduce((n, l) => n + l.amount, 0);
-    const row = { month, opening: null, closing: null, moneyIn, moneyOut, count: ml.length, status: "no-balance", reason: "This statement has no balances to check this month against.", accepted: accepted.has(month) };
-    const whole = records.find((r) => r.period_from === month + "-01" && r.period_to === lastDay(month) && Number.isSafeInteger(r.opening) && Number.isSafeInteger(r.closing));
+    const row = { month, opening: null, closing: null, moneyIn, moneyOut, count: ml.length, status: "no-balance", reason: noBalanceReason(records, month), accepted: accepted.has(month) };
+    const whole = records.find((r) => coversWhole(records, r, month) && Number.isSafeInteger(r.opening) && Number.isSafeInteger(r.closing));
     if (ml.every((l) => Number.isSafeInteger(l.balance))) {
       row.opening = ml[0].balance - signed(ml[0]); row.closing = ml[ml.length - 1].balance;
       const bad = ml.filter((l, i) => (i === 0 ? row.opening : ml[i - 1].balance) + signed(l) !== l.balance).length;
@@ -136,4 +149,15 @@ export function alreadyKept(state, record, lines) {
   const mine = (state.statementRecords ?? []).filter((r) => r.account_id === record.account_id && r.period_from === record.period_from && r.period_to === record.period_to && r.line_count === record.line_count);
   const sig = (ls) => ls.map((l) => [l.date, l.amount, l.direction, l.balance ?? ""].join("|")).join(";");
   return mine.some((r) => sig((state.statementLines ?? []).filter((l) => l.record_id === r.id).sort((a, b) => a.n - b.n)) === sig(lines));
+}
+
+// A kept statement, with its lines, can be removed when no month it touches has been accepted (a statement filed under the wrong account, or kept twice).
+// It never touches an entry or a draft: it is only the proof record.
+export function removeStatement(state, recordId) {
+  const r = (state.statementRecords ?? []).find((x) => x.id === recordId);
+  if (!r) return { ok: false, message: "That statement is not kept." };
+  const months = new Set((state.statementLines ?? []).filter((l) => l.record_id === recordId).map((l) => l.date.slice(0, 7)));
+  const blocked = (state.statementAccepts ?? []).some((a) => a.account_id === r.account_id && months.has(a.month));
+  if (blocked) return { ok: false, message: "A month from this statement was accepted, so it stays." };
+  return { ok: true, state: { ...state, statementRecords: state.statementRecords.filter((x) => x.id !== recordId), statementLines: (state.statementLines ?? []).filter((l) => l.record_id !== recordId) } };
 }

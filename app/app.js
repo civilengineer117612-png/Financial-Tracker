@@ -756,8 +756,9 @@ async function importFile(file) {
     }
     if (!items.length && !statement) throw new Error("No dated spending was found. A notes list needs a date line (02/10/2026) above lines like \"Lunch - 100\".");
     // a statement goes to the account linked to its bank when there is one (chosen for you; you can change it)
-    const auto = statement?.bankId ? activeAccounts().find((a) => a.class === "asset" && a.bank === statement.bankId)?.id ?? null : null;
-    ui.form = { items, notRead, statement, choice: {}, looked: false, autoAccount: auto, order: statement ? "dmy" : M.dateOrder(items.map((x) => x.dateRaw), today0), account_id: auto ?? cashFirst(activeAccounts())[0]?.id ?? null };
+    // (only when exactly ONE account is linked to that bank; a statement is never filed under Cash by default: the owner chooses)
+    const linked = statement?.bankId ? activeAccounts().filter((a) => a.class === "asset" && a.bank === statement.bankId) : [], auto = linked.length === 1 ? linked[0].id : null;
+    ui.form = { items, notRead, statement, choice: {}, looked: false, autoAccount: auto, linkedCount: linked.length, order: statement ? "dmy" : M.dateOrder(items.map((x) => x.dateRaw), today0), account_id: auto ?? (statement ? null : cashFirst(activeAccounts())[0]?.id ?? null) };
   } catch (err) { if (err instanceof PdfCancelled) { ui.sheet = null; renderSheet(); return; } ui.form = { error: String(err?.message ?? err) }; }
   if (ui.sheet?.type === "import") renderSheet();
 }
@@ -1238,8 +1239,16 @@ function statementsHtml() {
     const rows = M.proveMonths(S(), a.id), good = rows.filter(stmGood).length, pct = rows.length ? Math.round((100 * good) / rows.length) : 0;
     return `<div class="card" style="padding:16px"><div class="note" style="margin:0 0 4px">${esc(a.name)}</div><div class="stbig">${good} of ${rows.length} ${rows.length === 1 ? "month" : "months"}</div>
       <div class="stbar" role="img" aria-label="${good} of ${rows.length} months proved"><i style="width:${pct}%"></i></div><div class="note" style="margin:0">proved by the bank's own statements</div></div>
-      <div class="setlist">${rows.map((r) => `<button class="setrow" data-action="st-month" data-acct="${esc(a.id)}" data-month="${r.month}"><div class="st"><b>${monthLabel(r.month)}</b><small>${stmGood(r) ? `${peso(r.opening)} to ${peso(r.closing)}` : esc(r.reason)}</small></div><span style="white-space:nowrap">${stmGood(r) ? STM_OK : STM_NO} ${r.accepted ? "Accepted" : STM_WORD[r.status]}</span><span class="chev">\u203a</span></button>`).join("")}</div>`;
+      <div class="setlist">${rows.map((r) => `<button class="setrow" data-action="st-month" data-acct="${esc(a.id)}" data-month="${r.month}"><div class="st"><b>${monthLabel(r.month)}</b><small>${stmGood(r) ? `${peso(r.opening)} to ${peso(r.closing)}` : esc(r.reason)}</small></div><span style="white-space:nowrap">${stmGood(r) ? STM_OK : STM_NO} ${r.accepted ? "Accepted" : STM_WORD[r.status]}</span><span class="chev">\u203a</span></button>`).join("")}</div>${keptHtml(a)}`;
   }).join("") + movesHtml() + `<p class="note">Add a statement from Scan, Import old spending. Oldest month first is easiest.</p>`;
+}
+// The statements kept for an account, each with a way to remove it (a wrong account, or kept twice). Removing touches no entry and no draft; a statement with an accepted month stays.
+function keptHtml(a) {
+  const recs = (S().statementRecords ?? []).filter((r) => r.account_id === a.id);
+  if (!recs.length) return "";
+  const months = (id) => new Set((S().statementLines ?? []).filter((l) => l.record_id === id).map((l) => l.date.slice(0, 7)));
+  const frozen = (r) => (S().statementAccepts ?? []).some((x) => x.account_id === a.id && months(r.id).has(x.month));
+  return `<details class="why"${ui.confirmStm && recs.some((r) => r.id === ui.confirmStm) ? " open" : ""}><summary>Statements kept (${recs.length})</summary><div class="card" style="padding:4px 16px">${recs.map((r) => `<div class="row" style="align-items:center"><div>${esc(r.bank ?? "Statement")}<small>${r.period_from && r.period_to ? `${esc(longDate(r.period_from))} to ${esc(longDate(r.period_to))}` : `${r.line_count} lines`}</small></div><div class="amt">${frozen(r) ? `<small>${STM_OK} Accepted</small>` : `<button class="link" data-action="st-remove" data-id="${esc(r.id)}">${ui.confirmStm === r.id ? "Tap again to remove" : "Remove"}</button>`}</div></div>`).join("")}</div><p class="note small">Removing a statement changes no entry and no draft. A statement with an accepted month stays.</p></details>`;
 }
 // A transfer out of one of your accounts and the money arriving in another is ONE move (src/model/reconcile.js): shown as a pair, added as a draft by a tap, never by itself.
 function movesHtml() {
@@ -2481,7 +2490,7 @@ function renderSheet() {
           return `<div class="mrow mimp ask"><span class="mn">${esc(g.name)}<small>${n} ${n === 1 ? "line" : "lines"} \u00b7 ${peso(g.total)}</small></span><span class="chips"><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="spending" aria-pressed="${all("spending")}">Spending</button><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="not" aria-pressed="${all("not")}">Not spending</button></span>
           ${n > 1 ? `<button class="link small" data-action="stm-show" data-id="${esc(g.key)}">${f.open?.[g.key] ? "Hide the lines" : `Show the ${n} lines`}</button>${f.open?.[g.key] ? `<div class="stmlines">${g.lines.map((x) => `<div class="mrow mline mimp"><span class="mn">${esc(longDate(x.dateRaw))}</span><span class="mv">${peso(x.amount)}</span></div>`).join("")}</div>` : ""}` : `<small class="hiddennote">${esc(longDate(g.lines[0].dateRaw))}</small>`}</div>`; }).join("")}` : ""}` : "";
       body = `<h3>Import old spending</h3>${stBlock}${st ? `<p><button class="chip wide" data-action="stm-keep" aria-pressed="${f.keep !== false}">Keep this statement to prove your months</button></p><p class="note small">It stays on this phone, in Setup, Statements.</p>` : ""}${orderLine}
-        <label>Paid from${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}${REQ}</label>${paidChips(f.account_id)}${REQNOTE}
+        <label>${f.statement ? "Which account is this statement from?" : "Paid from"}${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}${REQ}</label>${paidChips(f.account_id)}${REQNOTE}${f.statement && f.linkedCount > 1 && !f.account_id ? `<p class="note small">More than one of your accounts is linked to ${esc(f.statement.bank ?? "this bank")}. Choose the one this statement is from.</p>` : ""}
         ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${waiting ? `. <b>${waiting} ${waiting === 1 ? "line needs" : "lines need"} your choice</b>: left out until you choose` : ""}${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
           <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline mimp"><span class="mn">${esc(longDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline mimp"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
           ${f.notRead.length ? `<details><summary>Not read (${f.notRead.length})</summary>${f.notRead.slice(0, 20).map((l) => `<p class="note">${esc(l)}</p>`).join("")}</details>` : ""}
@@ -3667,6 +3676,14 @@ async function onClick(el) {
     case "toggle-cancelled": ui.showCancelled = !ui.showCancelled; renderSheet(); break;
     case "wn-all": ui.wnAll = !ui.wnAll; renderScreen(); break;
     case "st-month": ui.sheet = { type: "stmonth", account_id: el.dataset.acct, month: el.dataset.month }; renderSheet(); break;
+    case "st-remove": {
+      if (ui.confirmStm !== el.dataset.id) { ui.confirmStm = el.dataset.id; renderScreen(); break; }
+      ui.confirmStm = null;
+      const r = M.removeStatement(S(), el.dataset.id);
+      if (!r.ok) { showToast(r.message); renderScreen(); break; }
+      if (await commit(r.state)) showToast("Statement removed. No entry or draft was changed.");
+      break;
+    }
     case "st-addmove": {
       const q = M.pairMoves(S()).pairs.find((x) => x.out.id === el.dataset.out && x.in.id === el.dataset.in);
       if (!q) break;
