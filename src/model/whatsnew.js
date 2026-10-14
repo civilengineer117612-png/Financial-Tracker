@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-14-dropdowns-rest", date: "2026-10-14", text: "Move money (From and To), Take it from, money received and a split's second category are now the same tidy dropdown rows." },
   { id: "2026-10-14-name-icon", date: "2026-10-14", text: "The app is now called fo/und and has a new icon; to get both on iPhone, make a backup first and add it to your Home Screen again." },
   { id: "2026-10-14-dropdown-polish", date: "2026-10-14", text: "A dropdown list now folds shut when you tap outside it, shows account names beside their pictures, and Last used counts verified entries only." },
   { id: "2026-10-14-dropdowns", date: "2026-10-14", text: "Category, Paid from and It looks like are now tidy rows that open a list, the one you used last first and the rest A to Z." },

@@ -2034,7 +2034,7 @@ function moveFields(f) {
   const ask = f.ask && f.own !== "yes" ? `<p class="note"><b>Is the other end one of your accounts?</b> The paper shows \u201C${esc(f.ask.label)}\u201D. I ask once per name.</p>
       <div class="chips"><button class="chip" data-action="own-yes" aria-pressed="false">Yes, it is mine</button><button class="chip" data-action="own-no" aria-pressed="false">No, it is someone else</button></div>` : f.ask ? `<p class="note">Remembered when you save. Choose which of your accounts it is.</p>` : "";
   const trips = f.foreign && S().tags.length ? `<label>Tag a trip (optional)</label><div class="chips">${S().tags.map((t) => `<button class="chip" data-action="pick-trip" data-id="${esc(t.id)}" aria-pressed="${f.trip_id === t.id}">${esc(t.name)}</button>`).join("")}</div>` : "";
-  return `${ask}<label>From</label>${chips(accountsFor(null), f.from_id, "pick-from")}<label>To</label>${chips(accountsFor(null), f.to_id, "pick-to")}
+  return `${ask}<label>From</label>${accountPicker(accountsFor(null), f.from_id, "pick-from", "from", "Choose an account")}<label>To</label>${accountPicker(accountsFor(null), f.to_id, "pick-to", "to", "Choose an account")}
       <label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(f.fee ?? "")}" autocomplete="off">
       ${f.foreign ? `<p class="note">The paper shows ${esc(f.foreign.currency)} ${(f.foreign.amount / 100).toFixed(2)}. Type the peso amount your bank took; you can fix it again in Verify.</p>${rateHint(f.foreign)}${trips}` : ""}`;
 }
@@ -2065,12 +2065,12 @@ function picker(key, groups, selectedId, action, placeholder) {
 }
 const byName = (list) => [...list].sort((a, b) => a.name.localeCompare(b.name));
 // The category last used (the newest verified entry with one of these categories), then every category A to Z.
-function categoryPicker(items, selectedId, key = "cat") {
+function categoryPicker(items, selectedId, key = "cat", action = "pick-cat", placeholder = "Choose a category") {
   // "Last used" counts verified entries only, so a wrong scan that is still a draft never puts a category at the top
   const ids = new Set(items.map((c) => c.id)), verified = new Set(S().transactions.filter((t) => t.status === "verified").map((t) => t.id));
   const lastId = [...S().entries].reverse().find((e) => e.category_id && ids.has(e.category_id) && verified.has(e.transaction_id))?.category_id;
   const last = items.filter((c) => c.id === lastId);
-  return picker(key, [["Last used", last], [last.length ? "All categories" : "", byName(items.filter((c) => c.id !== lastId))]], selectedId, "pick-cat", "Choose a category");
+  return picker(key, [["Last used", last], [last.length ? "All categories" : "", byName(items.filter((c) => c.id !== lastId))]], selectedId, action, placeholder);
 }
 // Accounts: the one used last (the existing rule), then Cash and the rest A to Z, then the cards.
 function accountPicker(items, selectedId, action = "pick-acct", key = "acct", placeholder = "Choose an account") {
@@ -2145,8 +2145,8 @@ function renderSheet() {
   } else if (sh.type === "move") {
     body = `<h3>Move money</h3>
       <label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
-      <label>From</label>${chips(accountsFor(null), ui.form.from_id, "pick-from")}
-      <label>To</label>${chips(accountsFor(null), ui.form.to_id, "pick-to")}
+      <label>From</label>${accountPicker(accountsFor(null), ui.form.from_id, "pick-from", "from", "Choose an account")}
+      <label>To</label>${accountPicker(accountsFor(null), ui.form.to_id, "pick-to", "to", "Choose an account")}
       <label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">
       ${REQNOTE}
       <p class="note" id="scan-why" role="status"></p>
@@ -2160,7 +2160,7 @@ function renderSheet() {
       <label for="f-payee">Name (optional)</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
       ${t.schedule_id ? `<label for="f-memo">Note (optional, like "covers Sept to Oct")</label><input id="f-memo" data-field="memo" value="${esc(ui.form.memo ?? "")}" autocomplete="off">` : ""}
       ${d.editable ? `<label>Category${REQ}</label>${categoryPicker(pickCategoriesWith(ui.form.category_id), ui.form.category_id)}<label>Paid from${REQ}</label>${paidChips(ui.form.account_id)}` : ""}
-      ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${chips(accountsFor(null), ui.form.from_id, "pick-from")}<label>To</label>${chips(accountsFor(null), ui.form.to_id, "pick-to")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
+      ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${accountPicker(accountsFor(null), ui.form.from_id, "pick-from", "from", "Choose an account")}<label>To</label>${accountPicker(accountsFor(null), ui.form.to_id, "pick-to", "to", "Choose an account")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
@@ -2221,7 +2221,7 @@ function renderSheet() {
   } else if (sh.type === "bufund") {
     body = `<h3>Add to the buffer</h3>
       <label for="f-amount">Amount (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
-      <label>Take it from${REQ}</label>${chips(accountsFor(null).filter((a) => a.id !== gcashOf().account_id), ui.form.account_id, "pick-acct")}
+      <label>Take it from${REQ}</label>${accountPicker(accountsFor(null).filter((a) => a.id !== gcashOf().account_id), ui.form.account_id)}
       <p class="note">Saved as verified, because you are choosing to set this money aside.</p>
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-bufund" style="margin-top:6px" disabled>Save</button></p>`;
@@ -2255,7 +2255,7 @@ function renderSheet() {
     body = `<h3>Money received</h3>
       <label for="f-amount">Amount received (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off" placeholder="e.g. 9776.98">
       <label for="f-date">Date it arrived</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}" max="${esc(today())}">
-      <label>What it is${REQ}</label>${chips(incomeCategories(), ui.form.category_id, "pick-cat")}
+      <label>What it is${REQ}</label>${categoryPicker(incomeCategories(), ui.form.category_id, "cat", "pick-cat", "Choose what it is")}
       <label>Arrived in${REQ}</label>${paidChips(ui.form.account_id)}
       ${REQNOTE}
       <p class="note">Pay, interest or a refund. For a full payslip, use Add a payslip in Income. Saved as verified, since you copy it from paper.</p>
@@ -2284,7 +2284,7 @@ function renderSheet() {
     const g = S().goals.find((x) => x.id === sh.id);
     body = `<h3>Put money in ${esc(g.name)}</h3>
       <label for="f-amount">Amount (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
-      <label>Take it from${REQ}</label>${chips(accountsFor(null).filter((a) => a.id !== g.account_id), ui.form.account_id, "pick-acct")}
+      <label>Take it from${REQ}</label>${accountPicker(accountsFor(null).filter((a) => a.id !== g.account_id), ui.form.account_id)}
       <p class="note">This is saved as a draft transfer. Verify it like any other entry.</p>
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-deposit" style="margin-top:6px" disabled>Save</button></p>`;
@@ -2380,7 +2380,7 @@ function renderSheet() {
     const p = S().payslips.find((x) => x.id === sh.id);
     body = `<h3>Where should the free part go?</h3>
       <p class="note">It stays in ${esc(accountName(p.account_id))} unless you choose another account. Choosing one makes a draft in Verify.</p>
-      ${chips(accountsFor(null).filter((a) => a.id !== p.account_id), ui.form.account_id, "pick-acct")}
+      ${accountPicker(accountsFor(null).filter((a) => a.id !== p.account_id), ui.form.account_id)}
       <p><button class="primary" id="f-save" data-action="save-otfree" style="margin-top:14px" disabled>Make the draft</button></p>`;
   } else if (sh.type === "payslip") {
     const f = ui.form, field = (prefix, [kind, label]) => `<label for="${prefix}${kind}">${esc(label)}</label><input id="${prefix}${kind}" data-field="${prefix}${kind}" inputmode="decimal" value="${esc(f[prefix + kind] ?? "")}" autocomplete="off" placeholder="0.00">`;
@@ -2476,9 +2476,9 @@ function renderSheet() {
       <label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(f.amount ?? "")}" autocomplete="off">
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(f.date)}">
       <label for="f-payee">${move ? "Name" : into ? "From" : "Paid to"} (optional)</label><input id="f-payee" data-field="payee" value="${esc(f.payee ?? "")}" autocomplete="off">
-      ${move ? moveFields(f) : `<label>Category${REQ}</label>${into ? chips(incomeCategories(), f.category_id, "pick-cat") : categoryPicker(pickCategoriesWith(f.category_id), f.category_id)}`}
+      ${move ? moveFields(f) : `<label>Category${REQ}</label>${into ? categoryPicker(incomeCategories(), f.category_id, "cat", "pick-cat", "Choose what it is") : categoryPicker(pickCategoriesWith(f.category_id), f.category_id)}`}
       ${into || move ? "" : `<p><button class="link" data-action="toggle-split" aria-pressed="${f.split === true}">${f.split ? "Do not split this receipt" : "Split between two categories"}</button></p>
-      ${f.split ? `<label>Second category</label>${chips(pickCategories().filter((c) => c.id !== f.category_id), f.split_cat, "pick-split")}
+      ${f.split ? `<label>Second category</label>${categoryPicker(pickCategories().filter((c) => c.id !== f.category_id), f.split_cat, "split", "pick-split", "Choose a second category")}
         <label for="f-split">Amount that belongs to the second category (\u20B1)</label><input id="f-split" data-field="split_amt" inputmode="decimal" value="${esc(f.split_amt ?? "")}" autocomplete="off">
         <p class="note" id="split-note" role="status"></p>` : ""}`}
       ${move ? "" : `<label>${into ? "Arrived in" : "Paid from"}${REQ}</label>${paidChips(f.account_id)}`}
@@ -3400,7 +3400,7 @@ async function onClick(el) {
     case "pick-toggle": if (ui.sheet) { ui.sheet.pick = ui.sheet.pick === el.dataset.key ? null : el.dataset.key; renderSheet(); } break;
     case "pick-cat": if (ui.sheet) ui.sheet.pick = null; form.category_id = id; if (form.split_cat === id) form.split_cat = null; renderSheet(); break;
     case "toggle-split": form.split = !form.split; renderSheet(); break;
-    case "pick-split": form.split_cat = id; renderSheet(); break;
+    case "pick-split": if (ui.sheet) ui.sheet.pick = null; form.split_cat = id; renderSheet(); break;
     case "open-voice": ui.sheet = { type: "voice" }; ui.form = { spoken: "", lang: firstLanguage() }; renderSheet(); break;
     case "voice-toggle": voiceToggle(); break;
     case "use-spoken": await useSpoken(); break;
@@ -3480,8 +3480,8 @@ async function onClick(el) {
     case "pick-trip": form.trip_id = form.trip_id === id ? null : id; renderSheet(); break;
     case "link-dup": await linkDuplicate(); break;
     case "dup-new": form.dup = "new"; form.dupOf = null; await saveScan(); break;
-    case "pick-from": form.from_id = id; renderSheet(); break;
-    case "pick-to": form.to_id = id; renderSheet(); break;
+    case "pick-from": if (ui.sheet) ui.sheet.pick = null; form.from_id = id; renderSheet(); break;
+    case "pick-to": if (ui.sheet) ui.sheet.pick = null; form.to_id = id; renderSheet(); break;
     case "pdf-open": { const typed = $("pdf-pw")?.value ?? ""; const go = pdfPasswordResolve; pdfPasswordResolve = null; ui.form = { busy: "Opening the PDF..." }; renderSheet(); go?.(typed); break; }
     case "pdf-cancel": { const go = pdfPasswordResolve; pdfPasswordResolve = null; go?.(null); ui.sheet = null; renderSheet(); break; }
     case "stm-choose": { const g = M.unsureByPerson(ui.form.items).find((x) => x.key === id); if (g) ui.form.choice = { ...(ui.form.choice ?? {}), ...Object.fromEntries(g.ids.map((i) => [i, el.dataset.pick])) }; renderSheet(); break; }   // one choice answers all of a person's lines

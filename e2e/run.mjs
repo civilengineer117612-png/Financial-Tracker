@@ -2982,6 +2982,30 @@ console.log("Dropdown rows");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
+// ===== 5dd2. the other chip lists as dropdown rows: Move money From and To, money received "What it is" =====
+console.log("Dropdown rows, the rest");
+{ const acct = (id, name, cls = "asset") => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" });
+  const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, intro_off: { cards: true, income: true } }, state: { ...OWNER_STYLE.state, accounts: [acct("z", "Zeta Wallet"), acct("a", "Alpha Bank"), acct("c", "Beta Card", "liability")], transactions: [], entries: [], attachments: [] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Cards"); await page.click('button[data-action="open-move"]'); await page.waitForSelector("#sheet .pickrow");
+  check(await page.locator("#sheet .pickrow").count() === 2 && await page.locator("#sheet .picklist:not([hidden])").count() === 0, "Move money: From and To are two dropdown rows, both closed");
+  await page.click("#sheet .pickrow >> nth=0");
+  const fromRows = (await page.locator("#sheet .pick >> nth=0").locator(".pickh, .pickitem").allInnerTexts()).map((t) => t.trim().split("\n").pop());
+  check(fromRows.join("|") === "Accounts|Alpha Bank|Zeta Wallet|Cards|Beta Card", "From lists the accounts A to Z, then the cards (" + fromRows.join("|") + ")");
+  await page.click('#sheet .pick >> nth=0 >> .pickitem:has-text("Zeta Wallet")');
+  await page.click("#sheet .pickrow >> nth=1"); await page.click('#sheet .pick >> nth=1 >> .pickitem:has-text("Alpha Bank")');
+  const faces = [await text(page, "#sheet .pickrow >> nth=0"), await text(page, "#sheet .pickrow >> nth=1")].map((t) => t.replace(/\s+/g, " "));
+  check(/Zeta Wallet/.test(faces[0]) && /Alpha Bank/.test(faces[1]) && await page.locator("#sheet .picklist:not([hidden])").count() === 0, "choosing fills the row and folds the list (" + faces.join(" | ") + ")");
+  await page.click('#sheet button:has-text("Cancel")');
+  await menuGo(page, "Income"); await page.click('button:has-text("Add income")'); await page.click('#sheet button:has-text("Other income")'); await page.waitForSelector("#sheet .pickrow");
+  const what = await text(page, "#sheet .pickrow >> nth=0");
+  check(/Interest|Other income|Overtime|Refund|Salary|Choose what it is/.test(what), "Money received: What it is is a dropdown row showing the choice (" + what.replace(/\s+/g, " ") + ")");
+  await page.click("#sheet .pickrow >> nth=0");
+  const inc = (await page.locator("#sheet .pick >> nth=0").locator(".pickitem").allInnerTexts()).map((t) => t.trim());
+  check(inc.length >= 2 && JSON.stringify(inc) === JSON.stringify([...inc].sort((a, b) => a.localeCompare(b))), "the income kinds are A to Z (" + inc.join(", ") + ")");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
 // ===== 5nm. the name fo/und and the icon; saved data is still found under the old storage names =====
 console.log("Name and icon");
 { const TS = "2026-03-04T09:00:00.000+08:00";
