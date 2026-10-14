@@ -2161,7 +2161,7 @@ console.log("Friend fixes 1");
   const cs = JSON.parse((await stored(page)).local).state.categories;
   check(cs.some((c) => c.name === "Pets") && cs.find((c) => c.id === "cat-fun")?.name === "Games" && cs.find((c) => c.id === "cat-food")?.role === "food", "a category can be added and renamed; the id and the role stay");
   await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")');
-  check((await text(page, "#sheet")).includes("Pets") && (await text(page, "#sheet")).includes("Games") && !(await text(page, "#sheet")).includes("Fun"), "the new and renamed categories are offered when logging");
+  { const offered = await page.locator("#sheet .pick").first().textContent(); check(offered.includes("Pets") && offered.includes("Games") && !offered.includes("Fun"), "the new and renamed categories are offered when logging"); }
   await page.click('#sheet button:has-text("Cancel")').catch(() => {});
   await menuGo(page, "Help");
   await page.click('button[data-action="open-notice"]');
@@ -2948,6 +2948,31 @@ console.log("Popups on every screen");
   check(await page.locator(".in-draw").count() === 0 && (await settingsOf()).intro_off?.goals === true, "with the check ticked a popup does not come back");
   await page.click("#menuBtn"); await page.click('#menu .item:has-text("Cash flow")'); await page.waitForTimeout(400);
   check(await page.locator(".in-draw").count() === 1 && (await settingsOf()).intro_seen?.money === 1 && !(await settingsOf()).intro_off?.money, "the other screens' popups are untouched (Cash flow shows again, not switched off)");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
+// ===== 5dd. Category, Paid from and "It looks like" as dropdown rows =====
+console.log("Dropdown rows");
+{ const acct = (id, name, cls = "asset") => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" });
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct("z", "Zeta Wallet"), acct("a", "Alpha Bank"), acct("c", "Beta Card", "liability")], transactions: [], entries: [], attachments: [] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await page.click('button:has-text("Add expense")'); await page.waitForSelector("#f-amount");
+  check(await page.locator("#sheet .pickrow").count() === 2 && await page.locator("#sheet .picklist:not([hidden])").count() === 0, "Category and Paid from are two dropdown rows, both closed");
+  { const faces = [await text(page, "#sheet .pickrow >> nth=0"), await text(page, "#sheet .pickrow >> nth=1")]; check(faces[0].includes("Choose a category") && /Alpha Bank|Zeta Wallet/.test(faces[1]), "the category row says what to choose; the account row shows the one the app picked by its usual rule (" + faces.join(" | ").replace(/\s+/g, " ") + ")"); }
+  await page.click("#sheet .pickrow >> nth=0");
+  const cats = (await page.locator("#sheet .pick >> nth=0").locator(".pickitem").allInnerTexts()).map((t) => t.trim());
+  check(cats.length >= 5 && JSON.stringify(cats) === JSON.stringify([...cats].sort((a, b) => a.localeCompare(b))), "with nothing used yet the categories are in A to Z order (" + cats.slice(0, 4).join(", ") + "...)");
+  await page.click('#sheet .pick >> nth=0 >> .pickitem:has-text("Shopping")');
+  check(await page.locator("#sheet .picklist:not([hidden])").count() === 0 && (await text(page, "#sheet .pickrow >> nth=0")).includes("Shopping"), "choosing closes the list and the row shows the choice");
+  await page.fill("#f-amount", "50"); await page.click("#sheet .pickrow >> nth=1"); await page.click('#sheet .pick >> nth=1 >> .pickitem:has-text("Alpha Bank")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
+  await page.click('button:has-text("Add expense")'); await page.waitForSelector("#f-amount");
+  await page.click("#sheet .pickrow >> nth=0");
+  const catRows = (await page.locator("#sheet .pick >> nth=0").locator(".pickh, .pickitem").allInnerTexts()).map((t) => t.trim());
+  check(catRows[0] === "Last used" && catRows[1].startsWith("Shopping") && catRows[2] === "All categories" && !catRows.slice(3).some((t) => t.startsWith("Shopping")), "the category used last comes first under Last used, then All categories");
+  await page.click("#sheet .pickrow >> nth=1");
+  const acctRows = (await page.locator("#sheet .pick >> nth=1").locator(".pickh, .pickitem").allInnerTexts()).map((t) => t.trim().split("\n").pop());   // an account item starts with its picture's letter
+  check(acctRows.join("|") === "Last used|Alpha Bank|Accounts|Zeta Wallet|Cards|Beta Card", "accounts: the one used last, then the rest A to Z, then the cards (" + acctRows.join("|") + ")");
+  check(await page.locator("#sheet .picklist:not([hidden])").count() === 1, "opening one list closes the other");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
