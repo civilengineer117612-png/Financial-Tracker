@@ -3330,7 +3330,11 @@ check(await page.waitForFunction(async () => { const r = await new Promise((res)
 check((await stored(page)).local === mirrorBefore, "the full localStorage keeps its older copy (nothing broke)");
 check(!(await page.locator("#banner .bar").count()), "no error banner appears for a full localStorage");
 await page.reload(); await page.waitForSelector("#nav button");
-check(await seen(page, "#screen", "After Full") || (await page.evaluate(() => document.body.innerText)).includes("After Full"), "after a restart the newer IndexedDB copy is the one in use");
+await page.waitForFunction(() => { const l = localStorage.getItem("financialTracker.ledger"); return !!l && l.includes("After Full"); }, null, { timeout: 4000 }).catch(() => {});
+const after = await stored(page);
+check(after.idb.includes("After Full") && after.local === after.idb, "after a restart the newer IndexedDB copy is in use and the spare copy is quietly brought up to date");
+await page.click("#menuBtn"); await page.click('#menu .item:has-text("Cards")');
+check(await seen(page, "#screen", "After Full"), "and the account is on the Cards screen");
 await ctx.close();
 
 await browser.close();
