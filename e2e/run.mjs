@@ -3321,6 +3321,11 @@ console.log("Welcome card, category editing, required marks");
   await page.click('#sheet .chip:has-text("Test Wallet")');
   check(await page.locator("#f-save").isEnabled() && await page.locator('#sheet button[data-action="stm-looked"][aria-pressed="true"]').count() === 1, "after I looked at the amounts (and chose the account), Add is on");
   await ctx.close();
+  // a Go Save pocket's statement is recognised, said plainly, and never filed under an account for you
+  await importer("sample-pocket.pdf");
+  check(await seen(page, "#sheet", "Go Save pocket ending 3002"), "a pocket statement is shown as a Go Save pocket with its last four digits");
+  check((await text(page, "#stm-pocket")).includes("not your main") && await page.locator("#f-save").isDisabled() && !(await text(page, "#sheet")).includes("chosen for you"), "it says it is not the main account, and Add waits for the account to be chosen");
+  await ctx.close();
   // a balance that does not follow: the failing lines can be listed, with what the bank printed and what the line before leads to
   await importer("sample-badlines.pdf");
   check(await seen(page, "#sheet", "do not follow") || await seen(page, "#sheet", "does not follow"), "a statement whose balance does not follow says how many lines");
