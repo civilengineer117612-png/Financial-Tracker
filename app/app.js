@@ -2059,14 +2059,16 @@ const TICK = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke
 function picker(key, groups, selectedId, action, placeholder) {
   const all = groups.flatMap(([, items]) => items), chosen = all.find((i) => i.id === selectedId), open = ui.sheet?.pick === key;
   const face = chosen ? (chosen.class ? withIcon(chosen, 24) : `<span>${esc(chosen.name)}</span>`) : `<span class="ph">${esc(placeholder)}</span>`;
-  const item = (i) => `<button class="chip pickitem" type="button" data-action="${action}" data-id="${esc(i.id)}" aria-pressed="${i.id === selectedId}">${i.class ? withIcon(i, 24) : `<span>${esc(i.name)}</span>`}${i.id === selectedId ? TICK : ""}</button>`;
+  const item = (i) => `<button class="chip pickitem" type="button" data-action="${action}" data-id="${esc(i.id)}" aria-pressed="${i.id === selectedId}"><span class="pickface">${i.class ? withIcon(i, 24) : esc(i.name)}</span>${i.id === selectedId ? TICK : ""}</button>`;
   const list = groups.filter(([, items]) => items.length).map(([h, items]) => (h ? `<div class="pickh">${esc(h)}</div>` : "") + items.map(item).join("")).join("");
   return `<div class="pick"><button class="pickrow" type="button" data-action="pick-toggle" data-key="${esc(key)}" aria-expanded="${open}"><span class="pickface">${face}</span>${CHEVRON}</button><div class="picklist"${open ? "" : " hidden"}>${list}</div></div>`;
 }
 const byName = (list) => [...list].sort((a, b) => a.name.localeCompare(b.name));
-// The category last used (the newest entry with one of these categories), then every category A to Z.
+// The category last used (the newest verified entry with one of these categories), then every category A to Z.
 function categoryPicker(items, selectedId, key = "cat") {
-  const ids = new Set(items.map((c) => c.id)), lastId = [...S().entries].reverse().find((e) => e.category_id && ids.has(e.category_id))?.category_id;
+  // "Last used" counts verified entries only, so a wrong scan that is still a draft never puts a category at the top
+  const ids = new Set(items.map((c) => c.id)), verified = new Set(S().transactions.filter((t) => t.status === "verified").map((t) => t.id));
+  const lastId = [...S().entries].reverse().find((e) => e.category_id && ids.has(e.category_id) && verified.has(e.transaction_id))?.category_id;
   const last = items.filter((c) => c.id === lastId);
   return picker(key, [["Last used", last], [last.length ? "All categories" : "", byName(items.filter((c) => c.id !== lastId))]], selectedId, "pick-cat", "Choose a category");
 }
@@ -3918,6 +3920,8 @@ const endPointer = async (e) => {
 document.addEventListener("pointerup", endPointer);
 document.addEventListener("pointercancel", endPointer);
 document.addEventListener("click", (e) => {
+  // a tap anywhere outside the open dropdown list folds it shut (without redrawing the window, so a field you tapped keeps its focus)
+  if (ui.sheet?.pick && !e.target.closest(".pick")) { ui.sheet.pick = null; document.querySelectorAll("#sheet .picklist").forEach((l) => { l.hidden = true; }); document.querySelectorAll("#sheet .pickrow").forEach((r) => r.setAttribute("aria-expanded", "false")); }
   const el = e.target.closest("[data-action]");
   if (el) onClick(el);
 });
