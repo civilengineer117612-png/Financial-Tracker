@@ -121,6 +121,16 @@ test("a cash deposit is the reverse: Cash on hand to the bank", () => {
   assert.equal(classifyMove(r, { accounts, cashId: null }).result, "unsure", "no Cash on hand account: it says so, it does not pick one");
 });
 
+test("a bare $ is read as a peso amount (the reader turns the peso sign into one); only a named currency or US$ is foreign", () => {
+  const lines = (amt) => ["Instant transfer", "To", "Test Person", "From", "Test Bank ****4821", "Amount", amt, "Fee", "0.00", "Oct 03, 2026 18:05"].join("\n");
+  const bare = readMove(lines("$910.00"));
+  assert.equal(bare.foreign, null, "a bare $ is not dollars");
+  assert.equal(bare.amount, 91000, "the amount is kept as pesos");
+  assert.ok(!bare.notes.some((n) => /peso amount/.test(n)));
+  assert.deepEqual(readMove(lines("US$ 910.00")).foreign, { currency: "USD", amount: 91000 }, "US$ names the dollar");
+  assert.deepEqual(readMove(lines("USD 910.00")).foreign, { currency: "USD", amount: 91000 });
+});
+
 test("a foreign withdrawal keeps the foreign currency and amount; the peso amount is corrected at Verify and the rate follows", () => {
   const r = readMove(["ATM Withdrawal", "From", "Test Bank ****4821", "Amount USD 100.00", "Oct 03, 2026 18:05"].join("\n"));
   assert.deepEqual(r.foreign, { currency: "USD", amount: 10000 });
