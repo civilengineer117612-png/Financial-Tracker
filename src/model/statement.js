@@ -245,6 +245,15 @@ export function checkStatement(style, lines, summary) {
   return { ok, kind, message, bad };
 }
 
+// The lines that failed the line-by-line check, so they can be shown: for each, the balance the bank printed and the balance the line before it leads to
+// (centavos; "expected" may be negative). Usually a line is missing from the statement just before it.
+export function badLineDetails(lines, summary, bad) {
+  return (bad ?? []).map((i) => {
+    const l = lines[i], prev = i === 0 ? summary.opening ?? 0 : lines[i - 1].balance;
+    return { date: l.date, name: l.payee || l.text, amount: l.amount, direction: l.direction, printed: l.balance, expected: prev + (l.direction === "in" ? l.amount : -l.amount) };
+  });
+}
+
 // The lines the importer takes: what was spent (including what is unsure, which you can turn off one by one), as importer items.
 export function statementItems(lines) {
   return lines.map((l, i) => ({ l, i })).filter(({ l }) => l.direction === "out" && (l.meaning === "spending" || l.meaning === "fee" || l.meaning === "unsure"))

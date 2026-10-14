@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupRows, parseStatement, classifyLine, checkStatement, statementItems, statementLeftOut } from "../src/model/index.js";
+import { groupRows, parseStatement, classifyLine, checkStatement, badLineDetails, statementItems, statementLeftOut } from "../src/model/index.js";
 
 // Invented statements only (names, amounts, dates). A piece of text is {x (from the left), y (from the bottom), w (width), str}.
 const t = (x, y, str, w = str.length * 5) => ({ x, y, w, str });
@@ -62,6 +62,12 @@ test("the check: every line must follow from the balance before it, and in and o
   const r = parseStatement([wrong]);
   assert.equal(r.check.ok, false);
   assert.ok(r.check.bad.length >= 1 && /do not follow|does not follow/.test(r.check.message));
+  const details = badLineDetails(r.lines, r.summary, r.check.bad);
+  assert.equal(details.length, r.check.bad.length, "one detail per failing line");
+  for (const d of details) assert.ok(d.printed !== d.expected && /^\d{4}-\d{2}-\d{2}$/.test(d.date) && d.amount > 0, "each shows what the bank printed and what the line before leads to");
+  const i0 = r.check.bad[0], prevBal = i0 === 0 ? r.summary.opening : r.lines[i0 - 1].balance;
+  assert.equal(details[0].expected, prevBal + (r.lines[i0].direction === "in" ? 1 : -1) * r.lines[i0].amount, "expected = the balance before, moved by this line");
+  assert.equal(details[0].printed, r.lines[i0].balance);
   const noTotals = checkStatement("credit-debit", good.lines.map((l) => ({ ...l, balance: null })), {});
   assert.equal(noTotals.ok, false); assert.match(noTotals.message, /no totals/);
   const off = parseStatement([creditDebitPage({ opening: 100000, rows: CD_ROWS, totals: { ...CD_TOTALS, debits: CD_TOTALS.debits + 100, closing: 100000 + CD_TOTALS.closing } })]);
