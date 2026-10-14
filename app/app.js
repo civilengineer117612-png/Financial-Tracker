@@ -254,6 +254,7 @@ const why = (html, label = "Why?") => `<details class="why"><summary>${label}</s
 // Setup normally shows a short list of pages. The tests ask for the old one long page with a flag in sessionStorage.
 const setupFlat = () => { try { return sessionStorage.getItem("setupFlat") === "1"; } catch { return false; } };
 const ICONS = {
+  statements: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 14l2 2 4-4"/>',
   tag: '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01"/>',
   backup: '<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
@@ -743,9 +744,9 @@ async function importFile(file) {
     let items, notRead, statement = null;
     if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") {
       const pages = await readPdfPages(file, askPdfPassword);
-      const r = M.parseStatement(pages);
+      const r = M.parseStatement(pages, { ownLast4: activeAccounts().map((a) => a.last4).filter(Boolean) });
       if (!r.ok) throw new Error(r.message);
-      statement = { bank: r.bank, bankId: r.bankId, period: r.period, check: r.check, lines: r.lines.length, leftOut: M.statementLeftOut(r.lines) };
+      statement = { bank: r.bank, bankId: r.bankId, period: r.period, check: r.check, lines: r.lines.length, leftOut: M.statementLeftOut(r.lines), parsed: r };
       items = M.statementItems(r.lines); notRead = [];
     } else if (/\.xlsx$/i.test(file.name) || /spreadsheetml/.test(file.type)) ({ items, notRead } = tableOrThrow(await M.readXlsx(await file.arrayBuffer())));
     else if (/\.csv$/i.test(file.name) || /csv/.test(file.type)) ({ items, notRead } = tableOrThrow(M.parseCsv(await file.text())));
@@ -753,10 +754,10 @@ async function importFile(file) {
       const page = await readPage(file, (fr, what) => { const el = $("imp-msg"); if (el) el.textContent = `${what ?? "Reading"} ${Math.round((fr ?? 0) * 100)}%`; });
       ({ items, notRead } = M.parseNotes(page.boxes ? M.linesByRow(page.boxes) : page.text));
     }
-    if (!items.length) throw new Error(statement ? "This statement has no spending in it: only money in and moves between your own accounts." : "No dated spending was found. A notes list needs a date line (02/10/2026) above lines like \"Lunch - 100\".");
+    if (!items.length && !statement) throw new Error("No dated spending was found. A notes list needs a date line (02/10/2026) above lines like \"Lunch - 100\".");
     // a statement goes to the account linked to its bank when there is one (chosen for you; you can change it)
     const auto = statement?.bankId ? activeAccounts().find((a) => a.class === "asset" && a.bank === statement.bankId)?.id ?? null : null;
-    ui.form = { items, notRead, statement, choice: {}, looked: false, autoAccount: auto, order: M.dateOrder(items.map((x) => x.dateRaw), today0), account_id: auto ?? cashFirst(activeAccounts())[0]?.id ?? null };
+    ui.form = { items, notRead, statement, choice: {}, looked: false, autoAccount: auto, order: statement ? "dmy" : M.dateOrder(items.map((x) => x.dateRaw), today0), account_id: auto ?? cashFirst(activeAccounts())[0]?.id ?? null };
   } catch (err) { if (err instanceof PdfCancelled) { ui.sheet = null; renderSheet(); return; } ui.form = { error: String(err?.message ?? err) }; }
   if (ui.sheet?.type === "import") renderSheet();
 }
@@ -1221,6 +1222,26 @@ function viewHelp() {
     <p><button class="link" data-action="wn-all">${all ? "Show fewer" : "Show all " + M.CHANGES.length}</button></p>`;
 }
 
+// ---------- Statements (Setup): bank statements kept as read, each month proved ----------
+const monthLabel = (m) => new Date(m + "-01T00:00:00Z").toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+const stmAccounts = () => S().accounts.filter((a) => (S().statementRecords ?? []).some((r) => r.account_id === a.id));
+const stmMonths = () => stmAccounts().flatMap((a) => M.proveMonths(S(), a.id));
+const stmGood = (r) => r.accepted || r.status === "proved";
+const stmSub = () => { const all = stmMonths(); return all.length ? `${all.filter(stmGood).length} of ${all.length} ${all.length === 1 ? "month" : "months"} proved` : "Prove your months from bank statements"; };
+const STM_WORD = { proved: "Proved", gap: "Gap", mismatch: "Mismatch", broken: "Not proved", "no-balance": "No balances" };
+const STM_OK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const STM_NO = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><path d="M6 12h12"/></svg>';
+function statementsHtml() {
+  const accts = stmAccounts();
+  if (!accts.length) return `<p class="note">No statements yet. In Scan, Import old spending, pick a bank statement (PDF) and keep it. Oldest month first is easiest.</p>`;
+  return accts.map((a) => {
+    const rows = M.proveMonths(S(), a.id), good = rows.filter(stmGood).length, pct = rows.length ? Math.round((100 * good) / rows.length) : 0;
+    return `<div class="card" style="padding:16px"><div class="note" style="margin:0 0 4px">${esc(a.name)}</div><div class="stbig">${good} of ${rows.length} ${rows.length === 1 ? "month" : "months"}</div>
+      <div class="stbar" role="img" aria-label="${good} of ${rows.length} months proved"><i style="width:${pct}%"></i></div><div class="note" style="margin:0">proved by the bank's own statements</div></div>
+      <div class="setlist">${rows.map((r) => `<button class="setrow" data-action="st-month" data-acct="${esc(a.id)}" data-month="${r.month}"><div class="st"><b>${monthLabel(r.month)}</b><small>${stmGood(r) ? `${peso(r.opening)} to ${peso(r.closing)}` : esc(r.reason)}</small></div><span style="white-space:nowrap">${stmGood(r) ? STM_OK : STM_NO} ${r.accepted ? "Accepted" : STM_WORD[r.status]}</span><span class="chev">\u203a</span></button>`).join("")}</div>`;
+  }).join("") + `<p class="note">Add a statement from Scan, Import old spending. Oldest month first is easiest.</p>`;
+}
+
 function viewSetup() {
   setTimeout(refreshAbout, 0);
   const f = ui.accountForm;
@@ -1296,6 +1317,7 @@ function viewSetup() {
     categories: categoriesHtml,
     budget: budgetHtml,
     backup: backupHtml,
+    statements: statementsHtml(),
     about: aboutHtml,
   };
   const nAcc = S().accounts.filter((a) => !a.archived).length, nCat = expenseCategories().length;
@@ -1304,6 +1326,7 @@ function viewSetup() {
     ["categories", "tag", "Categories", `${nCat} ${nCat === 1 ? "category" : "categories"}`],
     ["budget", "budget", "Budget options", ledger.settings.try_new_budget ? "New Budget is on" : "New Budget is off"],
     ["backup", "backup", "Backup and restore", (() => { const d = M.daysSinceBackup(ledger.settings, today()); return d === null ? "No backup yet" : d === 0 ? "Backed up today" : "Last backup " + d + (d === 1 ? " day ago" : " days ago"); })()],
+    ["statements", "statements", "Statements", stmSub()],
     ["about", "info", "About this app", M.isDevBuild() ? "Development copy" : "Version " + M.APP_BUILD],
   ];
   if (flat) return `<h1>Setup</h1><p class="sub">Accounts. The ledger is on this phone only.</p>${blocks.accounts}${blocks.categories}${blocks.budget}${blocks.backup}${blocks.about}`;
@@ -2445,14 +2468,14 @@ function renderSheet() {
         ${unsure.length ? `<label>Which is it?</label><p class="note small">Money out that does not say what it was, one row per person. Each waits until you choose.</p>${M.unsureByPerson(unsure).map((g) => { const all = (v) => g.ids.every((i) => f.choice?.[i] === v), n = g.ids.length;
           return `<div class="mrow mimp ask"><span class="mn">${esc(g.name)}<small>${n} ${n === 1 ? "line" : "lines"} \u00b7 ${peso(g.total)}</small></span><span class="chips"><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="spending" aria-pressed="${all("spending")}">Spending</button><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="not" aria-pressed="${all("not")}">Not spending</button></span>
           ${n > 1 ? `<button class="link small" data-action="stm-show" data-id="${esc(g.key)}">${f.open?.[g.key] ? "Hide the lines" : `Show the ${n} lines`}</button>${f.open?.[g.key] ? `<div class="stmlines">${g.lines.map((x) => `<div class="mrow mline mimp"><span class="mn">${esc(longDate(x.dateRaw))}</span><span class="mv">${peso(x.amount)}</span></div>`).join("")}</div>` : ""}` : `<small class="hiddennote">${esc(longDate(g.lines[0].dateRaw))}</small>`}</div>`; }).join("")}` : ""}` : "";
-      body = `<h3>Import old spending</h3>${stBlock}${orderLine}
+      body = `<h3>Import old spending</h3>${stBlock}${st ? `<p><button class="chip wide" data-action="stm-keep" aria-pressed="${f.keep !== false}">Keep this statement to prove your months</button></p><p class="note small">It stays on this phone, in Setup, Statements.</p>` : ""}${orderLine}
         <label>Paid from${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}${REQ}</label>${paidChips(f.account_id)}${REQNOTE}
         ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${waiting ? `. <b>${waiting} ${waiting === 1 ? "line needs" : "lines need"} your choice</b>: left out until you choose` : ""}${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
           <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline mimp"><span class="mn">${esc(longDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline mimp"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
           ${f.notRead.length ? `<details><summary>Not read (${f.notRead.length})</summary>${f.notRead.slice(0, 20).map((l) => `<p class="note">${esc(l)}</p>`).join("")}</details>` : ""}
           ${acct ? `<p class="note">Lines dated before you added ${esc(acct.name)} are history only: they do not change its balance.</p>` : ""}
           ${f.statement && !f.statement.check.ok ? `<p><button class="chip wide" data-action="stm-looked" aria-pressed="${!!f.looked}">I looked at the amounts</button></p>` : ""}
-          <p><button class="primary" id="f-save" data-action="save-import"${p.lines.length && acct && !held ? "" : " disabled"}>Add ${p.lines.length} ${p.lines.length === 1 ? "draft" : "drafts"} to Verify</button></p>` : ""}`;
+          <p><button class="primary" id="f-save" data-action="save-import"${(p.lines.length || (f.statement && f.keep !== false)) && acct && !held ? "" : " disabled"}>${p.lines.length ? `Add ${p.lines.length} ${p.lines.length === 1 ? "draft" : "drafts"} to Verify` : "Keep the statement"}</button></p>` : ""}`;
     }
   } else if (sh.type === "payslipchoice") {
     body = `<h3>Add income</h3>
@@ -2583,6 +2606,20 @@ function renderSheet() {
       <button class="wl-check" role="checkbox" aria-checked="${ui.form.welcomeOff === true}" data-action="welcome-off"><span class="box" aria-hidden="true"></span>Don't show this again</button>
       <p><button class="primary" data-action="welcome-mine">Make it mine</button></p>
       <p><button data-action="welcome-skip" style="width:100%">Skip for now</button></p>`;
+  } else if (sh.type === "stmonth") {
+    const acct = S().accounts.find((a) => a.id === sh.account_id), m = M.monthSummary(S(), sh.account_id, sh.month);
+    if (!m) body = `<h3>${monthLabel(sh.month)}</h3><p class="note">No statement for this month.</p><p style="text-align:center"><button class="link" data-action="close-sheet">Close</button></p>`;
+    else {
+      const r = m.row, ok = stmGood(r);
+      body = `<h3 style="margin:0 0 4px">${monthLabel(sh.month)}</h3><p class="note" style="margin:0 0 10px">${esc(acct?.name ?? "")}</p>
+        <p class="note" style="margin:0 0 10px">${ok ? STM_OK + " " : STM_NO + " "}${r.accepted ? "Accepted. The entries from this month are verified." : esc(r.reason)}</p>
+        <dl style="margin:0">${[["Opens", r.opening], ["Money in", r.moneyIn], ["Money out", r.moneyOut], ["Closes", r.closing]].map(([k, v]) => `<div class="row"><div>${k}</div><div class="amt">${v === null ? "\u2013" : peso(v)}</div></div>`).join("")}</dl>
+        ${ok && !r.accepted ? `<p class="note" style="margin:12px 0 4px">Accepting makes verified entries from</p>
+        <div class="row"><div>Spending and fees<small>${m.spend.count} ${m.spend.count === 1 ? "line" : "lines"}${m.spend.already ? `, ${m.spend.already} already in your ledger` : ""}</small></div><div class="amt">${peso(m.spend.total)}</div></div>
+        <div class="row"><div>Left out for now<small>${[m.leftOut.moves ? `${m.leftOut.moves} ${m.leftOut.moves === 1 ? "move" : "moves"}` : "", m.leftOut.moneyIn ? `${m.leftOut.moneyIn} money in` : "", m.leftOut.unsure ? `${m.leftOut.unsure} unsure` : ""].filter(Boolean).join(", ") || "nothing"}</small></div><div class="amt">${peso(m.leftOut.total)}</div></div>
+        <p style="margin:16px 0 8px"><button class="primary" id="f-save" data-action="st-accept" style="width:100%">Accept this month</button></p>` : ""}
+        <p style="margin:${ok && !r.accepted ? 0 : 14}px 0 0;text-align:center"><button class="link" data-action="close-sheet">${ok && !r.accepted ? "Not now" : "Close"}</button></p>`;
+    }
   } else if (sh.type === "catcard") {
     body = `<h3 class="wl-title">New: edit your categories</h3>
       <p class="note">Rename them, change each one's bucket, hide one you no longer use, or remove one you never used.</p>
@@ -2627,8 +2664,8 @@ function renderSheet() {
       <p class="note">Anything entered since this backup was made will be gone. Pictures are not in a backup, so those entries will say "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
-  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "catcard" || sh.type === "intro" || sh.type === "planform" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
+  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "stmonth" || sh.type === "catcard" || sh.type === "intro" || sh.type === "planform" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
   refreshSave();
@@ -3492,13 +3529,20 @@ async function onClick(el) {
     case "stm-choose": { const g = M.unsureByPerson(ui.form.items).find((x) => x.key === id); if (g) ui.form.choice = { ...(ui.form.choice ?? {}), ...Object.fromEntries(g.ids.map((i) => [i, el.dataset.pick])) }; renderSheet(); break; }   // one choice answers all of a person's lines
     case "stm-show": ui.form.open = { ...(ui.form.open ?? {}), [id]: !ui.form.open?.[id] }; renderSheet(); break;
     case "stm-looked": ui.form.looked = !ui.form.looked; renderSheet(); break;
+    case "stm-keep": ui.form.keep = ui.form.keep === false; renderSheet(); break;
     case "import-order": form.order = id; renderSheet(); break;
     case "save-import": {
       if (form.statement && !form.statement.check.ok && !form.looked) break;   // held until "I looked at the amounts"
       const p = M.previewImport(S(), importKept(form), form.order), r = M.planImport(S(), p.lines, { account_id: form.account_id, newId: () => newId("tx") });
       if (!r.ok) { showToast(r.message); break; }
+      let next = r.state, kept = "";
+      if (form.statement && form.keep !== false && form.statement.parsed) {   // keep the statement as read, to prove the months with (Setup, Statements)
+        const { record, lines } = M.recordFromParse(form.statement.parsed, { account_id: form.account_id, id: newId("stm") });
+        if (M.alreadyKept(next, record, lines)) kept = "That statement was already kept.";
+        else { next = { ...next, statementRecords: [...(next.statementRecords ?? []), record], statementLines: [...(next.statementLines ?? []), ...lines] }; kept = "Statement kept: see Setup, Statements."; }
+      }
       ui.sheet = null; renderSheet();
-      if (await commit(r.state)) showToast(`${r.count} ${r.count === 1 ? "draft is" : "drafts are"} waiting in Verify.`);
+      if (await commit(next)) showToast([r.count ? `${r.count} ${r.count === 1 ? "draft is" : "drafts are"} waiting in Verify.` : "", kept].filter(Boolean).join(" "));
       break;
     }
     case "plan-cancel": ui.planDraft = null; ui.sheet = null; renderSheet(); break;
@@ -3609,6 +3653,15 @@ async function onClick(el) {
     case "open-entries": ui.sheet = { type: "entries" }; renderSheet(); break;
     case "toggle-cancelled": ui.showCancelled = !ui.showCancelled; renderSheet(); break;
     case "wn-all": ui.wnAll = !ui.wnAll; renderScreen(); break;
+    case "st-month": ui.sheet = { type: "stmonth", account_id: el.dataset.acct, month: el.dataset.month }; renderSheet(); break;
+    case "st-accept": {
+      const sh = ui.sheet, r = M.acceptMonth(S(), sh.account_id, sh.month, { newId: () => newId("tx") });
+      if (!r.ok) { showToast(r.message); break; }
+      const msg = `${monthLabel(sh.month)} accepted: ${r.made} ${r.made === 1 ? "entry" : "entries"} added${r.verified ? `, ${r.verified} verified` : ""}.`;
+      ui.sheet = null; renderSheet();
+      if (await commit(r.state)) showToast(msg);
+      break;
+    }
     case "setup-page": ui.setupPage = el.dataset.id || null; ui.setupAdd = false; renderScreen(); window.scrollTo(0, 0); break;
     case "toggle-add-account": ui.setupAdd = !ui.setupAdd; renderScreen(); break;
     case "add-account": await addAccount(); break;

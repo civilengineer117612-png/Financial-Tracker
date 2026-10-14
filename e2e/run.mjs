@@ -18,7 +18,7 @@ const T0 = new Date("2026-10-03T03:00:00Z");   // 11:00 on Oct 3 in Manila
 // What most tests start from: a ledger in the owner's own style (the categories and the three meal tiles the app used to start everyone with), so the
 // long flows below keep their wording. A brand-new install is now neutral: tests of that open with styled: false.
 const owner = (id, name, role) => ({ id, name, kind: "expense", ...(role ? { role } : {}) });
-const LEDGER_V = 9;
+const LEDGER_V = 10;
 const OWNER_STYLE = { v: 6, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings: { notice_seen_at: "2026-10-01T08:00:00.000+08:00" }, state: {
   ...Object.fromEntries(["accounts", "goals", "envelopes", "transactions", "entries", "categoryMaps", "rules", "templates", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions"].map((k) => [k, []])),
   categories: [owner("cat-food", "Food", "food"), owner("cat-lakat", "Lakat/Date"), owner("cat-family", "Family"), owner("cat-shopping", "Shopping"), owner("cat-essentials", "Essentials", "essentials"), owner("cat-upskill", "Upskill"),
@@ -2114,7 +2114,7 @@ const V1 = { v: 1, rev: 3, saved_at: "2026-10-01T08:00:00.000+08:00", settings: 
     check(same(kept.local) && same(kept.idb), "the data as it was before the update is kept in both stores"); }
   await menuGo(page, "Setup");
   const su = await text(page, "#screen");
-  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 9") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
+  check(su.toLowerCase().includes("this app") && su.includes("development copy") && su.includes("Your data format: 10") && su.includes("Restore the copy from before the last update"), "Setup shows the version, the data format and the restore button for the copy kept before the update");
   await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", "40"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
   check(JSON.parse((await stored(page)).local).state.transactions.length === 2, "an expense is added after the update");
   await menuGo(page, "Setup");
@@ -2499,7 +2499,7 @@ console.log("Setup as pages");
   ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct] } } }));
   await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer")); await page.waitForTimeout(300);
   const rowsText = await page.locator(".setrow").allInnerTexts();
-  check(rowsText.length === 5 && rowsText[0].includes("Accounts") && rowsText[0].includes("1 account") && rowsText[1].includes("Categories") && rowsText[2].includes("Budget options") && rowsText[3].includes("Backup and restore") && rowsText[3].includes("No backup yet") && rowsText[4].includes("About this app"), "Setup is five rows, each with a one-line status: " + rowsText.map((x) => x.split("\n")[0]).join(", "));
+  check(rowsText.length === 6 && rowsText[0].includes("Accounts") && rowsText[0].includes("1 account") && rowsText[1].includes("Categories") && rowsText[2].includes("Budget options") && rowsText[3].includes("Backup and restore") && rowsText[3].includes("No backup yet") && rowsText[4].includes("Statements") && rowsText[5].includes("About this app"), "Setup is six rows, each with a one-line status: " + rowsText.map((x) => x.split("\n")[0]).join(", "));
   check(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 2), "the whole Setup list fits on one screen: nothing to scroll");
   check(await page.locator("#a-bank").count() === 0 && await page.locator("#add-account-open").count() === 0, "no long form on the list");
   for (const [row, title, mark] of [["Accounts", "Accounts", "#add-account-open"], ["Categories", "Categories", 'button[data-action="add-cat"]'], ["Budget options", "Budget options", 'button[data-action="toggle-new-budget"]'], ["Backup and restore", "Backup and restore", 'button[data-action="open-backup"]'], ["About this app", "About this app", "text=Your data format"]]) {
@@ -2507,11 +2507,11 @@ console.log("Setup as pages");
     check((await text(page, "#top")).includes(title) && await page.locator(mark).count() >= 1 && await page.locator('.back button:has-text("Setup")').count() === 1, `${row} opens its own page, with a way back`);
     if (row === "About this app") check(/Your ledger: \d+ KB\. Saved twice: a main copy and a spare\./.test(await text(page, "#screen")), "About this app shows the ledger's size and that it is saved twice");
     await page.click('.back button:has-text("Setup")'); await page.waitForTimeout(200);
-    check(await page.locator(".setrow").count() === 5, `back from ${row} returns to the list`);
+    check(await page.locator(".setrow").count() === 6, `back from ${row} returns to the list`);
   }
   await page.click(".scrim, #menu .scrim").catch(() => {});
   await page.click('#nav button[data-tab="log"]'); await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
-  check(await page.locator(".setrow").count() === 5, "leaving Setup and coming back opens the list again");
+  check(await page.locator(".setrow").count() === 6, "leaving Setup and coming back opens the list again");
   check(errors.length === 0, "no script errors with the Setup pages");
   await ctx.close();
   ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, styled: false }));
@@ -3286,6 +3286,7 @@ console.log("Welcome card, category editing, required marks");
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.filter((t) => t.source === "import").length === 2, null, { timeout: 5000 });
   const imp = JSON.parse((await stored(page)).local).state;
   check(imp.transactions.filter((t) => t.source === "import" && t.status === "draft").map((t) => t.date).sort().join() === "2026-05-04,2026-05-05" && imp.entries.filter((e) => e.category_id && imp.transactions.find((t) => t.id === e.transaction_id)?.source === "import").map((e) => e.amount).sort((x, y) => x - y).join() === "20000,39000", "two drafts wait in Verify, dated from the statement, with its amounts");
+  check(imp.statementRecords?.length === 1 && imp.statementLines?.length === 6 && imp.accounts.some((a) => a.id === imp.statementRecords[0].account_id), "the statement is kept by default, with all six of its lines, for the account it was imported to");
   await ctx.close();
   await importer("sample-locked.pdf");
   check(await seen(page, "#sheet", "This PDF is locked"), "a locked PDF asks for its password");
@@ -3344,6 +3345,47 @@ check(spareAfter.idb.includes("After Full") && spareAfter.local === spareAfter.i
 await page.click("#menuBtn"); await page.click('#menu .item:has-text("Cards")');
 check(await seen(page, "#screen", "After Full"), "and the account is on the Cards screen");
 await ctx.close();
+
+// ===== 5st. Setup, Statements: months proved by a kept statement, Accept this month =====
+console.log("Statements");
+{ const acct = { id: "gt", name: "Test GoTyme", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2022-01-01" };
+  const ln = (rec, n, date, text, amount, direction, balance, meaning = "spending") => ({ id: `${rec}:${n}`, record_id: rec, n, date, text, payee: text, type: "", amount, direction, balance, meaning });
+  const rec = (id, month, last, opening, closing) => ({ id, account_id: "gt", style: "credit-debit", period_from: month + "-01", period_to: month + "-" + last, opening, closing, line_count: 2, checked: true, added_at: "2026-10-01T08:00:00.000+08:00" });
+  const statementRecords = [rec("r1", "2022-01", "31", 100000, 90000), rec("r2", "2022-02", "28", 90000, 90500), rec("r3", "2022-03", "31", 90500, 80000)];
+  const statementLines = [ln("r1", 0, "2022-01-05", "Corner Cafe", 9500, "out", 90500), ln("r1", 1, "2022-01-09", "Go Save move", 500, "out", 90000, "move"),
+    ln("r2", 0, "2022-02-05", "Bus fare", 9500, "out", 80500), ln("r2", 1, "2022-02-06", "Pay in", 10000, "in", 90500, "in"),
+    ln("r3", 0, "2022-03-05", "Sample Store", 9500, "out", 81000), ln("r3", 1, "2022-03-06", "Lunch", 1000, "out", 80500)];   // March: the last balance is off by 5.00
+  ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], statementRecords, statementLines } } }));
+  await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer")); await page.waitForTimeout(300);
+  const row = (await page.locator(".setrow").allInnerTexts()).find((x) => x.includes("Statements")) ?? "";
+  check(row.includes("2 of 3 months proved"), "the Setup row says how many months are proved: " + row.replace(/\n/g, " / "));
+  await page.click('.setrow:has-text("Statements")'); await page.waitForTimeout(250);
+  let pg = await text(page, "#screen");
+  check(pg.includes("Test GoTyme") && pg.includes("2 of 3 months") && pg.includes("January 2022") && pg.includes("March 2022"), "the page shows the account, the count and a row per month");
+  check(await page.locator(".stbar i").count() === 1 && (await page.locator(".stbar i").getAttribute("style")).includes("67%"), "one thin bar shows the share proved");
+  check(/January 2022[\s\S]*Proved/.test(pg) && /March 2022[\s\S]*Not proved/.test(pg), "each month has a word with its shape: Proved or Not proved");
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "the page is not wider than the screen");
+  await page.click('button[data-action="st-month"][data-month="2022-03"]');
+  check(await seen(page, "#sheet", "March 2022") && !(await text(page, "#sheet")).includes("Accept this month"), "a month that does not prove has no Accept button, only the reason");
+  check(/lines? (does|do) not (follow|add up)/.test(await text(page, "#sheet")), "and it says why");
+  await page.click('#sheet button[data-action="close-sheet"]');
+  await page.click('button[data-action="st-month"][data-month="2022-01"]');
+  const w = await text(page, "#sheet");
+  check(w.includes("January 2022") && w.includes("Opens") && w.includes("Money out") && w.includes("Closes") && w.includes("Spending and fees") && w.includes("Left out for now") && w.includes("1 move"), "a proved month shows Opens, Money out, Closes, what becomes entries and what is left out");
+  check(await page.locator('#sheet button.primary').count() === 1 && (await text(page, "#sheet button.primary")) === "Accept this month", "one filled button: Accept this month");
+  await page.click('#sheet button[data-action="st-accept"]');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.some((t) => t.source === "statement" && t.status === "verified"), null, { timeout: 5000 });
+  const done = JSON.parse((await stored(page)).local).state;
+  const made = done.transactions.filter((t) => t.source === "statement");
+  check(made.length === 1 && made[0].date === "2022-01-05" && made[0].payee === "Corner Cafe" && made[0].status === "verified", "accepting made one verified entry from the month's spending line");
+  check(done.entries.filter((e) => e.transaction_id === made[0].id).reduce((n, e) => n + e.amount, 0) === 0 && done.statementAccepts.length === 1 && done.statementAccepts[0].month === "2022-01", "the entry adds up to zero and the month is recorded as accepted");
+  check(await seen(page, "#toast", "January 2022 accepted"), "a plain message says what was done");
+  pg = await text(page, "#screen");
+  check(/January 2022[\s\S]*Accepted/.test(pg), "the month now reads Accepted");
+  await page.click('button[data-action="st-month"][data-month="2022-01"]');
+  check(!(await text(page, "#sheet")).includes("Accept this month") && (await text(page, "#sheet")).includes("Accepted"), "an accepted month cannot be accepted twice");
+  check(errors.length === 0, "no script errors on the Statements screens: " + errors.join("; "));
+  await ctx.close(); }
 
 await browser.close();
 console.log(failures ? "\n" + failures + " check(s) FAILED" : "\nAll checks passed");

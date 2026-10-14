@@ -69,8 +69,8 @@ const text = (l) => JSON.stringify(l);
 // every field of `a` is still in `b` with the same value (b may have more)
 const holds = (a, b) => (typeof a !== "object" || a === null ? a === b : typeof b === "object" && b !== null && Object.keys(a).every((k) => holds(a[k], b[k])));
 
-test("the current data version is 9 and the first version's data is still accepted as older", () => {
-  assert.equal(LEDGER_VERSION, 9);
+test("the current data version is 10 and the first version's data is still accepted as older", () => {
+  assert.equal(LEDGER_VERSION, 10);
   for (const make of Object.values(FIXTURES)) { const p = parseLedger(text(make())); assert.equal(p.ok, true); assert.equal(p.older, true); }
   const cur = upgradeLedger(v1Early()).ledger;
   assert.equal(parseLedger(text(cur)).older, undefined);
@@ -334,11 +334,11 @@ const v8Ledger = () => ({
   },
   settings: { notice_seen_at: TS, last_backup_at: "2026-10-08T09:00:00.000+08:00" },
 });
-test("data version 8 upgrades to 9: no record changes; a correction written afterwards is accepted by the same checks", () => {
+test("data version 8 upgrades to the current version: no record changes; a correction written afterwards is accepted by the same checks", () => {
   const before = v8Ledger(), snapshot = JSON.stringify(before);
   const r = upgradeLedger(before, { now: new Date("2026-10-10T00:00:00Z") });
-  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, 9); assert.equal(JSON.stringify(before), snapshot, "the input is never changed");
-  assert.deepEqual(r.ledger.state, before.state, "every record is the same");
+  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, LEDGER_VERSION); assert.equal(JSON.stringify(before), snapshot, "the input is never changed");
+  assert.deepEqual(r.ledger.state, { ...before.state, statementRecords: [], statementLines: [], statementAccepts: [] }, "every record is the same; only the new empty lists are added");
   assert.deepEqual(r.ledger.settings, before.settings);
   assert.equal(fingerprint(r.ledger), fingerprint(before)); assert.deepEqual(selfCheck(r.ledger), []);
   const withFix = JSON.parse(JSON.stringify(r.ledger));
@@ -351,6 +351,39 @@ test("a version 8 backup file opens and upgrades; restoring it keeps its own ver
   const sealed = await encryptLedgerBackup(v8Ledger(), "correct horse battery"), back = await decryptLedgerBackup(sealed, "correct horse battery");
   assert.equal(back.v, 8);
   const r = upgradeLedger(back, { now: new Date("2026-10-10T00:00:00Z") });
-  assert.equal(r.ok, true); assert.equal(r.ledger.v, 9);
+  assert.equal(r.ok, true); assert.equal(r.ledger.v, LEDGER_VERSION);
   assert.equal(restoreLedger({ v: LEDGER_VERSION, rev: 130, saved_at: TS, state: {}, settings: {} }, back).v, 8);
+});
+
+// ----- data version 10: statement proof -----
+// A version 9 backup, written out by hand with the lists it had (it does not move when the code does). Invented names and amounts.
+const V9_LISTS = ["accounts", "goals", "envelopes", "transactions", "entries", "categories", "categoryMaps", "rules", "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions", "schedules", "scheduleChanges"];
+const v9Ledger = () => ({
+  v: 9, rev: 140, saved_at: "2026-10-12T09:00:00.000+08:00",
+  state: {
+    ...Object.fromEntries(V9_LISTS.map((k) => [k, []])),
+    accounts: [acct({ id: "chk", name: "Test Checking", class: "asset", opening_balance: 300000, last4: "4821" })],
+    categories: [{ id: "cat-food", name: "Food", kind: "expense" }],
+    transactions: [{ id: "t1", date: "2026-10-08", payee: "Corner Cafe", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS }],
+    entries: [{ transaction_id: "t1", category_id: "cat-food", amount: 12000 }, { transaction_id: "t1", account_id: "chk", amount: -12000 }],
+  },
+  settings: { notice_seen_at: TS, last_backup_at: "2026-10-12T09:00:00.000+08:00" },
+});
+test("data version 9 upgrades to 10: three empty lists are added and nothing else changes", () => {
+  const before = v9Ledger(), snapshot = JSON.stringify(before);
+  const r = upgradeLedger(before, { now: new Date("2026-10-14T00:00:00Z") });
+  assert.equal(r.ok, true, r.error); assert.equal(r.ledger.v, 10); assert.equal(JSON.stringify(before), snapshot, "the input is never changed");
+  for (const k of V9_LISTS) assert.deepEqual(r.ledger.state[k], before.state[k], k + " is the same");
+  for (const k of ["statementRecords", "statementLines", "statementAccepts"]) assert.deepEqual(r.ledger.state[k], [], k + " starts empty");
+  assert.deepEqual(r.ledger.settings, before.settings);
+  assert.equal(fingerprint(r.ledger), fingerprint(before)); assert.deepEqual(selfCheck(r.ledger), []);
+  assert.equal(parseLedger(text(r.ledger)).older, undefined);
+  assert.equal(upgradeLedger(r.ledger).steps, 0, "already current: nothing to do");
+});
+test("a version 9 backup file opens and upgrades; restoring it keeps its own version", async () => {
+  const sealed = await encryptLedgerBackup(v9Ledger(), "correct horse battery"), back = await decryptLedgerBackup(sealed, "correct horse battery");
+  assert.equal(back.v, 9);
+  const r = upgradeLedger(back, { now: new Date("2026-10-14T00:00:00Z") });
+  assert.equal(r.ok, true); assert.equal(r.ledger.v, 10);
+  assert.equal(restoreLedger({ v: LEDGER_VERSION, rev: 150, saved_at: TS, state: {}, settings: {} }, back).v, 9);
 });

@@ -33,7 +33,7 @@ export const SCHEMAS = {
   Transaction: {
     id, date, payee: text, memo: text,
     status: oneOf("draft", "verified"),
-    source: oneOf("manual", "preset", "template", "photo", "voice", "import", "reconciliation", "correction"),   // "correction" ADDED (version 9): the cancelling entry made at the Weekly review
+    source: oneOf("manual", "preset", "template", "photo", "voice", "import", "reconciliation", "correction", "statement"),   // "correction" ADDED (version 9): the cancelling entry made at the Weekly review; "statement" ADDED (version 10): made when a proved month of a bank statement is accepted
     reference_no: optional(text),
     schedule_id: optional(id), schedule_key: optional(text),   // ADDED (version 8): the scheduled payment this is, and which one ("2026-10" or the payment number)
     reverses: optional(id),      // ADDED (version 9): on a correction, the verified entry it cancels. The old entry itself is never touched
@@ -70,6 +70,13 @@ export const SCHEMAS = {
   },
   // Everything that happens to a schedule afterwards, one dated row each. Only ever added to: a new amount is a new row, never an edit.
   ScheduleChange: { id, schedule_id: id, kind: oneOf("amount", "skip", "end", "paid_off", "due"), effective_from: date, key: optional(text), amount: optional(centavos), created_at: timestamp },
+  // Statement proof (src/model/proof.js), added in version 10. All three lists are only ever added to: a statement is kept as it was read, a month accepted is a new row.
+  StatementRecord: { id, account_id: id, bank: optional(text), style: text, period_from: optional(date), period_to: optional(date), opening: optional(centavos), closing: optional(centavos),
+    in_total: optional(centavos), out_total: optional(centavos), line_count: count, checked: bool, added_at: timestamp },   // opening/closing/totals: the figures printed at the top, when it has them; checked: the statement's own check passed
+  StatementLine: { id, record_id: id, n: count, date, text, payee: text, type: text, amount: centavos, direction: oneOf("in", "out"), balance: optional(centavos),
+    meaning: oneOf("spending", "fee", "move", "in", "unsure"), own: optional(bool),
+    last4: optional({ type: "last4" }) },   // the last four digits of the bank account a line names ("ending in 6588"), so a move between your own accounts can be matched
+  StatementAccept: { id, account_id: id, month: { type: "month" }, made: count, verified: count, accepted_at: timestamp },
   Subscription: { id, name, card: id, currency: name, amount: centavos, renewal_day: { type: "day" }, exit_condition: text, review_date: date },
   CheckIn: { id, date, account_id: id, counted_balance: centavos, ledger_balance: centavos, difference: centavos },
   Attachment: { id, transaction_id: id, type: name, file: name, file_timestamp: timestamp },
