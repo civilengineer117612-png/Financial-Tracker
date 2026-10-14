@@ -317,9 +317,16 @@ check(await seen(page, "#screen", "Tap again to remove"), "removing an account a
 await page.click('.row:has-text("Spare") button:has-text("Tap again to remove")');
 check(await gone(page, "#screen", "Spare"), "the second tap removes it");
 await page.waitForFunction(async () => { const r = await new Promise((res) => { const q = indexedDB.open("financialTracker"); q.onsuccess = () => { const g = q.result.transaction("kv").objectStore("kv").get("ledger"); g.onsuccess = () => res(g.result); }; q.onerror = () => res(null); }); return !!r; });
+// The spare copy (localStorage) cleared: not a loss. Entry stays on and the spare is refilled by itself.
 await page.evaluate(() => localStorage.removeItem("financialTracker.ledger"));
 await page.reload(); await page.waitForSelector("#nav button");
-check(await seen(page, "#banner", "localStorage is empty"), "the banner names the empty store");
+await page.waitForFunction(() => !!localStorage.getItem("financialTracker.ledger"), null, { timeout: 4000 }).catch(() => {});
+{ const q = await stored(page); check(q.local && q.local === q.idb, "an emptied localStorage is quietly refilled from IndexedDB"); }
+check(!(await page.locator("#banner .bar").count()) && !(await text(page, "#screen")).includes("Entry is switched off"), "and no warning shows and entry stays on");
+// The MAIN store (IndexedDB) empty while localStorage holds data is a real loss: warned, entry off until repaired.
+await page.evaluate(async () => { await new Promise((res) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => { const tx = r.result.transaction("kv", "readwrite"); tx.objectStore("kv").delete("ledger"); tx.oncomplete = () => { r.result.close(); res(); }; }; }); });
+await page.reload(); await page.waitForSelector("#nav button");
+check(await seen(page, "#banner", "IndexedDB is empty"), "the banner names the empty store");
 check((await text(page, "#screen")).includes("Entry is switched off"), "entry is switched off until it is repaired");
 await shot(page, "08-partial-loss");
 await page.click('button:has-text("Copy the surviving data")');
@@ -2498,6 +2505,7 @@ console.log("Setup as pages");
   for (const [row, title, mark] of [["Accounts", "Accounts", "#add-account-open"], ["Categories", "Categories", 'button[data-action="add-cat"]'], ["Budget options", "Budget options", 'button[data-action="toggle-new-budget"]'], ["Backup and restore", "Backup and restore", 'button[data-action="open-backup"]'], ["About this app", "About this app", "text=Your data format"]]) {
     await page.click(`.setrow:has-text("${row}")`); await page.waitForTimeout(250);
     check((await text(page, "#top")).includes(title) && await page.locator(mark).count() >= 1 && await page.locator('.back button:has-text("Setup")').count() === 1, `${row} opens its own page, with a way back`);
+    if (row === "About this app") check(/Your ledger: \d+ KB\. Saved twice: a main copy and a spare\./.test(await text(page, "#screen")), "About this app shows the ledger's size and that it is saved twice");
     await page.click('.back button:has-text("Setup")'); await page.waitForTimeout(200);
     check(await page.locator(".setrow").count() === 5, `back from ${row} returns to the list`);
   }
@@ -3331,8 +3339,8 @@ check((await stored(page)).local === mirrorBefore, "the full localStorage keeps 
 check(!(await page.locator("#banner .bar").count()), "no error banner appears for a full localStorage");
 await page.reload(); await page.waitForSelector("#nav button");
 await page.waitForFunction(() => { const l = localStorage.getItem("financialTracker.ledger"); return !!l && l.includes("After Full"); }, null, { timeout: 4000 }).catch(() => {});
-const after = await stored(page);
-check(after.idb.includes("After Full") && after.local === after.idb, "after a restart the newer IndexedDB copy is in use and the spare copy is quietly brought up to date");
+const spareAfter = await stored(page);
+check(spareAfter.idb.includes("After Full") && spareAfter.local === spareAfter.idb, "after a restart the newer IndexedDB copy is in use and the spare copy is quietly brought up to date");
 await page.click("#menuBtn"); await page.click('#menu .item:has-text("Cards")');
 check(await seen(page, "#screen", "After Full"), "and the account is on the Cards screen");
 await ctx.close();

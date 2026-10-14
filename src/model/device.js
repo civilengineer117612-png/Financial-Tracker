@@ -40,6 +40,8 @@ export function assessDevice({ platform, standalone, stores, trial = false }) {
     return result("STORAGE_UNAVAILABLE",
       "This device's storage cannot be read. Nothing can be saved safely until that is fixed.", false);
   }
+  // IndexedDB is the main store and localStorage only its spare copy: an empty spare is brought up to date quietly at start.
+  if (stores.idb && !stores.local) return result("OK", "", true);
   if (stores.local !== stores.idb) {
     const lost = stores.local ? "IndexedDB" : "localStorage";
     return result("PARTIAL_LOSS",
