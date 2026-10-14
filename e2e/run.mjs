@@ -2853,8 +2853,7 @@ console.log("Pay plan lines");
 { const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" };
   const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, starter_rent: 500000 }, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [], entries: [], attachments: [] } };
   ({ ctx, page, errors } = await open({ blockSw: true, seed }));
-  await menuGo(page, "Budget"); await page.waitForSelector(".in-draw"); await page.click('button[data-action="intro-done"]'); await page.waitForFunction(() => !document.querySelector("#sheet .in-draw"));
-  await page.click('#screen button:has-text("Plan each payday")'); await page.click('button[data-action="open-planform"]'); await page.waitForSelector(".pp-big");
+  await menuGo(page, "Budget"); await page.click('#screen button:has-text("Plan each payday")'); await page.click('button[data-action="open-planform"]'); await page.waitForSelector(".pp-big");
   await page.click('button[data-action="pf-view"][data-id="pay"]'); await page.fill("#pf-p1", "10000"); await page.fill("#pf-p2", "24000"); await page.click('button[data-action="pf-refill"]'); await page.waitForSelector(".pp-row");
   const food = await text(page, ".pp-row:has-text('Food')");
   await page.click(".pp-row:has-text('Food')");
@@ -2923,7 +2922,7 @@ console.log("Popups on every screen");
   }
   check(seenAll.every(Boolean), "each screen of the menu opens with its popup: its name, the two lines, a drawing that moves and the check (" + seenAll.map((x) => (x ? "yes" : "NO")).join(",") + ")");
   check(await page.locator("#top .qmark").count() === 1, "and a ? sits beside the title");
-  const st0 = await settingsOf(); console.log(JSON.stringify(st0.intro_seen));
+  const st0 = await settingsOf();
   check(Object.keys(st0.intro_seen ?? {}).length >= 9 && Object.values(st0.intro_seen).every((n) => n === 1), "each popup was counted once");
   await menuGo(page, "Budget"); await page.waitForSelector(".in-draw"); await page.click('button[data-action="intro-done"]'); await page.waitForFunction(() => !document.querySelector("#sheet .in-draw"));
   const st0b = await settingsOf();
