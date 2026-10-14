@@ -1108,7 +1108,9 @@ check(ptxt.includes("This divides each payday. Budget sets your limit per catego
   check(JSON.stringify(JSON.parse((await stored(page)).local).settings.plans) === before && (await text(page, "#screen")).includes("₱12,200.00"), "viewing the plan again leaves the loaded plan exactly as it was"); }
 await page.click('button:has-text("Record pay received")');
 check(await page.locator("#f-save").isDisabled(), "pay needs an amount first");
-await page.fill("#f-amount", "5000.50"); await page.click("#f-save"); await seen(page, "#toast", "Pay recorded");
+await page.fill("#f-amount", "5000.50");
+check(await page.locator("#f-save").isDisabled(), "and What it is has to be chosen too (it starts empty)");
+await page.click('#sheet .chip:has-text("Salary")'); await page.click("#f-save"); await seen(page, "#toast", "Pay recorded");
 const inc = await text(page, "#screen");
 check(inc.includes("₱5,000.50") && inc.includes("−₱2,099.50 less"), "pay received is shown against the plan as a signed difference in words");
 ledgerNow = JSON.parse((await stored(page)).local);
