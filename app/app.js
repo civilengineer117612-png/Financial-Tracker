@@ -1239,7 +1239,19 @@ function statementsHtml() {
     return `<div class="card" style="padding:16px"><div class="note" style="margin:0 0 4px">${esc(a.name)}</div><div class="stbig">${good} of ${rows.length} ${rows.length === 1 ? "month" : "months"}</div>
       <div class="stbar" role="img" aria-label="${good} of ${rows.length} months proved"><i style="width:${pct}%"></i></div><div class="note" style="margin:0">proved by the bank's own statements</div></div>
       <div class="setlist">${rows.map((r) => `<button class="setrow" data-action="st-month" data-acct="${esc(a.id)}" data-month="${r.month}"><div class="st"><b>${monthLabel(r.month)}</b><small>${stmGood(r) ? `${peso(r.opening)} to ${peso(r.closing)}` : esc(r.reason)}</small></div><span style="white-space:nowrap">${stmGood(r) ? STM_OK : STM_NO} ${r.accepted ? "Accepted" : STM_WORD[r.status]}</span><span class="chev">\u203a</span></button>`).join("")}</div>`;
-  }).join("") + `<p class="note">Add a statement from Scan, Import old spending. Oldest month first is easiest.</p>`;
+  }).join("") + movesHtml() + `<p class="note">Add a statement from Scan, Import old spending. Oldest month first is easiest.</p>`;
+}
+// A transfer out of one of your accounts and the money arriving in another is ONE move (src/model/reconcile.js): shown as a pair, added as a draft by a tap, never by itself.
+function movesHtml() {
+  const { pairs, loneOut } = M.pairMoves(S());
+  if (!pairs.length && !loneOut.length) return "";
+  const name = (id) => S().accounts.find((a) => a.id === id)?.name ?? "", rows = pairs.map((p) => ({ p, done: M.moveLogged(S(), p) }));
+  const todo = rows.filter((r) => !r.done).length, pct = rows.length ? Math.round((100 * (rows.length - todo)) / rows.length) : 0;
+  return `${pairs.length ? `<div class="card" style="padding:16px"><div class="note" style="margin:0 0 4px">Moves between your accounts</div><div class="stbig">${pairs.length} ${pairs.length === 1 ? "move" : "moves"} found</div>
+    <div class="stbar" role="img" aria-label="${rows.length - todo} of ${rows.length} moves are in your ledger"><i style="width:${pct}%"></i></div><div class="note" style="margin:0">${rows.length - todo} in your ledger, ${todo} to add</div></div>
+    <div class="card" style="padding:4px 16px">${rows.map(({ p, done }) => `<div class="row" style="align-items:center"><div>${esc(name(p.from_id))} to ${esc(name(p.to_id))}<small>${esc(longDate(p.out.date))}${p.fee ? ` \u00b7 fee ${peso(p.fee)}` : ""}</small></div><div class="amt">${peso(p.amount)}<br>${done ? `<small>${STM_OK} In your ledger</small>` : `<button class="link" data-action="st-addmove" data-out="${esc(p.out.id)}" data-in="${esc(p.in.id)}">Add as draft</button>`}</div></div>`).join("")}</div>
+    <p class="note">Each pair is one move: sent from one account, arrived in the other. A small difference is a fee. Adding makes a draft in Verify.</p>` : ""}
+    ${loneOut.length ? `<div class="card" style="padding:4px 16px">${loneOut.slice(0, 5).map((l) => `<div class="row"><div>Waiting for the other statement<small>${esc(l.payee || l.text)}, ${esc(longDate(l.date))}, no matching money in yet</small></div><div class="amt">${peso(l.amount)}</div></div>`).join("")}${loneOut.length > 5 ? `<div class="row"><div>and ${loneOut.length - 5} more</div></div>` : ""}</div>` : ""}`;
 }
 
 function viewSetup() {
@@ -2617,6 +2629,7 @@ function renderSheet() {
         ${ok && !r.accepted ? `<p class="note" style="margin:12px 0 4px">Accepting makes verified entries from</p>
         <div class="row"><div>Spending and fees<small>${m.spend.count} ${m.spend.count === 1 ? "line" : "lines"}${m.spend.already ? `, ${m.spend.already} already in your ledger` : ""}</small></div><div class="amt">${peso(m.spend.total)}</div></div>
         <div class="row"><div>Left out for now<small>${[m.leftOut.moves ? `${m.leftOut.moves} ${m.leftOut.moves === 1 ? "move" : "moves"}` : "", m.leftOut.moneyIn ? `${m.leftOut.moneyIn} money in` : "", m.leftOut.unsure ? `${m.leftOut.unsure} unsure` : ""].filter(Boolean).join(", ") || "nothing"}</small></div><div class="amt">${peso(m.leftOut.total)}</div></div>
+        ${(() => { const slips = M.matchPayslips(S()).filter((x) => x.line.account_id === sh.account_id && x.line.date.slice(0, 7) === sh.month), prs = M.pairMoves(S()).pairs.filter((q) => (q.out.account_id === sh.account_id && q.out.date.slice(0, 7) === sh.month) || (q.in.account_id === sh.account_id && q.in.date.slice(0, 7) === sh.month)); const t = [slips.length ? `${slips.length} of the money in ${slips.length === 1 ? "is" : "are"} your payslip` : "", prs.length ? `${prs.length} ${prs.length === 1 ? "move is" : "moves are"} paired with another account` : ""].filter(Boolean).join(". "); return t ? `<p class="note small" style="margin:8px 0 0">${STM_OK} ${esc(t)}.</p>` : ""; })()}
         <p style="margin:16px 0 8px"><button class="primary" id="f-save" data-action="st-accept" style="width:100%">Accept this month</button></p>` : ""}
         <p style="margin:${ok && !r.accepted ? 0 : 14}px 0 0;text-align:center"><button class="link" data-action="close-sheet">${ok && !r.accepted ? "Not now" : "Close"}</button></p>`;
     }
@@ -3654,6 +3667,15 @@ async function onClick(el) {
     case "toggle-cancelled": ui.showCancelled = !ui.showCancelled; renderSheet(); break;
     case "wn-all": ui.wnAll = !ui.wnAll; renderScreen(); break;
     case "st-month": ui.sheet = { type: "stmonth", account_id: el.dataset.acct, month: el.dataset.month }; renderSheet(); break;
+    case "st-addmove": {
+      const q = M.pairMoves(S()).pairs.find((x) => x.out.id === el.dataset.out && x.in.id === el.dataset.in);
+      if (!q) break;
+      const r = M.planPairedMove(S(), q, { newId: () => newId("tx") });
+      if (!r.ok) { showToast(r.message); break; }
+      const nm = (aid) => S().accounts.find((a) => a.id === aid)?.name ?? "", msg = `Draft added: ${nm(q.from_id)} to ${nm(q.to_id)}, ${peso(q.amount)}. It waits in Verify.`;
+      if (await commit(r.state)) showToast(msg);
+      break;
+    }
     case "st-accept": {
       const sh = ui.sheet, r = M.acceptMonth(S(), sh.account_id, sh.month, { newId: () => newId("tx") });
       if (!r.ok) { showToast(r.message); break; }
