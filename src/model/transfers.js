@@ -119,7 +119,7 @@ export function readMove(text) {
   }
 
   const refRaw = raw.match(/\bref(?:erence)?\.?\s*(?:no\.?|number|#)?\s*[:#]?\s*([A-Za-z0-9]+(?:[ -][0-9]{2,})*)/i)?.[1] ?? "", ref = refRaw.replace(/[\s-]+/g, "").length >= 6 ? refRaw.replace(/[\s-]+/g, "") : "";
-  const fm = raw.match(new RegExp("\\b(" + CURRENCIES + ")\\s*([\\d,]+\\.\\d{2})\\b", "i")) ?? raw.match(/\$\s*([\d,]+\.\d{2})\b/);
+  const fm = raw.match(new RegExp("\\b(" + CURRENCIES + ")\\s*([\\d,]+\\.\\d{2})\\b", "i")) ?? raw.match(/\bUS\s?\$\s*([\d,]+\.\d{2})\b/i);   // a bare $ is not dollars: the phone's reader often turns the peso sign into one
   const foreign = fm ? (fm.length === 3 ? { currency: fm[1].toUpperCase(), amount: Math.round(Number(fm[2].replace(/,/g, "")) * 100) } : { currency: "USD", amount: Math.round(Number(fm[1].replace(/,/g, "")) * 100) }) : null;
   if (foreign && amount === foreign.amount) { amount = null; notes.push("The paper shows " + foreign.currency + " " + (foreign.amount / 100).toFixed(2) + ". Type the peso amount your bank took."); }
   return { words: kind !== null, kind, amount, fee, reference: ref, time: timeIn(raw), from: ends.from, to: ends.to, foreign, notes };
