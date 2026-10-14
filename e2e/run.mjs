@@ -2982,6 +2982,30 @@ console.log("Dropdown rows");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
+// ===== 5nm. the name fo/und and the icon; saved data is still found under the old storage names =====
+console.log("Name and icon");
+{ const TS = "2026-03-04T09:00:00.000+08:00";
+  // a copy saved by data version 4, written by hand (invented names and amounts), put where the app has always kept its data
+  const v4 = { v: 4, rev: 31, saved_at: TS, settings: { last_backup_at: TS, notice_seen_at: TS },
+    state: { ...OWNER_STYLE.state, accounts: [{ id: "wal", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-01-01" }],
+      categories: [owner("cat-food", "Food", "food"), owner("cat-fun", "Fun")], presets: [], templates: [],
+      transactions: [{ id: "t1", date: "2026-03-04", payee: "Sample Shop", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS }],
+      entries: [{ transaction_id: "t1", category_id: "cat-food", amount: 9500 }, { transaction_id: "t1", account_id: "wal", amount: -9500 }], attachments: [] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: v4 }));
+  check((await page.title()) === "fo/und", "the page title is fo/und, with the slash");
+  check((await page.getAttribute('meta[name="apple-mobile-web-app-title"]', "content")) === "fo/und", "and so is the iPhone Home Screen title");
+  const man = await page.evaluate(() => fetch(document.querySelector('link[rel="manifest"]').href).then((r) => r.json()));
+  check(man.name === "fo/und" && man.short_name === "fo/und" && man.icons.length === 3, "the manifest names the app fo/und and lists three icons");
+  const loaded = await page.evaluate(async (icons) => Promise.all(icons.map((src) => new Promise((res) => { const i = new Image(); i.onload = () => res([src, i.naturalWidth, i.naturalHeight]); i.onerror = () => res([src, 0, 0]); i.src = new URL(src, location.href).href; }))), ["icon-180.png", "icon-192.png", "icon-512.png", "icon-maskable-512.png", "favicon-32.png"]);
+  check(loaded.map((x) => x.join(":")).join() === "icon-180.png:180:180,icon-192.png:192:192,icon-512.png:512:512,icon-maskable-512.png:512:512,favicon-32.png:32:32", "each icon file loads at its stated size (" + loaded.map((x) => x.join(":")).join(" ") + ")");
+  check(await page.evaluate(() => [document.querySelector('link[rel="apple-touch-icon"]').getAttribute("href"), document.querySelector('link[rel="icon"]').getAttribute("href")].join()) === "icon-180.png,favicon-32.png", "the page points at the 180 touch icon and the 32 favicon");
+  await menuGo(page, "Cards");
+  check((await text(page, "#screen")).includes("Test Wallet"), "a version 4 saved copy is still found under the unchanged storage names: its account is on Cards");
+  const kept = JSON.parse((await stored(page)).local);
+  check(kept.v === LEDGER_V && kept.state.entries.length === 2 && kept.state.accounts[0].name === "Test Wallet", "and it was upgraded in place with its entries kept");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
 // ===== 5u. importing old spending from a spreadsheet =====
 console.log("Import old spending");
 { const { deflateRawSync } = await import("node:zlib");
@@ -3233,6 +3257,7 @@ await ctx.setOffline(true);
 check(await page.evaluate(() => fetch("../src/vendor/paddle/ppocr_keys_v1.txt").then((r) => r.ok)), "and it is served with no network");
 await page.reload(); await page.waitForSelector("#nav button");
 check((await text(page, "#screen")).length > 0, "the app opens with no network");
+check(await page.evaluate(() => Promise.all(["icon.svg", "icon-180.png", "icon-192.png", "icon-512.png", "icon-maskable-512.png", "favicon-32.png", "manifest.json"].map((f) => fetch(f).then((r) => r.ok))).then((all) => all.every(Boolean))), "every icon and the manifest are served with no network, from the saved copy");
 await ctx.setOffline(false);
 await ctx.close();
 
