@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-14-dropdown-polish", date: "2026-10-14", text: "A dropdown list now folds shut when you tap outside it, shows account names beside their pictures, and Last used counts verified entries only." },
   { id: "2026-10-14-dropdowns", date: "2026-10-14", text: "Category, Paid from and It looks like are now tidy rows that open a list, the one you used last first and the rest A to Z." },
   { id: "2026-10-14-dollar-sign", date: "2026-10-14", text: "A photo whose peso sign is read as a $ is no longer taken for US dollars, so the amount is filled in; only USD or US$ counts as dollars." },
   { id: "2026-10-14-qmark-right", date: "2026-10-14", text: "The ? that brings back a screen's explanation now sits at the right edge of the title, and the Pay plan button reads + Plan a category." },
