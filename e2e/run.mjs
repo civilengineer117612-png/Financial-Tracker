@@ -62,6 +62,7 @@ async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone 
       const inner = selector.replace(/^#sheet /, ""), item = page.locator("#sheet " + inner).first();
       if (await item.count() && !(await item.isVisible())) await page.locator("#sheet .pick", { has: page.locator(inner) }).first().locator(".pickrow").click();
     }
+    if (selector === "#sheet .chip >> nth=0" && !(await page.locator(selector).isVisible())) await page.locator("#sheet .pickrow").first().click();
     return rawClick(selector, options);
   };
   const errors = [];
