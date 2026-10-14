@@ -2635,12 +2635,33 @@ function renderSheet() {
       body = `<h3 style="margin:0 0 4px">${monthLabel(sh.month)}</h3><p class="note" style="margin:0 0 10px">${esc(acct?.name ?? "")}</p>
         <p class="note" style="margin:0 0 10px">${ok ? STM_OK + " " : STM_NO + " "}${r.accepted ? "Accepted. The entries from this month are verified." : esc(r.reason)}</p>
         <dl style="margin:0">${[["Opens", r.opening], ["Money in", r.moneyIn], ["Money out", r.moneyOut], ["Closes", r.closing]].map(([k, v]) => `<div class="row"><div>${k}</div><div class="amt">${v === null ? "\u2013" : peso(v)}</div></div>`).join("")}</dl>
+        ${(() => { const d = M.statementDifference(S(), sh.account_id, sh.month); return d.ok ? `<button class="setrow" data-action="st-compare" data-acct="${esc(sh.account_id)}" data-month="${sh.month}" style="padding:12px 0;width:100%"><div class="st"><b>Compare with your ledger</b><small>${d.difference === 0 ? "Your ledger agrees with the bank" : `Your ledger is ${peso(Math.abs(d.difference))} ${d.difference > 0 ? "above" : "below"} the bank`}</small></div><span class="chev">\u203a</span></button>` : ""; })()}
         ${ok && !r.accepted ? `<p class="note" style="margin:12px 0 4px">Accepting makes verified entries from</p>
         <div class="row"><div>Spending and fees<small>${m.spend.count} ${m.spend.count === 1 ? "line" : "lines"}${m.spend.already ? `, ${m.spend.already} already in your ledger` : ""}</small></div><div class="amt">${peso(m.spend.total)}</div></div>
         <div class="row"><div>Left out for now<small>${[m.leftOut.moves ? `${m.leftOut.moves} ${m.leftOut.moves === 1 ? "move" : "moves"}` : "", m.leftOut.moneyIn ? `${m.leftOut.moneyIn} money in` : "", m.leftOut.unsure ? `${m.leftOut.unsure} unsure` : ""].filter(Boolean).join(", ") || "nothing"}</small></div><div class="amt">${peso(m.leftOut.total)}</div></div>
         ${(() => { const slips = M.matchPayslips(S()).filter((x) => x.line.account_id === sh.account_id && x.line.date.slice(0, 7) === sh.month), prs = M.pairMoves(S()).pairs.filter((q) => (q.out.account_id === sh.account_id && q.out.date.slice(0, 7) === sh.month) || (q.in.account_id === sh.account_id && q.in.date.slice(0, 7) === sh.month)); const t = [slips.length ? `${slips.length} of the money in ${slips.length === 1 ? "is" : "are"} your payslip` : "", prs.length ? `${prs.length} ${prs.length === 1 ? "move is" : "moves are"} paired with another account` : ""].filter(Boolean).join(". "); return t ? `<p class="note small" style="margin:8px 0 0">${STM_OK} ${esc(t)}.</p>` : ""; })()}
         <p style="margin:16px 0 8px"><button class="primary" id="f-save" data-action="st-accept" style="width:100%">Accept this month</button></p>` : ""}
         <p style="margin:${ok && !r.accepted ? 0 : 14}px 0 0;text-align:center"><button class="link" data-action="close-sheet">${ok && !r.accepted ? "Not now" : "Close"}</button></p>`;
+    }
+  } else if (sh.type === "stcompare") {
+    const d = M.statementDifference(S(), sh.account_id, sh.month), acct = S().accounts.find((a) => a.id === sh.account_id);
+    if (!d.ok) body = `<h3>${monthLabel(sh.month)}</h3><p class="note">${esc(d.reason)}</p><p style="text-align:center"><button class="link" data-action="close-sheet">Close</button></p>`;
+    else {
+      const firstMonth = M.proveMonths(S(), sh.account_id)[0]?.month === sh.month, st = firstMonth && d.carried !== 0 ? M.startFromStatement(S(), sh.account_id) : null;
+      const same = Math.sign(d.explained) === Math.sign(d.difference), pct = d.difference === 0 || !same ? 0 : Math.max(0, Math.min(100, Math.round((100 * Math.abs(d.explained)) / Math.abs(d.difference))));
+      const tail = (m) => (m.action === "move" ? " \u00b7 a move between your own accounts" : m.action === "choose" ? " \u00b7 does not say what it was" : m.action === "in" ? " \u00b7 money in" : "");
+      body = `<h3 style="margin:0 0 4px">${monthLabel(sh.month)} against your ledger</h3><p class="note" style="margin:0 0 8px">${esc(acct?.name ?? "")}, at ${esc(longDate(d.asOf))}</p>
+        <dl style="margin:0"><div class="row"><div>The bank closes at</div><div class="amt">${peso(d.statementClosing)}</div></div><div class="row"><div>Your ledger shows</div><div class="amt">${peso(d.ledgerBalance)}</div></div>
+        <div class="row"><div><b>Difference</b><small>${d.difference === 0 ? "they agree" : d.difference > 0 ? "your ledger is higher" : "your ledger is lower"}</small></div><div class="amt"><b>${peso(Math.abs(d.difference))}</b></div></div></dl>
+        ${d.difference === 0 ? "" : `<div class="stbar" role="img" aria-label="${pct} percent of the difference is explained by the lines"><i style="width:${pct}%"></i></div><p class="note small" style="margin:0 0 6px">${d.carried === 0 ? "The lines below explain all of it." : d.explained === 0 ? "None of it comes from lines in this month: it is carried from before." : `The lines below explain ${peso(Math.abs(d.explained))} of it. ${peso(Math.abs(d.carried))} is carried from before this month.`}</p>`}
+        <p class="note" style="margin:10px 0 2px"><b>In the statement, not in your ledger</b></p>
+        ${d.missing.map((m) => `<div class="row" style="align-items:center"><div>${esc(m.line.payee || m.line.text)}<small>${esc(longDate(m.line.date))}${tail(m)}</small></div><div class="amt">${peso(m.line.amount)}${m.action === "expense" ? `<br><button class="link" data-action="st-adddraft" data-line="${esc(m.line.id)}">Add as draft</button>` : ""}</div></div>`).join("") || `<div class="row"><div>Nothing</div></div>`}
+        <p class="note" style="margin:10px 0 2px"><b>In your ledger, not in the statement</b></p>
+        ${d.extra.map((m) => `<div class="row"><div>${esc(m.payee || "Entry")}<small>${esc(longDate(m.date))}</small></div><div class="amt">${peso(Math.abs(m.amount))}</div></div>`).join("") || `<div class="row"><div>Nothing</div></div>`}
+        ${st?.ok ? `<p class="note small" style="margin:10px 0 4px">The rest is the starting balance. This statement opens at ${peso(st.opening)} on ${esc(longDate(st.from))}. ${esc(acct?.name ?? "The account")} started at ${peso(acct?.opening_balance ?? 0)}.</p>
+          <p style="margin:12px 0 8px"><button class="primary" id="f-save" data-action="st-start" style="width:100%">${ui.confirmStart ? `Tap again: ${esc(acct?.name ?? "it")} will start at ${peso(st.opening)}` : "Start this account from its statement"}</button></p>
+          ${st.ignored ? `<p class="note small" style="margin:0 0 6px">${st.ignored} ${st.ignored === 1 ? "entry" : "entries"} dated before ${esc(longDate(st.from))} become history only: they stop counting in the balance.</p>` : ""}` : ""}
+        <p style="margin:14px 0 0;text-align:center"><button class="link" data-action="close-sheet">Close</button></p>`;
     }
   } else if (sh.type === "catcard") {
     body = `<h3 class="wl-title">New: edit your categories</h3>
@@ -2686,8 +2707,8 @@ function renderSheet() {
       <p class="note">Anything entered since this backup was made will be gone. Pictures are not in a backup, so those entries will say "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
-  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "stmonth" || sh.type === "catcard" || sh.type === "intro" || sh.type === "planform" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
+  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "catcard" || sh.type === "intro" || sh.type === "planform" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
   refreshSave();
@@ -3676,6 +3697,25 @@ async function onClick(el) {
     case "toggle-cancelled": ui.showCancelled = !ui.showCancelled; renderSheet(); break;
     case "wn-all": ui.wnAll = !ui.wnAll; renderScreen(); break;
     case "st-month": ui.sheet = { type: "stmonth", account_id: el.dataset.acct, month: el.dataset.month }; renderSheet(); break;
+    case "st-compare": ui.confirmStart = false; ui.sheet = { type: "stcompare", account_id: el.dataset.acct, month: el.dataset.month }; renderSheet(); break;
+    case "st-adddraft": {
+      const sh = ui.sheet, d = M.statementDifference(S(), sh.account_id, sh.month), m = d.ok ? d.missing.find((x) => x.line.id === el.dataset.line) : null;
+      if (!m) break;
+      const r = M.planMissingDraft(S(), m.line, { newId: () => newId("tx") });
+      if (!r.ok) { showToast(r.message); break; }
+      const msg = `Draft added: ${m.line.payee || m.line.text}, ${peso(m.line.amount)}. It waits in Verify.`;
+      if (await commit(r.state)) showToast(msg);
+      break;
+    }
+    case "st-start": {
+      if (!ui.confirmStart) { ui.confirmStart = true; renderSheet(); break; }
+      ui.confirmStart = false;
+      const sh = ui.sheet, r = M.startFromStatement(S(), sh.account_id);
+      if (!r.ok) { showToast(r.message); renderSheet(); break; }
+      const nm = S().accounts.find((a) => a.id === sh.account_id)?.name ?? "The account", msg = `${nm} now starts at ${peso(r.opening)} on ${longDate(r.from)}.`;
+      if (await commit(r.state)) showToast(msg);
+      break;
+    }
     case "st-remove": {
       if (ui.confirmStm !== el.dataset.id) { ui.confirmStm = el.dataset.id; renderScreen(); break; }
       ui.confirmStm = null;
