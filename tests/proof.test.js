@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { emptyState, validateState, selfCheck, recordFromParse, proveMonths, acceptMonth, accountLines } from "../src/model/index.js";
+import { emptyState, validateState, selfCheck, recordFromParse, proveMonths, acceptMonth, accountLines, monthSummary, alreadyKept } from "../src/model/index.js";
 import { UNLOGGED_CATEGORY_ID } from "../src/model/seed.js";
 
 // Invented statements only: a bank, its months, its lines. Amounts in centavos.
@@ -115,4 +115,25 @@ test("a line's last four digits are kept with it, in the shape the ledger accept
   assert.equal(s.statementLines[0].last4, "6588"); assert.equal(s.statementLines[0].own, true); assert.deepEqual(validateState(s), []);
   const bad = { ...s, statementLines: [{ ...s.statementLines[0], last4: "65" }] };
   assert.notDeepEqual(validateState(bad), [], "a last-four that is not four digits is refused");
+});
+
+test("the month window's summary: the proof, what would become entries (and how many are already in the ledger), and what is left out", () => {
+  const s = withStatements(AUG, SEP);
+  const m = monthSummary(s, "gt", "2026-09");
+  assert.equal(m.row.status, "proved");
+  assert.deepEqual([m.spend.count, m.spend.total, m.spend.already], [1, 9500, 0]);
+  assert.deepEqual([m.leftOut.count, m.leftOut.total, m.leftOut.moves, m.leftOut.moneyIn, m.leftOut.unsure], [2, 60500, 1, 1, 0]);
+  const withTx = { ...s, transactions: [{ id: "x", date: "2026-09-10", payee: "Corner Cafe", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS }], entries: [{ transaction_id: "x", category_id: "cat-food", amount: 9500 }, { transaction_id: "x", account_id: "gt", amount: -9500 }] };
+  assert.equal(monthSummary(withTx, "gt", "2026-09").spend.already, 1);
+  assert.equal(monthSummary(s, "gt", "2026-07"), null);
+});
+
+test("the same statement kept twice is recognised, a different one is not", () => {
+  const s = withStatements(AUG);
+  const again = recordFromParse(AUG, { account_id: "gt", id: "rec9", now: new Date(TS) });
+  assert.equal(alreadyKept(s, again.record, again.lines), true);
+  const other = recordFromParse(SEP, { account_id: "gt", id: "rec8", now: new Date(TS) });
+  assert.equal(alreadyKept(s, other.record, other.lines), false);
+  const changed = recordFromParse({ ...AUG, lines: AUG.lines.map((l, i) => (i ? { ...l, amount: l.amount + 1 } : l)) }, { account_id: "gt", id: "rec7", now: new Date(TS) });
+  assert.equal(alreadyKept(s, changed.record, changed.lines), false, "same dates, different amounts: not the same");
 });
