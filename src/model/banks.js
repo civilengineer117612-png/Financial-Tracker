@@ -10,7 +10,7 @@ import { validateShape } from "./schema.js";
 // an icon service for that site's small icon and keeps it on the phone. Nothing is downloaded or stored in the repository.
 export const BANKS = [
   { id: "gcash", name: "GCash", domain: "gcash.com" }, { id: "maya", name: "Maya", domain: "maya.ph", noLookup: true, wiki: ["Maya Philippines fintech", "Maya Bank Philippines", "PayMaya"] },
-  { id: "gotyme", name: "GoTyme", domain: "gotyme.com.ph" }, { id: "maribank", name: "MariBank", domain: "maribank.ph" },
+  { id: "gotyme", name: "GoTyme", domain: "gotyme.com.ph" }, { id: "maribank", name: "MariBank", domain: "maribank.ph", aka: ["SeaBank", "Sea Bank"] },   // `aka`: names the bank went by before (older statements and bank transfers still say SeaBank)
   { id: "bdo", name: "BDO", domain: "bdo.com.ph" }, { id: "bpi", name: "BPI", domain: "bpi.com.ph" },
   { id: "metrobank", name: "Metrobank", domain: "metrobank.com.ph" }, { id: "unionbank", name: "UnionBank", domain: "unionbankph.com", alt: ["unionbank.com.ph"] },
   { id: "landbank", name: "Landbank", domain: "landbank.com" }, { id: "securitybank", name: "Security Bank", domain: "securitybank.com", noLookup: true, wiki: ["Security Bank Corporation", "Security Bank Philippines"] },

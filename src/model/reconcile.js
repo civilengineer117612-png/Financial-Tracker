@@ -13,22 +13,25 @@ const gap = (a, b) => Math.abs(Math.round((Date.parse(a) - Date.parse(b)) / DAY)
 // Every kept statement line with the account it belongs to, oldest first.
 const allLines = (state) => (state.accounts ?? []).flatMap((a) => accountLines(state, a.id).map((l) => ({ ...l, account_id: a.id })));
 
-// Pairs: an OUT line that names one of your accounts (by last four) and an IN line in that account, the same amount (the IN may be smaller by a fee up to
+// Pairs: an OUT line and an IN line in two of your accounts where AT LEAST ONE of them names the other account (by its last four digits), the same amount (the IN may be smaller by a fee up to
 // `maxFee`), within `days` of each other. Each line is used once; the closest pair is taken first. Returns {pairs, loneOut, loneIn}: lines that name your own
 // account but found no partner (the other statement may not be kept yet).
 export function pairMoves(state, { days = 3, maxFee = 10000 } = {}) {
   const lines = allLines(state);
-  const outs = lines.filter((l) => l.direction === "out" && l.last4 && (l.meaning === "move" || l.meaning === "unsure") && accountByLast4(state.accounts, l.last4));
+  const outs = lines.filter((l) => l.direction === "out" && (l.meaning === "move" || l.meaning === "unsure"));
   const ins = lines.filter((l) => l.direction === "in" && (l.meaning === "in" || l.meaning === "move"));
+  const pointer = (l) => (l.last4 ? accountByLast4(state.accounts, l.last4) : null);   // the account of yours a line names
   const cands = [];
   for (const o of outs) {
-    const to = accountByLast4(state.accounts, o.last4);
-    if (!to || to.id === o.account_id) continue;
+    const po = pointer(o);
     for (const i of ins) {
-      if (i.account_id !== to.id) continue;
+      if (i.account_id === o.account_id) continue;
+      const pi = pointer(i);
+      // at least one end names the other account, and neither names a different one
+      if ((!po && !pi) || (po && po.id !== i.account_id) || (pi && pi.id !== o.account_id)) continue;
       const fee = o.amount - i.amount, d = gap(o.date, i.date);
       if (fee < 0 || fee > maxFee || d > days) continue;
-      cands.push({ o, i, fee, d, from_id: o.account_id, to_id: to.id });
+      cands.push({ o, i, fee, d, from_id: o.account_id, to_id: i.account_id });
     }
   }
   cands.sort((x, y) => x.d - y.d || x.fee - y.fee);
@@ -39,7 +42,7 @@ export function pairMoves(state, { days = 3, maxFee = 10000 } = {}) {
     pairs.push({ out: c.o, in: c.i, from_id: c.from_id, to_id: c.to_id, amount: c.i.amount, fee: c.fee, dayGap: c.d });
   }
   pairs.sort((a, b) => a.out.date.localeCompare(b.out.date) || a.out.id.localeCompare(b.out.id));
-  return { pairs, loneOut: outs.filter((l) => !usedOut.has(l.id)), loneIn: ins.filter((l) => l.last4 && !usedIn.has(l.id) && accountByLast4(state.accounts, l.last4)) };
+  return { pairs, loneOut: outs.filter((l) => pointer(l) && !usedOut.has(l.id)), loneIn: ins.filter((l) => pointer(l) && !usedIn.has(l.id)) };
 }
 
 // Is a move like this already in the ledger (a transfer between the same two accounts, the same amount, within a few days; a draft counts)?

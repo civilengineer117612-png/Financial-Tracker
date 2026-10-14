@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-14-statement-fixes", date: "2026-10-14", text: "A bank statement now asks which account it is from (never Cash by default), SeaBank statements are recognised as MariBank, a kept statement can be removed, and a first statement from zero covers its opening month." },
   { id: "2026-10-14-moves", date: "2026-10-14", text: "Statements now finds money you moved between your own accounts as one move (a small difference is a fee), says which money in is your payslip, and adds a move as a draft when you tap." },
   { id: "2026-10-14-statements", date: "2026-10-14", text: "New in Setup: Statements keeps your bank statements and proves each month by the bank's own balances; Accept this month makes verified entries from a proved month's spending." },
   { id: "2026-10-14-storage-safety", date: "2026-10-14", text: "Your ledger is now saved safely even when a long history fills the phone's small spare store, and About this app shows how big your ledger is." },

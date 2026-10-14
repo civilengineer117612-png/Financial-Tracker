@@ -95,5 +95,5 @@ export { SINKING_LABEL, SINKING_NOTE, SINKING_HELP, sinkingStart, sinkingBalance
 
 export { MAX_INTRO_SHOWS, INTROS, introFor, shouldShowIntro, markIntro, introDrawing } from "./intros.js";
 
-export { recordFromParse, accountLines, proveMonths, acceptMonth, monthSummary, alreadyKept } from "./proof.js";
+export { recordFromParse, accountLines, proveMonths, acceptMonth, monthSummary, alreadyKept, removeStatement } from "./proof.js";
 export { pairMoves, moveLogged, planPairedMove, matchPayslips } from "./reconcile.js";

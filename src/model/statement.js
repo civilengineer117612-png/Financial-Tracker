@@ -114,7 +114,7 @@ export function holderNames(rows) {
   return rows.slice(0, 25).map(textOf).filter((t) => /^[A-Z][A-Z.,'\- ]+$/.test(t) && t.split(/\s+/).length >= 2 && t.split(/\s+/).length <= 6 && !NOT_A_NAME.test(t)).map(nameKey).filter(Boolean);
 }
 // The person a description names: "Transfer to SAMPLE P. GoTyme Bank, Account No. 0000" names "SAMPLE P."; a payee line names itself.
-const personIn = (text) => String(text ?? "").replace(/^transfer\s+(to|from)\s+/i, "").split(",")[0].replace(new RegExp("\\b(" + BANKS.map((b) => b.name).join("|") + ")\\b", "gi"), " ").replace(/\bbank\b/gi, " ");
+const personIn = (text) => String(text ?? "").replace(/^transfer\s+(to|from)\s+/i, "").split(",")[0].replace(new RegExp("\\b(" + BANKS.flatMap((b) => [b.name, ...(b.aka ?? [])]).join("|") + ")\\b", "gi"), " ").replace(/\bbank\b/gi, " ");
 export function isOwnName(text, holders) {
   const k = nameKey(personIn(text));
   return !!k && holders.some((h) => h.first === k.first && h.last === k.last);
@@ -169,7 +169,7 @@ export function parseStatement(pages, { ownLast4 = [] } = {}) {
   }
   if (!header || !lines.length) return { ok: false, message: "No transactions were found in this PDF. It may not be a bank statement the app knows." };
   const top = allRows[0].slice(0, 25).map(textOf).join(" ").toLowerCase();   // the first lines of the first page: the bank's name is usually there
-  const found = BANKS.find((b) => top.includes(b.name.toLowerCase())) ?? null, bank = found?.name ?? null, bankId = found?.id ?? null;
+  const found = BANKS.find((b) => [b.name, ...(b.aka ?? [])].some((n) => top.includes(n.toLowerCase()))) ?? null, bank = found?.name ?? null, bankId = found?.id ?? null;
   return { ok: true, style: header.style, bank, bankId, period, summary, lines, check: checkStatement(header.style, lines, summary) };
 }
 
