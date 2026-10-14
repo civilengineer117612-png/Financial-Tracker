@@ -8,7 +8,7 @@ import * as M from "../src/model/index.js";
 const read = (p) => readFileSync(new URL("../" + p, import.meta.url), "utf8");
 const sw = read("app/sw.js");
 const filesBlock = sw.slice(sw.indexOf("const FILES = ["), sw.indexOf("];", sw.indexOf("const FILES = [")));   // only the offline list, not other strings in the worker
-const listed = [...filesBlock.matchAll(/"([^"]+\.(?:js|json|png|html|woff2|txt)|\.\/)"/g)].map((m) => m[1]);
+const listed = [...filesBlock.matchAll(/"([^"]+\.(?:js|json|png|svg|html|woff2|txt)|\.\/)"/g)].map((m) => m[1]);
 
 test("the offline list contains every model file and every app file", () => {
   for (const f of readdirSync(new URL("../src/model/", import.meta.url))) assert.ok(listed.includes("../src/model/" + f), "missing from sw.js: src/model/" + f);
@@ -34,7 +34,7 @@ test("the deploy publishes the app and the model, and forwards the site root to 
 });
 test("the page loads the manifest, the icon and the app script, and each exists", () => {
   const html = read("app/index.html");
-  for (const ref of ["manifest.json", "icon-180.png", "app.js"]) { assert.ok(html.includes(ref), ref); assert.ok(existsSync(new URL("../app/" + ref, import.meta.url)), ref); }
+  for (const ref of ["manifest.json", "icon-180.png", "favicon-32.png", "app.js"]) { assert.ok(html.includes(ref), ref); assert.ok(existsSync(new URL("../app/" + ref, import.meta.url)), ref); }
   assert.match(html, /type="module" src="app\.js"/);
 });
 test("the manifest is its own app", () => {
