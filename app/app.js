@@ -2061,7 +2061,7 @@ function picker(key, groups, selectedId, action, placeholder) {
   const face = chosen ? (chosen.class ? withIcon(chosen, 24) : `<span>${esc(chosen.name)}</span>`) : `<span class="ph">${esc(placeholder)}</span>`;
   const item = (i) => `<button class="chip pickitem" type="button" data-action="${action}" data-id="${esc(i.id)}" aria-pressed="${i.id === selectedId}"><span class="pickface">${i.class ? withIcon(i, 24) : esc(i.name)}</span>${i.id === selectedId ? TICK : ""}</button>`;
   const list = groups.filter(([, items]) => items.length).map(([h, items]) => (h ? `<div class="pickh">${esc(h)}</div>` : "") + items.map(item).join("")).join("");
-  return `<div class="pick"><button class="pickrow" type="button" data-action="pick-toggle" data-key="${esc(key)}" aria-expanded="${open}"><span class="pickface">${face}</span>${CHEVRON}</button><div class="picklist"${open ? "" : " hidden"}>${list}</div></div>`;
+  return `<div class="pick"><button class="pickrow" type="button" data-action="pick-toggle" data-key="${esc(key)}" aria-expanded="${open}"><span class="pickface">${face}</span>${CHEVRON}</button><div class="picklist"${open ? "" : " hidden"}>${all.length > 8 ? `<div class="picksearchrow"><input class="picksearch" type="search" placeholder="Search" aria-label="Search the list" autocomplete="off" autocapitalize="off"></div>` : ""}${list}<p class="pickempty note" hidden>Nothing matches.</p></div></div>`;
 }
 const byName = (list) => [...list].sort((a, b) => a.name.localeCompare(b.name));
 // The category last used (the newest verified entry with one of these categories), then every category A to Z.
@@ -2748,7 +2748,7 @@ function refreshSave() {
     btn.disabled = !(f.order ?? []).length || bad;
   } else if (type === "income") {
     const a = M.parsePesos(f.amount);
-    btn.disabled = !(a.ok && a.centavos > 0 && f.account_id && f.date);
+    btn.disabled = !(a.ok && a.centavos > 0 && f.account_id && f.category_id && f.date);
   } else if (type === "planform") {
     const t = M.planTextFromForm(f), r = t.ok ? M.parsePlan(t.text) : null;
     btn.disabled = !r?.ok;
@@ -3155,7 +3155,7 @@ async function onClick(el) {
       break;
     }
     case "stop-trip": { const { active_tag_id, ...rest } = ledger.settings; await commit(S(), rest); break; }
-    case "open-income": ui.sheet = { type: "income" }; ui.form = { amount: "", date: today(), account_id: accountsFor(null)[0]?.id ?? null, category_id: "cat-salary" }; renderSheet(); break;
+    case "open-income": ui.sheet = { type: "income" }; ui.form = { amount: "", date: today(), account_id: accountsFor(null)[0]?.id ?? null, category_id: null }; renderSheet(); break;
     case "save-income": {
       const amount = M.parsePesos(ui.form.amount);
       if (!amount.ok) { showToast("Enter the pay like 9776.98"); break; }
@@ -3932,6 +3932,18 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ui.menu)
 document.addEventListener("focusout", () => { if (ui.sheet?.type === "payslip") setTimeout(refreshSave, 0); });   // the lines fold away once you leave them and everything matches
 document.addEventListener("toggle", (e) => { const k = e.target?.dataset?.keep; if (k) ui.pdet = { ...ui.pdet, [k]: e.target.open }; }, true);
 document.addEventListener("input", (e) => {
+  if (e.target.classList?.contains("picksearch")) {   // the search box in a long dropdown list: hide what does not match, and a heading with nothing left under it
+    const q = e.target.value.trim().toLowerCase(), list = e.target.closest(".picklist");
+    let head = null, any = 0, headShown = false;
+    const closeHead = () => { if (head) head.hidden = !headShown; };
+    for (const node of list.children) {
+      if (node.classList.contains("pickh")) { closeHead(); head = node; headShown = false; }
+      else if (node.classList.contains("pickitem")) { const hit = !q || node.textContent.toLowerCase().includes(q); node.hidden = !hit; if (hit) { headShown = true; any++; } }
+    }
+    closeHead();
+    const empty = list.querySelector(".pickempty"); if (empty) empty.hidden = any > 0;
+    return;
+  }
   const field = e.target.dataset?.field;
   if (!field) return;
   if (e.target.type === "file") return;   // handled on change

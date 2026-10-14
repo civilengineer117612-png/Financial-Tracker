@@ -1108,7 +1108,9 @@ check(ptxt.includes("This divides each payday. Budget sets your limit per catego
   check(JSON.stringify(JSON.parse((await stored(page)).local).settings.plans) === before && (await text(page, "#screen")).includes("₱12,200.00"), "viewing the plan again leaves the loaded plan exactly as it was"); }
 await page.click('button:has-text("Record pay received")');
 check(await page.locator("#f-save").isDisabled(), "pay needs an amount first");
-await page.fill("#f-amount", "5000.50"); await page.click("#f-save"); await seen(page, "#toast", "Pay recorded");
+await page.fill("#f-amount", "5000.50");
+check(await page.locator("#f-save").isDisabled(), "and What it is has to be chosen too (it starts empty)");
+await page.click('#sheet .chip:has-text("Salary")'); await page.click("#f-save"); await seen(page, "#toast", "Pay recorded");
 const inc = await text(page, "#screen");
 check(inc.includes("₱5,000.50") && inc.includes("−₱2,099.50 less"), "pay received is shown against the plan as a signed difference in words");
 ledgerNow = JSON.parse((await stored(page)).local);
@@ -2992,6 +2994,7 @@ console.log("Dropdown rows, the rest");
   await menuGo(page, "Cards"); await page.click('button[data-action="open-move"]'); await page.waitForSelector("#sheet .pickrow");
   check(await page.locator("#sheet .pickrow").count() === 2 && await page.locator("#sheet .picklist:not([hidden])").count() === 0, "Move money: From and To are two dropdown rows, both closed");
   await page.click("#sheet .pickrow >> nth=0");
+  check(await page.locator("#sheet .picksearch").count() === 0, "a short list (3 accounts) has no Search box");
   const fromRows = (await page.locator("#sheet .pick >> nth=0").locator(".pickh, .pickitem").allInnerTexts()).map((t) => t.trim().split("\n").pop());
   check(fromRows.join("|") === "Accounts|Alpha Bank|Zeta Wallet|Cards|Beta Card", "From lists the accounts A to Z, then the cards (" + fromRows.join("|") + ")");
   await page.click('#sheet .pick >> nth=0 >> .pickitem:has-text("Zeta Wallet")');
@@ -3001,10 +3004,38 @@ console.log("Dropdown rows, the rest");
   await page.click('#sheet button:has-text("Cancel")');
   await menuGo(page, "Income"); await page.click('button:has-text("Add income")'); await page.click('#sheet button:has-text("Other income")'); await page.waitForSelector("#sheet .pickrow");
   const what = await text(page, "#sheet .pickrow >> nth=0");
-  check(/Interest|Other income|Overtime|Refund|Salary|Choose what it is/.test(what), "Money received: What it is is a dropdown row showing the choice (" + what.replace(/\s+/g, " ") + ")");
+  check(what.includes("Choose what it is"), "Money received: What it is starts empty and says what to choose (" + what.replace(/\s+/g, " ") + ")");
+  await page.fill("#f-amount", "500");
+  check(await page.locator("#f-save").isDisabled(), "and Save waits until it is chosen");
   await page.click("#sheet .pickrow >> nth=0");
   const inc = (await page.locator("#sheet .pick >> nth=0").locator(".pickitem").allInnerTexts()).map((t) => t.trim());
   check(inc.length >= 2 && JSON.stringify(inc) === JSON.stringify([...inc].sort((a, b) => a.localeCompare(b))), "the income kinds are A to Z (" + inc.join(", ") + ")");
+  await page.click('#sheet .pick >> nth=0 >> .pickitem:has-text("Salary")');
+  check(!(await page.locator("#f-save").isDisabled()), "choosing one turns Save on");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
+// ===== 5dd3. a Search box in a long dropdown list =====
+console.log("Dropdown search");
+{ const acct = (id, name, cls = "asset") => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" });
+  const names = ["Cash on hand", "Alpha Bank", "Beta Bank", "Gamma Wallet", "Delta Savings", "Epsilon Pay", "Zeta Wallet", "Eta Bank", "Theta Savings", "Iota Wallet"];
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [...names.map((n, i) => acct("a" + i, n)), acct("cc", "Credit card", "liability")], transactions: [], entries: [], attachments: [] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await page.click('button:has-text("Add expense")'); await page.waitForSelector("#f-amount");
+  await page.click("#sheet .pickrow >> nth=1");
+  check(await page.locator("#sheet .pick >> nth=1 >> .picksearch").count() === 1, "a list of more than 8 has a Search box");
+  const visible = async () => (await page.locator("#sheet .pick >> nth=1").locator(".pickitem:not([hidden])").allInnerTexts()).map((t) => t.trim().split("\n").pop());
+  const all = await visible();
+  await page.fill("#sheet .pick >> nth=1 >> .picksearch", "bank");
+  check(JSON.stringify(await visible()) === JSON.stringify(["Alpha Bank", "Beta Bank", "Eta Bank"]), "typing bank leaves only the banks (" + (await visible()).join(", ") + ")");
+  const heads = (await page.locator("#sheet .pick >> nth=1").locator(".pickh:not([hidden])").allInnerTexts()).map((t) => t.trim());
+  check(heads.join("|") === "Accounts", "a heading with nothing left under it is hidden (" + heads.join("|") + ")");
+  await page.fill("#sheet .pick >> nth=1 >> .picksearch", "zzz");
+  check(await page.locator("#sheet .pick >> nth=1 >> .pickempty:not([hidden])").count() === 1 && (await visible()).length === 0, "nothing matching says so");
+  await page.fill("#sheet .pick >> nth=1 >> .picksearch", "");
+  check((await visible()).length === all.length, "clearing the box brings every account back");
+  await page.fill("#sheet .pick >> nth=1 >> .picksearch", "wallet"); await page.click('#sheet .pick >> nth=1 >> .pickitem:not([hidden]):has-text("Zeta")');
+  check((await text(page, "#sheet .pickrow >> nth=1")).includes("Zeta Wallet") && await page.locator("#sheet .picklist:not([hidden])").count() === 0, "choosing from the filtered list works and folds it shut");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 

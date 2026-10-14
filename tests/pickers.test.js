@@ -31,3 +31,10 @@ test("choosing in any dropdown closes its list", () => {
   }
   assert.match(app, /case "pick-toggle": if \(ui\.sheet\) \{ ui\.sheet\.pick = ui\.sheet\.pick === el\.dataset\.key \? null : el\.dataset\.key;/);
 });
+
+test("a dropdown list of more than 8 choices has a Search box that filters it, and Money received starts with What it is empty", () => {
+  assert.match(app, /\$\{all\.length > 8 \? `<div class="picksearchrow">/);
+  assert.match(app, /classList\?\.contains\("picksearch"\)/);
+  assert.match(app, /type: "income" \}; ui\.form = \{ amount: "", date: today\(\), account_id: accountsFor\(null\)\[0\]\?\.id \?\? null, category_id: null \}/);
+  assert.match(app, /btn\.disabled = !\(a\.ok && a\.centavos > 0 && f\.account_id && f\.category_id && f\.date\);/);
+});
