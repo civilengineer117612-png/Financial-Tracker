@@ -344,7 +344,19 @@ button.qmark{background:none;border:0;color:var(--muted);font:inherit;font-size:
 .in-wrap .wl-check{justify-content:center;margin:6px auto 10px;width:auto}
 @media (prefers-reduced-motion: no-preference) {
   .in-bar{transform-box:fill-box;transform-origin:left center;animation:introgrow 5.6s ease-in-out infinite;animation-delay:calc(var(--i) * .32s)}
+  .in-col{transform-box:fill-box;transform-origin:center bottom;animation:introrise 5.6s ease-in-out infinite;animation-delay:calc(var(--i) * .3s)}
+  .in-pop{transform-box:fill-box;transform-origin:center;animation:intropop 5.6s ease-in-out infinite;animation-delay:calc(var(--i) * .32s + .3s)}
+  .in-slide{animation:introslide 5.6s ease-in-out infinite;animation-delay:calc(var(--i) * .4s)}
+  .in-arc{animation:introarc 5.6s ease-in-out infinite;animation-delay:calc(var(--i) * .3s)}
+  .in-sweep{animation:introsweep 5.6s ease-in-out infinite}
+  .in-draw-line{animation:introline 5.6s ease-in-out infinite}
   @keyframes introgrow{0%{transform:scaleX(0)}16%,80%{transform:scaleX(1)}100%{transform:scaleX(0)}}
+  @keyframes introrise{0%{transform:scaleY(0)}16%,80%{transform:scaleY(1)}100%{transform:scaleY(0)}}
+  @keyframes intropop{0%,10%{opacity:0;transform:scale(.6)}24%,80%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.6)}}
+  @keyframes introslide{0%{transform:translateX(34px);opacity:0}18%,80%{transform:none;opacity:1}100%{transform:translateX(34px);opacity:0}}
+  @keyframes introarc{0%{stroke-dashoffset:188.5}22%,80%{stroke-dashoffset:62}100%{stroke-dashoffset:188.5}}
+  @keyframes introsweep{0%,6%{transform:translateY(0);opacity:0}16%{opacity:1}60%{transform:translateY(62px);opacity:1}70%,100%{transform:translateY(62px);opacity:0}}
+  @keyframes introline{0%{stroke-dashoffset:260}34%,80%{stroke-dashoffset:0}100%{stroke-dashoffset:260}}
 }
 .stmlines { flex-basis: 100%; padding-left: 12px; }
   @keyframes sheetup { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
