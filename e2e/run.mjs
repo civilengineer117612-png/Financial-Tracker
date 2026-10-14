@@ -3321,6 +3321,14 @@ console.log("Welcome card, category editing, required marks");
   await page.click('#sheet .chip:has-text("Test Wallet")');
   check(await page.locator("#f-save").isEnabled() && await page.locator('#sheet button[data-action="stm-looked"][aria-pressed="true"]').count() === 1, "after I looked at the amounts (and chose the account), Add is on");
   await ctx.close();
+  // a balance that does not follow: the failing lines can be listed, with what the bank printed and what the line before leads to
+  await importer("sample-badlines.pdf");
+  check(await seen(page, "#sheet", "do not follow") || await seen(page, "#sheet", "does not follow"), "a statement whose balance does not follow says how many lines");
+  check(await page.locator('#sheet button[data-action="stm-show"][data-id="__bad"]').count() === 1 && !(await text(page, "#sheet")).includes("Bank prints"), "the failing lines are listed only after \"Show the line\" is tapped");
+  await page.click('#sheet button[data-action="stm-show"][data-id="__bad"]');
+  const badText = await text(page, "#sheet");
+  check(/Bank prints ₱[\d,]+\.\d{2}/.test(badText) && badText.includes("the lines before give") && /Jan \d+, 2025/.test(badText), "each failing line shows its date with year, what the bank prints and what the lines before give");
+  await ctx.close();
   await importer("sample-locked.pdf"); await seen(page, "#sheet", "This PDF is locked");
   await page.click('#sheet button[data-action="pdf-cancel"]');
   check(await page.locator("#sheet .sheet").count() === 0, "Cancel at the password closes the window");
