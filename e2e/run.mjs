@@ -60,7 +60,7 @@ async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone 
   page.click = async (selector, options) => {
     if (typeof selector === "string" && selector.startsWith("#sheet") && (selector.includes(".chip") || selector.includes("data-action=\"pick-"))) {
       const item = page.locator(selector).first();
-      if (await item.count() && !(await item.isVisible())) await item.locator("xpath=ancestor::div[contains(@class,'pick')][1]").locator(".pickrow").click();
+      if (await item.count() && !(await item.isVisible())) await item.locator("xpath=ancestor::div[@class='pick'][1]").locator(".pickrow").click();
     }
     return rawClick(selector, options);
   };
