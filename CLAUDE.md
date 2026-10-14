@@ -110,6 +110,21 @@ The PR message must START with a block titled "MERGE CHECK", exactly these six l
 6. Help or screen wording the user must read: the exact text, or "none".
 Then the rest of the PR message. The "Merge PR n" box stays last.
 
+## BACKLOG AND PRIORITY (owner, Oct 14)
+New ideas are NOT built the moment they are said. Every item has one level, and the owner sets the order:
+- P0 (cuts the line): only something that LOSES DATA, BLOCKS LOGGING, or BLOCKS MAKING A BACKUP. Said out loud when it happens ("cutting the line: ...").
+- P1 (next): the ONE item the owner names as next. There is never more than one P1.
+- P2 (parked): every other idea, the owner's or mine. It is written to the list with a number and is not built until it is made P1.
+- When an owner message adds an idea in the middle of a PR, the idea becomes P2 (one line: "noted as P2 3") unless the owner says "next" (then it is P1 after the open PR) or it is P0.
+- When a PR is merged, show the Backlog in at most 5 lines (P1 first) and wait for the owner's number. The owner's own "yes" to a drawing approves the DESIGN, not the order of work.
+- "qq" side questions and Waiting-list notes are not backlog items.
+- The list lives here (owner keeps it short; remove an item when it is merged):
+  - P1: statement proof (Phase 0 storage safety, then Phase 1 to 3; see STATEMENT PROOF).
+  - P2 1: Back up everything and Restore everything (one tap makes the ledger file and the pictures files; screenshot first).
+  - P2 2: rollout of the look and popups, PR 2: thin bars in Cash flow, Budget and Goals (write up first, one screen at a time).
+  - P2 3: rollout PR 3: Trends and other charts, row alignment.
+  - P2 4: make the photo reader download e2e check robust (timing-dependent, failed once).
+
 ## One thing at a time (owner's rule)
 One open item at a time: finish the current review round and its PR before starting anything else. A new problem that shows up mid-review
 (a bug, an idea) is NOT worked on at once: put it in a short "Waiting" list, tell the owner it was noted (one line), and raise it when
