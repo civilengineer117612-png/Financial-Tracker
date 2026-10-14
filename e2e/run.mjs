@@ -2803,6 +2803,10 @@ console.log("Pay plan");
   check(await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.starter_rent === 500000, null, { timeout: 4000 }).then(() => true, () => false), "the rent typed here is kept (the Budget suggestion uses it too)");
   await page.click('button[data-action="pf-refill"]'); await page.waitForSelector(".pp-row");
   check(await page.locator("#sheet .pp-row").count() >= 3 && (await text(page, "#sheet")).includes("₱10,000"), "Suggest again fills the bars from the suggestion, built on the pay typed");
+  const amounts = (await page.locator("#sheet .pp-row .v").allTextContents()).map((x) => Number(x.replace(/[^\d]/g, "")));
+  check(amounts.length >= 3 && amounts.every((v, i) => i === 0 || amounts[i - 1] >= v), "the bars are sorted from the biggest amount to the smallest (" + amounts.join(", ") + ")");
+  check(await page.locator(".sheet.center").count() === 1, "the plan window sits in the centre of the screen");
+  check(await page.locator('#sheet button:has-text("+ Add a line")').count() === 1, "+ Add a line is a real button, not a faint link");
   // whatever the suggestion left over or put over on a payday, the owner settles it: leftover on a line chosen, an overshoot taken off Food
   const settle = async (w) => {
     for (let n = 0; n < 3; n++) {
@@ -2863,6 +2867,12 @@ console.log("Pay plan lines");
   await page.click('button[data-action="pf-new-line"]'); await page.fill('#sheet input[data-field^="n"]', "Test Line"); await page.locator('#sheet input[data-field^="a"]').fill("100"); await page.click('button[data-action="pf-view"][data-id="main"]');
   check((await text(page, ".pp-row:has-text('Test Line')")).includes("₱100"), "a line of your own can be added, with a name and an amount");
   check(await page.locator('button[data-action="plan-add-line"]').count() === 0 && !(await text(page, "#sheet")).includes("Use every suggestion"), "the old long form is gone");
+  await page.locator("#scrim").click({ position: { x: 5, y: 5 } });
+  check(await page.locator(".pp-big").count() === 0, "a tap outside the plan closes it");
+  await page.click('button[data-action="open-planform"]'); await page.waitForSelector(".pp-big");
+  check(await page.locator(".pp-row:has-text('Test Line')").count() === 1, "and opening it again brings the work back, not a fresh plan");
+  await page.click('#sheet button:has-text("Cancel")'); await page.click('button[data-action="open-planform"]'); await page.waitForSelector(".pp-big");
+  check(await page.locator(".pp-row:has-text('Test Line')").count() === 0, "Cancel throws the work away: the next opening starts fresh");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 

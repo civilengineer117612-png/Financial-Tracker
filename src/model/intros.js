@@ -26,6 +26,6 @@ export function introDrawing(kind) {
   if (kind !== "bars") return "";
   const bar = (i, w, y) => `<rect class="in-bar" style="--i:${i}" x="20" y="${y}" width="${w}" height="12" rx="6" fill="var(--accent)"/>`;
   return `<svg class="in-draw" viewBox="0 0 240 96" width="240" height="96" role="img" aria-label="Bars showing how a pay is split">
-    <rect x="20" y="8" width="200" height="6" rx="3" fill="var(--track)"/><rect class="in-bar" style="--i:0" x="20" y="8" width="200" height="6" rx="3" fill="var(--ink)"/>
+    <rect x="20" y="8" width="200" height="6" rx="3" fill="var(--track)"/><rect class="in-bar" style="--i:0" x="20" y="8" width="200" height="6" rx="3" fill="var(--accent)"/>
     ${bar(1, 150, 30)}${bar(2, 100, 50)}${bar(3, 64, 70)}</svg>`;
 }
