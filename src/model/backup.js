@@ -23,7 +23,9 @@ export function makePassphrase(fill = (b) => crypto.getRandomValues(b)) {
   return [0, 5, 10, 15].map((i) => out.slice(i, i + 5).join("")).join("-");
 }
 
-const b64 = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+// In pieces: spreading every byte into one call (String.fromCharCode(...bytes)) fails with "Maximum call stack size exceeded" once the data is a few
+// hundred kilobytes, which a ledger with a long history is.
+const b64 = (bytes) => { const u = new Uint8Array(bytes); let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
 async function keyFrom(passphrase, salt, iterations) {
