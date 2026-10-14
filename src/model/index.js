@@ -52,7 +52,7 @@ export { validateRatchetParams, wasMet, nextRatchet, ratchetSchedule, splitRatch
 export { planCheckIn, ledgerBalanceFor, unloggedTotal } from "./checkin.js";
 export { formatSize, picturesNote, readerStatus, usageLine, picturesBackupLine } from "./storage.js";
 export { KEEP_MONTHS, SHRINK_MAX_SIDE, SHRINK_BATCH, monthsBefore, shrinkDue, shrinkProgress, targetSize } from "./pictures.js";
-export { MAX_FORM_LINES, KIND_NAMES, newPlanForm, planTextFromForm, planFormStatus, formFromPlan, planFormLines, withListedLines, planFormSuggestion, payslipDayNotes, amountText } from "./planform.js";
+export { MAX_FORM_LINES, KIND_NAMES, newPlanForm, planTextFromForm, planFormStatus, formFromPlan, planFormLines, withListedLines, planFormSuggestion, planFormFill, payslipDayNotes, ordinal, amountText } from "./planform.js";
 export { HISTORY_MONTHS, suggestFromHistory, suggestFromPlan, scheduleHints } from "./schedulehints.js";
 export { PART_BYTES, planParts, partFileName, sealPictures, openPictures } from "./picturebackup.js";
 export { correctable, planCorrection, applyCorrection, isReversed, correctionTag, CORRECTION_DAYS } from "./corrections.js";
@@ -92,3 +92,5 @@ export { HOWTOS, HOWTO_HINT, clipData, howtoClip } from "./howto.js";
 export { BUDGET_TIPS, TIPS_NOTE, tipsYours } from "./tips.js";
 export { readDate, dateOrder, readAmount, parseNotes, linesByRow, parseTable, parseCsv, readXlsx, categoryFor, previewImport, planImport } from "./importer.js";
 export { SINKING_LABEL, SINKING_NOTE, SINKING_HELP, sinkingStart, sinkingBalance, sinkingFunds, setAsideForSpending, toggleSinking } from "./sinking.js";
+
+export { MAX_INTRO_SHOWS, INTROS, introFor, shouldShowIntro, markIntro, introDrawing } from "./intros.js";

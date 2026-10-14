@@ -83,21 +83,71 @@ function tipsBlock(starter) {
   return `<div class="tips" id="sug-tips"><h4>Budgeting tips</h4><ul>${first}${M.BUDGET_TIPS.map((x) => `<li><b>${esc(x.rule)}:</b> <i>${esc(x.text)}</i>${yours[x.rule] ? ` <span class="yours">Yours: <b>${esc(yours[x.rule])}</b></span>` : ""} <small>${esc(x.source)}</small></li>`).join("")}</ul><p class="note"><i>${esc(M.TIPS_NOTE)}</i></p></div>`;
 }
 const REQ = ' <span class="req" aria-hidden="true">*</span>';   // marks what is needed before an entry can be saved (ink colour, never red)
-// The Pay plan form: a suggestion for every listed line, built on what each payday really brought in (see planFormSuggestion). Recalculated only when a
-// payday or a pay amount changes; the grey figures are refreshed in place while typing, so the boxes keep their focus.
+// ---------- The Pay plan form: one payday at a time, a thin bar for each line ----------
+// It opens already filled from the suggestion (see planFormFill), so the owner reviews a plan instead of filling one in. The main view shows one payday; a tap on
+// a bar, the pay figure, "+ Add" or the leftover opens a small view inside the same window (ui.form.view); "Done" comes back. Nothing is saved until "Save plan".
 let pfMemo = { key: null, sug: null };
 const pfSug = () => { const f = ui.form, key = [f.twice, f.d1, f.d2, f.p1, f.p2].join("|"); if (pfMemo.key !== key) pfMemo = { key, sug: M.planFormSuggestion(S(), f, { today: today(), settings: ledger.settings }) }; return pfMemo.sug; };
-const pfAmount = (sug, i, k) => { const row = sug?.ok ? sug.rows[String(ui.form["n" + i] ?? "").trim().toLowerCase()] : null; return row ? row[k === "a" ? "first" : "second"] : 0; };
-const pfSugHtml = (sug, i, k) => !sug?.ok ? "" : pfAmount(sug, i, k) > 0 ? `<button class="link small" type="button" data-action="pf-use" data-id="${k}${i}">${peso(pfAmount(sug, i, k))} suggested</button>` : `<small class="hiddennote">none</small>`;
-const pfNoteHtml = (sug) => sug?.needsRent ? `<p class="note small">${esc(sug.message)}</p><label for="pf-rent">Monthly rent (\u20B1)</label><input id="pf-rent" data-field="rentbox" inputmode="decimal" value="${esc(ui.form.rentbox ?? "")}" placeholder="0 if you pay none" autocomplete="off"><p><button type="button" class="chip wide" data-action="pf-rent-save">Use this rent</button></p>`
-  : !sug?.ok ? `<p class="note small">${esc(sug?.message ?? "")}</p>`
-  : `<p class="note small">Suggestions are built on ${sug.income.map((c) => peso(c)).join(" and ")} a payday: ${ui.form.p1 || ui.form.p2 ? "the pay typed above, else " : ""}the median of your last payslips for each payday, overtime left out.</p><p><button class="link" type="button" data-action="pf-use-all">Use every suggestion</button></p>`;
-// One quiet line under a pay box when the last payslips of that payday are dated well away from the day typed for it.
 let pfDayMemo = { key: null, notes: ["", ""] };
 const pfDayNotes = () => { const f = ui.form, key = [f.twice, f.d1, f.d2].join("|"); if (pfDayMemo.key !== key) pfDayMemo = { key, notes: M.payslipDayNotes(S(), f) }; return pfDayMemo.notes; };
-const pfDayNoteHtml = (i) => { const n = pfDayNotes()[i] ?? ""; return `<p class="note small" id="pf-daynote${i}"${n ? "" : " hidden"}>${n ? "\u25B2 " + esc(n) : ""}</p>`; };
-// What is left to place on a payday, with a way to put it on a line you choose.
-const pfRestHtml = (f) => M.planFormStatus(f).map((x, i) => x.left > 0 && (f.count ?? 0) > 0 ? `<p class="note small"><button class="link small" type="button" data-action="pf-rest" data-id="${i}">Put the ${f.twice ? (i ? "2nd" : "1st") + " payday's " : ""}${peso(x.left)} on a line</button></p>${f.restFor === i ? `<div class="chips">${Array.from({ length: f.count }, (_, j) => j).filter((j) => (f["n" + j] ?? "").trim()).map((j) => `<button class="chip" type="button" data-action="pf-rest-to" data-id="${j}">${esc(f["n" + j])}</button>`).join("")}</div>` : ""}` : "").join("");
+const pesoW = (c) => peso(c).replace(/\.00$/, "");
+const pfVal = (f, k, i) => { const a = M.parsePesos(f[k + i] || "0"); return a.ok ? a.centavos : 0; };   // k "a": the 1st payday, "b": the 2nd
+const pfDay = (f, w) => (!f.twice ? "Each month" : w ? (String(f.d2).trim().toLowerCase() === "last" ? "Last day" : M.ordinal(Number(f.d2))) : M.ordinal(Number(f.d1)));
+const pfName = (f, i) => String(f["n" + i] ?? "").trim();
+const pfRowsOf = (f, k) => Array.from({ length: f.count ?? 0 }, (_, i) => i).filter((i) => pfName(f, i) && pfVal(f, k, i) > 0);
+const pfSuggestedFor = (sug, f, i) => (sug?.ok ? sug.rows[pfName(f, i).toLowerCase()] ?? null : null);
+function planformBody(f) {
+  const w = f.twice ? f.which ?? 0 : 0, k = w ? "b" : "a", sug = pfSug(), view = f.view ?? "main", st = M.planFormStatus(f), cur = st[w] ?? st[0];
+  const done = `<p><button class="primary" data-action="pf-view" data-id="main">Done</button></p>`;
+  if (view === "line") {
+    const i = f.line, row = pfSuggestedFor(sug, f, i), custom = f["c" + i];
+    return `<h3>${custom ? "New line" : esc(f["n" + i])}</h3>
+      ${custom ? `<label for="pf-n${i}">Name</label><input id="pf-n${i}" data-field="n${i}" value="${esc(f["n" + i] ?? "")}" autocomplete="off" placeholder="Rent"><div class="chips">${Object.entries(M.KIND_NAMES).map(([kk, nm]) => `<button class="chip" data-action="pf-kind" data-id="${kk}" aria-pressed="${(f["k" + i] ?? "expense") === kk}">${nm}</button>`).join("")}</div>` : ""}
+      <label for="pf-a${i}">${esc(pfDay(f, 0))}</label><input id="pf-a${i}" data-field="a${i}" inputmode="decimal" placeholder="0" value="${esc(f["a" + i] ?? "")}" autocomplete="off">
+      ${f.twice ? `<label for="pf-b${i}">${esc(pfDay(f, 1))}</label><input id="pf-b${i}" data-field="b${i}" inputmode="decimal" placeholder="0" value="${esc(f["b" + i] ?? "")}" autocomplete="off">` : ""}
+      ${row ? `<p class="note small">Suggested ${pesoW(row.first)}${f.twice ? " · " + pesoW(row.second) : ""} <button class="link small" type="button" data-action="pf-use-line" data-id="${i}">Use</button></p>` : ""}
+      ${done}<p><button data-action="pf-remove" data-id="${i}" style="width:100%">Remove from plan</button></p>`;
+  }
+  if (view === "pay") {
+    const pay = (ww) => `<label for="pf-d${ww + 1}">${f.twice ? (ww ? "2nd payday" : "1st payday") : "Payday"}: day of the month${ww ? ", or last" : " (1 to 28)"}${REQ}</label><input id="pf-d${ww + 1}" data-field="d${ww + 1}" inputmode="${ww ? "text" : "numeric"}" value="${esc(f["d" + (ww + 1)] ?? "")}" autocomplete="off" autocapitalize="off">
+      <label for="pf-p${ww + 1}">Pay (₱)${REQ}</label><input id="pf-p${ww + 1}" data-field="p${ww + 1}" inputmode="decimal" value="${esc(f["p" + (ww + 1)] ?? "")}" autocomplete="off">${pfDayNotes()[ww] ? `<p class="note small">▲ ${esc(pfDayNotes()[ww])}</p>` : ""}`;
+    return `<h3>Payday</h3>
+      <label for="pf-start">Starts on${REQ}</label><input id="pf-start" type="date" data-field="start" value="${esc(f.start ?? "")}">
+      <div class="chips"><button class="chip" data-action="plan-once" aria-pressed="${!f.twice}">Paid once a month</button><button class="chip" data-action="plan-twice" aria-pressed="${f.twice}">Paid twice a month</button></div>
+      ${pay(0)}${f.twice ? pay(1) : ""}
+      ${sug?.needsRent ? `<p class="note small">${esc(sug.message)}</p><label for="pf-rent">Monthly rent (₱)</label><input id="pf-rent" data-field="rentbox" inputmode="decimal" value="${esc(f.rentbox ?? "")}" placeholder="0 if you pay none" autocomplete="off"><p><button type="button" class="chip wide" data-action="pf-rent-save">Use this rent</button></p>` : ""}
+      ${REQNOTE}${done}<p><button data-action="pf-refill" style="width:100%">Suggest again</button></p>`;
+  }
+  if (view === "add") {
+    const hidden = Array.from({ length: f.count ?? 0 }, (_, i) => i).filter((i) => pfName(f, i) && !(pfVal(f, k, i) > 0));
+    return `<h3>Add</h3><div class="chips">${hidden.map((i) => `<button class="chip" data-action="pf-line" data-id="${i}">${esc(pfName(f, i))}</button>`).join("")}${(f.count ?? 0) < M.MAX_FORM_LINES ? `<button class="chip" data-action="pf-new-line">Another line</button>` : ""}</div>
+      <p><button data-action="pf-view" data-id="main" style="width:100%">Back</button></p>`;
+  }
+  if (view === "rest") {
+    return `<h3>Put ${pesoW(Math.max(0, cur.left))} on</h3><div class="chips">${Array.from({ length: f.count ?? 0 }, (_, i) => i).filter((i) => pfName(f, i)).map((i) => `<button class="chip" data-action="pf-rest-to" data-id="${i}">${esc(pfName(f, i))}</button>`).join("")}</div>
+      <p><button data-action="pf-view" data-id="main" style="width:100%">Back</button></p>`;
+  }
+  // the main view
+  const rows = pfRowsOf(f, k), max = Math.max(1, ...rows.map((i) => pfVal(f, k, i)));
+  const left = cur.left > 0 ? `<button class="pp-left" type="button" data-action="pf-view" data-id="rest">${pesoW(cur.left)} left</button>` : `<span class="pp-left">${cur.left === 0 ? "All placed" : pesoW(-cur.left) + " over"}</span>`;
+  const hint = !sug?.ok && !rows.length ? `<button class="link small" type="button" data-action="pf-view" data-id="pay">${sug?.needsRent ? "Add your rent for suggestions" : cur.pay > 0 ? esc(sug?.message ?? "") : "Type this payday’s pay"}</button>` : "";
+  return `<h3>Pay plan<button class="qmark" type="button" data-action="intro" data-id="plan" aria-label="What is this?">?</button></h3>
+    ${f.twice ? `<div class="seg" role="group" aria-label="Which payday">${[0, 1].map((ww) => `<button data-action="pf-which" data-id="${ww}" aria-pressed="${w === ww}">${esc(pfDay(f, ww))}</button>`).join("")}</div>` : ""}
+    <div class="pp-big"><button class="pp-pay" type="button" data-action="pf-view" data-id="pay" aria-label="Change the pay and paydays">${pesoW(cur.pay)}</button>${left}</div>
+    <div class="pp-whole" role="img" aria-label="${pesoW(cur.placed)} of ${pesoW(cur.pay)} placed"><span style="width:${cur.pay > 0 ? Math.min(100, Math.round((cur.placed * 100) / cur.pay)) : 0}%"></span></div>
+    ${hint}
+    ${rows.map((i) => `<button class="pp-row" type="button" data-action="pf-line" data-id="${i}"><span class="nm">${esc(pfName(f, i))}</span><span class="tr"><span class="fl" style="width:${Math.max(2, Math.round((pfVal(f, k, i) * 70) / max))}%"></span><span class="v">${pesoW(pfVal(f, k, i))}</span></span></button>`).join("")}
+    <button class="pp-add" type="button" data-action="pf-view" data-id="add">+ Add</button>
+    <p><button class="primary" id="f-save" data-action="save-planform" style="margin-top:10px" disabled>Save plan</button></p>`;
+}
+// The plan form as it opens: filled from the suggestion for a new plan, or from the current plan for a newer one.
+function openPlanForm() {
+  const cur = planOf(), hidden = M.hiddenCategoryIds(ledger.settings);
+  if (cur) { const f = M.formFromPlan(cur, today()), sug = M.planFormSuggestion(S(), f, { today: today(), settings: ledger.settings }); ui.form = M.withListedLines(f, M.planFormLines(S(), hidden, sug.extras ?? [])); }
+  else ui.form = M.planFormFill(S(), M.newPlanForm(today()), { today: today(), settings: ledger.settings, hidden }).form;
+  ui.form.view = "main"; ui.form.which = 0;
+  ui.sheet = { type: "planform" }; pfMemo = { key: null, sug: null }; pfDayMemo = { key: null, notes: ["", ""] }; renderSheet();
+}
 const REQNOTE = `<p class="note small"><span class="req" aria-hidden="true">*</span> needed before you can save</p>`;
 // The four buttons for choosing a bucket by hand; the one in force is pressed.
 // What the name says, in the add window: the bucket it reads as, or that it is not clear and will be asked.
@@ -2180,28 +2230,12 @@ function renderSheet() {
       <p class="note">Pay, interest or a refund. For a full payslip, use Add a payslip in Income. Saved as verified, since you copy it from paper.</p>
       <p><button class="primary" id="f-save" data-action="save-income" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "planform") {
-    const f = ui.form, st = M.planFormStatus(f), two = f.twice;
-    const n = f.count ?? 0, kinds = Object.entries(M.KIND_NAMES), sug = pfSug();
-    body = `<h3>Type in a pay plan</h3>
-      <p class="note">Say what each payday is worth, then where it goes. Each payday's lines must add up to its pay.</p>
-      <label for="pf-start">Starts on${REQ}</label><input id="pf-start" type="date" data-field="start" value="${esc(f.start ?? "")}">
-      <div class="chips"><button class="chip" data-action="plan-once" aria-pressed="${!two}">Paid once a month</button><button class="chip" data-action="plan-twice" aria-pressed="${two}">Paid twice a month</button></div>
-      <label for="pf-d1">${two ? "1st payday" : "Payday"}: day of the month (1 to 28)${REQ}</label><input id="pf-d1" data-field="d1" inputmode="numeric" value="${esc(f.d1 ?? "")}" autocomplete="off">
-      <label for="pf-p1">Pay on that day (\u20B1)${REQ}</label><input id="pf-p1" data-field="p1" inputmode="decimal" value="${esc(f.p1 ?? "")}" autocomplete="off">${pfDayNoteHtml(0)}
-      ${two ? `<label for="pf-d2">2nd payday: a day after the first, or last${REQ}</label><input id="pf-d2" data-field="d2" value="${esc(f.d2 ?? "")}" autocomplete="off" autocapitalize="off">
-      <label for="pf-p2">Pay on that day (\u20B1)${REQ}</label><input id="pf-p2" data-field="p2" inputmode="decimal" value="${esc(f.p2 ?? "")}" autocomplete="off">${pfDayNoteHtml(1)}` : ""}
-      <h2>Where it goes</h2>
-      <p class="note">Your categories and goals are listed for you. Type what each takes from each payday, or tap the grey figure under it.</p>
-      <div id="pf-sugnote">${pfNoteHtml(sug)}</div>
-      <div class="pfgrid${two ? "" : " one"} pfcols" aria-hidden="true"><b>${two ? "1st payday" : "Each month"}</b>${two ? "<b>2nd payday</b>" : ""}</div>
-      ${Array.from({ length: n }, (_, i) => `<div class="pfline">${f["c" + i]
-        ? `<label for="pf-n${i}">Line ${i + 1}</label><input id="pf-n${i}" data-field="n${i}" value="${esc(f["n" + i] ?? "")}" autocomplete="off" placeholder="Rent"><select data-field="k${i}" aria-label="Kind of line ${i + 1}">${kinds.map(([k, nm]) => `<option value="${k}"${(f["k" + i] ?? "expense") === k ? " selected" : ""}>${nm}</option>`).join("")}</select>`
-        : `<div class="pfhead"><span>${esc(f["n" + i])}</span><small class="muted">${esc(M.KIND_NAMES[f["k" + i]] ?? "")}</small></div>`}
-        <div class="pfgrid${two ? "" : " one"}">${["a", ...(two ? ["b"] : [])].map((k) => `<div><input id="pf-${k}${i}" data-field="${k}${i}" aria-label="${esc((f["n" + i] ?? "").trim() || "Line " + (i + 1))}, ${k === "a" ? (two ? "1st payday" : "each month") : "2nd payday"}" inputmode="decimal" placeholder="0" value="${esc(f[k + i] ?? "")}" autocomplete="off"><span id="pf-s${k}${i}">${pfSugHtml(sug, i, k)}</span></div>`).join("")}</div></div>`).join("")}
-      ${n < M.MAX_FORM_LINES ? `<p><button data-action="plan-add-line" style="width:100%">Add a line</button></p>` : ""}
-      <div id="pf-status" role="status"></div>
-      ${REQNOTE}
-      <p><button class="primary" id="f-save" data-action="save-planform" style="margin-top:10px" disabled>Use this plan</button></p>`;
+    body = planformBody(ui.form);
+  } else if (sh.type === "intro") {
+    const it = M.introFor(sh.id);
+    body = `<div class="in-wrap">${M.introDrawing(it.drawing)}<h3 class="wl-title">${esc(it.title)}</h3>${it.lines.map((l) => `<p class="note">${esc(l)}</p>`).join("")}
+      <button class="wl-check" role="checkbox" aria-checked="${ui.introOff === true}" data-action="intro-off"><span class="box" aria-hidden="true"></span>Don't show this again</button>
+      <p><button class="primary" data-action="intro-done">Got it</button></p></div>`;
   } else if (sh.type === "goal") {
     body = `<h3>${sh.savings ? "New savings category" : "New goal"}</h3>${sh.savings ? `<p class="note">Each savings category is a goal. It shares what you set aside each month. You can type its own amount.</p>` : ""}
       <label for="g-name">Name${REQ}</label><input id="g-name" data-field="name" value="${esc(ui.form.name ?? "")}" autocomplete="off">
@@ -2557,8 +2591,8 @@ function renderSheet() {
       <p class="note">Anything entered since this backup was made will be gone. Pictures are not in a backup, so those entries will say "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "catcard" ? "" : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
-  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "catcard" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
+  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "catcard" || sh.type === "intro" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
   refreshSave();
@@ -2683,14 +2717,8 @@ function refreshSave() {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && f.account_id && f.date);
   } else if (type === "planform") {
-    const t = M.planTextFromForm(f), r = t.ok ? M.parsePlan(t.text) : null, out = $("pf-status");
+    const t = M.planTextFromForm(f), r = t.ok ? M.parsePlan(t.text) : null;
     btn.disabled = !r?.ok;
-    const sug = pfSug(), note = $("pf-sugnote");   // the grey figures follow the paydays and the pay as they are typed
-    if (note && note.dataset.key !== pfMemo.key) { note.dataset.key = pfMemo.key; note.innerHTML = pfNoteHtml(sug); for (let i = 0; i < (f.count ?? 0); i++) for (const k of ["a", "b"]) { const sp = $("pf-s" + k + i); if (sp) sp.innerHTML = pfSugHtml(sug, i, k); } }
-    pfDayNotes().forEach((n, i) => { const el = $("pf-daynote" + i); if (el) { el.hidden = !n; el.textContent = n ? "\u25B2 " + n : ""; } });
-    const st = M.planFormStatus(f), left = (x) => x.left === 0 ? "all placed" : x.left > 0 ? peso(x.left) + " left to place" : peso(-x.left) + " too much";
-    if (out) out.innerHTML = `<p class="note">${st.map((x, i) => (f.twice ? (i ? "2nd payday" : "1st payday") : "Payday") + ": " + peso(x.placed) + " of " + peso(x.pay) + ", " + left(x)).map(esc).join("<br>")}</p>${pfRestHtml(f)}`
-      + (!t.ok ? `<p role="alert" class="note"><b>${esc(t.error)}</b></p>` : r.ok ? `<p class="note"><b>Looks good.</b></p>` : `<p role="alert" class="note"><b>${esc(r.error)}</b></p>`);
   } else if (type === "goal") {
     const a = f.amount ? M.parsePesos(f.amount) : { ok: true };
     btn.disabled = !((f.name ?? "").trim() && a.ok);
@@ -3103,19 +3131,33 @@ async function onClick(el) {
       showToast("Recorded: " + peso(amount.centavos));
       break;
     }
-    case "open-planform": {   // the form lists your categories and goals; with no plan yet the pay boxes start from what each payday really brought in
-      const cur = planOf(); let f = cur ? M.formFromPlan(cur, today()) : M.newPlanForm(today());
-      const first = M.planFormSuggestion(S(), f, { today: today(), settings: ledger.settings });
-      if (!cur && first.pay) { f.p1 = M.amountText(first.pay[0]); if (f.twice && first.pay[1]) f.p2 = M.amountText(first.pay[1]); }
-      ui.sheet = { type: "planform" }; ui.form = M.withListedLines(f, M.planFormLines(S(), M.hiddenCategoryIds(ledger.settings), first.extras ?? [])); pfMemo = { key: null, sug: null }; pfDayMemo = { key: null, notes: ["", ""] }; renderSheet(); break; }
-    case "pf-use": { const sug = pfSug(), i = el.dataset.id.slice(1), k = el.dataset.id[0], c = pfAmount(sug, i, k), box = $("pf-" + el.dataset.id); if (c > 0 && box) { box.value = M.amountText(c); ui.form[el.dataset.id] = box.value; refreshSave(); } break; }
+    case "open-planform": {   // the first times, a small popup says what the screen is for; then the form opens already filled
+      if (M.shouldShowIntro(ledger.settings, "plan")) { ui.introOff = false; ui.sheet = { type: "intro", id: "plan", then: "planform" }; renderSheet(); break; }
+      openPlanForm(); break;
+    }
+    case "intro": ui.introOff = false; ui.sheet = { type: "intro", id: el.dataset.id, back: ui.sheet }; renderSheet(); break;
+    case "intro-off": ui.introOff = !ui.introOff; renderSheet(); break;
+    case "intro-done": {
+      const sh = ui.sheet; const settings = M.markIntro(ledger.settings, sh.id, ui.introOff === true);
+      if (sh.back) { ui.sheet = sh.back; await commit(S(), settings, { quiet: true }); renderSheet(); } else { await commit(S(), settings, { quiet: true }); if (sh.then === "planform") openPlanForm(); else { ui.sheet = null; renderSheet(); } }
+      break;
+    }
+    case "pf-view": ui.form.view = el.dataset.id; renderSheet(); break;
+    case "pf-which": ui.form.which = Number(el.dataset.id); renderSheet(); break;
+    case "pf-line": ui.form.line = Number(el.dataset.id); ui.form.view = "line"; renderSheet(); break;
+    case "pf-kind": ui.form["k" + ui.form.line] = el.dataset.id; renderSheet(); break;
+    case "pf-new-line": { const f = ui.form, i = f.count ?? 0; if (i < M.MAX_FORM_LINES) { ui.form = { ...f, count: i + 1, ["n" + i]: "", ["k" + i]: "expense", ["a" + i]: "", ["b" + i]: "", ["c" + i]: true, line: i, view: "line" }; renderSheet(); } break; }
+    case "pf-use-line": { const i = Number(el.dataset.id), row = pfSuggestedFor(pfSug(), ui.form, i); if (!row) break; ui.form["a" + i] = row.first > 0 ? M.amountText(row.first) : ""; ui.form["b" + i] = ui.form.twice && row.second > 0 ? M.amountText(row.second) : ""; for (const k of ["a", "b"]) { const box = $("pf-" + k + i); if (box) box.value = ui.form[k + i] ?? ""; } break; }
+    case "pf-remove": { const i = el.dataset.id; ui.form["a" + i] = ""; ui.form["b" + i] = ""; ui.form.view = "main"; renderSheet(); break; }
+    case "pf-rest-to": { const f = ui.form, w = f.twice ? f.which ?? 0 : 0, k = w ? "b" : "a", st = M.planFormStatus(f)[w], i = el.dataset.id; if (st && st.left > 0) f[k + i] = M.amountText(pfVal(f, k, i) + st.left); f.view = "main"; renderSheet(); break; }
+    case "pf-refill": {   // fill every listed line again from the suggestion built on the pay now in the form; lines you added yourself are kept
+      const f = { ...ui.form }; for (let i = 0; i < (f.count ?? 0); i++) if (!f["c" + i]) { f["a" + i] = ""; f["b" + i] = ""; }
+      const r = M.planFormFill(S(), f, { today: today(), settings: ledger.settings, hidden: M.hiddenCategoryIds(ledger.settings), keepPay: true });
+      ui.form = { ...r.form, view: "main", which: 0 }; pfMemo = { key: null, sug: null }; renderSheet(); break;
+    }
     case "pf-rent-save": { const a = M.parsePesos(ui.form.rentbox ?? ""); if (!a.ok || a.centavos < 0) { showToast("Type the rent like 12000, or 0 if you pay none."); break; } pfMemo = { key: null, sug: null }; await commit(S(), { ...ledger.settings, starter_rent: a.centavos }); renderSheet(); break; }
-    case "pf-rest": { const i = Number(el.dataset.id); ui.form.restFor = ui.form.restFor === i ? null : i; refreshSave(); break; }
-    case "pf-rest-to": { const i = ui.form.restFor, j = el.dataset.id, st = i == null ? null : M.planFormStatus(ui.form)[i]; if (!st || st.left <= 0) break; const k = i ? "b" : "a", cur = M.parsePesos(ui.form[k + j] || "0"); ui.form[k + j] = M.amountText((cur.ok ? cur.centavos : 0) + st.left); const box = $("pf-" + k + j); if (box) box.value = ui.form[k + j]; ui.form.restFor = null; refreshSave(); break; }
-    case "pf-use-all": { const sug = pfSug(); if (!sug.ok) break; for (let i = 0; i < (ui.form.count ?? 0); i++) for (const k of ["a", ...(ui.form.twice ? ["b"] : [])]) { const c = pfAmount(sug, i, k), box = $("pf-" + k + i); if (c > 0 && box) { box.value = M.amountText(c); ui.form[k + i] = box.value; } } refreshSave(); break; }
-    case "plan-once": ui.form.twice = false; renderSheet(); break;
+    case "plan-once": ui.form.twice = false; ui.form.which = 0; renderSheet(); break;
     case "plan-twice": ui.form.twice = true; renderSheet(); break;
-    case "plan-add-line": { const i = ui.form.count ?? 0; if (i < M.MAX_FORM_LINES) ui.form = { ...ui.form, count: i + 1, ["n" + i]: "", ["k" + i]: "expense", ["a" + i]: "", ["b" + i]: "", ["c" + i]: true }; renderSheet(); break; }
     case "save-planform": {
       const t = M.planTextFromForm(ui.form); if (!t.ok) { showToast(t.error); break; }
       const r = M.parsePlan(t.text);
