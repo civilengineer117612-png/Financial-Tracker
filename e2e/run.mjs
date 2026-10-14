@@ -2807,7 +2807,7 @@ console.log("Pay plan");
   const amounts = (await page.locator("#sheet .pp-row .v").allTextContents()).map((x) => Number(x.replace(/[^\d]/g, "")));
   check(amounts.length >= 3 && amounts.every((v, i) => i === 0 || amounts[i - 1] >= v), "the bars are sorted from the biggest amount to the smallest (" + amounts.join(", ") + ")");
   check(await page.locator(".sheet.center").count() === 1, "the plan window sits in the centre of the screen");
-  check(await page.locator('#sheet button:has-text("+ Add a line")').count() === 1, "+ Add a line is a real button, not a faint link");
+  check(await page.locator('#sheet button:has-text("+ Plan a category")').count() === 1, "+ Plan a category is a real button, not a faint link");
   // whatever the suggestion left over or put over on a payday, the owner settles it: leftover on a line chosen, an overshoot taken off Food
   const settle = async (w) => {
     for (let n = 0; n < 3; n++) {
