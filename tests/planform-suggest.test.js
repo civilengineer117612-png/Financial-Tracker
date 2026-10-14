@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planFormLines, withListedLines, planFormSuggestion, payslipDayNotes, planTextFromForm, newPlanForm, suggestInputs, parsePlan, amountText } from "../src/model/index.js";
+import { planFormLines, withListedLines, planFormSuggestion, planFormFill, payslipDayNotes, planTextFromForm, newPlanForm, suggestInputs, parsePlan, amountText } from "../src/model/index.js";
 import { UNLOGGED_CATEGORY_ID } from "../src/model/seed.js";
 import { makeState, account } from "./fixtures.js";
 
@@ -149,4 +149,34 @@ test("the form says the rent is needed with a flag, so the screen can offer a bo
   const s = history(); s.transactions = []; s.entries = [];
   const r = planFormSuggestion(s, form(), { today: TODAY });
   assert.equal(r.needsRent, true); assert.match(r.message, /rent/);
+});
+
+test("a new plan opens already filled: the pay from the payslips, every category listed, each line holding its suggestion", () => {
+  const s = history(), { form: f, sug } = planFormFill(s, form({ p1: "", p2: "" }), { today: TODAY });
+  assert.equal(sug.ok, true);
+  assert.equal(f.p1, "10000"); assert.equal(f.p2, "20000", "the pay of each payday is what the payslips of that payday say");
+  const at = (name) => { const i = Array.from({ length: f.count }, (_, k) => k).find((k) => f["n" + k] === name); return { a: f["a" + i], b: f["b" + i] }; };
+  assert.ok(Number(at("Rent").a || 0) + Number(at("Rent").b || 0) === 8000, "rent is placed once, in full");
+  const lines = JSON.parse(planTextFromForm(f).text).lines;
+  assert.ok(lines.length >= 2 && lines.every((l) => l.first + l.second > 0), "only lines holding an amount go into the plan");
+  assert.ok(lines.reduce((a, l) => a + l.first, 0) > 0 && lines.reduce((a, l) => a + l.second, 0) > 0, "both paydays hold amounts, not only one");
+  assert.ok(lines.reduce((a, l) => a + l.first, 0) <= 1000000 && lines.reduce((a, l) => a + l.second, 0) <= 2000000, "nothing placed is more than a payday brings in");
+});
+
+test("a new plan with no way to suggest still opens with the pay and every category listed, but empty", () => {
+  const s = history(); s.transactions = []; s.entries = [];
+  const { form: f, sug } = planFormFill(s, form(), { today: TODAY });
+  assert.equal(sug.ok, false); assert.equal(f.p1, "10000"); assert.equal(f.count, 5);
+  assert.deepEqual(JSON.parse(planTextFromForm(f).text).lines, [], "nothing is placed until you or a suggestion place it");
+});
+
+test("Suggest again keeps the pay typed in the form instead of going back to the payslips, and fills the lines from that pay", () => {
+  const s = history();
+  const { form: f, sug } = planFormFill(s, form({ p1: "12000", p2: "20000" }), { today: TODAY, keepPay: true });
+  assert.equal(f.p1, "12000"); assert.equal(f.p2, "20000");
+  assert.deepEqual(sug.income, [1200000, 2000000]);
+  const placed = (g) => JSON.parse(planTextFromForm(g).text).lines.reduce((a, l) => a + l.first, 0);
+  const again = planFormFill(s, form({ p1: "12000", p2: "20000" }), { today: TODAY });
+  assert.ok(placed(f) > placed(again.form), "the lines are built on the 12,000 typed, so they place more than the 10,000 of the payslips would");
+  assert.equal(again.form.p1, "10000", "without keepPay the payslips win");
 });

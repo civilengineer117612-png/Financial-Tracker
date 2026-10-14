@@ -35,9 +35,10 @@ let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
 const dismissNotice = async (page) => { try { await page.waitForSelector('#sheet button:has-text("I understand")', { timeout: 2500 }); await page.click('#sheet button:has-text("I understand")'); } catch { /* an old ledger shows no notice */ }
   try { await page.waitForSelector('#sheet button:has-text("Skip for now")', { timeout: 700 }); await page.click('#sheet button:has-text("Skip for now")'); } catch { /* the welcome card only shows on a new install */ } };
-async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false, keepCatCard = false } = {}) {
+async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false, keepCatCard = false, keepIntro = false } = {}) {
   if (seed === undefined) seed = styled ? OWNER_STYLE : null;
   if (seed && !whatsNew) seed = { ...seed, settings: { ...(seed.settings ?? {}), whatsnew_seen: seed.settings?.whatsnew_seen ?? CHANGES[0].id, start_rule_seen: seed.settings?.start_rule_seen ?? "2026-10-01T08:00:00.000+08:00" } };   // the What's new pop-up is tested on its own
+  if (seed && !keepIntro) seed = { ...seed, settings: { ...(seed.settings ?? {}), intro_off: { plan: true, ...(seed.settings?.intro_off ?? {}) } } };   // the small "what is this screen" popup is tested on its own
   if (seed && !keepCatCard) seed = { ...seed, settings: { ...(seed.settings ?? {}), cat_card_seen: seed.settings?.cat_card_seen ?? "2026-10-01T08:00:00.000+08:00" } };   // the one-time card about editing categories is tested on its own
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((o) => { try { if (o) sessionStorage.setItem("logOpen", "1"); } catch {} }, logOpen);
@@ -2777,79 +2778,117 @@ console.log("Same amount in Verify");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
-// ===== 5pf. typing in a Pay plan by hand =====
-console.log("Type in a pay plan");
+// ===== 5pf. the Pay plan: one payday at a time, a bar for each line =====
+console.log("Pay plan");
 { const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" };
   const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true }, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [], entries: [], attachments: [] } };
   ({ ctx, page, errors } = await open({ blockSw: true, seed }));
   await menuGo(page, "Budget");
   check((await text(page, "#screen")).includes("Paid in parts?") && await page.locator('#screen button:has-text("Plan each payday")').count() === 1, "Budget, with no plan, points to the Pay plan screen");
   await page.click('#screen button:has-text("Plan each payday")');
-  check((await text(page, "#top")).includes("Pay plan") || (await text(page, "#screen")).includes("Type in a pay plan"), "and the link goes there");
   let st = (await text(page, "#screen")).replace(/\s+/g, " ");
   check(st.includes("You can skip it. Budget works without it.") && st.toLowerCase().includes("how to use it") && st.includes("must add up to that payday's pay"), "the empty Pay plan screen keeps its words and adds a how-to note");
   check(await page.locator('#screen button.primary').count() === 1 && await page.locator('button[data-action="open-planform"]').count() === 1, "with one filled button: Type in a pay plan");
   await page.click('button[data-action="open-planform"]');
-  await page.fill("#pf-start", "2026-09-01");
-  check(await stars(page) === 5 && (await text(page, "#sheet")).includes("needed before you can save"), "the pay plan form marks its start, both paydays and both pays with the *");
-  check((await text(page, "#pf-sugnote")).includes("Add a payslip"), "with no payslip and no pay typed, it says why there is no suggestion");
-  check(await page.locator("#sheet .pfhead span").count() >= 6 && await page.locator('#sheet input[data-field^="n"]').count() === 0, "your own categories are listed by name, with no name box to type");
-  await page.fill("#pf-d1", "15"); await page.fill("#pf-p1", "10000"); await page.fill("#pf-p2", "24000");
-  check((await text(page, "#pf-sugnote")).includes("monthly rent first") && await page.locator("#pf-rent").count() === 1, "with the pay typed but no rent known, it says so and offers a box for the rent");
-  check(await page.locator("#pf-daynote0").count() === 1 && !(await page.locator("#pf-daynote0").isVisible()), "no payslips, so no note about payslip dates under the pay box");
+  await page.waitForSelector(".pp-big");
+  check(await page.locator("#sheet input").count() === 0 && await page.locator("#sheet .pp-row").count() === 0 && await page.locator("#f-save").isDisabled(), "the plan opens as a picture with no boxes to fill; with no pay and nothing to suggest, nothing is placed and it cannot be saved");
+  check((await text(page, "#sheet")).includes("Type this payday") && !(await text(page, "#sheet")).includes("Description"), "and one quiet line says what to do first");
+  await page.click('button[data-action="pf-view"][data-id="pay"]');
+  check(await stars(page) === 5 && (await text(page, "#sheet")).includes("needed before you can save"), "the pay window marks the start, both paydays and both pays with the *");
+  await page.fill("#pf-start", "2026-09-01"); await page.fill("#pf-d1", "15"); await page.fill("#pf-p1", "10000"); await page.fill("#pf-p2", "24000");
+  await page.click('button[data-action="pf-view"][data-id="main"]'); await page.click('button[data-action="pf-view"][data-id="pay"]');
+  check((await text(page, "#sheet")).includes("monthly rent first") && await page.locator("#pf-rent").count() === 1, "with the pay typed but no rent known, the pay window says so and offers a box for the rent");
+  check(!(await text(page, "#sheet")).includes("payslips are dated"), "no payslips, so no note about payslip dates");
   await page.fill("#pf-rent", "5000"); await page.click('button[data-action="pf-rent-save"]');
-  check(await seen(page, "#sheet", "Use every suggestion") && JSON.parse((await stored(page)).local).settings.starter_rent === 500000, "the rent typed in the form is kept (the Budget suggestion uses it too) and the suggestions appear");
-  const line = (name, which) => page.locator(`[aria-label="${name}, ${which}"]`);
-  await line("Rent", "2nd payday").fill("5000");
-  await line("Food", "1st payday").fill("6000"); await line("Food", "2nd payday").fill("6000");
-  check((await text(page, "#pf-status")).includes("4000") || (await text(page, "#pf-status")).includes("\u20B14,000.00 left to place"), "while typing it shows what is left to place on the 1st payday");
-  check(await page.locator("#f-save").isDisabled(), "and the plan cannot be used while the lines do not add up");
-  await page.click('button[data-action="pf-rest"][data-id="0"]');
-  await page.click('button[data-action="pf-rest-to"]:has-text("Rent")');
-  check((await line("Rent", "1st payday").inputValue()) === "4000" && (await text(page, "#pf-status")).includes("all placed"), "the 1st payday's leftover goes on the line you choose, and it then says all placed");
-  await page.click('button[data-action="plan-add-line"]');
-  const own = page.locator("#sheet .pfline").last();
-  await own.locator('input[data-field^="n"]').fill("Apartment Fund"); await own.locator("select").selectOption("goal");
-  await own.locator('input[placeholder="0"]').nth(0).fill("0"); await own.locator('input[placeholder="0"]').nth(1).fill("13000");
-  check((await text(page, "#pf-status")).includes("Looks good") && !(await page.locator("#f-save").isDisabled()), "when every payday adds up it says Looks good and the button opens up");
+  check(await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).settings.starter_rent === 500000, null, { timeout: 4000 }).then(() => true, () => false), "the rent typed here is kept (the Budget suggestion uses it too)");
+  await page.click('button[data-action="pf-refill"]'); await page.waitForSelector(".pp-row");
+  check(await page.locator("#sheet .pp-row").count() >= 3 && (await text(page, "#sheet")).includes("₱10,000"), "Suggest again fills the bars from the suggestion, built on the pay typed");
+  // whatever the suggestion left over or put over on a payday, the owner settles it: leftover on a line chosen, an overshoot taken off Food
+  const settle = async (w) => {
+    for (let n = 0; n < 3; n++) {
+      const t = await text(page, "#sheet .pp-big");
+      if (t.includes("All placed")) return true;
+      if (t.includes("left")) { await page.click(".pp-big .pp-left"); await page.click('button[data-action="pf-rest-to"]:has-text("Food")'); continue; }
+      const over = Number(t.match(/\u20B1([\d,]+) over/)[1].replace(/,/g, ""));
+      await page.click(".pp-row:has-text('Food')"); const box = page.locator(`#sheet input[data-field^="${w ? "b" : "a"}"]`);
+      await box.fill(String(Number(await box.inputValue()) - over)); await page.click('button[data-action="pf-view"][data-id="main"]');
+    }
+    return (await text(page, "#sheet .pp-big")).includes("All placed");
+  };
+  check(!(await text(page, "#sheet .pp-big")).includes("All placed") ? await page.locator("#f-save").isDisabled() : true, "a payday whose bars do not add up to its pay says how much is left or over, and the plan cannot be saved yet");
+  check(await settle(0), "what is left (or over) goes on a line you choose, and the payday says All placed");
+  await page.click('button[data-action="pf-which"][data-id="1"]');
+  check((await text(page, "#sheet .pp-big")).includes("\u20B124,000"), "the switch shows the other payday");
+  check(await settle(1), "the other payday settles the same way");
+  check(!(await page.locator("#f-save").isDisabled()), "when both paydays are all placed the plan can be saved");
   await page.click("#f-save");
   check(await seen(page, "#toast", "Plan loaded"), "the plan is saved");
   const l = JSON.parse((await stored(page)).local), pl = l.settings.plans?.[0];
-  check(l.settings.plans.length === 1 && pl.lines.length === 3 && pl.paydays[0].income === 1000000 && pl.paydays[1].day === "last" && pl.lines.find((x) => x.name === "Rent").second === 500000, "it holds the paydays and the three lines in centavos (" + JSON.stringify(pl.paydays.map((p) => p.income)) + ")");
+  check(l.settings.plans.length === 1 && pl.paydays[0].income === 1000000 && pl.paydays[1].income === 2400000 && pl.paydays[1].day === "last" && pl.lines.length >= 3 && pl.lines.every((x) => x.first + x.second > 0) && pl.lines.reduce((a, x) => a + x.first, 0) === 1000000, "it holds the paydays and only the lines that hold money, adding up to each pay");
   st = (await text(page, "#screen")).replace(/\s+/g, " ");
-  check(st.includes("Rent") && st.includes("Apartment Fund") && st.includes("Add a newer plan"), "the Pay plan screen now shows it, with a way to add a newer one");
+  check(st.includes("Add a newer plan"), "the Pay plan screen now shows it, with a way to add a newer one");
   check(await page.locator("#plan-agree, #plan-differ").count() === 1, "the Pay plan screen says whether the plan agrees with the budgets");
-  await page.click('button[data-action="open-planform"]');
-  check(await page.inputValue('[aria-label="Rent, 2nd payday"]') === "5000" && await page.inputValue("#pf-p1") === "10000" && await page.locator("#sheet .pfline").last().locator('input[placeholder="0"]').nth(1).inputValue() === "13000" && (await page.inputValue("#pf-start")) === "2026-10-03", "Add a newer plan starts from the current plan, dated today, with its own line kept");
-  await page.locator("#scrim").click({ position: { x: 5, y: 5 } });
+  await page.click('button[data-action="open-planform"]'); await page.waitForSelector(".pp-big");
+  check((await text(page, "#sheet .pp-big")).includes("₱10,000") && await page.locator("#sheet .pp-row").count() >= 2, "Add a newer plan starts from the current plan");
+  await page.click('#sheet button:has-text("Cancel")');
   await menuGo(page, "Help"); await page.locator("#screen details.mrow summary", { hasText: "Pay plan" }).click();
   check((await text(page, "#screen")).includes("Budget or Pay plan?") && (await text(page, "#screen")).includes("Budget is enough on its own"), "Help compares Budget and Pay plan");
   await menuGo(page, "Setup"); await page.click('button[data-action="cat-edit"]'); await page.click('.row:has-text("Food")'); await page.waitForSelector("#c-name");
   check((await text(page, "#sheet")).includes("Your Pay plan has a line called Food. After a rename"), "renaming a category the saved plan uses says the plan line will no longer match");
-  await page.click('#sheet button:has-text("Cancel")'); await page.click('.row:has-text("Family")'); await page.waitForSelector("#c-name");
-  check(!(await text(page, "#sheet")).includes("Your Pay plan has a line"), "and a category the plan does not use has no such note");
+  const inPlan = new Set(JSON.parse((await stored(page)).local).settings.plans[0].lines.map((x) => x.name.toLowerCase()));
+  const unused = JSON.parse((await stored(page)).local).state.categories.find((c) => c.kind === "expense" && c.id !== "cat-unlogged" && !inPlan.has(c.name.toLowerCase()));
+  await page.click('#sheet button:has-text("Cancel")');
+  if (unused) { await page.click(`.row:has-text("${unused.name}")`); await page.waitForSelector("#c-name"); }
+  check(!unused || !(await text(page, "#sheet")).includes("Your Pay plan has a line"), "and a category the plan does not use (" + (unused?.name ?? "none left") + ") has no such note");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
-// ===== 5ps. the Pay plan form suggests, from the pay of each payday =====
-console.log("Pay plan suggestions");
+// ===== 5ps. changing a line, adding one, removing one =====
+console.log("Pay plan lines");
 { const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" };
   const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true, starter_rent: 500000 }, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [], entries: [], attachments: [] } };
   ({ ctx, page, errors } = await open({ blockSw: true, seed }));
-  await menuGo(page, "Budget"); await page.click('#screen button:has-text("Plan each payday")'); await page.click('button[data-action="open-planform"]'); await page.waitForSelector("#pf-p1");
-  check(!(await text(page, "#pf-sugnote")).includes("Use every suggestion"), "no pay yet: no suggestion is offered");
-  await page.fill("#pf-p1", "10000"); await page.fill("#pf-p2", "24000");
-  check((await text(page, "#pf-sugnote")).includes("Use every suggestion") && (await text(page, "#pf-sugnote")).includes("\u20B110,000.00 and \u20B124,000.00 a payday"), "with the pay typed, suggestions are built on exactly that pay");
-  check(await page.locator("#sheet .pfline button[data-action='pf-use']").count() > 0, "and each line shows its grey figure");
-  const first = page.locator('#sheet button[data-action="pf-use"]').first();
-  await first.click();
-  check((await page.locator('#sheet .pfline input[placeholder="0"]').evaluateAll((els) => els.filter((e) => e.value !== "").length)) === 1, "tapping one grey figure fills just that box");
-  await page.click('button[data-action="pf-use-all"]');
-  const placed = await page.locator('#sheet .pfline input[placeholder="0"]').evaluateAll((els) => els.filter((e) => e.value !== "").length);
-  check(placed >= 3, "Use every suggestion fills the boxes (" + placed + ")");
-  check(!(await text(page, "#pf-status")).includes("of \u20B10.00"), "and the paydays' totals follow");
-  await page.fill("#pf-p1", "12000");
-  check((await text(page, "#pf-sugnote")).includes("\u20B112,000.00 and \u20B124,000.00 a payday"), "changing the pay changes what the suggestions are built on");
+  await menuGo(page, "Budget"); await page.click('#screen button:has-text("Plan each payday")'); await page.click('button[data-action="open-planform"]'); await page.waitForSelector(".pp-big");
+  await page.click('button[data-action="pf-view"][data-id="pay"]'); await page.fill("#pf-p1", "10000"); await page.fill("#pf-p2", "24000"); await page.click('button[data-action="pf-refill"]'); await page.waitForSelector(".pp-row");
+  const food = await text(page, ".pp-row:has-text('Food')");
+  await page.click(".pp-row:has-text('Food')");
+  const boxes = await page.locator('#sheet input[data-field^="a"], #sheet input[data-field^="b"]').count();
+  check(boxes === 2 && (await text(page, "#sheet")).includes("Suggested") && await page.locator('button[data-action="pf-use-line"]').count() === 1, "a tap on a bar opens that line: one box for each payday, with the suggestion beside a Use link");
+  await page.locator('#sheet input[data-field^="a"]').fill("1000"); await page.click('button[data-action="pf-view"][data-id="main"]');
+  check((await text(page, ".pp-row:has-text('Food')")).includes("₱1,000") && food !== (await text(page, ".pp-row:has-text('Food')")), "the new figure shows on the bar after Done");
+  await page.click(".pp-row:has-text('Food')"); await page.click('button[data-action="pf-remove"]');
+  check(await page.locator(".pp-row:has-text('Food')").count() === 0, "Remove from plan takes the line off both paydays");
+  await page.click('button[data-action="pf-view"][data-id="add"]');
+  check(await page.locator('#sheet button.chip:has-text("Food")').count() === 1 && await page.locator('#sheet button.chip:has-text("Another line")').count() === 1, "+ Add lists what is not in the plan, as buttons, and Another line");
+  await page.click('button[data-action="pf-new-line"]'); await page.fill('#sheet input[data-field^="n"]', "Test Line"); await page.locator('#sheet input[data-field^="a"]').fill("100"); await page.click('button[data-action="pf-view"][data-id="main"]');
+  check((await text(page, ".pp-row:has-text('Test Line')")).includes("₱100"), "a line of your own can be added, with a name and an amount");
+  check(await page.locator('button[data-action="plan-add-line"]').count() === 0 && !(await text(page, "#sheet")).includes("Use every suggestion"), "the old long form is gone");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
+// ===== 5pi. the small popup that says what the screen is for =====
+console.log("Pay plan popup");
+{ const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" };
+  const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true }, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [], entries: [], attachments: [] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed, keepIntro: true }));
+  await menuGo(page, "Budget"); await page.click('#screen button:has-text("Plan each payday")'); await page.click('button[data-action="open-planform"]'); await page.waitForSelector(".in-draw");
+  check((await text(page, "#sheet")).includes("Split each pay into what it is for.") && (await text(page, "#sheet")).includes("Tap a bar to change it.") && await page.locator('#sheet .sheet.center').count() === 1, "the first time, a centred popup says what the screen is for in two short lines, with a drawing");
+  check(await page.locator("#sheet .in-bar").count() >= 3 && (await page.locator("#sheet .in-bar").first().evaluate((e) => getComputedStyle(e).animationName)) === "introgrow", "the drawing moves");
+  await page.click('button[data-action="intro-done"]'); await page.waitForSelector(".pp-big");
+  check(JSON.parse((await stored(page)).local).settings.intro_seen?.plan === 1, "Got it opens the form and counts the popup as shown once");
+  await page.click('#sheet button:has-text("Cancel")'); await page.click('button[data-action="open-planform"]'); await page.waitForSelector(".in-draw");
+  check(await page.locator(".in-draw").count() === 1, "it comes back the next time, until the check is ticked");
+  await page.click('button[data-action="intro-off"]');
+  check((await page.getAttribute('button[data-action="intro-off"]', "aria-checked")) === "true", "the check can be ticked");
+  await page.click('button[data-action="intro-done"]'); await page.waitForSelector(".pp-big");
+  await page.click('#sheet button:has-text("Cancel")'); await page.click('button[data-action="open-planform"]'); await page.waitForSelector(".pp-big");
+  check(await page.locator(".in-draw").count() === 0 && JSON.parse((await stored(page)).local).settings.intro_off?.plan === true, "with the check ticked it does not come back");
+  await page.click('button[data-action="intro"][data-id="plan"]'); await page.waitForSelector(".in-draw");
+  await page.click('button[data-action="intro-done"]'); await page.waitForSelector(".pp-big");
+  check(await page.locator(".pp-big").count() === 1 && await page.locator(".in-draw").count() === 0, "the ? next to the title brings the popup back, and Got it returns to the plan");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.click('button[data-action="intro"][data-id="plan"]'); await page.waitForSelector(".in-draw");
+  check((await page.locator("#sheet .in-bar").first().evaluate((e) => getComputedStyle(e).animationName)) === "none", "with Reduce Motion the drawing stands still, finished");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 

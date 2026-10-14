@@ -125,7 +125,7 @@ export function planFormSuggestion(state, f, { today, settings = {} }) {
 }
 
 // ---------- do the payslips agree with the paydays typed? ----------
-const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th"));
+export const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th"));
 
 // One line for each payday (empty when all is well): the last payslips of that payday are dated well away from the day typed for it (more than 5 days),
 // so the pay boxes, built on those payslips, may be for another payday. "last" counts as the 30th. A payslip belongs to the payday its date is nearest.
@@ -145,4 +145,20 @@ export function payslipDayNotes(state, f) {
     if (Math.min(Math.abs(m - typed[i]), 31 - Math.abs(m - typed[i])) <= 5) return "";
     return "Your last payslips for this payday are dated around the " + ordinal(m) + ", not " + said(i ? f.d2 : f.d1) + ". Check the payday day or the payslip dates.";
   });
+}
+
+// The form as it opens for a NEW plan: the pay of each payday from the payslips, every category and goal listed, and each line already holding its suggested
+// amount, so the owner reviews a plan instead of filling one in. Returns {form, sug}; `sug` is the suggestion built on that pay (ok or not).
+export function planFormFill(state, f, { today, settings = {}, hidden = [], keepPay = false }) {
+  const first = planFormSuggestion(state, f, { today, settings });
+  const next = { ...f };
+  if (first.pay && !keepPay) { next.p1 = amountText(first.pay[0]); if (f.twice && first.pay[1]) next.p2 = amountText(first.pay[1]); }
+  const sug = planFormSuggestion(state, next, { today, settings });
+  const form = withListedLines(next, planFormLines(state, hidden, sug.extras ?? first.extras ?? []));
+  if (sug.ok) for (let i = 0; i < form.count; i++) {
+    const row = sug.rows[lower(form["n" + i])];
+    if (row?.first > 0) form["a" + i] = amountText(row.first);
+    if (form.twice && row?.second > 0) form["b" + i] = amountText(row.second);
+  }
+  return { form, sug };
 }
