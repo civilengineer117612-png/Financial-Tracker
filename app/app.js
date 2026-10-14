@@ -137,7 +137,7 @@ function planformBody(f) {
     <div class="pp-whole" role="img" aria-label="${pesoW(cur.placed)} of ${pesoW(cur.pay)} placed"><span style="width:${cur.pay > 0 ? Math.min(100, Math.round((cur.placed * 100) / cur.pay)) : 0}%"></span></div>
     ${hint}
     ${rows.map((i) => `<button class="pp-row" type="button" data-action="pf-line" data-id="${i}"><span class="nm">${esc(pfName(f, i))}</span><span class="tr"><span class="fl" style="width:${Math.max(2, Math.round((pfVal(f, k, i) * 70) / max))}%"></span><span class="v">${pesoW(pfVal(f, k, i))}</span></span></button>`).join("")}
-    <p><button type="button" data-action="pf-view" data-id="add" style="width:100%">+ Add a line</button></p>
+    <p><button type="button" data-action="pf-view" data-id="add" style="width:100%">+ Plan a category</button></p>
     <p><button class="primary" id="f-save" data-action="save-planform" style="margin-top:10px" disabled>Save plan</button></p>`;
 }
 // The plan form as it opens: filled from the suggestion for a new plan, or from the current plan for a newer one.

@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-14-qmark-right", date: "2026-10-14", text: "The ? that brings back a screen's explanation now sits at the right edge of the title, and the Pay plan button reads + Plan a category." },
   { id: "2026-10-14-help-qmark", date: "2026-10-14", text: "Help now says that a ? beside a screen's name brings back its short explanation." },
   { id: "2026-10-14-popups", date: "2026-10-14", text: "Every screen in the menu now opens with a small moving popup that says what it is for, and a ? beside the name brings it back." },
   { id: "2026-10-14-plan-polish", date: "2026-10-14", text: "The Pay plan window opens in the centre, keeps your work if you tap outside it, lists the lines from the biggest amount down, and has a clearer + Add a line button." },
