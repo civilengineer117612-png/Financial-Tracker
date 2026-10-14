@@ -3431,6 +3431,43 @@ console.log("Moves between accounts");
   check(errors.length === 0, "no script errors on the moves screens: " + errors.join("; "));
   await ctx.close(); }
 
+// ===== 5df. Setup, Statements: compare a month with the ledger, Add as draft, Start this account from its statement =====
+console.log("Compare with the ledger");
+{ const acct = { id: "bk", name: "Test Bank", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 120000, opening_date: "2022-01-01" };
+  const food = OWNER_STYLE.state.categories.find((c) => c.name === "Food");
+  const ln = (n, date, text, amount, balance) => ({ id: `s1:${n}`, record_id: "s1", n, date, text, payee: text, type: "", amount, direction: "out", balance, meaning: "spending" });
+  const state = { ...OWNER_STYLE.state, accounts: [acct],
+    statementRecords: [{ id: "s1", account_id: "bk", style: "credit-debit", period_from: "2023-02-01", period_to: "2023-02-28", opening: 100000, closing: 85500, line_count: 2, checked: true, added_at: "2026-10-01T08:00:00.000+08:00" }],
+    statementLines: [ln(0, "2023-02-05", "Corner Cafe", 9500, 90500), ln(1, "2023-02-20", "Bus fare", 5000, 85500)],
+    transactions: [{ id: "t1", date: "2023-02-05", payee: "Corner Cafe", memo: "", status: "verified", source: "manual", created_at: "2023-02-05T09:00:00.000+08:00", verified_at: "2023-02-05T09:00:00.000+08:00" }],
+    entries: [{ transaction_id: "t1", category_id: food.id, amount: 9500 }, { transaction_id: "t1", account_id: "bk", amount: -9500 }] };
+  ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, seed: { ...OWNER_STYLE, state } }));
+  await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer")); await page.waitForTimeout(300);
+  await page.click('.setrow:has-text("Statements")'); await page.waitForTimeout(250);
+  await page.click('button[data-action="st-month"][data-month="2023-02"]');
+  let w = await text(page, "#sheet");
+  check(w.includes("Compare with your ledger") && /Your ledger is .*250\.00 above the bank/.test(w), "the month window offers Compare with your ledger and says how far apart: " + w.replace(/\n+/g, " | ").slice(0, 160));
+  await page.click('button[data-action="st-compare"]');
+  w = await text(page, "#sheet");
+  check(w.includes("against your ledger") && w.includes("The bank closes at") && w.includes("Your ledger shows") && w.includes("Difference") && w.includes("your ledger is higher"), "the comparison shows the bank's closing, the ledger, and the difference");
+  check(w.includes("In the statement, not in your ledger") && w.includes("Bus fare") && w.includes("In your ledger, not in the statement") && /200\.00 is carried from before/.test(w), "the lines that explain it, and what is carried from before");
+  check(w.includes("Start this account from its statement") && await page.locator('#sheet button.primary').count() === 1, "when the rest is the starting balance there is ONE filled button: Start this account from its statement");
+  await page.click('button[data-action="st-adddraft"]');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.some((t) => t.source === "statement" && t.payee === "Bus fare" && t.status === "draft"), null, { timeout: 5000 });
+  check(await seen(page, "#toast", "Draft added"), "Add as draft says what was done");
+  w = await text(page, "#sheet");
+  check(/200\.00/.test(w) && w.includes("None of it comes from lines in this month") && !w.includes("Add as draft") && /In the statement, not in your ledger\s+Nothing/.test(w), "after adding it only the carried part is left, and no line is missing");
+  await page.click('button[data-action="st-start"]');
+  check((await text(page, "#sheet button.primary")).startsWith("Tap again"), "starting the account asks for a second tap and says what it will start at");
+  check((await text(page, "#sheet")).includes("started at") && /1,200\.00/.test(await text(page, "#sheet")) && /1,000\.00/.test(await text(page, "#sheet")), "and names the balance it started at and the new one");
+  await page.click('button[data-action="st-start"]');
+  await page.waitForFunction(() => { const a = JSON.parse(localStorage.getItem("financialTracker.ledger")).state.accounts.find((x) => x.id === "bk"); return a.opening_balance === 100000 && a.opening_date === "2023-02-01"; }, null, { timeout: 5000 });
+  check(await seen(page, "#toast", "now starts at"), "a plain message says the account now starts from its statement");
+  w = await text(page, "#sheet");
+  check(w.includes("they agree") && !w.includes("Start this account from its statement"), "now the ledger and the bank agree, and the start button is gone");
+  check(errors.length === 0, "no script errors on the comparison screens: " + errors.join("; "));
+  await ctx.close(); }
+
 await browser.close();
 console.log(failures ? "\n" + failures + " check(s) FAILED" : "\nAll checks passed");
 process.exit(failures ? 1 : 0);
