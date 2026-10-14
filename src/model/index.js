@@ -94,3 +94,5 @@ export { readDate, dateOrder, readAmount, parseNotes, linesByRow, parseTable, pa
 export { SINKING_LABEL, SINKING_NOTE, SINKING_HELP, sinkingStart, sinkingBalance, sinkingFunds, setAsideForSpending, toggleSinking } from "./sinking.js";
 
 export { MAX_INTRO_SHOWS, INTROS, introFor, shouldShowIntro, markIntro, introDrawing } from "./intros.js";
+
+export { recordFromParse, accountLines, proveMonths, acceptMonth } from "./proof.js";

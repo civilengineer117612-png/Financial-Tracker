@@ -10,9 +10,9 @@ import { phTimestamp } from "./util.js";
 
 // Version 2 is the first with named migrations. To change the data's shape: raise this number, add the step from the old number to MIGRATIONS,
 // add a backup fixture of the old version to tests/migrate.test.js, and add the new collection to COLLECTION_NAMES.
-export const LEDGER_VERSION = 9;
+export const LEDGER_VERSION = 10;
 export const COLLECTION_NAMES = ["accounts", "goals", "envelopes", "transactions", "entries", "categories", "categoryMaps", "rules",
-  "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions", "schedules", "scheduleChanges"];
+  "templates", "presets", "payeeRules", "subscriptions", "checkIns", "attachments", "tags", "foreignAmounts", "surveyResponses", "payslips", "payslipLines", "payslipRevisions", "schedules", "scheduleChanges", "statementRecords", "statementLines", "statementAccepts"];
 
 // Each step takes a ledger of version N and returns one of N + 1 (the runner sets `v`). Steps only add.
 export const MIGRATIONS = {
@@ -61,6 +61,9 @@ export const MIGRATIONS = {
   // and a new source "correction" exists. Nothing existing has these, so nothing is changed and every total is the same; the version number only stops an older app from
   // reading data it does not understand.
   8: (ledger) => ({ ...ledger }),
+  // 9 to 10: statement proof. Three new lists (statement records, their lines, and the months accepted), all empty, and a new transaction source "statement".
+  // Nothing existing is touched, so every total is the same.
+  9: (ledger) => ({ ...ledger, state: { ...ledger.state, statementRecords: ledger.state.statementRecords ?? [], statementLines: ledger.state.statementLines ?? [], statementAccepts: ledger.state.statementAccepts ?? [] } }),
 };
 
 const clone = (x) => JSON.parse(JSON.stringify(x));

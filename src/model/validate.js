@@ -9,6 +9,7 @@ const COLLECTIONS = {
   payeeRules: "PayeeRule", subscriptions: "Subscription", checkIns: "CheckIn", attachments: "Attachment",
   tags: "Tag", foreignAmounts: "ForeignAmount", surveyResponses: "SurveyResponse", payslips: "Payslip", payslipLines: "PayslipLine", payslipRevisions: "PayslipRevision",
   schedules: "Schedule", scheduleChanges: "ScheduleChange",
+  statementRecords: "StatementRecord", statementLines: "StatementLine", statementAccepts: "StatementAccept",
 };
 
 // Every record in every collection must be well-formed; unknown collections are refused.

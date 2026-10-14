@@ -7,7 +7,7 @@ import { phTimestamp } from "./util.js";
 import { validateShape } from "./schema.js";
 
 const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }], drafts: [] });
-const EXPENSE_SOURCES = ["manual", "preset", "template", "photo", "voice", "import"];
+const EXPENSE_SOURCES = ["manual", "preset", "template", "photo", "voice", "import", "statement"];
 const partnerId = (id) => "rsv:" + id;   // the generated card reserve transfer (templates.js)
 const partnerIds = (id) => [partnerId(id), "fee:" + id];   // and the fee draft that belongs to a scanned transfer (transfers.js)
 
