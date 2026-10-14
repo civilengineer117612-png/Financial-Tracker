@@ -3274,6 +3274,7 @@ console.log("Welcome card, category editing, required marks");
   check(await seen(page, "#sheet", "Balance check"), "a PDF statement is read and shown before anything is added");
   let st = await text(page, "#sheet");
   check(st.includes("Everything in and out matches the totals at the top") && st.includes("Lines found") && /6\b/.test(st), "it says the statement adds up, and how many lines it found");
+  check(/Period\s*\w{3}, [A-Z][a-z]{2} \d+, 20\d\d to \w{3}, [A-Z][a-z]{2} \d+, 20\d\d/.test(st), "the import window shows the year on the statement period");
   check(st.includes("2 lines") && st.includes("1 line needs your choice"), "spending is offered; the unsure line waits for your choice, left out until then");
   check((await text(page, "#stm-left")).includes("3 money in left out"), "money in is counted and left out");
   check(await page.locator("#sheet label .req").count() >= 1 && (await text(page, "#sheet")).includes("needed before you can save"), "the import window marks Paid from with the * and says what it means");
