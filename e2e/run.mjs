@@ -1867,7 +1867,7 @@ console.log("Log date and Cash first");
   check(!(await text(page, "#screen")).includes("₱33.00"), "it is not in today's list");
   await page.click('button:has-text("Add expense")');
   const paidFrom = await page.locator("#sheet .pick").nth(1).locator(".chip").allInnerTexts();
-  check(/Debit/.test(paidFrom[0] ?? "") && /Cash/.test(paidFrom[1] ?? "") && paidFrom.length === 2, "the account used last comes first, then Cash and the rest A to Z (" + paidFrom.join(" | ") + ")");
+  check(/Cash/.test(paidFrom[0] ?? "") && /Debit/.test(paidFrom[1] ?? "") && paidFrom.length === 2, "a draft does not make an account the one used last, so Cash comes first and the rest follow A to Z (" + paidFrom.join(" | ") + ")");
   await page.fill("#f-amount", "20"); await page.click('#sheet .chip:has-text("Food")'); await page.click('#sheet .chip:has-text("Cash")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
   const led2 = JSON.parse((await stored(page)).local);
   check(led2.state.transactions.filter((t) => t.date === "2026-10-03").length === 1, "after Today, new entries go on today again");
