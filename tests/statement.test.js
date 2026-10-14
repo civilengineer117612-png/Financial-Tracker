@@ -22,6 +22,14 @@ function creditDebitPage({ opening, rows, period = "01 Jan 2025 - 31 Jan 2025", 
   items.push(t(40, y - 6, "All figures are in PHP."));
   return items;
 }
+test("a Go Save pocket statement is recognised by its GoalSave number, a main account is not", () => {
+  const rows = [["27 Jan 2025", "Transfer from Deposit account", 90000, 0]], totals = { credits: 90000, debits: 0, closing: 90000 };
+  const pocket = parseStatement([[...creditDebitPage({ opening: 0, rows, totals, period: "15 Jan 2025 - 31 Jan 2025" }), t(40, 745, "GoalSave No.: ********73002")]]);
+  assert.equal(pocket.ok, true);
+  assert.deepEqual(pocket.pocket, { last4: "3002" }, "the pocket's last four digits are kept");
+  const main = parseStatement([[...creditDebitPage({ opening: 0, rows, totals, period: "15 Jan 2025 - 31 Jan 2025" }), t(40, 745, "Account Number: 011708686588")]]);
+  assert.equal(main.pocket, null, "a main account statement is not a pocket");
+});
 const CD_ROWS = [["02 Jan 2025", "Transfer from SAMPLE PERSON, Account No. 1234", 50000, 0], ["02 Jan 2025", "Transfer to Go Save account", 0, 500], ["04 Jan 2025", "Card payment at SAMPLE STORE, Card 0000", 0, 56800],
   ["16 Jan 2025", "Interbank transfer fee", 0, 800], ["20 Jan 2025", "Outbound interbank transfer", 0, 10000]];
 const CD_TOTALS = { credits: 50000, debits: 500 + 56800 + 800 + 10000, closing: 50000 - 500 - 56800 - 800 - 10000 + 0 };
@@ -163,7 +171,7 @@ test("statement follow-ups: unsure lines wait for your choice, a failed check ho
   assert.match(app, /if \(form\.statement && !form\.statement\.check\.ok && !form\.looked\) break;/, "and saving is refused too, not just greyed");
   assert.match(app, /data-action="stm-looked" aria-pressed="\$\{!!f\.looked\}">I looked at the amounts</);
   assert.match(app, /activeAccounts\(\)\.filter\(\(a\) => a\.class === "asset" && a\.bank === statement\.bankId\)/, "the accounts linked to the statement's bank");
-  assert.match(app, /auto = linked\.length === 1 \? linked\[0\]\.id : null/, "chosen for you only when exactly one account is linked to that bank");
+  assert.match(app, /auto = linked\.length === 1 && !statement\?\.pocket \? linked\[0\]\.id : null/, "chosen for you only when exactly one account is linked to that bank, and never for a Go Save pocket");
   assert.match(app, /account_id: auto \?\? \(statement \? null : cashFirst\(activeAccounts\(\)\)\[0\]\?\.id \?\? null\)/, "a statement is never filed under Cash by default: the owner chooses");
   assert.match(app, /chosen for you/);
   assert.match(app, /seq\.length > 6 \? `<span class="dotcount" data-of="\$\{seq\.length\}">1 of \$\{seq\.length\}<\/span>`/);

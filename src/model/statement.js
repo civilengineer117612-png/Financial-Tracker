@@ -170,7 +170,9 @@ export function parseStatement(pages, { ownLast4 = [] } = {}) {
   if (!header || !lines.length) return { ok: false, message: "No transactions were found in this PDF. It may not be a bank statement the app knows." };
   const top = allRows[0].slice(0, 25).map(textOf).join(" ").toLowerCase();   // the first lines of the first page: the bank's name is usually there
   const found = BANKS.find((b) => [b.name, ...(b.aka ?? [])].some((n) => top.includes(n.toLowerCase()))) ?? null, bank = found?.name ?? null, bankId = found?.id ?? null;
-  return { ok: true, style: header.style, bank, bankId, period, summary, lines, check: checkStatement(header.style, lines, summary) };
+  // A Go Save pocket's statement says "GoalSave No.: ********73002" where the main account says "Account Number": it is NOT the main account, so it is never filed there by itself.
+  const pk = /goal\s*save\s*no\.?:?\s*[*\u2022x\s]*(\d{4,})/i.exec(top), pocket = pk ? { last4: pk[1].slice(-4) } : null;
+  return { ok: true, style: header.style, bank, bankId, period, summary, lines, pocket, check: checkStatement(header.style, lines, summary) };
 }
 
 // ---------- GCash: one page of the table ----------
