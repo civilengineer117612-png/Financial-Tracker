@@ -3387,6 +3387,34 @@ console.log("Statements");
   check(errors.length === 0, "no script errors on the Statements screens: " + errors.join("; "));
   await ctx.close(); }
 
+// ===== 5mv. Setup, Statements: moves between your own accounts (one move, a fee shown), Add as draft, a payslip noticed =====
+console.log("Moves between accounts");
+{ const mk = (id, name, last4) => ({ id, name, class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2022-01-01", last4 });
+  const ln = (rec, n, date, text, amount, direction, balance, meaning, extra = {}) => ({ id: `${rec}:${n}`, record_id: rec, n, date, text, payee: text, type: "", amount, direction, balance, meaning, ...extra });
+  const rc = (id, account_id, opening, closing, count) => ({ id, account_id, style: "credit-debit", period_from: "2023-02-01", period_to: "2023-02-28", opening, closing, line_count: count, checked: true, added_at: "2026-10-01T08:00:00.000+08:00" });
+  const state = { ...OWNER_STYLE.state, accounts: [mk("gc", "Test Wallet", "1111"), mk("bk", "Test Bank", "2222")],
+    statementRecords: [rc("w1", "gc", 150000, 48500, 1), rc("b1", "bk", 0, 350000, 2)],
+    statementLines: [ln("w1", 0, "2023-02-01", "Sent GCash to Test Bank ending 2222", 101500, "out", 48500, "unsure", { last4: "2222" }), ln("b1", 0, "2023-02-01", "Transfer in", 100000, "in", 100000, "in"), ln("b1", 1, "2023-02-15", "Employer pay", 250000, "in", 350000, "in")],
+    payslips: [{ id: "ps1", employer: "Sample Employer", period_from: "2023-02-01", period_to: "2023-02-15", pay_date: "2023-02-15", account_id: "bk", transaction_id: "t-ps1", printed_gross: 300000, printed_net: 250000, deposit: 250000 }] };
+  ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, seed: { ...OWNER_STYLE, state } }));
+  await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer")); await page.waitForTimeout(300);
+  await page.click('.setrow:has-text("Statements")'); await page.waitForTimeout(250);
+  let pg = await text(page, "#screen");
+  check(pg.includes("Moves between your accounts") && pg.includes("1 move found") && pg.includes("Test Wallet to Test Bank") && pg.includes("fee") && pg.includes("0 in your ledger, 1 to add"), "a send and its arrival are one move, with the fee shown: " + pg.replace(/\n+/g, " | ").slice(0, 200));
+  check(await page.locator('button[data-action="st-addmove"]').count() === 1, "one Add as draft button");
+  await page.click('button[data-action="st-addmove"]');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.filter((t) => t.source === "statement").length === 2, null, { timeout: 5000 });
+  const led = JSON.parse((await stored(page)).local).state, made = led.transactions.filter((t) => t.source === "statement");
+  check(made.every((t) => t.status === "draft" && t.date === "2023-02-01") && led.entries.some((e) => e.account_id === "bk" && e.amount === 100000) && led.entries.some((e) => e.account_id === "gc" && e.amount === -100000) && led.entries.some((e) => e.account_id === "gc" && e.amount === -1500), "one draft transfer of what arrived and the fee as its own draft, from the wallet to the bank");
+  check(await seen(page, "#toast", "Draft added"), "a plain message says what was done");
+  pg = await text(page, "#screen");
+  check(pg.includes("In your ledger") && await page.locator('button[data-action="st-addmove"]').count() === 0, "the move now reads In your ledger and cannot be added twice");
+  await page.click('button[data-action="st-month"][data-month="2023-02"][data-acct="bk"]');
+  const w = await text(page, "#sheet");
+  check(w.includes("1 of the money in is your payslip") && w.includes("1 move is paired with another account"), "the month window says which money in is your payslip and that a move is paired");
+  check(errors.length === 0, "no script errors on the moves screens: " + errors.join("; "));
+  await ctx.close(); }
+
 await browser.close();
 console.log(failures ? "\n" + failures + " check(s) FAILED" : "\nAll checks passed");
 process.exit(failures ? 1 : 0);

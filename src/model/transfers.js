@@ -165,7 +165,7 @@ export function ensureBankFees(state) {
 // The caller attaches the photo to the transfer.
 export function planTransfer(state, input, now = new Date()) {
   const { transaction_id: id, date, from_account_id: from, to_account_id: to, amount, fee = 0, payee = "", reference_no = "", shot_time = "", foreign = null, trip_id = null, source = "photo" } = input;
-  if (source !== "photo" && source !== "manual") return fail("BAD_SOURCE", "unsupported source " + source);
+  if (source !== "photo" && source !== "manual" && source !== "statement") return fail("BAD_SOURCE", "unsupported source " + source);
   const captured = source === "photo";   // only a photo draft records whether it was fixed before verifying (survey Q4)
   if (trip_id != null && !(state.tags ?? []).some((t) => t.id === trip_id)) return fail("UNKNOWN_TAG", "no trip " + trip_id);
   if (!Number.isSafeInteger(amount) || amount <= 0) return fail("BAD_AMOUNT", "amount must be more than zero");
