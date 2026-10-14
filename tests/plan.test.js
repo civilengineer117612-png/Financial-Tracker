@@ -133,3 +133,9 @@ test("pay received is refused when it makes no sense, and is saved verified when
     assert.equal(planPayReceived(s, { transaction_id: "p", date: "2026-10-15", amount: 100, account_id: "bank", ...o }).violations[0].code, code);
   }
 });
+
+test("a plan typed in the form says what is short or over in pesos with the sign, not in centavos", () => {
+  const text = JSON.stringify({ schema_version: 1, unit: "PHP_centavos", effective_from: "2026-10-01", paydays: [{ label: "1st payday", day: 15, expected_income: 1000000 }],
+    lines: [{ name: "Food", kind: "expense", first: 600000, second: 0 }] });
+  assert.match(parsePlan(text).error, /add up to \u20B16,000\.00 but its expected income is \u20B110,000\.00 \(short by \u20B14,000\.00\)/);
+});

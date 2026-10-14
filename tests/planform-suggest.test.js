@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planFormLines, withListedLines, planFormSuggestion, planTextFromForm, newPlanForm, suggestInputs, parsePlan, amountText } from "../src/model/index.js";
+import { planFormLines, withListedLines, planFormSuggestion, payslipDayNotes, planTextFromForm, newPlanForm, suggestInputs, parsePlan, amountText } from "../src/model/index.js";
 import { UNLOGGED_CATEGORY_ID } from "../src/model/seed.js";
 import { makeState, account } from "./fixtures.js";
 
@@ -118,4 +118,35 @@ test("only lines with an amount typed go into the plan: the listed categories yo
   f["b" + i] = "20000";
   const plan = JSON.parse(planTextFromForm(f).text);
   assert.deepEqual(plan.lines.map((l) => [l.name, l.first, l.second]), [["Rent", 0, 2000000]]);
+});
+
+test("when the last payslips are dated well away from the paydays typed, one line says so for that payday", () => {
+  const s = history();
+  assert.deepEqual(payslipDayNotes(s, form()), ["", ""], "payslips on the 15th and the 30th agree with 15 and last");
+  const off = payslipDayNotes(s, form({ d1: "9", d2: "22" }));
+  assert.match(off[0], /dated around the 15th, not the 9th\. Check the payday day/);
+  assert.match(off[1], /dated around the 30th, not the 22nd/);
+  assert.deepEqual(payslipDayNotes(s, form({ d1: "12", d2: "last" })), ["", ""], "three days off is fine");
+  assert.match(payslipDayNotes(s, form({ d1: "1", d2: "last" }))[0], /not the 1st/);
+  assert.match(payslipDayNotes(s, form({ d1: "15", d2: "21" }))[1], /not the 21st/);
+});
+
+test("no payslips, or paydays not yet typed, give no line", () => {
+  const s = history(); s.payslips = []; s.payslipLines = [];
+  assert.deepEqual(payslipDayNotes(s, form()), ["", ""]);
+  assert.deepEqual(payslipDayNotes(history(), form({ d1: "" })), ["", ""]);
+});
+
+test("the end of the month and the start of the next are close: a payslip on the 30th agrees with a payday on the 2nd", () => {
+  assert.deepEqual(payslipDayNotes(history(), form({ twice: false, d1: "2" })), [""]);
+});
+
+test("a monthly payday compares the payslips with the one day typed", () => {
+  assert.match(payslipDayNotes(history(), form({ twice: false, d1: "10" }))[0], /not the 10th/);
+});
+
+test("the form says the rent is needed with a flag, so the screen can offer a box for it", () => {
+  const s = history(); s.transactions = []; s.entries = [];
+  const r = planFormSuggestion(s, form(), { today: TODAY });
+  assert.equal(r.needsRent, true); assert.match(r.message, /rent/);
 });
