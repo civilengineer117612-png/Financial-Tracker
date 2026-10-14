@@ -31,8 +31,9 @@ export function shouldShowIntro(settings, id) {
 }
 
 // The settings after the popup was seen once more (and switched off for good when `off`).
-export function markIntro(settings, id, off = false) {
-  return { ...settings, intro_seen: { ...(settings?.intro_seen ?? {}), [id]: (settings?.intro_seen?.[id] ?? 0) + 1 }, ...(off ? { intro_off: { ...(settings?.intro_off ?? {}), [id]: true } } : {}) };
+// `count` false is for the popup the "?" brought back on purpose: it is not one of the automatic showings, so it is not counted (only the check can switch it off).
+export function markIntro(settings, id, off = false, count = true) {
+  return { ...settings, ...(count ? { intro_seen: { ...(settings?.intro_seen ?? {}), [id]: (settings?.intro_seen?.[id] ?? 0) + 1 } } : {}), ...(off ? { intro_off: { ...(settings?.intro_off ?? {}), [id]: true } } : {}) };
 }
 
 // The drawings: flat shapes in the theme's own colours, one idea each. The screen's CSS moves them (bars grow, columns rise, cards slide, a ring fills...);

@@ -288,7 +288,8 @@ function renderTop(title) {
   // One scanner button: it opens the two choices, camera or photos/files.
   const camera = device.allowEntry && ui.tab === "log" ? `<button class="camicon" data-action="open-scan-pick" data-howto="scan" aria-label="Scan a receipt or payment screen: take a photo or choose from photos or files"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.scan}</svg></button>` : "";
   const mic = device.allowEntry && ui.tab === "log" ? `<button class="camicon micbtn" data-action="open-voice" aria-label="Say an entry out loud"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.mic}</svg></button>` : "";
-  $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + (hub ? `<h1 class="sr">${esc(title)}</h1>` : titleOf(title)) + mic + camera;
+  const qm = device.allowEntry && M.introFor(ui.tab) ? `<button class="qmark" type="button" data-action="intro" data-id="${esc(ui.tab)}" aria-label="What is this screen?">?</button>` : "";   // brings back the short explanation
+  $("top").innerHTML = (device.allowEntry ? `<button class="menubtn" id="menuBtn" data-action="open-menu" aria-label="Menu" aria-expanded="${ui.menu}">${lines}</button>` : "") + (hub ? `<h1 class="sr">${esc(title)}</h1>` : titleOf(title)) + qm + mic + camera;
 }
 
 let menuTimer = null;
@@ -2804,7 +2805,9 @@ async function onClick(el) {
     }
     case "open-menu": ui.menu = true; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "true"); break;
     case "close-menu": ui.menu = false; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "false"); break;
-    case "tab": if (tab === "setup") ui.setupPage = el.dataset.page || (ui.tab === "setup" ? ui.setupPage : null); $("toast").innerHTML = ""; ui.menu = false; ui.tripId = null; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null; renderAll(); break;
+    case "tab": if (tab === "setup") ui.setupPage = el.dataset.page || (ui.tab === "setup" ? ui.setupPage : null); $("toast").innerHTML = ""; ui.menu = false; ui.tripId = null; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null;
+      if (M.shouldShowIntro(ledger.settings, tab) && !(tab === "plan" && ledger.settings.try_new_budget)) { ui.introOff = false; ui.sheet = { type: "intro", id: tab }; }   // with the new Budget the pay plan has no screen of its own: its popup comes with the form
+      renderAll(); break;
     case "period-step": {
       const p = period(), step = Number(el.dataset.step);
       ui.period = p.kind === "year" ? { kind: "year", year: p.year + step } : { kind: "month", month: M.addMonths(p.month, step) };
@@ -3133,13 +3136,13 @@ async function onClick(el) {
       break;
     }
     case "open-planform": {   // the first times, a small popup says what the screen is for; then the form opens already filled
-      if (M.shouldShowIntro(ledger.settings, "plan")) { ui.introOff = false; ui.sheet = { type: "intro", id: "plan", then: "planform" }; renderSheet(); break; }
+      if (ledger.settings.try_new_budget && M.shouldShowIntro(ledger.settings, "plan")) { ui.introOff = false; ui.sheet = { type: "intro", id: "plan", then: "planform" }; renderSheet(); break; }
       openPlanForm(); break;
     }
-    case "intro": ui.introOff = false; ui.sheet = { type: "intro", id: el.dataset.id, back: ui.sheet }; renderSheet(); break;
+    case "intro": ui.introOff = false; ui.sheet = { type: "intro", id: el.dataset.id, back: ui.sheet, manual: true }; renderSheet(); break;   // the ? : brought back on purpose, not counted
     case "intro-off": ui.introOff = !ui.introOff; renderSheet(); break;
     case "intro-done": {
-      const sh = ui.sheet; const settings = M.markIntro(ledger.settings, sh.id, ui.introOff === true);
+      const sh = ui.sheet; const settings = M.markIntro(ledger.settings, sh.id, ui.introOff === true, !sh.manual);
       if (sh.back) { ui.sheet = sh.back; await commit(S(), settings, { quiet: true }); renderSheet(); } else { await commit(S(), settings, { quiet: true }); if (sh.then === "planform") openPlanForm(); else { ui.sheet = null; renderSheet(); } }
       break;
     }
@@ -3464,7 +3467,8 @@ async function onClick(el) {
       break;
     }
     case "plan-cancel": ui.planDraft = null; ui.sheet = null; renderSheet(); break;
-    case "close-sheet": { voiceListener?.stop(); if (ui.sheet?.type === "planform") ui.planDraft = ui.form;   // a tap outside the plan keeps the work for next time; Cancel throws it away
+    case "close-sheet": { voiceListener?.stop(); if (ui.sheet?.type === "planform") ui.planDraft = ui.form;
+      if (ui.sheet?.type === "intro") { const sh = ui.sheet; await commit(S(), M.markIntro(ledger.settings, sh.id, ui.introOff === true, !sh.manual), { quiet: true }); if (sh.back) { ui.sheet = sh.back; renderSheet(); break; } }   // a tap outside the popup counts as seen, too   // a tap outside the plan keeps the work for next time; Cancel throws it away
       if (ui.sheet?.type === "budget-suggest") await savePinsFromForm(); const wasNotice = ui.sheet?.type === "notice"; ui.sheet = null; renderSheet(); if (wasNotice) maybeWelcome(); break; }
     case "cat-card-later": ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, cat_card_seen: M.phTimestamp() }, { quiet: true }); break;
     case "cat-card-show": { ui.sheet = null; ui.menu = false; ui.tab = "setup"; ui.setupPage = "categories"; ui.catEdit = true; renderAll(); window.scrollTo(0, 0); await commit(S(), { ...ledger.settings, cat_card_seen: M.phTimestamp() }, { quiet: true }); break; }
