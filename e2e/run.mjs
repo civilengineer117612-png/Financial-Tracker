@@ -55,6 +55,15 @@ async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone 
   if (noSpeech) await ctx.addInitScript(() => { window.webkitSpeechRecognition = undefined; window.SpeechRecognition = undefined; });
   await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png|wikipedia\.org|wikimedia\.org/, (r) => { iconAsked.push(r.request().url()); iconServe(r); });
   const page = await ctx.newPage();
+  // Category, Paid from and "It looks like" are dropdown rows now: a test that taps a choice by its text first opens the list that holds it.
+  const rawClick = page.click.bind(page);
+  page.click = async (selector, options) => {
+    if (typeof selector === "string" && /^#sheet (?:button)?\.chip:has-text\(/.test(selector)) {
+      const inner = selector.replace(/^#sheet /, ""), item = page.locator("#sheet " + inner).first();
+      if (await item.count() && !(await item.isVisible())) await page.locator("#sheet .pick", { has: page.locator(inner) }).first().locator(".pickrow").click();
+    }
+    return rawClick(selector, options);
+  };
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/favicon|gstatic|duckduckgo|icon\.horse|apple-touch-icon|wikipedia|wikimedia/.test(m.location().url ?? "")) errors.push(m.text()); });   // blocked icon requests are staged on purpose
@@ -1857,8 +1866,8 @@ console.log("Log date and Cash first");
   await page.click('button[data-action="reset-day"]');
   check(!(await text(page, "#screen")).includes("₱33.00"), "it is not in today's list");
   await page.click('button:has-text("Add expense")');
-  const paidFrom = await page.locator("#sheet .chips").nth(1).locator(".chip").allInnerTexts();
-  check(/Cash/.test(paidFrom[0] ?? "") && paidFrom.length === 2, "Cash is the first account choice even though Test Debit was used last (" + paidFrom.join(" | ") + ")");
+  const paidFrom = await page.locator("#sheet .pick").nth(1).locator(".chip").allInnerTexts();
+  check(/Debit/.test(paidFrom[0] ?? "") && /Cash/.test(paidFrom[1] ?? "") && paidFrom.length === 2, "the account used last comes first, then Cash and the rest A to Z (" + paidFrom.join(" | ") + ")");
   await page.fill("#f-amount", "20"); await page.click('#sheet .chip:has-text("Food")'); await page.click('#sheet .chip:has-text("Cash")'); await page.click("#f-save"); await seen(page, "#toast", "Saved");
   const led2 = JSON.parse((await stored(page)).local);
   check(led2.state.transactions.filter((t) => t.date === "2026-10-03").length === 1, "after Today, new entries go on today again");
@@ -3076,7 +3085,7 @@ console.log("Welcome card, category editing, required marks");
   check(await page.waitForFunction(() => document.getElementById("screen").innerText.toLowerCase().includes("hidden categories"), null, { timeout: 4000 }).then(() => true, () => false) && JSON.parse((await stored(page)).local).state.entries.some((e) => e.category_id === "cat-food"), "hiding keeps the entries and lists the category under Hidden categories");
   await page.click('button[data-action="cat-done"]');
   await page.click('#nav button:has-text("Log")'); await page.click('button[data-action="open-other"]'); await page.waitForSelector("#sheet #f-amount");
-  check(!(await page.locator("#sheet .chips").first().innerText()).includes("Food"), "a hidden category is not offered when adding an expense");
+  check(!(await page.locator("#sheet .pick").first().innerText()).includes("Food"), "a hidden category is not offered when adding an expense");
   const reqs = await page.evaluate(() => [...document.querySelectorAll("#sheet .req")].map((r) => getComputedStyle(r).color));
   const ink = await page.evaluate(() => getComputedStyle(document.querySelector("#sheet h3")).color);
   check(reqs.length >= 4 && reqs.every((c) => c === ink), "the required marks are in the ink colour, never red");
