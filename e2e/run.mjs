@@ -2968,6 +2968,8 @@ console.log("Dropdown rows");
   await page.click('button:has-text("Add expense")'); await page.waitForSelector("#f-amount");
   await page.click("#sheet .pickrow >> nth=0");
   check(!(await page.locator("#sheet .pick >> nth=0").locator(".pickh").allInnerTexts()).includes("Last used"), "a draft does not count as Last used (only verified entries do)");
+  await page.click("#sheet .pickrow >> nth=1");
+  check(!(await page.locator("#sheet .pick >> nth=1").locator(".pickh").allInnerTexts()).includes("Last used"), "a draft does not count as the account used last either");
   await page.click("#sheet h3");
   check(await page.locator("#sheet .picklist:not([hidden])").count() === 0 && (await page.getAttribute("#sheet .pickrow >> nth=0", "aria-expanded")) === "false", "a tap outside the list folds it shut");
   await page.click('#sheet button:has-text("Cancel")'); await page.click('#nav button:has-text("Verify")'); await page.click('button:has-text("Correct")'); await page.click('#nav button:has-text("Log")');

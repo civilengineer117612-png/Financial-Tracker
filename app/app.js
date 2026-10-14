@@ -2072,9 +2072,11 @@ function categoryPicker(items, selectedId, key = "cat", action = "pick-cat", pla
   const last = items.filter((c) => c.id === lastId);
   return picker(key, [["Last used", last], [last.length ? "All categories" : "", byName(items.filter((c) => c.id !== lastId))]], selectedId, action, placeholder);
 }
-// Accounts: the one used last (the existing rule), then Cash and the rest A to Z, then the cards.
+// Accounts: the one used last (newest verified entry), then Cash and the rest A to Z, then the cards.
 function accountPicker(items, selectedId, action = "pick-acct", key = "acct", placeholder = "Choose an account") {
-  const { last_account_id: lastAcct } = ledger.settings, last = items.filter((a) => a.id === lastAcct);
+  // "Last used" counts verified entries only, as it does for categories: a draft from a wrong scan never leads the list
+  const ids = new Set(items.map((a) => a.id)), verified = new Set(S().transactions.filter((t) => t.status === "verified").map((t) => t.id));
+  const lastAcct = [...S().entries].reverse().find((e) => e.account_id && ids.has(e.account_id) && verified.has(e.transaction_id))?.account_id, last = items.filter((a) => a.id === lastAcct);
   const rest = items.filter((a) => a.id !== lastAcct), cards = byName(rest.filter((a) => a.class === "liability")), plain = cashFirst(byName(rest.filter((a) => a.class !== "liability")));
   return picker(key, [["Last used", last], ["Accounts", plain], ["Cards", cards]], selectedId, action, placeholder);
 }
