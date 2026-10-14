@@ -29,5 +29,6 @@ test("the drawing is pure SVG in theme colours only, with the bars numbered for 
   const svg = introDrawing(INTROS.plan.drawing);
   assert.match(svg, /^<svg/); assert.ok((svg.match(/class="in-bar"/g) ?? []).length >= 3);
   assert.ok(!/#[0-9a-f]{3,6}\b/i.test(svg) && !/red/i.test(svg), "only var(--…) colours");
+  assert.ok(!svg.includes("var(--ink)"), "every bar is the app's green: no lone black bar");
   assert.equal(introDrawing("unknown"), "");
 });

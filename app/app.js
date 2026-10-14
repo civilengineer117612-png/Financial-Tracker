@@ -94,7 +94,7 @@ const pesoW = (c) => peso(c).replace(/\.00$/, "");
 const pfVal = (f, k, i) => { const a = M.parsePesos(f[k + i] || "0"); return a.ok ? a.centavos : 0; };   // k "a": the 1st payday, "b": the 2nd
 const pfDay = (f, w) => (!f.twice ? "Each month" : w ? (String(f.d2).trim().toLowerCase() === "last" ? "Last day" : M.ordinal(Number(f.d2))) : M.ordinal(Number(f.d1)));
 const pfName = (f, i) => String(f["n" + i] ?? "").trim();
-const pfRowsOf = (f, k) => Array.from({ length: f.count ?? 0 }, (_, i) => i).filter((i) => pfName(f, i) && pfVal(f, k, i) > 0);
+const pfRowsOf = (f, k) => Array.from({ length: f.count ?? 0 }, (_, i) => i).filter((i) => pfName(f, i) && pfVal(f, k, i) > 0).sort((x, y) => pfVal(f, k, y) - pfVal(f, k, x) || pfName(f, x).localeCompare(pfName(f, y)));   // the biggest amount first
 const pfSuggestedFor = (sug, f, i) => (sug?.ok ? sug.rows[pfName(f, i).toLowerCase()] ?? null : null);
 function planformBody(f) {
   const w = f.twice ? f.which ?? 0 : 0, k = w ? "b" : "a", sug = pfSug(), view = f.view ?? "main", st = M.planFormStatus(f), cur = st[w] ?? st[0];
@@ -137,12 +137,13 @@ function planformBody(f) {
     <div class="pp-whole" role="img" aria-label="${pesoW(cur.placed)} of ${pesoW(cur.pay)} placed"><span style="width:${cur.pay > 0 ? Math.min(100, Math.round((cur.placed * 100) / cur.pay)) : 0}%"></span></div>
     ${hint}
     ${rows.map((i) => `<button class="pp-row" type="button" data-action="pf-line" data-id="${i}"><span class="nm">${esc(pfName(f, i))}</span><span class="tr"><span class="fl" style="width:${Math.max(2, Math.round((pfVal(f, k, i) * 70) / max))}%"></span><span class="v">${pesoW(pfVal(f, k, i))}</span></span></button>`).join("")}
-    <button class="pp-add" type="button" data-action="pf-view" data-id="add">+ Add</button>
+    <p><button type="button" data-action="pf-view" data-id="add" style="width:100%">+ Add a line</button></p>
     <p><button class="primary" id="f-save" data-action="save-planform" style="margin-top:10px" disabled>Save plan</button></p>`;
 }
 // The plan form as it opens: filled from the suggestion for a new plan, or from the current plan for a newer one.
 function openPlanForm() {
   const cur = planOf(), hidden = M.hiddenCategoryIds(ledger.settings);
+  if (ui.planDraft) { ui.form = ui.planDraft; ui.sheet = { type: "planform" }; pfMemo = { key: null, sug: null }; pfDayMemo = { key: null, notes: ["", ""] }; renderSheet(); return; }   // the work left by a tap outside
   if (cur) { const f = M.formFromPlan(cur, today()), sug = M.planFormSuggestion(S(), f, { today: today(), settings: ledger.settings }); ui.form = M.withListedLines(f, M.planFormLines(S(), hidden, sug.extras ?? [])); }
   else ui.form = M.planFormFill(S(), M.newPlanForm(today()), { today: today(), settings: ledger.settings, hidden }).form;
   ui.form.view = "main"; ui.form.which = 0;
@@ -2591,8 +2592,8 @@ function renderSheet() {
       <p class="note">Anything entered since this backup was made will be gone. Pictures are not in a backup, so those entries will say "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
-  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "catcard" || sh.type === "intro" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
+  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "catcard" || sh.type === "intro" || sh.type === "planform" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
   refreshSave();
@@ -3162,6 +3163,7 @@ async function onClick(el) {
       const t = M.planTextFromForm(ui.form); if (!t.ok) { showToast(t.error); break; }
       const r = M.parsePlan(t.text);
       if (!r.ok) { showToast(r.error); break; }
+      ui.planDraft = null;
       if (ledger.settings.try_new_budget) {   // the new Budget: the plan row and its budgets are written together, or not at all
         const w = M.planWithBudgets(S(), ledger.settings, { plan: r.plan, newId: () => newId("rule") });
         if (!w.ok) { showToast(w.message); break; }
@@ -3461,7 +3463,9 @@ async function onClick(el) {
       if (await commit(r.state)) showToast(`${r.count} ${r.count === 1 ? "draft is" : "drafts are"} waiting in Verify.`);
       break;
     }
-    case "close-sheet": { voiceListener?.stop(); if (ui.sheet?.type === "budget-suggest") await savePinsFromForm(); const wasNotice = ui.sheet?.type === "notice"; ui.sheet = null; renderSheet(); if (wasNotice) maybeWelcome(); break; }
+    case "plan-cancel": ui.planDraft = null; ui.sheet = null; renderSheet(); break;
+    case "close-sheet": { voiceListener?.stop(); if (ui.sheet?.type === "planform") ui.planDraft = ui.form;   // a tap outside the plan keeps the work for next time; Cancel throws it away
+      if (ui.sheet?.type === "budget-suggest") await savePinsFromForm(); const wasNotice = ui.sheet?.type === "notice"; ui.sheet = null; renderSheet(); if (wasNotice) maybeWelcome(); break; }
     case "cat-card-later": ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, cat_card_seen: M.phTimestamp() }, { quiet: true }); break;
     case "cat-card-show": { ui.sheet = null; ui.menu = false; ui.tab = "setup"; ui.setupPage = "categories"; ui.catEdit = true; renderAll(); window.scrollTo(0, 0); await commit(S(), { ...ledger.settings, cat_card_seen: M.phTimestamp() }, { quiet: true }); break; }
     case "welcome-off": ui.form.welcomeOff = !ui.form.welcomeOff; el.setAttribute("aria-checked", String(ui.form.welcomeOff)); break;

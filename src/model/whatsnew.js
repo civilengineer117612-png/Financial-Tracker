@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-14-plan-polish", date: "2026-10-14", text: "The Pay plan window opens in the centre, keeps your work if you tap outside it, lists the lines from the biggest amount down, and has a clearer + Add a line button." },
   { id: "2026-10-14-plan-bars", date: "2026-10-14", text: "The Pay plan is now one payday at a time with a thin bar for each line, already filled for you, and a small popup says what the screen is for." },
   { id: "2026-10-13-plan-rest", date: "2026-10-13", text: "The Pay plan form can put a payday's leftover on a line you choose, takes your rent, and warns about payslip dates; Setup warns before you rename a category the plan uses." },
   { id: "2026-10-13-same-amount-more", date: "2026-10-13", text: "The same-amount note in Verify also catches a payment one day apart when one entry came from a photo and the other from the bank or by hand, and it leaves scheduled payments alone." },
