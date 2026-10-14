@@ -38,7 +38,7 @@ const dismissNotice = async (page) => { try { await page.waitForSelector('#sheet
 async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false, keepCatCard = false, keepIntro = false } = {}) {
   if (seed === undefined) seed = styled ? OWNER_STYLE : null;
   if (seed && !whatsNew) seed = { ...seed, settings: { ...(seed.settings ?? {}), whatsnew_seen: seed.settings?.whatsnew_seen ?? CHANGES[0].id, start_rule_seen: seed.settings?.start_rule_seen ?? "2026-10-01T08:00:00.000+08:00" } };   // the What's new pop-up is tested on its own
-  if (seed && !keepIntro) seed = { ...seed, settings: { ...(seed.settings ?? {}), intro_off: { plan: true, ...(seed.settings?.intro_off ?? {}) } } };   // the small "what is this screen" popup is tested on its own
+  if (seed && !keepIntro) seed = { ...seed, settings: { ...(seed.settings ?? {}), intro_off: { ...Object.fromEntries(["plan", "money", "income", "cards", "budget", "goals", "scheduled", "checkin", "scan", "trips", "buffer", "setup"].map((id) => [id, true])), ...(seed.settings?.intro_off ?? {}) } } };   // the small "what is this screen" popup is tested on its own
   if (seed && !keepCatCard) seed = { ...seed, settings: { ...(seed.settings ?? {}), cat_card_seen: seed.settings?.cat_card_seen ?? "2026-10-01T08:00:00.000+08:00" } };   // the one-time card about editing categories is tested on its own
   const ctx = await browser.newContext({ ...(blockSw ? { serviceWorkers: "block" } : {}), userAgent: ua, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.addInitScript((o) => { try { if (o) sessionStorage.setItem("logOpen", "1"); } catch {} }, logOpen);
@@ -58,6 +58,7 @@ async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone 
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/favicon|gstatic|duckduckgo|icon\.horse|apple-touch-icon|wikipedia|wikimedia/.test(m.location().url ?? "")) errors.push(m.text()); });   // blocked icon requests are staged on purpose
+  if (!keepIntro) await page.addLocatorHandler(page.locator('#sheet button[data-action="intro-done"]'), async (b) => { await b.click(); });   // a new install has no switched-off popups: any other test just says Got it when one gets in the way
   await page.clock.setFixedTime(T0);
   await page.goto(url);
   await page.waitForSelector("#nav button");
@@ -2881,8 +2882,9 @@ console.log("Pay plan popup");
 { const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" };
   const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, try_new_budget: true }, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [], entries: [], attachments: [] } };
   ({ ctx, page, errors } = await open({ blockSw: true, seed, keepIntro: true }));
-  await menuGo(page, "Budget"); await page.click('#screen button:has-text("Plan each payday")'); await page.click('button[data-action="open-planform"]'); await page.waitForSelector(".in-draw");
-  check((await text(page, "#sheet")).includes("Split each pay into what it is for.") && (await text(page, "#sheet")).includes("Tap a bar to change it.") && await page.locator('#sheet .sheet.center').count() === 1, "the first time, a centred popup says what the screen is for in two short lines, with a drawing");
+  await menuGo(page, "Budget"); await page.waitForSelector(".in-draw"); await page.click('button[data-action="intro-done"]'); await page.waitForFunction(() => !document.querySelector("#sheet .in-draw"));
+  await page.click('#screen button:has-text("Plan each payday")'); await page.click('button[data-action="open-planform"]'); await page.waitForSelector(".in-draw");
+  check((await text(page, "#sheet")).includes("Plan before you spend a peso.") && (await text(page, "#sheet")).includes("Tap a bar and start planning.") && await page.locator('#sheet .sheet.center').count() === 1, "the first time, a centred popup says what the screen is for in two short lines, with a drawing");
   check(await page.locator("#sheet .in-bar").count() >= 3 && (await page.locator("#sheet .in-bar").first().evaluate((e) => getComputedStyle(e).animationName)) === "introgrow", "the drawing moves");
   await page.click('button[data-action="intro-done"]'); await page.waitForSelector(".pp-big");
   check(JSON.parse((await stored(page)).local).settings.intro_seen?.plan === 1, "Got it opens the form and counts the popup as shown once");
@@ -2893,12 +2895,50 @@ console.log("Pay plan popup");
   await page.click('button[data-action="intro-done"]'); await page.waitForSelector(".pp-big");
   await page.click('#sheet button:has-text("Cancel")'); await page.click('button[data-action="open-planform"]'); await page.waitForSelector(".pp-big");
   check(await page.locator(".in-draw").count() === 0 && JSON.parse((await stored(page)).local).settings.intro_off?.plan === true, "with the check ticked it does not come back");
-  await page.click('button[data-action="intro"][data-id="plan"]'); await page.waitForSelector(".in-draw");
+  await page.click('#sheet button[data-action="intro"][data-id="plan"]'); await page.waitForSelector(".in-draw");
   await page.click('button[data-action="intro-done"]'); await page.waitForSelector(".pp-big");
   check(await page.locator(".pp-big").count() === 1 && await page.locator(".in-draw").count() === 0, "the ? next to the title brings the popup back, and Got it returns to the plan");
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.click('button[data-action="intro"][data-id="plan"]'); await page.waitForSelector(".in-draw");
+  await page.click('#sheet button[data-action="intro"][data-id="plan"]'); await page.waitForSelector(".in-draw");
   check((await page.locator("#sheet .in-bar").first().evaluate((e) => getComputedStyle(e).animationName)) === "none", "with Reduce Motion the drawing stands still, finished");
+  check(errors.length === 0, "no script errors");
+  await ctx.close(); }
+
+// ===== 5pj. the popup on every screen, and the ? beside every title =====
+console.log("Popups on every screen");
+{ ({ ctx, page, errors } = await open({ keepIntro: true }));
+  const settingsOf = async () => JSON.parse((await stored(page)).local).settings;
+  const screens = [["Cash flow", "Your money, leaving footprints.", "Tap a bar to see where."], ["Cards", "What is yours, and what is borrowed.", "Swipe through your accounts."], ["Budget", "Give each habit a limit.", "Tap to set it."],
+    ["Scheduled", "Bills that repeat, tracked for you.", "They wait in Verify on the day."], ["Weekly review", "Numbers don't lie. Face them weekly.", "A gap is shown, never hidden."], ["Scan", "Let your phone read the paper.", "All of it stays on your phone."],
+    ["Trips", "Spend on the road, count it once.", "Add dates and it fills itself."], ["Buffer", "A cushion for rainy months.", "Tap to add to it."], ["Setup", "Make the app yours.", "Tap anything to change it."]];
+  const seenAll = [];
+  for (const [name, one, two] of screens) {
+    await page.click("#menuBtn"); await page.click(`#menu .item:has-text("${name}")`);
+    await page.waitForSelector(".in-draw", { timeout: 4000 });
+    const t = await text(page, "#sheet");
+    seenAll.push(t.includes(name) && t.includes(one) && t.includes(two) && t.includes("Don't show this again") && await page.locator("#sheet .in-bar, #sheet .in-col, #sheet .in-pop, #sheet .in-slide, #sheet .in-arc, #sheet .in-sweep, #sheet .in-draw-line").count() > 0);
+    await page.click('button[data-action="intro-done"]');
+    await page.waitForFunction(() => !document.querySelector("#sheet .in-draw"));
+  }
+  check(seenAll.every(Boolean), "each screen of the menu opens with its popup: its name, the two lines, a drawing that moves and the check (" + seenAll.map((x) => (x ? "yes" : "NO")).join(",") + ")");
+  check(await page.locator("#top .qmark").count() === 1, "and a ? sits beside the title");
+  const st0 = await settingsOf();
+  check(Object.keys(st0.intro_seen ?? {}).length >= 9 && Object.values(st0.intro_seen).every((n) => n === 1), "each popup was counted once");
+  await menuGo(page, "Budget"); await page.waitForSelector(".in-draw"); await page.click('button[data-action="intro-done"]'); await page.waitForFunction(() => !document.querySelector("#sheet .in-draw"));
+  const st0b = await settingsOf();
+  check(st0b.intro_seen.budget === 2, "and again the next time the screen is opened");
+  await page.click("#top .qmark"); await page.waitForSelector(".in-draw");
+  await page.click('button[data-action="intro-done"]');
+  const st1 = await settingsOf();
+  check(JSON.stringify(st1.intro_seen) === JSON.stringify(st0b.intro_seen), "the popup the ? brings back is not counted");
+  await page.click('#screen .hub button:has-text("Goals")'); await page.waitForSelector(".in-draw");
+  check((await text(page, "#sheet")).includes("Dreams with a price tag."), "Goals, inside the Budget strip, has its own popup");
+  await page.click('button[data-action="intro-off"]'); await page.click('button[data-action="intro-done"]'); await page.waitForFunction(() => !document.querySelector("#sheet .in-draw"));
+  await page.click('#screen .hub button:has-text("Budget")'); await page.waitForSelector(".in-draw"); await page.click('button[data-action="intro-done"]'); await page.waitForFunction(() => !document.querySelector("#sheet .in-draw"));
+  await page.click('#screen .hub button:has-text("Goals")'); await page.waitForTimeout(400);
+  check(await page.locator(".in-draw").count() === 0 && (await settingsOf()).intro_off?.goals === true, "with the check ticked a popup does not come back");
+  await page.click("#menuBtn"); await page.click('#menu .item:has-text("Cash flow")'); await page.waitForTimeout(400);
+  check(await page.locator(".in-draw").count() === 1 && (await settingsOf()).intro_seen?.money === 1 && !(await settingsOf()).intro_off?.money, "the other screens' popups are untouched (Cash flow shows again, not switched off)");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
