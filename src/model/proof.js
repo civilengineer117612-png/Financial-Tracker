@@ -69,14 +69,19 @@ export function proveMonths(state, accountId) {
     if (row.status === "proved" && row.opening + moneyIn - moneyOut !== row.closing) Object.assign(row, { status: "broken", reason: "The lines do not add up to the closing balance." });
     out.push(row);
   }
-  // the chain: each month opens where the one before closed
+  // The chain: each month opens where the one before closed. A month between with no lines is QUIET (nothing happened) when a statement covers it in full
+  // (its period spans the whole month); with no statement over it, it is a GAP, and everything after it cannot be checked until that month is added.
+  const covers = (month) => records.some((r) => r.period_from && r.period_to && r.period_from <= month + "-01" && r.period_to >= lastDay(month));
+  const byMonth = new Map(out.map((r) => [r.month, r]));
   out.forEach((row, i) => {
-    if (row.status !== "proved") return;
-    const before = out.find((r) => r.month === monthBefore(row.month));
-    if (before) { if (before.closing !== null && before.closing !== row.opening) Object.assign(row, { status: "mismatch", reason: "This month opens with a different balance than the month before closed with." }); }
-    else if (i > 0) Object.assign(row, { status: "gap", reason: "The month before has no statement, so the opening balance cannot be checked." });
-    if (row.status === "proved") row.reason = "The lines add up to the closing balance, and the opening matches the month before.";
+    if (row.status !== "proved" || i === 0) return;
+    let m = monthBefore(row.month), quiet = 0, before = byMonth.get(m);
+    while (!before && covers(m) && m > out[0].month) { quiet++; m = monthBefore(m); before = byMonth.get(m); }
+    if (!before) { Object.assign(row, { status: "gap", reason: "The month before has no statement, so the opening balance cannot be checked." }); return; }
+    if (before.closing !== null && before.closing !== row.opening) { Object.assign(row, { status: "mismatch", reason: "This month opens with a different balance than the month before closed with." }); return; }
+    row.reason = quiet ? `The lines add up to the closing balance, and the opening matches the last month with activity (${quiet === 1 ? "one month" : quiet + " months"} between had none).` : "The lines add up to the closing balance, and the opening matches the month before.";
   });
+  out.forEach((row) => { if (row.status === "proved" && row === out[0]) row.reason = "The lines add up to the closing balance. This is the first month, so it starts here."; });
   return out;
 }
 

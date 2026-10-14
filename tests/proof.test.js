@@ -93,3 +93,18 @@ test("a month that is not proved, or was already accepted, or has no statement c
   assert.equal(acceptMonth(once.state, "gt", "2026-08", { newId: seqId() }).message, "That month was already accepted.");
   assert.equal(s.statementAccepts.length, 0, "the input is never changed");
 });
+
+test("a month with no lines is QUIET when a statement covers it, but a GAP when none does", () => {
+  // one long statement over Aug to Oct with nothing in September: the balance carries over, so October is proved
+  const long = parsed({ from: "2026-08-01", to: "2026-10-31" }, { opening: 100000 }, [line("2026-08-05", "Corner Cafe", 9500, "out", 90500), line("2026-10-04", "Bus fare", 5000, "out", 85500)]);
+  const q = proveMonths(withStatements(long), "gt");
+  assert.deepEqual(q.map((r) => [r.month, r.status]), [["2026-08", "proved"], ["2026-10", "proved"]]);
+  assert.match(q[1].reason, /one month between had none/);
+  // two separate statements with a month neither covers: a gap
+  const aug = parsed({ from: "2026-08-01", to: "2026-08-31" }, { opening: 100000, closing: 90500 }, [line("2026-08-05", "Corner Cafe", 9500, "out", 90500)]);
+  const oct = parsed({ from: "2026-10-01", to: "2026-10-31" }, { opening: 90500, closing: 85500 }, [line("2026-10-04", "Bus fare", 5000, "out", 85500)]);
+  assert.equal(proveMonths(withStatements(aug, oct), "gt")[1].status, "gap");
+  // and a quiet month does not hide a change of balance
+  const moved = parsed({ from: "2026-08-01", to: "2026-10-31" }, { opening: 100000 }, [line("2026-08-05", "Corner Cafe", 9500, "out", 90500), line("2026-10-04", "Bus fare", 5000, "out", 80000)]);
+  assert.equal(proveMonths(withStatements(moved), "gt")[1].status, "mismatch", "October opens at 850.00 but August closed at 905.00: something happened in the quiet month");
+});

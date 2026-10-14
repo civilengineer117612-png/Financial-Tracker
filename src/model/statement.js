@@ -29,6 +29,12 @@ const right = (i) => i.x + i.w;
 // The columns of a table, from its title row: [{key, right}] for the amount columns, and the left edge of the text column.
 const KEYS = [["credits", /^credits?\b/i], ["debits", /^debits?\b/i], ["balance", /^running\b/i], ["outgoing", /^outgoing\b/i], ["incoming", /^incoming\b/i]];   // a title may be one piece ("Running Balance") or two ("OUTGOING", "(PHP)")
 function headerOf(row) {
+  // GCash: Date and Time / Description / Reference No. / Debit / Credit / Balance. The debit comes BEFORE the credit, and the balance is a plain "Balance".
+  if (/date and time/i.test(textOf(row)) && /reference/i.test(textOf(row))) {
+    const at = (re) => row.items.find((i) => re.test(i.str.trim()));
+    const debit = at(/^debit$/i), credit = at(/^credit$/i), balance = at(/^balance$/i), desc = at(/^description$/i), ref = at(/^reference\b/i);
+    if (debit && credit && balance) return { style: "gcash", cols: [{ key: "debits", right: right(debit) }, { key: "credits", right: right(credit) }, { key: "balance", right: right(balance) }], textX: desc ? desc.x : null, refX: ref ? ref.x : null, y: row.y };
+  }
   const found = [];
   for (const [i, it] of row.items.entries()) { const k = KEYS.find(([, re]) => re.test(it.str.trim())); if (k) found.push({ key: k[0], at: i }); }
   const style = found.some((f) => f.key === "credits") && found.some((f) => f.key === "debits") ? "credit-debit" : found.some((f) => f.key === "outgoing") && found.some((f) => f.key === "incoming") ? "out-in" : null;
@@ -43,7 +49,9 @@ const nearest = (cols, edge) => cols.reduce((best, c) => (Math.abs(c.right - edg
 // ---------- the period and the summary ----------
 function readPeriod(rows) {
   for (const r of rows) {
-    const t = textOf(r), m = /(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\s*(?:-|–|to)\s*(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})/i.exec(t);
+    const t = textOf(r), iso = /(\d{4}-\d{2}-\d{2})\s*(?:-|–|to)\s*(\d{4}-\d{2}-\d{2})/.exec(t);
+    if (iso) return { from: iso[1], to: iso[2] };
+    const m = /(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\s*(?:-|–|to)\s*(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})/i.exec(t);
     if (m) { const a = readDate(m[1]), b = readDate(m[2]); if (a?.iso && b?.iso) return { from: a.iso, to: b.iso }; }
   }
   return null;
@@ -70,6 +78,14 @@ function readSummary(rows) {
 export function classifyLine({ text, type = "", direction }) {
   const t = String(text ?? "").trim(), ty = String(type ?? "").trim();
   if (/go\s*save/i.test(t)) return { meaning: "move", payee: t };
+  // GCash: "Buy Load ..." is spending; "Received GCash from <bank> ..." is money in; "Transfer from A to B" is money in or out by the column it is in, and the OTHER number is the person
+  // (so the unsure lines group per person). The numbers themselves are the person's key and are not kept in any message.
+  if (/^buy load\b/i.test(t)) return { meaning: "spending", payee: "Buy load" };
+  if (/^(pay bills|bills payment|payment to|merchant payment)\b/i.test(t)) return { meaning: "spending", payee: t };
+  const got = /^received gcash from\s+(.+?)(?:\s+with account\b.*)?$/i.exec(t);
+  if (got) return { meaning: "in", payee: "Cash in from " + got[1].trim() };
+  const tr = /^transfer from\s+(\d{6,})\s+to\s+(\d{6,})/i.exec(t);
+  if (tr) return direction === "in" ? { meaning: "in", payee: tr[1] } : { meaning: "unsure", payee: tr[2] };
   if (direction === "in") return { meaning: "in", payee: t };
   if (/\bfees?\b/i.test(t) || /\bfees?\b/i.test(ty)) return { meaning: "fee", payee: t };
   const card = /^card payment at\s+(.+?)(?:,\s*card\b.*)?$/i.exec(t);
@@ -105,12 +121,13 @@ export function parseStatement(pages) {
   const allRows = pages.map(groupRows), flat = allRows.flat();
   const period = readPeriod(flat), summary = readSummary(flat);
   let header = null;
-  const lines = [];
+  const lines = [], gcash = { page: gcashPage };
   for (const rows of allRows) {
     const here = rows.map(headerOf).find(Boolean);
     if (here) header = here;
     if (!header) continue;
     const startAt = here ? rows.findIndex((r) => r.y === here.y) + 1 : 0;
+    if (header.style === "gcash") { gcash.page(rows.slice(startAt), header, lines, gcash); continue; }
     let pendingText = null, awaitType = null;
     for (const row of rows.slice(startAt)) {
       const date = row.items.find((i) => FULL_DATE.test(i.str.trim()) || DAY_MONTH.test(i.str.trim()) || (header.style === "out-in" && MONTH_ONLY.test(i.str.trim()) && i.x < (header.textX ?? 1e9) - 5));
@@ -135,6 +152,7 @@ export function parseStatement(pages) {
       }
     }
   }
+  if (header?.style === "gcash") settleGcashBalances(lines, summary, gcash);
   // "Net Interest" is the month's interest added up, a total of the lines above it, not money moving: it is not a line.
   for (let i = lines.length - 1; i >= 0; i--) if (/^net interest$/i.test(lines[i].type)) lines.splice(i, 1);
   const holders = holderNames(allRows[0] ?? []);
@@ -146,6 +164,46 @@ export function parseStatement(pages) {
   const top = allRows[0].slice(0, 25).map(textOf).join(" ").toLowerCase();   // the first lines of the first page: the bank's name is usually there
   const found = BANKS.find((b) => top.includes(b.name.toLowerCase())) ?? null, bank = found?.name ?? null, bankId = found?.id ?? null;
   return { ok: true, style: header.style, bank, bankId, period, summary, lines, check: checkStatement(header.style, lines, summary) };
+}
+
+// ---------- GCash: one page of the table ----------
+// A description that wraps is centred on its row: its first part sits ABOVE the date and amounts, its second part BELOW. So each text-only row belongs to the nearest
+// row that has a date and amounts. The reference number column is not part of the description. "STARTING BALANCE" opens the statement; a time ("02:54 PM") after the date is not text.
+const GCASH_DATE = /^\d{4}-\d{2}-\d{2}\b/, GCASH_TIME = /^\d{1,2}:\d{2}\s*[AP]M$/i;
+function gcashPage(rows, header, lines, memo) {
+  const refAt = header.refX === null ? 1e9 : header.refX - 2;
+  const data = rows.filter((r) => r.items.some((i) => GCASH_DATE.test(i.str.trim())) && r.items.some((i) => AMOUNT.test(i.str.trim())));
+  const parts = new Map(data.map((r) => [r, [{ y: r.y, text: r.items.filter((i) => !GCASH_DATE.test(i.str.trim()) && !GCASH_TIME.test(i.str.trim()) && !AMOUNT.test(i.str.trim()) && i.x < refAt).map((i) => i.str.trim()).join(" ") }]]));
+  for (const r of rows) {
+    if (data.includes(r)) continue;
+    const t = textOf(r), amts = r.items.filter((i) => AMOUNT.test(i.str.trim()));
+    if (/^starting balance/i.test(t) && amts.length) { memo.opening = centavos(amts[amts.length - 1].str); continue; }
+    if (/^ending balance/i.test(t) && amts.length) { memo.closing = centavos(amts[amts.length - 1].str); continue; }
+    const near = data.reduce((b, d) => (!b || Math.abs(d.y - r.y) < Math.abs(b.y - r.y) ? d : b), null);
+    const words = r.items.filter((i) => i.x < refAt && !GCASH_TIME.test(i.str.trim()) && !AMOUNT.test(i.str.trim())).map((i) => i.str.trim()).join(" ");
+    if (near && Math.abs(near.y - r.y) <= 14 && words && !/^(page\b|all figures|document id|request date)/i.test(words)) parts.get(near).push({ y: r.y, text: words });
+  }
+  for (const r of data) {
+    const date = r.items.find((i) => GCASH_DATE.test(i.str.trim())).str.trim().slice(0, 10), iso = readDate(date)?.iso;
+    const by = {};
+    for (const a of r.items.filter((i) => AMOUNT.test(i.str.trim()))) by[nearest(header.cols, right(a)).key] = centavos(a.str);
+    const credit = by.credits ?? 0, debit = by.debits ?? 0;
+    if (!iso || (!credit && !debit)) continue;
+    const text = parts.get(r).sort((a, b) => b.y - a.y).map((p) => p.text).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    lines.push({ date: iso, text, type: "", amount: credit || debit, direction: credit ? "in" : "out", balance: by.balance ?? null });
+  }
+}
+// GCash prints a balance of 0.00 on a line that says money was received from a bank; the next line carries the true figure. So a balance is worked out from the one before
+// (starting from STARTING BALANCE), and a printed zero on a "Received ..." line is replaced by it. Every OTHER printed balance is kept, so a misread one is still caught by the check.
+function settleGcashBalances(lines, summary, memo) {
+  if (memo.opening !== undefined) summary.opening = memo.opening;
+  if (memo.closing !== undefined) summary.closing = memo.closing;
+  let prev = summary.opening ?? 0;
+  for (const l of lines) {
+    const derived = prev + (l.direction === "in" ? l.amount : -l.amount);
+    if (l.balance === null || (l.balance === 0 && derived !== 0 && /^received\b/i.test(l.text))) l.balance = derived;
+    prev = l.balance;
+  }
 }
 
 function isoOf(raw, period) {
@@ -163,7 +221,7 @@ function isoOf(raw, period) {
 export function checkStatement(style, lines, summary) {
   const bad = [];
   let kind = "total", message = "";
-  if (style === "credit-debit" && lines.every((l) => l.balance !== null) && summary.opening !== undefined) {
+  if ((style === "credit-debit" || style === "gcash") && lines.every((l) => l.balance !== null) && summary.opening !== undefined) {
     kind = "lines";
     let prev = summary.opening;
     lines.forEach((l, i) => { const next = prev + (l.direction === "in" ? l.amount : -l.amount); if (next !== l.balance) bad.push(i); prev = l.balance; });
@@ -172,7 +230,7 @@ export function checkStatement(style, lines, summary) {
   const wantIn = summary.credits ?? summary.incoming, wantOut = summary.debits ?? summary.outgoing;
   const totalsOk = (wantIn === undefined || wantIn === sum("in")) && (wantOut === undefined || wantOut === sum("out"));
   const closeOk = summary.opening === undefined || summary.closing === undefined || summary.opening + sum("in") - sum("out") === summary.closing;
-  const known = wantIn !== undefined || wantOut !== undefined || (summary.opening !== undefined && summary.closing !== undefined);
+  const known = wantIn !== undefined || wantOut !== undefined || (summary.opening !== undefined && summary.closing !== undefined) || kind === "lines";
   const ok = bad.length === 0 && totalsOk && closeOk && known;
   if (!known) message = "This statement has no totals to check against.";
   else if (!ok) message = bad.length ? `${bad.length} ${bad.length === 1 ? "line does" : "lines do"} not follow from the balance before it.` : "The lines do not add up to the totals at the top.";

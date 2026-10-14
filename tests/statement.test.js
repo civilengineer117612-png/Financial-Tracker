@@ -212,3 +212,63 @@ test("totals titles that wrap over two lines are still read, so the check can ru
   const off = parseStatement([outInPage({ rows: OI_ROWS, summary: { ...summary, outgoing: summary.outgoing + 100 }, wrapped: true })]);
   assert.equal(off.check.ok, false);
 });
+
+// ----- GCash: Date and Time / Description / Reference No. / Debit / Credit / Balance (debit BEFORE credit), invented numbers -----
+// A description that wraps is centred on its row (its first part above the date and amounts, its second below). A bank cash-in prints a balance of 0.00.
+function gcashPage(rows, { split = false, startAt = 0 } = {}) {
+  const items = [t(300, 900, "GCash Transaction History"), t(300, 870, "2023-01-01 to 2023-03-31"),
+    t(8, 800, "Date and Time"), t(190, 800, "Description"), t(700, 800, "Reference No."), rightAt(940, 800, "Debit"), rightAt(1060, 800, "Credit"), rightAt(1190, 800, "Balance"),
+    t(190, 774, "STARTING BALANCE"), rightAt(1190, 774, money(startAt))];
+  let y = 740;
+  for (const [date, time, text, ref, debit, credit, shown] of rows) {
+    const wrap = text.length > 60 ? [text.slice(0, text.indexOf(" with ")), text.slice(text.indexOf(" with ") + 1)] : [text];
+    if (split) items.push(t(8, y, date), t(80, y, time)); else items.push(t(8, y, date + " " + time));
+    if (wrap.length === 2) { items.push(t(190, y + 8, wrap[0]), t(190, y - 8, wrap[1])); } else items.push(t(190, y, wrap[0]));
+    items.push(t(700, y, ref));
+    if (debit) items.push(rightAt(940, y, money(debit))); if (credit) items.push(rightAt(1060, y, money(credit))); items.push(rightAt(1190, y, money(shown)));
+    y -= 34;
+  }
+  return items;
+}
+const OWN = "09170000001", FRIEND = "09170000002", SHOP = "09170000003";
+const GC_ROWS = [
+  ["2023-01-05", "02:54 PM", "Received GCash from Sample Bank and Trust Co. with account ending in 0000 and invno:111", "6000000000001", 0, 30000, 0],   // printed balance 0.00: the quirk
+  ["2023-01-05", "02:56 PM", `Transfer from ${OWN} to ${FRIEND}`, "6000000000002", 5000, 0, 25000],
+  ["2023-01-06", "10:08 AM", `Transfer from ${FRIEND} to ${OWN}`, "6000000000003", 0, 10000, 35000],
+  ["2023-01-07", "08:51 PM", `Buy Load Transaction for ${OWN}`, "0000000000004", 1100, 0, 33900],
+  ["2023-01-09", "09:51 AM", `Received GCash from Sample Bank and Trust Co. with account ending in 0000 and invno:222`, "6000000000005", 0, 70000, 0],   // quirk again
+  ["2023-01-09", "10:25 AM", `Buy Load Transaction for ${SHOP}`, "0000000000006", 9900, 0, 94000],
+];
+const gcOk = (o) => parseStatement([gcashPage(GC_ROWS, o)]);
+
+test("a GCash statement: ISO dates with a time, the debit column before the credit, the reference number kept out of the text, a wrapped description joined, the period from its header", () => {
+  const r = gcOk();
+  assert.equal(r.ok, true, r.message); assert.equal(r.style, "gcash"); assert.equal(r.bank, "GCash"); assert.deepEqual(r.period, { from: "2023-01-01", to: "2023-03-31" });
+  assert.equal(r.lines.length, 6);
+  assert.deepEqual(r.lines.map((l) => [l.date, l.direction, l.amount]), [["2023-01-05", "in", 30000], ["2023-01-05", "out", 5000], ["2023-01-06", "in", 10000], ["2023-01-07", "out", 1100], ["2023-01-09", "in", 70000], ["2023-01-09", "out", 9900]]);
+  assert.match(r.lines[0].text, /^Received GCash from Sample Bank and Trust Co\. with account ending in 0000 and invno:111$/, "both halves of the wrapped text, in order");
+  assert.ok(r.lines.every((l) => !/6000000000|0000000000004/.test(l.text)), "no reference number in the description");
+  assert.equal(r.summary.opening, 0);
+});
+
+test("GCash's printed 0.00 after money received from a bank is replaced by the working-out, and the line after it is checked against it", () => {
+  const r = gcOk();
+  assert.deepEqual(r.lines.map((l) => l.balance), [30000, 25000, 35000, 33900, 103900, 94000], "300, 250, 350, 339, then 339 + 700 = 1039, then 940");
+  assert.equal(r.check.ok, true); assert.equal(r.check.kind, "lines");
+  const wrong = GC_ROWS.map((x, i) => (i === 5 ? [...x.slice(0, 6), 94100] : x));
+  const bad = parseStatement([gcashPage(wrong)]);
+  assert.equal(bad.check.ok, false); assert.deepEqual(bad.check.bad, [5], "a misread balance after the quirk line is still caught");
+});
+
+test("GCash lines mean: load is spending, a cash-in from a bank is money in, a transfer goes by its column and names the OTHER number as the person", () => {
+  const r = gcOk();
+  assert.deepEqual(r.lines.map((l) => l.meaning), ["in", "unsure", "in", "spending", "in", "spending"]);
+  assert.equal(r.lines[0].payee, "Cash in from Sample Bank and Trust Co.");
+  assert.equal(r.lines[1].payee, FRIEND, "out: the person is the number it went TO");
+  assert.equal(r.lines[2].payee, FRIEND, "in: the person is the number it came FROM");
+  assert.equal(r.lines[3].payee, "Buy load");
+});
+
+test("GCash with the time as its own piece after the date reads the same", () => {
+  assert.deepEqual(gcOk({ split: true }).lines.map((l) => [l.date, l.amount, l.balance]), gcOk().lines.map((l) => [l.date, l.amount, l.balance]));
+});
