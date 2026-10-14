@@ -123,11 +123,11 @@ test("with no usable history the lines are starter shares, marked starter, with 
   assert.equal(r.history.used, "starter"); assert.equal(r.history.usableMonths, 1);
   const spendLines = r.paydays.flatMap((p) => p.lines).filter((l) => ["Food", "Fun"].includes(l.name));
   assert.ok(spendLines.length >= 2 && spendLines.every((l) => l.source === "starter"));
-  assert.match(line(r, 0, "Food").reason, /Starter share, a common rule of thumb and not advice: 50% of pay for needs, after the rent and fixed payments, shared by typical weights for its role/);
+  assert.match(line(r, 0, "Food").reason, /Starter share, a common rule of thumb and not advice: 50% of pay for needs, after the rent and fixed payments, shared by what you have logged so far/);
   assert.match(line(r, 0, "Fun").reason, /30% of pay for wants, shared by what you have logged so far/);
   const total = (name) => r.paydays.reduce((a, p) => a + (p.lines.find((l) => l.name === name)?.amount ?? 0), 0);
   assert.equal(total("Rent"), 800000, "the rent is the owner's own figure"); assert.equal(line(r, 1, "Rent").reason, "The monthly rent you typed.");
-  assert.deepEqual([total("Rent") + total("Food"), total("Fun")], [1500000, 900000], "needs pool 50% of 30,000 pesos: the rent first, the rest to Food (the only other needs role here); wants 900,000 to Fun");
+  assert.deepEqual([total("Rent") + total("Food"), total("Fun")], [1550000, 850000], "needs part 50% of 30,000 pesos: rent 8,000 takes more than half of it, so Food keeps its floor of 7,500 and the 500 past it comes out of wants");
   assert.ok(balances(r));
 });
 
@@ -353,4 +353,56 @@ test("the starter weights are one settings table, whole basis points that add up
   assert.equal(resolveSettings({ starter_weights: { food: 4000.5, essentials: 2499.5, transport: 2000, health: 1500 } }).ok, false);
   const dir = new URL("../src/model/", import.meta.url);
   for (const f of readdirSync(dir).filter((x) => x.endsWith(".js") && x !== "suggest-settings.js")) assert.ok(!/starter_weights: ?\{|food: ?4000/.test(readFileSync(new URL(f, dir), "utf8")), f + " has no copy of the weights");
+});
+
+// ---------- shares learned from you, rent that does not starve food, a step toward the targets (owner, Oct 14) ----------
+test("starter shares of needs follow what you have logged; a needs category with nothing logged still gets its table share", () => {
+  const s = base(); slip(s, "2026-09-15", 1000000); slip(s, "2026-09-30", 2000000);
+  s.categories.push({ id: "ess", name: "Essentials", kind: "expense", role: "essentials" }, { id: "trn", name: "Transport", kind: "expense", role: "transport" });
+  spend(s, "2026-09-05", "food", 300000); spend(s, "2026-09-06", "ess", 100000);   // food three times essentials; transport never logged
+  const r = run(s, { rent: 0 });
+  const total = (name) => r.paydays.reduce((a, p) => a + (p.lines.find((l) => l.name === name)?.amount ?? 0), 0);
+  assert.ok(Math.abs(total("Food") - 3 * total("Essentials")) <= 2, "food takes three times what essentials take, as you spend (" + total("Food") + " / " + total("Essentials") + ")");
+  assert.ok(total("Transport") > 0 && total("Transport") < total("Essentials"), "transport, never logged, still gets its table share scaled to what you log");
+  assert.equal(total("Food") + total("Essentials") + total("Transport"), 1500000, "together they are the needs part exactly");
+});
+
+test("with nothing logged the needs share comes from the table alone", () => {
+  const s = base(); slip(s, "2026-09-15", 1000000); slip(s, "2026-09-30", 2000000);
+  const r = run(s, { rent: 0 });
+  assert.match(line(r, 0, "Food").reason, /shared by typical weights for its role/);
+});
+
+test("a large rent does not starve food: everyday needs keep half of the needs part, and the rest of the rent comes out of wants", () => {
+  const s = base(); slip(s, "2026-09-15", 1000000); slip(s, "2026-09-30", 2000000);
+  const total = (r, name) => r.paydays.reduce((a, p) => a + (p.lines.find((l) => l.name === name)?.amount ?? 0), 0);
+  const small = run(s, { rent: 500000 }), big = run(s, { rent: 1200000 });
+  assert.equal(total(small, "Food"), 1000000, "a small rent: food gets the rest of the needs part");
+  assert.equal(total(big, "Food"), 750000, "a big rent: food keeps its floor of half the needs part (7,500 of 15,000)");
+  assert.equal(total(big, "Fun"), 900000 - (1200000 - 750000), "the 4,500 the rent takes past the floor comes out of wants");
+  assert.ok(balances(big));
+  const off = run(s, { rent: 1200000, settings: { needs_variable_floor: 0 } });
+  assert.equal(total(off, "Food"), 300000, "with the floor at 0, the old rule: food gets what the rent leaves");
+});
+
+test("with history, spending over the needs + wants targets lowers the want lines a step; needs and typed figures are not lowered", () => {
+  // food 6,000 + rent 8,000 + fun 3,000 = 17,000 of 30,000 pay: under the 80% (24,000) of needs + wants, so nothing moves
+  const calm = run(withHistory());
+  assert.ok(!calm.paydays.some((p) => p.lines.some((l) => l.nudged)), "under the targets: nothing is lowered");
+  const s = withHistory((x) => { for (const m of MONTHS6) for (let i = 0; i < 3; i++) spend(x, m + "-21", "fun", 400000); });   // fun now 15,000 a month
+  const r = run(s), total = (name) => r.paydays.reduce((a, p) => a + (p.lines.find((l) => l.name === name)?.amount ?? 0), 0);
+  // spending 6,000 + 8,000 + 15,000 = 29,000; targets allow 24,000; 5,000 over; a 10% step = 500 off the wants (fun is the only want)
+  assert.equal(total("Fun"), 1500000 - 50000);
+  assert.equal(total("Food"), 600000, "needs are not lowered"); assert.equal(total("Rent"), 800000);
+  assert.ok(r.paydays.some((p) => p.lines.some((l) => l.name === "Fun" && l.nudged === 50000 && /Lowered a step toward your targets/.test(l.reason))));
+  assert.ok(balances(r));
+  const pinned = run(s, { pinned: [{ name: "Fun", category_id: "fun", first: 750000, second: 750000 }] });
+  assert.equal(pinned.paydays.reduce((a, p) => a + p.lines.find((l) => l.name === "Fun").amount, 0), 1500000, "a figure you typed is yours: never lowered");
+  assert.equal(run(s, { settings: { nudge_bps: 0 } }).paydays.reduce((a, p) => a + p.lines.find((l) => l.name === "Fun").amount, 0), 1500000, "0 turns the step off");
+});
+
+test("the two new settings are checked like the others", () => {
+  assert.equal(resolveSettings({ needs_variable_floor: 10001 }).ok, false);
+  assert.equal(resolveSettings({ nudge_bps: -1 }).ok, false);
+  assert.equal(resolveSettings({ nudge_bps: 0, needs_variable_floor: 0 }).ok, true);
 });
