@@ -229,10 +229,12 @@ const dueDrafts = () => M.pendingDrafts(S(), addDays(today(), -1)).filter((t) =>
 async function commit(state, settings = ledger.settings, { quiet = false } = {}) {
   if (ui.upgrade?.failed) return false;   // the update of the saved data failed: nothing is written until the owner restores the copy or updates the app, so old data is never overwritten
   const next = M.nextLedger(ledger, state, settings);
-  const r = await writeBoth(JSON.stringify(next));
-  ledger = next;   // keep working in memory even if a store failed; the banner says so
-  const failed = [!r.local && "localStorage", !r.idb && "IndexedDB"].filter(Boolean);
-  ui.error = failed.length ? "Could not save to " + failed.join(" and ") + ". What you see is not safely stored yet. The next save tries again." : null;
+  const text = JSON.stringify(next);
+  const r = await writeBoth(text);
+  ledger = next;   // keep working in memory even if the main store failed; the banner says so
+  const out = M.saveOutcome(r);   // IndexedDB is the main store; a full localStorage mirror is not an error
+  ui.error = out.error; ui.mirror = out.mirror; ui.ledgerBytes = M.ledgerBytes(text);
+  const failed = out.ok ? [] : ["x"];
   // A background save (the logos) must not rebuild an open window and lose what is being done in it.
   if (!quiet) renderAll(); else { renderBanner(); if (!document.activeElement?.matches("input, textarea, select")) renderScreen(); if (ui.sheet?.type === "banks") renderSheet(); }   // the screen behind a window may change; the window stays
   if (!ledger.settings.bankLogosTried && !logoRun && failed.length === 0) loadBankLogos();   // a new install: logos after the first save
@@ -3820,7 +3822,7 @@ async function restoreNow() {
   if (!ui.form.confirmRestore) { ui.form.confirmRestore = true; renderSheet(); return; }
   const next = M.restoreLedger(ledger, ui.form.restored);
   const r = await writeBoth(JSON.stringify(next));
-  if (r.local && r.idb) { location.reload(); return; }
+  if (M.saveOutcome(r).ok) { location.reload(); return; }   // the mirror may be full; the main store holds the restore
   ui.sheet = null; ui.error = "The restore could not be saved to " + [!r.local && "localStorage", !r.idb && "IndexedDB"].filter(Boolean).join(" and ") + ". Nothing else was changed.";
   renderAll();
 }

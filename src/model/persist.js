@@ -69,3 +69,14 @@ export function daysSinceBackup(settings, today) {
   if (!settings.last_backup_at) return null;
   return Math.round((Date.parse(today) - Date.parse(settings.last_backup_at.slice(0, 10))) / 86400000);
 }
+
+// IndexedDB is the main store (it has room for a large ledger); localStorage is only a mirror (iOS gives it about 5 MB, which a
+// ledger of ~15,000 lines passes). r = what writeBoth reported. A mirror that is full is NOT an error while IndexedDB holds the save.
+export function saveOutcome(r) {
+  if (!r.idb) return { ok: false, mirror: !!r.local, error: "Could not save to IndexedDB" + (r.local ? "" : " and localStorage") + ". What you see is not safely stored yet. The next save tries again." };
+  return { ok: true, mirror: !!r.local, error: null };
+}
+
+// The size of the saved ledger text in bytes (what Setup shows), and a plain "5.4 MB" form of it.
+export const ledgerBytes = (text) => new TextEncoder().encode(text).length;
+export const formatBytes = (n) => (n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + " KB" : (n / (1024 * 1024)).toFixed(1) + " MB");

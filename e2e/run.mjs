@@ -3318,6 +3318,21 @@ check(await page.evaluate(() => Promise.all(["icon.svg", "icon-180.png", "icon-1
 await ctx.setOffline(false);
 await ctx.close();
 
+// ===== 5ph0. storage safety: IndexedDB is the main store; a full localStorage is not an error =====
+({ ctx, page, errors } = await open());
+await addAccount(page, "Quota Cash", "asset", "100");
+await seen(page, "#screen", "Quota Cash");
+await page.evaluate(() => { const real = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (k === "financialTracker.ledger") throw new DOMException("full", "QuotaExceededError"); return real.call(this, k, v); }; });
+const before = (await stored(page)).local;
+await addAccount(page, "After Full", "asset", "5");
+check(await seen(page, "#screen", "After Full"), "an account is saved while localStorage is full");
+check(await page.waitForFunction(async () => { const r = await new Promise((res) => { const q = indexedDB.open("financialTracker"); q.onsuccess = () => { const g = q.result.transaction("kv").objectStore("kv").get("ledger"); g.onsuccess = () => res(g.result); }; }); return !!r && r.includes("After Full"); }, null, { timeout: 4000 }).then(() => true, () => false), "IndexedDB holds the new save");
+check((await stored(page)).local === before, "the full localStorage keeps its older copy (nothing broke)");
+check(!(await page.locator("#banner .bar").count()), "no error banner appears for a full localStorage");
+await page.reload(); await page.waitForSelector("#nav button");
+check(await seen(page, "#screen", "After Full") || (await page.evaluate(() => document.body.innerText)).includes("After Full"), "after a restart the newer IndexedDB copy is the one in use");
+await ctx.close();
+
 await browser.close();
 console.log(failures ? "\n" + failures + " check(s) FAILED" : "\nAll checks passed");
 process.exit(failures ? 1 : 0);
