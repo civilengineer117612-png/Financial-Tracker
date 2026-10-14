@@ -32,6 +32,7 @@ payslips, account numbers or balances, and never ship brand logos (account pictu
   experience. Put questions in ONE copy-paste box, at most 4, each with an `ANSWER:` line, and no recommendation under
   a question. Keep replies short and in plain words; no jargon without a one-line explanation.
 - SCREENSHOT FIRST (owner, Oct 11, for the rest of the build): the app is stable and has what is most needed. Before changing anything the owner can see (a suggestion, a rename, a new screen or button), send a screenshot of how it would look and WAIT for the owner's yes. Draw it from the real app in a scratch copy (never commit it). Fixes for something broken, tests and documents need no screenshot.
+- QQ (owner, Oct 14): a message that starts with "qq" is a SIDE QUESTION, like /btw in the terminal. Answer it in a few plain sentences from what is already known. No tools, no file, git or PR actions, no change to the task in progress or to the Waiting list: the work carries on as it was. If the answer needs a lookup or a change, say so in one line and wait for a normal request.
 - A major change: say so, or give a PDF. Calendar and other outward actions need an explicit yes.
 - The owner is a VISUAL person: charts and account pictures matter. Charts: one color for a single series, values at the
   bar tip, a list twin for every chart (see the dataviz skill's rules).
