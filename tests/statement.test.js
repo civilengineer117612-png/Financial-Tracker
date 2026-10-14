@@ -263,7 +263,7 @@ test("GCash's printed 0.00 after money received from a bank is replaced by the w
 test("GCash lines mean: load is spending, a cash-in from a bank is money in, a transfer goes by its column and names the OTHER number as the person", () => {
   const r = gcOk();
   assert.deepEqual(r.lines.map((l) => l.meaning), ["in", "unsure", "in", "spending", "in", "spending"]);
-  assert.equal(r.lines[0].payee, "Cash in from Sample Bank and Trust Co.");
+  assert.equal(r.lines[0].payee, "Cash in from Sample Bank and Trust Co. ending 0000"); assert.equal(r.lines[0].last4, "0000");
   assert.equal(r.lines[1].payee, FRIEND, "out: the person is the number it went TO");
   assert.equal(r.lines[2].payee, FRIEND, "in: the person is the number it came FROM");
   assert.equal(r.lines[3].payee, "Buy load");
@@ -271,4 +271,34 @@ test("GCash lines mean: load is spending, a cash-in from a bank is money in, a t
 
 test("GCash with the time as its own piece after the date reads the same", () => {
   assert.deepEqual(gcOk({ split: true }).lines.map((l) => [l.date, l.amount, l.balance]), gcOk().lines.map((l) => [l.date, l.amount, l.balance]));
+});
+
+// The other GCash lines: payments to a merchant, a refund, money sent to a bank account, cash-in at a kiosk with a printed balance.
+const GC2 = [
+  ["2023-02-01", "09:00 AM", "Received GCash from Sample Kiosk", "6000000000011", 0, 50000, 50000],   // a kiosk prints its real balance
+  ["2023-02-02", "09:30 AM", "Payment to Sample Telecom One Click", "0000000000012", 9900, 0, 40100],
+  ["2023-02-03", "10:00 AM", "Payment to Sample Music AB, Merchant Transaction Number: ABC123XYZ", "0000000000013", 8500, 0, 31600],
+  ["2023-02-04", "11:00 AM", "Buy Load Transaction for " + SHOP, "0000000000014", 1600, 0, 30000],
+  ["2023-02-04", "11:00 AM", "GCash Transaction with Parent Ref.No. 123456789", "0000000000015", 0, 1600, 31600],
+  ["2023-02-05", "12:00 PM", "Sent GCash to Sample Bank with account ending in 6588", "6000000000016", 15000, 0, 16600],
+  ["2023-02-06", "01:00 PM", "Sent GCash to Other Bank with account ending in 7777", "6000000000017", 600, 0, 16000],
+];
+const gc2 = (o) => parseStatement([gcashPage(GC2, { startAt: 0 })], o);
+
+test("GCash payments to a merchant are spending and name the merchant (the transaction number is dropped); a refund line is money in", () => {
+  const r = gc2();
+  assert.deepEqual(r.lines.map((l) => l.meaning).slice(0, 5), ["in", "spending", "spending", "spending", "in"]);
+  assert.deepEqual(r.lines.slice(1, 3).map((l) => l.payee), ["Sample Telecom One Click", "Sample Music AB"]);
+  assert.equal(r.lines[4].payee, "Refund");
+  assert.equal(r.check.ok, true, r.check.message);
+});
+
+test("money sent to a bank account names the bank and its last four digits; one of YOUR accounts' last four makes it a move between your own accounts", () => {
+  const plain = gc2();
+  assert.deepEqual([plain.lines[5].meaning, plain.lines[5].payee, plain.lines[5].last4], ["unsure", "Sample Bank ending 6588", "6588"]);
+  const mine = gc2({ ownLast4: ["6588"] });
+  assert.deepEqual([mine.lines[5].meaning, mine.lines[5].own], ["move", true]);
+  assert.equal(mine.lines[6].meaning, "unsure", "another bank account that is not yours stays unsure");
+  assert.equal(mine.lines[0].meaning, "in", "a kiosk cash-in has no account digits and stays money in");
+  assert.equal(mine.lines[0].balance, 50000, "a balance GCash really printed is kept");
 });

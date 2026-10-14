@@ -74,7 +74,8 @@ export const SCHEMAS = {
   StatementRecord: { id, account_id: id, bank: optional(text), style: text, period_from: optional(date), period_to: optional(date), opening: optional(centavos), closing: optional(centavos),
     in_total: optional(centavos), out_total: optional(centavos), line_count: count, checked: bool, added_at: timestamp },   // opening/closing/totals: the figures printed at the top, when it has them; checked: the statement's own check passed
   StatementLine: { id, record_id: id, n: count, date, text, payee: text, type: text, amount: centavos, direction: oneOf("in", "out"), balance: optional(centavos),
-    meaning: oneOf("spending", "fee", "move", "in", "unsure"), own: optional(bool) },
+    meaning: oneOf("spending", "fee", "move", "in", "unsure"), own: optional(bool),
+    last4: optional({ type: "last4" }) },   // the last four digits of the bank account a line names ("ending in 6588"), so a move between your own accounts can be matched
   StatementAccept: { id, account_id: id, month: { type: "month" }, made: count, verified: count, accepted_at: timestamp },
   Subscription: { id, name, card: id, currency: name, amount: centavos, renewal_day: { type: "day" }, exit_condition: text, review_date: date },
   CheckIn: { id, date, account_id: id, counted_balance: centavos, ledger_balance: centavos, difference: centavos },

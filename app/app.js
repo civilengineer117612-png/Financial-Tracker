@@ -743,7 +743,7 @@ async function importFile(file) {
     let items, notRead, statement = null;
     if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") {
       const pages = await readPdfPages(file, askPdfPassword);
-      const r = M.parseStatement(pages);
+      const r = M.parseStatement(pages, { ownLast4: activeAccounts().map((a) => a.last4).filter(Boolean) });
       if (!r.ok) throw new Error(r.message);
       statement = { bank: r.bank, bankId: r.bankId, period: r.period, check: r.check, lines: r.lines.length, leftOut: M.statementLeftOut(r.lines) };
       items = M.statementItems(r.lines); notRead = [];

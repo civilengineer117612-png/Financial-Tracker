@@ -23,7 +23,7 @@ export function recordFromParse(parsed, { account_id, id, now = new Date() }) {
   };
   const lines = parsed.lines.map((l, n) => ({
     id: `${id}:${n}`, record_id: id, n, date: l.date, text: l.text ?? "", payee: l.payee ?? l.text ?? "", type: l.type ?? "", amount: l.amount, direction: l.direction,
-    ...(Number.isSafeInteger(l.balance) ? { balance: l.balance } : {}), meaning: l.meaning, ...(l.own ? { own: true } : {}),
+    ...(Number.isSafeInteger(l.balance) ? { balance: l.balance } : {}), meaning: l.meaning, ...(l.own ? { own: true } : {}), ...(l.last4 ? { last4: l.last4 } : {}),
   }));
   return { record, lines };
 }

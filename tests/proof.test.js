@@ -108,3 +108,11 @@ test("a month with no lines is QUIET when a statement covers it, but a GAP when 
   const moved = parsed({ from: "2026-08-01", to: "2026-10-31" }, { opening: 100000 }, [line("2026-08-05", "Corner Cafe", 9500, "out", 90500), line("2026-10-04", "Bus fare", 5000, "out", 80000)]);
   assert.equal(proveMonths(withStatements(moved), "gt")[1].status, "mismatch", "October opens at 850.00 but August closed at 905.00: something happened in the quiet month");
 });
+
+test("a line's last four digits are kept with it, in the shape the ledger accepts", () => {
+  const p = parsed({ from: "2026-08-01", to: "2026-08-31" }, { opening: 100000, closing: 85000 }, [{ ...line("2026-08-05", "Sample Bank ending 6588", 15000, "out", 85000, "move"), last4: "6588", own: true }]);
+  const s = withStatements(p);
+  assert.equal(s.statementLines[0].last4, "6588"); assert.equal(s.statementLines[0].own, true); assert.deepEqual(validateState(s), []);
+  const bad = { ...s, statementLines: [{ ...s.statementLines[0], last4: "65" }] };
+  assert.notDeepEqual(validateState(bad), [], "a last-four that is not four digits is refused");
+});

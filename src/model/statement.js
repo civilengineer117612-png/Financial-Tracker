@@ -81,9 +81,15 @@ export function classifyLine({ text, type = "", direction }) {
   // GCash: "Buy Load ..." is spending; "Received GCash from <bank> ..." is money in; "Transfer from A to B" is money in or out by the column it is in, and the OTHER number is the person
   // (so the unsure lines group per person). The numbers themselves are the person's key and are not kept in any message.
   if (/^buy load\b/i.test(t)) return { meaning: "spending", payee: "Buy load" };
-  if (/^(pay bills|bills payment|payment to|merchant payment)\b/i.test(t)) return { meaning: "spending", payee: t };
-  const got = /^received gcash from\s+(.+?)(?:\s+with account\b.*)?$/i.exec(t);
-  if (got) return { meaning: "in", payee: "Cash in from " + got[1].trim() };
+  const pay = /^payment to\s+(.+?)(?:,?\s*merchant transaction number:.*)?$/i.exec(t);
+  if (pay) return { meaning: "spending", payee: pay[1].trim() };
+  if (/^(pay bills|bills payment|merchant payment)\b/i.test(t)) return { meaning: "spending", payee: t };
+  if (/^gcash transaction with parent ref/i.test(t)) return { meaning: "in", payee: "Refund" };   // a reversal of the line just above it
+  // Money to or from a bank account names the bank and the LAST FOUR digits of that account (the owner's own accounts carry theirs: see parseStatement's ownLast4).
+  const sent = /^sent gcash to\s+(.+?)\s+with account ending in\s+(\d{4})\b/i.exec(t);
+  if (sent) return { meaning: "unsure", payee: `${sent[1].trim()} ending ${sent[2]}`, last4: sent[2] };
+  const got = /^received gcash from\s+(.+?)(?:\s+with account(?:\s+ending in\s+(\d{4}))?\b.*)?$/i.exec(t);
+  if (got) return { meaning: "in", payee: "Cash in from " + got[1].trim() + (got[2] ? ` ending ${got[2]}` : ""), ...(got[2] ? { last4: got[2] } : {}) };
   const tr = /^transfer from\s+(\d{6,})\s+to\s+(\d{6,})/i.exec(t);
   if (tr) return direction === "in" ? { meaning: "in", payee: tr[1] } : { meaning: "unsure", payee: tr[2] };
   if (direction === "in") return { meaning: "in", payee: t };
@@ -117,7 +123,7 @@ export function isOwnName(text, holders) {
 // ---------- the whole statement ----------
 // pages: [[{x, y, w, str}]]. Returns {ok, style, period, summary, lines, check, message}. Each line: {date, text, payee, type, amount (centavos, > 0), direction ("in"|"out"),
 // balance (centavos, or null), meaning}.
-export function parseStatement(pages) {
+export function parseStatement(pages, { ownLast4 = [] } = {}) {
   const allRows = pages.map(groupRows), flat = allRows.flat();
   const period = readPeriod(flat), summary = readSummary(flat);
   let header = null;
@@ -159,6 +165,7 @@ export function parseStatement(pages) {
   for (const l of lines) {
     Object.assign(l, classifyLine(l));
     if ((l.meaning === "unsure" || l.meaning === "in") && isOwnName(l.payee || l.text, holders)) { l.meaning = "move"; l.own = true; }   // to or from yourself
+    if ((l.meaning === "unsure" || l.meaning === "in") && l.last4 && ownLast4.includes(l.last4)) { l.meaning = "move"; l.own = true; }   // to or from your own bank account (its last four digits)
   }
   if (!header || !lines.length) return { ok: false, message: "No transactions were found in this PDF. It may not be a bank statement the app knows." };
   const top = allRows[0].slice(0, 25).map(textOf).join(" ").toLowerCase();   // the first lines of the first page: the bank's name is usually there
