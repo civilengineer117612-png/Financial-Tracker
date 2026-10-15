@@ -365,6 +365,7 @@ function groupRows(root) {
 
 let lastTabSig = null, lastViewSig = null, swapTimer = null;
 function renderScreen() {
+  if (ui.tab === "cards" && lastTabSig !== "cards") { ui.cardsShown = false; ui.pocketsOpen = {}; }   // Cards opens with every amount hidden and every pocket folded; nothing is remembered
   if (ui.tab !== "log") ui.arrange = false;
   if (ui.tab !== "setup") ui.setupPage = null;
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
@@ -1462,12 +1463,14 @@ function pocketsUnder(list, acct, open = {}) {
 function viewCards() {
   const p = period(), [from, to] = periodBounds(p), o = M.accountsOverview(S(), { from, to });
   const acct = (id) => S().accounts.find((a) => a.id === id);
+  // Amounts are hidden behind five fixed dots until the eye is tapped, so the dots say nothing about the size. What would show a proportion (the bars) and the small spent/paid lines hide with them.
+  const shown = !!ui.cardsShown, DOTS = "\u20b1\u2022\u2022\u2022\u2022\u2022", amt = (html) => (shown ? html : `<span aria-label="Amount hidden">${DOTS}</span>`), whenShown = (html) => (shown ? html : "");
   const byCash = [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))), grouped = pocketsUnder(byCash, acct, ui.pocketsOpen ?? {});
   const ptoggle = (id) => { const n = grouped.counts.get(id), open = !!ui.pocketsOpen?.[id]; return n ? `<button class="link small" data-action="toggle-pockets" data-id="${esc(id)}" aria-expanded="${open}">${n} savings ${n === 1 ? "pocket" : "pockets"} ${open ? "\u25B4" : "\u25BE"}</button>` : ""; };
   // Pictures and signs say what words used to: a small arrow up is spent, an arrow down is paid in; a card's debt has a minus.
   const row = (a, main, small) => `<div class="row${M.isPocket(a) ? " pocket" : ""}"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}${M.isPocket(a) ? "<small>Savings pocket</small>" : ""}${small ? `<small>${small}</small>` : ""}${ptoggle(a.id)}</div></div><div class="amt">${main}</div></div>`;
-  const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), `${c.owe > 0 ? "\u2212" : ""}${peso(c.owe)}<span class="sr"> you owe</span>`, [c.spent > 0 ? flow(true, c.spent) : "", c.paid > 0 ? flow(false, c.paid) : ""].filter(Boolean).join(" ")) ).join("") : `<p class="note">No credit cards yet. In Setup, add an account and choose "Credit card".</p>`;
-  const money = o.money.length ? grouped.rows.map((m) => row(acct(m.account_id), peso(m.balance), m.spent > 0 ? flow(true, m.spent) : "")).join("") : `<p class="note">No accounts yet.</p>`;
+  const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), amt(`${c.owe > 0 ? "\u2212" : ""}${peso(c.owe)}<span class="sr"> you owe</span>`), whenShown([c.spent > 0 ? flow(true, c.spent) : "", c.paid > 0 ? flow(false, c.paid) : ""].filter(Boolean).join(" "))) ).join("") : `<p class="note">No credit cards yet. In Setup, add an account and choose "Credit card".</p>`;
+  const money = o.money.length ? grouped.rows.map((m) => row(acct(m.account_id), amt(peso(m.balance)), whenShown(m.spent > 0 ? flow(true, m.spent) : ""))).join("") : `<p class="note">No accounts yet.</p>`;
   const net = M.netPosition(o.held, o.owe), covers = reserveCovers();
   const sorted = grouped.rows;
   // The swipe cards: a debit account that backs a card sits right before that card, then the other accounts.
@@ -1476,13 +1479,13 @@ function viewCards() {
   for (const m of sorted) if (!used.has(m.account_id)) seq.push({ m });
   const swipe = (it) => {
     const id = (it.c ?? it.m).account_id, a = acct(id), cv = covers.find((x) => x.reserve_id === id);
-    const amount = it.c ? `${peso(it.c.owe)}<span class="sr"> you owe</span>` : peso(it.m.balance);
-    const small = it.c ? [it.c.spent > 0 ? flow(true, it.c.spent) : "", it.c.paid > 0 ? flow(false, it.c.paid) : ""].filter(Boolean).join(" ") : (it.m.spent > 0 ? flow(true, it.m.spent) : "");
+    const amount = amt(it.c ? `${peso(it.c.owe)}<span class="sr"> you owe</span>` : peso(it.m.balance));
+    const small = !shown ? "" : it.c ? [it.c.spent > 0 ? flow(true, it.c.spent) : "", it.c.paid > 0 ? flow(false, it.c.paid) : ""].filter(Boolean).join(" ") : (it.m.spent > 0 ? flow(true, it.m.spent) : "");
     return `<div class="swcard"><div class="swtop">${iconOf(a, 40)}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${it.c ? ICONS.cards : ICONS.buffer}</svg></div>
-      <div class="swname">${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}</div><div class="swamt">${amount}</div>${cv ? coverBar(cv.share, coverLabel(cv)) : small ? `<div class="swsmall">${small}</div>` : M.isPocket(a) ? `<div class="swsmall">Savings pocket</div>` : ""}${ptoggle(id)}</div>`;
+      <div class="swname">${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}</div><div class="swamt">${amount}</div>${cv && shown ? coverBar(cv.share, coverLabel(cv)) : small ? `<div class="swsmall">${small}</div>` : M.isPocket(a) ? `<div class="swsmall">Savings pocket</div>` : ""}${ptoggle(id)}</div>`;
   };
-  const netCard = `<div class="netcard" role="group" aria-label="Free ${esc(peso(net.free))}: in your accounts ${esc(peso(o.held))}, owed on cards ${esc(peso(o.owe))}"><div class="netbig">${net.free < 0 ? "\u2212" : ""}${peso(Math.abs(net.free))}</div>${coverBar(net.share, "Owed on cards is " + Math.round(net.share * 100) + "% of what is in your accounts")}<div class="netsides"><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.buffer}</svg>${peso(o.held)}</span><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.cards}</svg>${peso(o.owe)}</span></div></div>`;
-  const setAside = (() => { const w = M.setAsideForSpending(M.sinkingFunds(S(), ledger.settings, { month: M.monthOf(today()), asOf: today() })); return w > 0 ? `<p class="note" id="cards-setaside">${peso(w)} of this is set aside for planned spending, not savings.</p>` : ""; })();
+  const netCard = `<div class="netcard" role="group" aria-label="${shown ? `Free ${esc(peso(net.free))}: in your accounts ${esc(peso(o.held))}, owed on cards ${esc(peso(o.owe))}` : "Amounts are hidden"}"><div class="netbigrow"><div class="netbig">${amt(`${net.free < 0 ? "\u2212" : ""}${peso(Math.abs(net.free))}`)}</div><button class="link eye" data-action="cards-eye" aria-pressed="${shown}" aria-label="${shown ? "Hide amounts" : "Show amounts"}">${shown ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>` : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7c2 0 3.8.6 5.3 1.5M22 12s-3.6 7-10 7c-2 0-3.8-.6-5.3-1.5"/><path d="M3 3l18 18"/></svg>`}</button></div>${shown ? coverBar(net.share, "Owed on cards is " + Math.round(net.share * 100) + "% of what is in your accounts") : `<span class="cover" role="img" aria-label="Amounts are hidden"><span style="width:0%"></span></span>`}<div class="netsides"><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.buffer}</svg>${amt(peso(o.held))}</span><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.cards}</svg>${amt(peso(o.owe))}</span></div></div>`;
+  const setAside = (() => { const w = M.setAsideForSpending(M.sinkingFunds(S(), ledger.settings, { month: M.monthOf(today()), asOf: today() })); return w > 0 && shown ? `<p class="note" id="cards-setaside">${peso(w)} of this is set aside for planned spending, not savings.</p>` : ""; })();
   const listView = `<h2>Credit cards</h2>${cards}
     <h2>Debit, savings and cash</h2>${money}`;
   const cardView = `<div class="swipe" tabindex="0" aria-label="Your accounts and cards, swipe sideways">${seq.map(swipe).join("")}</div>
@@ -3163,6 +3166,7 @@ async function onClick(el) {
     case "rename-cat": { const c = S().categories.find((x) => x.id === id), b = c ? M.bucketOf(c, ledger.settings.bucket_overrides ?? {}) : null; ui.sheet = { type: "cat", id }; ui.form = { name: c?.name ?? "", bucket: b, bucket0: b }; renderSheet(); break; }
     case "pick-edit-bucket": ui.form.bucket = el.dataset.bucket; for (const b of document.querySelectorAll("#c-edit-bucket button")) b.setAttribute("aria-pressed", String(b.dataset.bucket === ui.form.bucket)); break;
     case "cards-list": ui.cardsList = !ui.cardsList; renderScreen(); break;
+    case "cards-eye": ui.cardsShown = !ui.cardsShown; renderScreen(); break;
     case "cat-edit": ui.catEdit = true; ui.confirmRemoveCat = null; renderScreen(); break;
     case "cat-done": ui.catEdit = false; ui.confirmRemoveCat = null; renderScreen(); break;
     case "remove-cat": {

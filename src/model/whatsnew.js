@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-15-cards-eye", date: "2026-10-15", text: "Cards now opens with every amount hidden behind dots; tap the eye to show them, and they hide again next time." },
   { id: "2026-10-15-pockets", date: "2026-10-15", text: "Savings pockets: a Go Save pocket can be its own account, kept out of Paid from, folded under its bank on Cards, and matched with its main account\u2019s transfers." },
   { id: "2026-10-14-pocket", date: "2026-10-14", text: "A Go Save pocket statement is now recognised when you import it, and is never filed under your main account for you." },
   { id: "2026-10-14-bad-lines", date: "2026-10-14", text: "When a statement\u2019s balance check fails, the Import window can now list the lines that do not follow, with the balance the bank prints." },

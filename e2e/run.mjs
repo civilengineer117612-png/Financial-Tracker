@@ -90,7 +90,7 @@ const addPayslipFlow = async (page) => { await page.click('button:has-text("Add 
 const HUB_OF = { Goals: "Budget", "Pay plan": "Budget", Checks: "Weekly review" };
 const openAddForm = async (page) => { const b = page.locator("#add-account-open"); if (await b.count()) { await b.click(); await page.waitForSelector("#a-bank"); } };   // with accounts, Setup keeps the form behind a button
 const afterAdd = async (page) => { await page.waitForFunction(() => !document.querySelector("#a-bank") || document.querySelector("#a-error"), null, { timeout: 2500 }).catch(() => {}); await openAddForm(page); };   // adding closes the form: open it again for the next one
-const menuGo = async (page, name) => {   // Spending and Income are one menu item, Cash flow, with a switch inside
+const menuGo = async (page, name, opts = {}) => {   // Spending and Income are one menu item, Cash flow, with a switch inside; Cards opens with its amounts hidden, so the helper taps the eye unless `keepHidden`
   await page.click("#menuBtn");
   const money = name === "Spending" || name === "Income";
   await page.click(`#menu .item:has-text("${money ? "Cash flow" : HUB_OF[name] ?? name}")`);
@@ -98,6 +98,7 @@ const menuGo = async (page, name) => {   // Spending and Income are one menu ite
   if (HUB_OF[name]) await page.click(`#screen .hub button:has-text("${name}")`);
   if (name === "Setup") await openAddForm(page);
   if (name === "Income") await page.click("#top .titleswitch");
+  if (name === "Cards" && !opts.keepHidden) { const eye = page.locator('button[data-action="cards-eye"][aria-pressed="false"]'); if (await eye.count()) await eye.click(); }
 };
 // Saving is asynchronous (it writes two stores), so checks wait for the text to appear instead of racing it.
 const budView = async (page, v) => { await page.click(`button[data-action="budget-view"][data-view="${v}"]`); await page.waitForTimeout(200); };   // Budget shows one part at a time
@@ -1448,6 +1449,19 @@ const quickEntries = q.state.entries.filter((e) => e.transaction_id === quick.id
 check(quickEntries.some((e) => e.account_id === mari.id && e.amount === -59250) && quickEntries.some((e) => e.category_id === "cat-essentials" && e.amount === 59250), "it chose MariBank, ₱592.50 and Essentials without being asked");
 await menuGo(page, "Cards");
 check((await text(page, "#top")).includes("Cards") && (await text(page, "#screen")).includes("MariBank \u00b7 Credit card") && await page.locator(".row small:has-text('you owe'), .tile span").count() === 0 && !(await text(page, "#screen")).includes("in it") && !(await text(page, "#screen")).includes("owed on cards") && await page.locator('.netcard[aria-label^="Free"]').count() === 1 && await page.locator(".swipe .swcard").count() >= 2, "the Cards screen shows the net on top, then a card for each account and credit card, with pictures and no little sentences");
+// Cards: every amount is hidden behind five dots until the eye is tapped, and hidden again on each visit
+await page.click('#nav button:has-text("Log")');
+await menuGo(page, "Cards", { keepHidden: true });
+{
+  const hid = await text(page, "#screen");
+  check(hid.includes("\u20b1\u2022\u2022\u2022\u2022\u2022") && !/\u20b1\s?\d/.test(hid) && await page.locator('button[data-action="cards-eye"][aria-pressed="false"]').count() === 1, "Cards opens with every amount hidden behind five dots, and an eye to show them");
+  check((await page.locator(".netcard .cover span").first().getAttribute("style")).includes("width:0"), "the bar that would show the proportion is empty while hidden");
+  await page.click('button[data-action="cards-eye"]');
+  const shownText = await text(page, "#screen");
+  check(/\u20b1\s?\d/.test(shownText) && !shownText.includes("\u2022\u2022\u2022"), "the eye shows the amounts");
+  await page.click('#nav button:has-text("Log")'); await menuGo(page, "Cards", { keepHidden: true });
+  check((await text(page, "#screen")).includes("\u20b1\u2022\u2022\u2022\u2022\u2022"), "and they are hidden again the next time Cards is opened");
+}
 await page.click('#nav button:has-text("Log")');
 await page.click('#nav button:has-text("Verify")');
 check(await page.waitForSelector("img.shot[data-photo]:not([hidden])", { timeout: 4000 }).then(() => true, () => false) && (await text(page, "#screen")).includes("Essentials"), "Verify shows the photo beside what was read");
