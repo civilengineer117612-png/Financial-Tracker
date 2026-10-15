@@ -1278,7 +1278,7 @@ function viewSetup() {
   const used = new Set(S().entries.map((e) => e.account_id));
   const reserveExists = S().accounts.some((a) => a.reserve_for);
   const hosts = activeAccounts().filter((a) => a.class === "asset" && !a.reserve_for);
-  const rows = cashFirst(S().accounts.filter((a) => !a.archived)).map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? (M.isPocket(a) ? "Savings pocket" : "Bank, wallet or cash") : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"} · <button class="link" data-action="edit-last4" data-id="${esc(a.id)}">${a.last4 ? "ends in " + esc(a.last4) : "add last 4 digits"}</button>${a.class === "asset" && !a.reserve_for ? ` \u00b7 <button class="link" data-action="toggle-pocket" data-id="${esc(a.id)}">${M.isPocket(a) ? "not a pocket" : "make it a savings pocket"}</button>` : ""}</small></div></div>
+  const rows = cashFirst(S().accounts.filter((a) => !a.archived)).map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? (M.isPocket(a) ? "Savings pocket" : "Bank, wallet or cash") : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"} · <button class="link" data-action="edit-last4" data-id="${esc(a.id)}">${a.last4 ? "ends in " + esc(a.last4) : "add last 4 digits"}</button></small></div></div>
       <div class="amt">${peso(M.naturalBalance(a, M.countedEntries(S())))}${(() => { const cv = reserveCovers().find((x) => x.reserve_id === a.id); return cv ? `<div class="coverwrap">${coverBar(cv.share, coverLabel(cv))}</div>` : ""; })()}${!used.has(a.id) ? `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`
         : M.naturalBalance(a, M.countedEntries(S())) === 0 ? `<br><button class="link" data-action="hide-account" data-id="${esc(a.id)}">Hide</button>` : ""}</div></div>`).join("");
   const hiddenAccts = S().accounts.filter((a) => a.archived);
@@ -1462,11 +1462,11 @@ function pocketsUnder(list, acct, open = {}) {
 function viewCards() {
   const p = period(), [from, to] = periodBounds(p), o = M.accountsOverview(S(), { from, to });
   const acct = (id) => S().accounts.find((a) => a.id === id);
+  const byCash = [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))), grouped = pocketsUnder(byCash, acct, ui.pocketsOpen ?? {});
+  const ptoggle = (id) => { const n = grouped.counts.get(id), open = !!ui.pocketsOpen?.[id]; return n ? `<button class="link small" data-action="toggle-pockets" data-id="${esc(id)}" aria-expanded="${open}">${n} savings ${n === 1 ? "pocket" : "pockets"} ${open ? "\u25B4" : "\u25BE"}</button>` : ""; };
   // Pictures and signs say what words used to: a small arrow up is spent, an arrow down is paid in; a card's debt has a minus.
   const row = (a, main, small) => `<div class="row${M.isPocket(a) ? " pocket" : ""}"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}${M.isPocket(a) ? "<small>Savings pocket</small>" : ""}${small ? `<small>${small}</small>` : ""}${ptoggle(a.id)}</div></div><div class="amt">${main}</div></div>`;
   const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), `${c.owe > 0 ? "\u2212" : ""}${peso(c.owe)}<span class="sr"> you owe</span>`, [c.spent > 0 ? flow(true, c.spent) : "", c.paid > 0 ? flow(false, c.paid) : ""].filter(Boolean).join(" ")) ).join("") : `<p class="note">No credit cards yet. In Setup, add an account and choose "Credit card".</p>`;
-  const byCash = [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))), grouped = pocketsUnder(byCash, acct, ui.pocketsOpen ?? {});
-  const ptoggle = (id) => { const n = grouped.counts.get(id), open = !!ui.pocketsOpen?.[id]; return n ? `<button class="link small" data-action="toggle-pockets" data-id="${esc(id)}" aria-expanded="${open}">${n} savings ${n === 1 ? "pocket" : "pockets"} ${open ? "\u25B4" : "\u25BE"}</button>` : ""; };
   const money = o.money.length ? grouped.rows.map((m) => row(acct(m.account_id), peso(m.balance), m.spent > 0 ? flow(true, m.spent) : "")).join("") : `<p class="note">No accounts yet.</p>`;
   const net = M.netPosition(o.held, o.owe), covers = reserveCovers();
   const sorted = grouped.rows;
@@ -2586,6 +2586,7 @@ function renderSheet() {
       <p class="note">Only the last 4 digits, never the whole number. They tell your own accounts apart on payment screenshots. Leave it empty to remove them.</p>
       <label for="l4">Last 4 digits</label><input id="l4" data-field="last4" inputmode="numeric" maxlength="4" autocomplete="off" value="${esc(ui.form.last4 ?? "")}">
       <p id="l4-msg" class="note" role="alert"></p>
+      ${a.class === "asset" && !a.reserve_for ? `<div class="row pocketrow"><div><b>Savings pocket</b><small>Kept out of \u201CPaid from\u201D. Still counted in what you have.</small></div><div><button class="chip" id="l4-pocket" data-action="toggle-pocket-sheet" aria-pressed="${ui.form.pocket ? "true" : "false"}">${ui.form.pocket ? "On" : "Off"}</button></div></div>` : ""}
       <p><button class="primary" id="f-save" data-action="save-last4" style="margin-top:6px">Save</button></p>`;
   } else if (sh.type === "photo") {
     body = `<h3>Photo</h3><img class="shotfull" data-photo="${esc(sh.id)}" alt="The photo this entry was read from" hidden>`;
@@ -3352,11 +3353,13 @@ async function onClick(el) {
       break;
     }
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
-    case "edit-last4": ui.sheet = { type: "last4", id }; ui.form = { last4: S().accounts.find((a) => a.id === id)?.last4 ?? "" }; renderSheet(); break;
+    case "edit-last4": ui.sheet = { type: "last4", id }; ui.form = { last4: S().accounts.find((a) => a.id === id)?.last4 ?? "", pocket: M.isPocket(S().accounts.find((a) => a.id === id)) }; renderSheet(); break;
     case "save-last4": {
       const r = M.setAccountLast4(S(), ui.sheet.id, ui.form.last4);
       if (!r.ok) { const m = $("l4-msg"); if (m) m.textContent = r.violations[0].message; break; }
-      ui.sheet = null; renderSheet(); await commit(r.state); break;
+      const was = M.isPocket(S().accounts.find((a) => a.id === ui.sheet.id)), pk = ui.form.pocket !== was ? M.setAccountPocket(r.state, ui.sheet.id, !!ui.form.pocket) : null;   // the pocket switch is saved with the digits
+      if (pk && !pk.ok) { const m = $("l4-msg"); if (m) m.textContent = pk.violations[0].message; break; }
+      ui.sheet = null; renderSheet(); await commit(pk ? pk.state : r.state); break;
     }
     case "save-icon": await saveIcon(); break;
     case "clear-icon": {
@@ -3772,12 +3775,7 @@ async function onClick(el) {
     case "add-account": await addAccount(); break;
     case "toggle-pockets": ui.pocketsOpen = { ...(ui.pocketsOpen ?? {}), [id]: !ui.pocketsOpen?.[id] }; renderScreen(); break;
     case "toggle-pocket-form": ui.accountForm.pocket = !ui.accountForm.pocket; renderScreen(); break;
-    case "toggle-pocket": {
-      const a = S().accounts.find((x) => x.id === id), r = M.setAccountPocket(S(), id, !M.isPocket(a));
-      if (!r.ok) { showToast(r.violations[0].message); break; }
-      if (await commit(r.state)) showToast(M.isPocket(a) ? a.name + " is a normal account again" : a.name + " is now a savings pocket");
-      break;
-    }
+    case "toggle-pocket-sheet": ui.form.pocket = !ui.form.pocket; renderSheet(); break;
     case "shrink-now": { const b = el; b.disabled = true; await shrinkOldPictures({ manual: true }); break; }
     case "warm-reader": {
       const btn = $("warm-btn"), note = $("about-reader"); if (btn) btn.disabled = true;

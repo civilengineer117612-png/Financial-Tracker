@@ -1257,6 +1257,15 @@ await page.click('button:has-text("Delete")'); await page.click('button:has-text
   const [a1, a2] = mine;
   await menuGo(page, "Setup");
   const l4 = async (acct, digits) => { await page.click(`button[data-action="edit-last4"][data-id="${acct.id}"]`); await page.fill("#l4", digits); await page.click("#f-save"); };
+  // the savings pocket switch lives in the same window as the digits: turned on and saved it marks the account, and it can be turned off again
+  await page.click(`button[data-action="edit-last4"][data-id="${a1.id}"]`);
+  check(await page.locator("#l4-pocket").getAttribute("aria-pressed") === "false", "an ordinary account starts with the Savings pocket switch off");
+  await page.click("#l4-pocket"); await page.fill("#l4", ""); await page.click("#f-save"); await page.waitForTimeout(300);
+  check(JSON.parse((await stored(page)).local).state.accounts.find((a) => a.id === a1.id).role === "pocket", "turned on and saved, the account becomes a savings pocket");
+  await page.click(`button[data-action="edit-last4"][data-id="${a1.id}"]`);
+  check(await page.locator("#l4-pocket").getAttribute("aria-pressed") === "true", "and the switch shows it is on");
+  await page.click("#l4-pocket"); await page.click("#f-save"); await page.waitForTimeout(300);
+  check(JSON.parse((await stored(page)).local).state.accounts.find((a) => a.id === a1.id).role === "", "turned off again it is an ordinary account");
   await page.click(`button[data-action="edit-last4"][data-id="${a1.id}"]`); await page.click("#l4"); await page.keyboard.type("12345");
   check(await page.inputValue("#l4") === "1234" && await page.getAttribute("#l4", "maxlength") === "4", "the box takes four digits and no more");
   await page.fill("#l4", "12a4"); await page.click("#f-save");
@@ -2637,7 +2646,7 @@ console.log("Space, pictures and the photo reader");
   check(await seen(page, "#about-storage", "of the phone's space"), "and the space the app uses is shown");
   await page.click("#warm-btn");
   check(await seen(page, "#toast", "The photo reader is on this phone", 120000), "the button downloads the reader");
-  check(await seen(page, "#about-reader", "The photo reader is on this phone.") && await page.locator("#warm-btn").isHidden(), "and the line changes, with no button left");
+  check(await seen(page, "#about-reader", "The photo reader is on this phone.", 20000) && await page.locator("#warm-btn").waitFor({ state: "hidden", timeout: 20000 }).then(() => true, () => false), "and the line changes, with no button left");   // waits for both (the line and the hidden button change a tick apart on a slow runner)
   await menuGo(page, "Weekly review");
   check((await text(page, "#screen")).includes("One reminder") && (await text(page, "#screen")).includes("2 pictures are kept on this phone only"), "a due backup reminder at the Weekly review names the pictures");
   check((await text(page, "#screen")).includes("Your pictures have not been backed up yet."), "and says the pictures have never been backed up");

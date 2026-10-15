@@ -52,7 +52,7 @@ test("the bar: ink on the track colour, never red, with words only for a screen 
 });
 
 test("a savings pocket is switched on in the add form and in Setup, kept out of Paid from, folded on Cards, and found by its digits on a statement", () => {
-  assert.match(app, /data-action="toggle-pocket-form"/); assert.match(app, /data-action="toggle-pocket" data-id=/); assert.match(app, /data-action="toggle-pockets" data-id=/);
+  assert.match(app, /data-action="toggle-pocket-form"/); assert.match(app, /data-action="toggle-pocket-sheet"/, "the switch lives in the last-4 window, not as a second link in the Setup row"); assert.match(app, /data-action="toggle-pockets" data-id=/);
   assert.match(app, /pocket: f\.kind === "asset" && f\.pocket && !f\.covers/, "a card's reserve is never a pocket");
   assert.match(app, /accountPicker\(accountsFor\(null, true\), [^,]+, "pick-from"/, "Move money still offers pockets");
   assert.match(app, /return activeAccounts\(\)\.filter\(\(a\) => pockets \|\| !M\.isPocket\(a\)\)/, "Paid from leaves them out");
