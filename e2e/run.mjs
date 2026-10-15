@@ -1257,6 +1257,15 @@ await page.click('button:has-text("Delete")'); await page.click('button:has-text
   const [a1, a2] = mine;
   await menuGo(page, "Setup");
   const l4 = async (acct, digits) => { await page.click(`button[data-action="edit-last4"][data-id="${acct.id}"]`); await page.fill("#l4", digits); await page.click("#f-save"); };
+  // the savings pocket switch lives in the same window as the digits: turned on and saved it marks the account, and it can be turned off again
+  await page.click(`button[data-action="edit-last4"][data-id="${a1.id}"]`);
+  check(await page.locator("#l4-pocket").getAttribute("aria-pressed") === "false", "an ordinary account starts with the Savings pocket switch off");
+  await page.click("#l4-pocket"); await page.fill("#l4", ""); await page.click("#f-save"); await page.waitForTimeout(300);
+  check(JSON.parse((await stored(page)).local).state.accounts.find((a) => a.id === a1.id).role === "pocket", "turned on and saved, the account becomes a savings pocket");
+  await page.click(`button[data-action="edit-last4"][data-id="${a1.id}"]`);
+  check(await page.locator("#l4-pocket").getAttribute("aria-pressed") === "true", "and the switch shows it is on");
+  await page.click("#l4-pocket"); await page.click("#f-save"); await page.waitForTimeout(300);
+  check(JSON.parse((await stored(page)).local).state.accounts.find((a) => a.id === a1.id).role === "", "turned off again it is an ordinary account");
   await page.click(`button[data-action="edit-last4"][data-id="${a1.id}"]`); await page.click("#l4"); await page.keyboard.type("12345");
   check(await page.inputValue("#l4") === "1234" && await page.getAttribute("#l4", "maxlength") === "4", "the box takes four digits and no more");
   await page.fill("#l4", "12a4"); await page.click("#f-save");
@@ -2637,7 +2646,7 @@ console.log("Space, pictures and the photo reader");
   check(await seen(page, "#about-storage", "of the phone's space"), "and the space the app uses is shown");
   await page.click("#warm-btn");
   check(await seen(page, "#toast", "The photo reader is on this phone", 120000), "the button downloads the reader");
-  check(await seen(page, "#about-reader", "The photo reader is on this phone.") && await page.locator("#warm-btn").isHidden(), "and the line changes, with no button left");
+  check(await seen(page, "#about-reader", "The photo reader is on this phone.", 20000) && await page.locator("#warm-btn").waitFor({ state: "hidden", timeout: 20000 }).then(() => true, () => false), "and the line changes, with no button left");   // waits for both (the line and the hidden button change a tick apart on a slow runner)
   await menuGo(page, "Weekly review");
   check((await text(page, "#screen")).includes("One reminder") && (await text(page, "#screen")).includes("2 pictures are kept on this phone only"), "a due backup reminder at the Weekly review names the pictures");
   check((await text(page, "#screen")).includes("Your pictures have not been backed up yet."), "and says the pictures have never been backed up");
@@ -3325,6 +3334,28 @@ console.log("Welcome card, category editing, required marks");
   await importer("sample-pocket.pdf");
   check(await seen(page, "#sheet", "Go Save pocket ending 3002"), "a pocket statement is shown as a Go Save pocket with its last four digits");
   check((await text(page, "#stm-pocket")).includes("not your main") && await page.locator("#f-save").isDisabled() && !(await text(page, "#sheet")).includes("chosen for you"), "it says it is not the main account, and Add waits for the account to be chosen");
+  await ctx.close();
+  // savings pockets: never under Paid from; offered for Move money; a pocket statement goes to the pocket with its digits; on Cards each sits under its bank's main account, shown only when opened
+  const pkAcc = (id, name, last4) => ({ id, name, class: "asset", role: "pocket", hidden_by_default: false, archived: false, opening_balance: 450000, opening_date: "2026-10-02", bank: "gotyme", last4 });
+  const mainG = { id: "gm", name: "GoTyme", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 120000, opening_date: "2026-10-02", bank: "gotyme" };
+  const pocketSeed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [mainG, pkAcc("pe", "GoTyme \u00b7 Emergency", "3002"), pkAcc("pt", "GoTyme \u00b7 Travel", "4004")] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: pocketSeed }));
+  await page.click('#nav button:has-text("Log")'); await page.click('button[data-action="open-other"]'); await page.waitForSelector("#sheet #f-amount");
+  const paidList = await page.locator("#sheet").textContent();
+  check(!paidList.includes("Emergency") && !paidList.includes("Travel") && paidList.includes("GoTyme"), "a savings pocket is never offered under Paid from");
+  await ctx.close();
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: pocketSeed }));
+  await menuGo(page, "Cards");
+  const closedCards = await page.locator("#screen").textContent();
+  check(!closedCards.includes("Emergency") && /2 savings pockets/.test(closedCards), "on Cards the pockets are folded under the bank's main account: only \"2 savings pockets\" shows");
+  await page.locator('#screen [data-action="toggle-pockets"]').first().click();
+  const openCards = await page.locator("#screen").textContent();
+  check(openCards.includes("Emergency") && openCards.includes("Travel") && openCards.includes("Savings pocket"), "a tap opens them, marked as savings pockets");
+  await page.click('button[data-action="open-move"]');
+  check(await page.locator('#sheet [data-action="pick-to"][data-id="pe"]').count() === 1 && await page.locator('#sheet [data-action="pick-from"][data-id="pt"]').count() === 1, "Move money offers the pockets, From and To");
+  await ctx.close();
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: pocketSeed })); await page.click('button[data-action="open-scan-pick"]'); await page.setInputFiles("input[data-import]", FX("sample-pocket.pdf"));
+  check(await seen(page, "#sheet", "Go Save pocket ending 3002") && (await text(page, "#sheet")).includes("chosen for you") && (await page.locator('#sheet [data-action="pick-acct"][data-id="pe"][aria-pressed="true"]').count()) === 1, "a pocket statement is filed under the pocket whose last four digits it names, chosen for you");
   await ctx.close();
   // a balance that does not follow: the failing lines can be listed, with what the bank printed and what the line before leads to
   await importer("sample-badlines.pdf");

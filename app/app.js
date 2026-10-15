@@ -26,7 +26,7 @@ let device = { status: "OK", message: "", allowEntry: true };
 let boot = { status: "NONE", repairTo: null };
 const ui = {
   tab: "log", menu: false, sheet: null, form: {}, error: null, confirmDelete: null, confirmRemove: null, setupError: null,
-  accountForm: { name: "", bank: null, sub: "", kind: "asset", opening: "", covers: "" },
+  accountForm: { name: "", bank: null, sub: "", kind: "asset", opening: "", covers: "", pocket: false },
   period: null, periodDraft: null, view: "category", shape: "bars", asList: false, sel: null,   // the Money tab
 };
 let toastTimer = null;
@@ -190,12 +190,13 @@ const withIcon = (a, size) => iconOf(a, size) + `<span>${esc(a.name)}</span>`;
 // Accounts for a payment, the one you used last first (for this preset, then in general).
 const isCash = (a) => a.bank === "cash" || /^cash\b/i.test(a.name);
 const cashFirst = (list) => [...list.filter(isCash), ...list.filter((a) => !isCash(a))];   // Cash sits at the top of every account list
-function accountsFor(presetId) {
+function accountsFor(presetId, pockets = false) {
   const { last_account_by_preset: byPreset = {}, last_account_id: last } = ledger.settings;
   const rank = (a) => (a.id === byPreset[presetId] ? 0 : a.id === last ? 1 : 2);
   // A reserve account can be paid from (a QR payment from the debit account that backs a card is real spending); when that leaves it short of what the
   // card owes, the usual reserve warning says so. It never blocks.
-  return activeAccounts().sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  // A savings pocket is never offered under "Paid from"; Move money (From, To) and statements ask for it with `pockets`.
+  return activeAccounts().filter((a) => pockets || !M.isPocket(a)).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
 // A transfer's lines in Verify and in its detail: where from, where to, its fee, and the foreign amount a paper showed.
@@ -763,7 +764,8 @@ async function importFile(file) {
     if (!items.length && !statement) throw new Error("No dated spending was found. A notes list needs a date line (02/10/2026) above lines like \"Lunch - 100\".");
     // a statement goes to the account linked to its bank when there is one (chosen for you; you can change it)
     // (only when exactly ONE account is linked to that bank; a statement is never filed under Cash by default: the owner chooses)
-    const linked = statement?.bankId ? activeAccounts().filter((a) => a.class === "asset" && a.bank === statement.bankId) : [], auto = linked.length === 1 && !statement?.pocket ? linked[0].id : null;
+    // A pocket statement goes to the pocket whose last four digits it names; any other statement to the one ordinary account linked to its bank (pockets of that bank do not count).
+    const linked = statement?.pocket ? activeAccounts().filter((a) => M.isPocket(a) && a.last4 === statement.pocket.last4) : statement?.bankId ? activeAccounts().filter((a) => a.class === "asset" && !M.isPocket(a) && a.bank === statement.bankId) : [], auto = linked.length === 1 ? linked[0].id : null;
     ui.form = { items, notRead, statement, choice: {}, looked: false, autoAccount: auto, linkedCount: linked.length, order: statement ? "dmy" : M.dateOrder(items.map((x) => x.dateRaw), today0), account_id: auto ?? (statement ? null : cashFirst(activeAccounts())[0]?.id ?? null) };
   } catch (err) { if (err instanceof PdfCancelled) { ui.sheet = null; renderSheet(); return; } ui.form = { error: String(err?.message ?? err) }; }
   if (ui.sheet?.type === "import") renderSheet();
@@ -1276,7 +1278,7 @@ function viewSetup() {
   const used = new Set(S().entries.map((e) => e.account_id));
   const reserveExists = S().accounts.some((a) => a.reserve_for);
   const hosts = activeAccounts().filter((a) => a.class === "asset" && !a.reserve_for);
-  const rows = cashFirst(S().accounts.filter((a) => !a.archived)).map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? "Bank, wallet or cash" : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"} · <button class="link" data-action="edit-last4" data-id="${esc(a.id)}">${a.last4 ? "ends in " + esc(a.last4) : "add last 4 digits"}</button></small></div></div>
+  const rows = cashFirst(S().accounts.filter((a) => !a.archived)).map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? (M.isPocket(a) ? "Savings pocket" : "Bank, wallet or cash") : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"} · <button class="link" data-action="edit-last4" data-id="${esc(a.id)}">${a.last4 ? "ends in " + esc(a.last4) : "add last 4 digits"}</button></small></div></div>
       <div class="amt">${peso(M.naturalBalance(a, M.countedEntries(S())))}${(() => { const cv = reserveCovers().find((x) => x.reserve_id === a.id); return cv ? `<div class="coverwrap">${coverBar(cv.share, coverLabel(cv))}</div>` : ""; })()}${!used.has(a.id) ? `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`
         : M.naturalBalance(a, M.countedEntries(S())) === 0 ? `<br><button class="link" data-action="hide-account" data-id="${esc(a.id)}">Hide</button>` : ""}</div></div>`).join("");
   const hiddenAccts = S().accounts.filter((a) => a.archived);
@@ -1294,6 +1296,7 @@ function viewSetup() {
     <label for="a-kind">Kind of account</label><select id="a-kind" data-field="kind"><option value="asset"${f.kind === "asset" ? " selected" : ""}>Bank, wallet or cash (money I have)</option><option value="liability"${f.kind === "liability" ? " selected" : ""}>Credit card (money I owe)</option></select>
     <label for="a-open">${f.kind === "asset" ? "How much is in it today" : "How much you owe on it today"} (₱)</label><input id="a-open" data-field="opening" inputmode="decimal" value="${esc(f.opening)}" placeholder="0.00" autocomplete="off">
     <p class="note" id="a-open-note">Spending logged with an earlier date does not change this amount. From today on, it does.</p>
+    ${f.kind === "asset" ? `<div class="row pocketrow"><div><b>Savings pocket</b><small>Kept out of \u201CPaid from\u201D. Still counted in what you have.</small></div><div><button class="chip" id="a-pocket" data-action="toggle-pocket-form" aria-pressed="${f.pocket ? "true" : "false"}">${f.pocket ? "On" : "Off"}</button></div></div>` : ""}
     ${f.kind === "asset" && cards.length ? `<label for="a-covers">This account is a reserve for a card (optional)</label><select id="a-covers" data-field="covers"><option value="">No</option>${cards.map((c) => `<option value="${esc(c.id)}"${f.covers === c.id ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select>` : ""}
     ${ui.setupError ? `<p id="a-error" role="alert"><b>${esc(ui.setupError)}</b></p>` : ""}
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>${S().accounts.length ? `<p class="center"><button class="link" data-action="toggle-add-account">Cancel</button></p>` : ""}`;
@@ -1438,18 +1441,35 @@ const coverLabel = (c) => `${peso(c.kept)} kept for ${accountName(c.card_id)}, $
 const reserveCovers = () => M.reserveCover(S().accounts, M.countedEntries(S()));
 // Under a "Paid from" row of chips: one thin bar for each reserve account, with its picture, so the owed and free parts are seen before choosing.
 const reserveStrip = () => reserveCovers().map((c) => { const a = S().accounts.find((x) => x.id === c.reserve_id); return a && !a.archived ? `<div class="coverrow">${iconOf(a, 20)}${coverBar(c.share, a.name + ": " + coverLabel(c))}</div>` : ""; }).join("");
-const paidChips = (selected) => accountPicker(accountsFor(null), selected) + reserveStrip();
+// `pockets`: also offer the savings pockets (a statement can be from one). An account already chosen is always listed, even a pocket, so editing never loses it.
+const paidChips = (selected, pockets = false) => { const list = accountsFor(null, pockets), cur = selected && !list.some((a) => a.id === selected) ? S().accounts.find((a) => a.id === selected) : null; return accountPicker(cur ? [...list, cur] : list, selected) + reserveStrip(); };
 // The Cards screen (menu): every account in one place. Credit cards show what you owe and what was spent on and paid toward each in the
 // period; debit cards, savings, wallets and cash show their balance and what was spent from them. A card is just one of the accounts.
+// Savings pockets sit right under the main account of their own bank (the first ordinary account of that bank) and are SHOWN ONLY when that account is opened (a tap on
+// "N savings pockets"); they stay counted in the totals either way. A pocket whose bank has no ordinary account is always shown, last. `list` is the accounts' overview rows
+// (cash first already). Returns {rows, counts: main account id -> its number of pockets}.
+function pocketsUnder(list, acct, open = {}) {
+  const pockets = list.filter((m) => M.isPocket(acct(m.account_id))), rows = [], used = new Set(), counts = new Map();
+  for (const m of list) {
+    if (M.isPocket(acct(m.account_id))) continue;
+    rows.push(m);
+    const bank = acct(m.account_id)?.bank, mine = bank ? pockets.filter((p) => !used.has(p.account_id) && acct(p.account_id).bank === bank) : [];
+    for (const p of mine) used.add(p.account_id);
+    if (mine.length) { counts.set(m.account_id, mine.length); if (open[m.account_id]) rows.push(...mine); }
+  }
+  return { rows: [...rows, ...pockets.filter((p) => !used.has(p.account_id))], counts };
+}
 function viewCards() {
   const p = period(), [from, to] = periodBounds(p), o = M.accountsOverview(S(), { from, to });
   const acct = (id) => S().accounts.find((a) => a.id === id);
+  const byCash = [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))), grouped = pocketsUnder(byCash, acct, ui.pocketsOpen ?? {});
+  const ptoggle = (id) => { const n = grouped.counts.get(id), open = !!ui.pocketsOpen?.[id]; return n ? `<button class="link small" data-action="toggle-pockets" data-id="${esc(id)}" aria-expanded="${open}">${n} savings ${n === 1 ? "pocket" : "pockets"} ${open ? "\u25B4" : "\u25BE"}</button>` : ""; };
   // Pictures and signs say what words used to: a small arrow up is spent, an arrow down is paid in; a card's debt has a minus.
-  const row = (a, main, small) => `<div class="row"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}${small ? `<small>${small}</small>` : ""}</div></div><div class="amt">${main}</div></div>`;
+  const row = (a, main, small) => `<div class="row${M.isPocket(a) ? " pocket" : ""}"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}${M.isPocket(a) ? "<small>Savings pocket</small>" : ""}${small ? `<small>${small}</small>` : ""}${ptoggle(a.id)}</div></div><div class="amt">${main}</div></div>`;
   const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), `${c.owe > 0 ? "\u2212" : ""}${peso(c.owe)}<span class="sr"> you owe</span>`, [c.spent > 0 ? flow(true, c.spent) : "", c.paid > 0 ? flow(false, c.paid) : ""].filter(Boolean).join(" ")) ).join("") : `<p class="note">No credit cards yet. In Setup, add an account and choose "Credit card".</p>`;
-  const money = o.money.length ? [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))).map((m) => row(acct(m.account_id), peso(m.balance), m.spent > 0 ? flow(true, m.spent) : "")).join("") : `<p class="note">No accounts yet.</p>`;
+  const money = o.money.length ? grouped.rows.map((m) => row(acct(m.account_id), peso(m.balance), m.spent > 0 ? flow(true, m.spent) : "")).join("") : `<p class="note">No accounts yet.</p>`;
   const net = M.netPosition(o.held, o.owe), covers = reserveCovers();
-  const sorted = [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id))));
+  const sorted = grouped.rows;
   // The swipe cards: a debit account that backs a card sits right before that card, then the other accounts.
   const seq = [], used = new Set();
   for (const c of o.cards) { for (const m of sorted) if (acct(m.account_id)?.reserve_for === c.account_id) { seq.push({ m }); used.add(m.account_id); } seq.push({ c }); }
@@ -1459,7 +1479,7 @@ function viewCards() {
     const amount = it.c ? `${peso(it.c.owe)}<span class="sr"> you owe</span>` : peso(it.m.balance);
     const small = it.c ? [it.c.spent > 0 ? flow(true, it.c.spent) : "", it.c.paid > 0 ? flow(false, it.c.paid) : ""].filter(Boolean).join(" ") : (it.m.spent > 0 ? flow(true, it.m.spent) : "");
     return `<div class="swcard"><div class="swtop">${iconOf(a, 40)}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${it.c ? ICONS.cards : ICONS.buffer}</svg></div>
-      <div class="swname">${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}</div><div class="swamt">${amount}</div>${cv ? coverBar(cv.share, coverLabel(cv)) : small ? `<div class="swsmall">${small}</div>` : ""}</div>`;
+      <div class="swname">${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}</div><div class="swamt">${amount}</div>${cv ? coverBar(cv.share, coverLabel(cv)) : small ? `<div class="swsmall">${small}</div>` : M.isPocket(a) ? `<div class="swsmall">Savings pocket</div>` : ""}${ptoggle(id)}</div>`;
   };
   const netCard = `<div class="netcard" role="group" aria-label="Free ${esc(peso(net.free))}: in your accounts ${esc(peso(o.held))}, owed on cards ${esc(peso(o.owe))}"><div class="netbig">${net.free < 0 ? "\u2212" : ""}${peso(Math.abs(net.free))}</div>${coverBar(net.share, "Owed on cards is " + Math.round(net.share * 100) + "% of what is in your accounts")}<div class="netsides"><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.buffer}</svg>${peso(o.held)}</span><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.cards}</svg>${peso(o.owe)}</span></div></div>`;
   const setAside = (() => { const w = M.setAsideForSpending(M.sinkingFunds(S(), ledger.settings, { month: M.monthOf(today()), asOf: today() })); return w > 0 ? `<p class="note" id="cards-setaside">${peso(w)} of this is set aside for planned spending, not savings.</p>` : ""; })();
@@ -2087,7 +2107,7 @@ function moveFields(f) {
   const ask = f.ask && f.own !== "yes" ? `<p class="note"><b>Is the other end one of your accounts?</b> The paper shows \u201C${esc(f.ask.label)}\u201D. I ask once per name.</p>
       <div class="chips"><button class="chip" data-action="own-yes" aria-pressed="false">Yes, it is mine</button><button class="chip" data-action="own-no" aria-pressed="false">No, it is someone else</button></div>` : f.ask ? `<p class="note">Remembered when you save. Choose which of your accounts it is.</p>` : "";
   const trips = f.foreign && S().tags.length ? `<label>Tag a trip (optional)</label><div class="chips">${S().tags.map((t) => `<button class="chip" data-action="pick-trip" data-id="${esc(t.id)}" aria-pressed="${f.trip_id === t.id}">${esc(t.name)}</button>`).join("")}</div>` : "";
-  return `${ask}<label>From</label>${accountPicker(accountsFor(null), f.from_id, "pick-from", "from", "Choose an account")}<label>To</label>${accountPicker(accountsFor(null), f.to_id, "pick-to", "to", "Choose an account")}
+  return `${ask}<label>From</label>${accountPicker(accountsFor(null, true), f.from_id, "pick-from", "from", "Choose an account")}<label>To</label>${accountPicker(accountsFor(null, true), f.to_id, "pick-to", "to", "Choose an account")}
       <label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(f.fee ?? "")}" autocomplete="off">
       ${f.foreign ? `<p class="note">The paper shows ${esc(f.foreign.currency)} ${(f.foreign.amount / 100).toFixed(2)}. Type the peso amount your bank took; you can fix it again in Verify.</p>${rateHint(f.foreign)}${trips}` : ""}`;
 }
@@ -2200,8 +2220,8 @@ function renderSheet() {
   } else if (sh.type === "move") {
     body = `<h3>Move money</h3>
       <label for="f-amount">Amount (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
-      <label>From</label>${accountPicker(accountsFor(null), ui.form.from_id, "pick-from", "from", "Choose an account")}
-      <label>To</label>${accountPicker(accountsFor(null), ui.form.to_id, "pick-to", "to", "Choose an account")}
+      <label>From</label>${accountPicker(accountsFor(null, true), ui.form.from_id, "pick-from", "from", "Choose an account")}
+      <label>To</label>${accountPicker(accountsFor(null, true), ui.form.to_id, "pick-to", "to", "Choose an account")}
       <label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">
       ${REQNOTE}
       <p class="note" id="scan-why" role="status"></p>
@@ -2215,7 +2235,7 @@ function renderSheet() {
       <label for="f-payee">Name (optional)</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
       ${t.schedule_id ? `<label for="f-memo">Note (optional, like "covers Sept to Oct")</label><input id="f-memo" data-field="memo" value="${esc(ui.form.memo ?? "")}" autocomplete="off">` : ""}
       ${d.editable ? `<label>Category${REQ}</label>${categoryPicker(pickCategoriesWith(ui.form.category_id), ui.form.category_id)}<label>Paid from${REQ}</label>${paidChips(ui.form.account_id)}` : ""}
-      ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${accountPicker(accountsFor(null), ui.form.from_id, "pick-from", "from", "Choose an account")}<label>To</label>${accountPicker(accountsFor(null), ui.form.to_id, "pick-to", "to", "Choose an account")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
+      ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${accountPicker(accountsFor(null, true), ui.form.from_id, "pick-from", "from", "Choose an account")}<label>To</label>${accountPicker(accountsFor(null, true), ui.form.to_id, "pick-to", "to", "Choose an account")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
   }
@@ -2496,7 +2516,7 @@ function renderSheet() {
           return `<div class="mrow mimp ask"><span class="mn">${esc(g.name)}<small>${n} ${n === 1 ? "line" : "lines"} \u00b7 ${peso(g.total)}</small></span><span class="chips"><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="spending" aria-pressed="${all("spending")}">Spending</button><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="not" aria-pressed="${all("not")}">Not spending</button></span>
           ${n > 1 ? `<button class="link small" data-action="stm-show" data-id="${esc(g.key)}">${f.open?.[g.key] ? "Hide the lines" : `Show the ${n} lines`}</button>${f.open?.[g.key] ? `<div class="stmlines">${g.lines.map((x) => `<div class="mrow mline mimp"><span class="mn">${esc(yearDate(x.dateRaw))}</span><span class="mv">${peso(x.amount)}</span></div>`).join("")}</div>` : ""}` : `<small class="hiddennote">${esc(yearDate(g.lines[0].dateRaw))}</small>`}</div>`; }).join("")}` : ""}` : "";
       body = `<h3>Import old spending</h3>${stBlock}${st ? `<p><button class="chip wide" data-action="stm-keep" aria-pressed="${f.keep !== false}">Keep this statement to prove your months</button></p><p class="note small">It stays on this phone, in Setup, Statements.</p>` : ""}${orderLine}
-        ${f.statement?.pocket ? `<p class="note" id="stm-pocket"><b>This is a Go Save pocket, not your main ${esc(f.statement.bank ?? "bank")} account.</b> Choose the account that holds this pocket. If you have none for it, tap Cancel.</p>` : ""}<label>${f.statement ? "Which account is this statement from?" : "Paid from"}${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}${REQ}</label>${paidChips(f.account_id)}${REQNOTE}${f.statement && f.linkedCount > 1 && !f.account_id ? `<p class="note small">More than one of your accounts is linked to ${esc(f.statement.bank ?? "this bank")}. Choose the one this statement is from.</p>` : ""}
+        ${f.statement?.pocket ? `<p class="note" id="stm-pocket"><b>This is a Go Save pocket, not your main ${esc(f.statement.bank ?? "bank")} account.</b> Choose the savings pocket it is from. If you have none for it, add one in Setup first.</p>` : ""}<label>${f.statement ? "Which account is this statement from?" : "Paid from"}${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}${REQ}</label>${paidChips(f.account_id, !!f.statement)}${REQNOTE}${f.statement && f.linkedCount > 1 && !f.account_id ? `<p class="note small">More than one of your accounts is linked to ${esc(f.statement.bank ?? "this bank")}. Choose the one this statement is from.</p>` : ""}
         ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${waiting ? `. <b>${waiting} ${waiting === 1 ? "line needs" : "lines need"} your choice</b>: left out until you choose` : ""}${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
           <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline mimp"><span class="mn">${esc(longDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline mimp"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
           ${f.notRead.length ? `<details><summary>Not read (${f.notRead.length})</summary>${f.notRead.slice(0, 20).map((l) => `<p class="note">${esc(l)}</p>`).join("")}</details>` : ""}
@@ -2566,6 +2586,7 @@ function renderSheet() {
       <p class="note">Only the last 4 digits, never the whole number. They tell your own accounts apart on payment screenshots. Leave it empty to remove them.</p>
       <label for="l4">Last 4 digits</label><input id="l4" data-field="last4" inputmode="numeric" maxlength="4" autocomplete="off" value="${esc(ui.form.last4 ?? "")}">
       <p id="l4-msg" class="note" role="alert"></p>
+      ${a.class === "asset" && !a.reserve_for ? `<div class="row pocketrow"><div><b>Savings pocket</b><small>Kept out of \u201CPaid from\u201D. Still counted in what you have.</small></div><div><button class="chip" id="l4-pocket" data-action="toggle-pocket-sheet" aria-pressed="${ui.form.pocket ? "true" : "false"}">${ui.form.pocket ? "On" : "Off"}</button></div></div>` : ""}
       <p><button class="primary" id="f-save" data-action="save-last4" style="margin-top:6px">Save</button></p>`;
   } else if (sh.type === "photo") {
     body = `<h3>Photo</h3><img class="shotfull" data-photo="${esc(sh.id)}" alt="The photo this entry was read from" hidden>`;
@@ -3332,11 +3353,13 @@ async function onClick(el) {
       break;
     }
     case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
-    case "edit-last4": ui.sheet = { type: "last4", id }; ui.form = { last4: S().accounts.find((a) => a.id === id)?.last4 ?? "" }; renderSheet(); break;
+    case "edit-last4": ui.sheet = { type: "last4", id }; ui.form = { last4: S().accounts.find((a) => a.id === id)?.last4 ?? "", pocket: M.isPocket(S().accounts.find((a) => a.id === id)) }; renderSheet(); break;
     case "save-last4": {
       const r = M.setAccountLast4(S(), ui.sheet.id, ui.form.last4);
       if (!r.ok) { const m = $("l4-msg"); if (m) m.textContent = r.violations[0].message; break; }
-      ui.sheet = null; renderSheet(); await commit(r.state); break;
+      const was = M.isPocket(S().accounts.find((a) => a.id === ui.sheet.id)), pk = ui.form.pocket !== was ? M.setAccountPocket(r.state, ui.sheet.id, !!ui.form.pocket) : null;   // the pocket switch is saved with the digits
+      if (pk && !pk.ok) { const m = $("l4-msg"); if (m) m.textContent = pk.violations[0].message; break; }
+      ui.sheet = null; renderSheet(); await commit(pk ? pk.state : r.state); break;
     }
     case "save-icon": await saveIcon(); break;
     case "clear-icon": {
@@ -3750,6 +3773,9 @@ async function onClick(el) {
     case "setup-page": ui.setupPage = el.dataset.id || null; ui.setupAdd = false; renderScreen(); window.scrollTo(0, 0); break;
     case "toggle-add-account": ui.setupAdd = !ui.setupAdd; renderScreen(); break;
     case "add-account": await addAccount(); break;
+    case "toggle-pockets": ui.pocketsOpen = { ...(ui.pocketsOpen ?? {}), [id]: !ui.pocketsOpen?.[id] }; renderScreen(); break;
+    case "toggle-pocket-form": ui.accountForm.pocket = !ui.accountForm.pocket; renderScreen(); break;
+    case "toggle-pocket-sheet": ui.form.pocket = !ui.form.pocket; renderSheet(); break;
     case "shrink-now": { const b = el; b.disabled = true; await shrinkOldPictures({ manual: true }); break; }
     case "warm-reader": {
       const btn = $("warm-btn"), note = $("about-reader"); if (btn) btn.disabled = true;
@@ -3971,10 +3997,10 @@ async function addAccount() {
   const fail = (m) => { ui.setupError = m; renderScreen(); $("a-error")?.scrollIntoView({ block: "center" }); };
   const opening = f.opening.trim() === "" ? { ok: true, centavos: 0 } : M.parsePesos(f.opening);
   if (!opening.ok) return fail("Enter the balance like 1250 or 1250.50.");
-  const plan = M.planAccount(S(), { id: newId("acct"), bank: f.bank || undefined, sub: f.sub, name: f.name, kind: f.kind, opening: opening.centavos, date: today(), covers: f.covers });
+  const plan = M.planAccount(S(), { id: newId("acct"), bank: f.bank || undefined, sub: f.sub, name: f.name, kind: f.kind, opening: opening.centavos, date: today(), covers: f.covers, pocket: f.kind === "asset" && f.pocket && !f.covers });
   if (!plan.ok) return fail(plan.violations[0].message);
   ui.setupError = null; ui.setupAdd = false;
-  ui.accountForm = { name: "", bank: null, sub: "", kind: f.kind, opening: "", covers: "" };
+  ui.accountForm = { name: "", bank: null, sub: "", kind: f.kind, opening: "", covers: "", pocket: false };
   document.activeElement?.blur();   // close the keyboard so the result is visible
   const ok = await commit(plan.state);
   window.scrollTo(0, 0);
@@ -4107,7 +4133,7 @@ document.addEventListener("change", (e) => {
     return;
   }
   const field = e.target.dataset?.field;
-  if (field && !ui.sheet) { ui.accountForm[field] = e.target.value; if (field === "kind") { ui.accountForm.covers = ""; renderScreen(); } }
+  if (field && !ui.sheet) { ui.accountForm[field] = e.target.value; if (field === "kind") { ui.accountForm.covers = ""; if (e.target.value !== "asset") ui.accountForm.pocket = false; renderScreen(); } }
   if (e.target.dataset?.actionChange === "set-reserve-source") commit(S(), { ...ledger.settings, reserve_source_id: e.target.value || undefined });
 });
 

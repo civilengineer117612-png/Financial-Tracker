@@ -45,8 +45,16 @@ test("the bar: ink on the track colour, never red, with words only for a screen 
   assert.match(css, /\.cover \{ display: flex; height: 6px; border-radius: 3px; background: var\(--track\); overflow: hidden; flex: 1; \} \.cover span \{ display: block; background: var\(--ink\); \}/);
   assert.match(app, /const coverBar = \(share, label\) => `<span class="cover" role="img" aria-label="\$\{esc\(label\)\}">/);
   assert.match(app, /kept for \$\{accountName\(c\.card_id\)\}, \$\{peso\(c\.free\)\} free to spend/);
-  assert.match(app, /const paidChips = \(selected\) => accountPicker\(accountsFor\(null\), selected\) \+ reserveStrip\(\);/);
+  assert.match(app, /const paidChips = \(selected, pockets = false\) => \{[^\n]*accountPicker\(cur \? \[\.\.\.list, cur\] : list, selected\) \+ reserveStrip\(\); \};/);
   assert.ok((app.match(/paidChips\(/g) ?? []).length >= 8, "every Paid from, Arrived in and Take it from row carries the strip");
   assert.match(app, /return a && !a\.archived \? `<div class="coverrow">\$\{iconOf\(a, 20\)\}\$\{coverBar\(c\.share, a\.name \+ ": " \+ coverLabel\(c\)\)\}<\/div>` : "";/, "a picture and a bar for each reserve account, not for an archived one");
   assert.match(app, /<div class="coverwrap">\$\{coverBar\(cv\.share, coverLabel\(cv\)\)\}<\/div>/, "Setup's account row");
+});
+
+test("a savings pocket is switched on in the add form and in Setup, kept out of Paid from, folded on Cards, and found by its digits on a statement", () => {
+  assert.match(app, /data-action="toggle-pocket-form"/); assert.match(app, /data-action="toggle-pocket-sheet"/, "the switch lives in the last-4 window, not as a second link in the Setup row"); assert.match(app, /data-action="toggle-pockets" data-id=/);
+  assert.match(app, /pocket: f\.kind === "asset" && f\.pocket && !f\.covers/, "a card's reserve is never a pocket");
+  assert.match(app, /accountPicker\(accountsFor\(null, true\), [^,]+, "pick-from"/, "Move money still offers pockets");
+  assert.match(app, /return activeAccounts\(\)\.filter\(\(a\) => pockets \|\| !M\.isPocket\(a\)\)/, "Paid from leaves them out");
+  assert.match(app, /if \(open\[m\.account_id\]\) rows\.push\(\.\.\.mine\)/, "a bank's pockets show only when its main account is opened");
 });

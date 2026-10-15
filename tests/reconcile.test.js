@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { emptyState, validateState, selfCheck, recordFromParse, pairMoves, moveLogged, planPairedMove, matchPayslips } from "../src/model/index.js";
+import { emptyState, validateState, selfCheck, recordFromParse, isPocket, setAccountPocket, planAccount, classifyLine, pairMoves, moveLogged, planPairedMove, matchPayslips } from "../src/model/index.js";
 
 // Invented accounts, statements and amounts. GCash "gc" (last four 1111) and a bank "bk" (last four 2222).
 const TS = "2026-10-14T09:00:00.000+08:00";
@@ -169,4 +169,46 @@ test("starting an account from its statement sets its opening balance and date; 
   assert.equal(s.accounts.find((x) => x.id === "bk").opening_balance, 555, "the input is never changed");
   const bad = { ...keep(base(), "gt", { ...BANKM(), lines: BANKM().lines.map((l) => ({ ...l, balance: 1 })) }, 1), accounts: [acct("gt", "X")] };
   assert.equal(startFromStatement(bad, "gt").ok, false, "a first month that is not proved cannot be the start");
+});
+
+// ---- Go Save pockets: a pocket is an account (role "pocket") of the same bank as the main account; they name each other only as "Go Save account" / "Deposit account" ----
+const gt = (id, name, role = "") => ({ ...acct(id, name), bank: "gotyme", role });
+const pbase = (pockets = ["pk"]) => ({ ...base(), accounts: [gt("gm", "GoTyme"), ...pockets.map((p) => gt(p, "GoTyme · " + p, "pocket"))] });
+const MAIN = (date = "2023-03-05") => stmt([line(date, "Transfer to Go Save account", 90000, "out", 10000, "move")], 100000);
+const POCKET = (date = "2023-03-05", amount = 90000) => stmt([line(date, "Transfer from Deposit account", amount, "in", amount, "move")], 0);
+
+test("a pocket flag is kept in the spare role field; only an account that holds money can be one, never a card's reserve", () => {
+  const s = pbase();
+  assert.equal(isPocket(s.accounts[1]), true); assert.equal(isPocket(s.accounts[0]), false);
+  const on = setAccountPocket(s, "gm", true); assert.equal(isPocket(on.state.accounts[0]), true);
+  assert.equal(isPocket(setAccountPocket(on.state, "gm", false).state.accounts[0]), false, "and it can be turned off again");
+  const card = { ...s, accounts: [...s.accounts, { ...acct("cc", "Card"), class: "liability" }] };
+  assert.equal(setAccountPocket(card, "cc", true).ok, false);
+  const made = planAccount(s, { id: "n1", bank: "gotyme", sub: "Travel", kind: "asset", opening: 0, date: "2026-10-15", pocket: true });
+  assert.equal(made.account.role, "pocket"); assert.equal(planAccount(s, { id: "n2", name: "Plain", kind: "asset", date: "2026-10-15" }).account.role, "");
+  assert.deepEqual(validateState(on.state), [], "the saved shape is unchanged");
+});
+
+test("the lines between a pocket and its main account are moves of your own money, not money in and not unsure", () => {
+  for (const t of ["Transfer from Deposit account", "Transfer to Deposit account", "Transfer to Go Save account", "Transfer from Go Save account"])
+    for (const d of ["in", "out"]) assert.equal(classifyLine({ text: t, direction: d }).meaning, "move", t + " " + d);
+});
+
+test("Main's send to Go Save and the pocket's arrival are ONE move, found without any digits: same bank, one pocket, same amount, close days", () => {
+  const s = keep(keep(pbase(), "gm", MAIN(), 1), "pk", POCKET("2023-03-06"), 2);
+  const r = pairMoves(s);
+  assert.equal(r.pairs.length, 1);
+  assert.deepEqual([r.pairs[0].from_id, r.pairs[0].to_id, r.pairs[0].amount, r.pairs[0].dayGap], ["gm", "pk", 90000, 1]);
+  assert.equal(pairMoves(keep(keep(pbase(), "gm", MAIN(), 1), "pk", POCKET("2023-03-20"), 2)).pairs.length, 0, "too far apart");
+  assert.equal(pairMoves(keep(keep(pbase(), "gm", MAIN(), 1), "pk", POCKET("2023-03-05", 50000), 2)).pairs.length, 0, "a different amount");
+});
+
+test("two pockets that could both fit are NEVER guessed: nothing pairs", () => {
+  const s = keep(keep(keep(pbase(["pk", "pj"]), "gm", MAIN(), 1), "pk", POCKET(), 2), "pj", POCKET(), 3);
+  assert.equal(pairMoves(s).pairs.length, 0);
+});
+
+test("without a pocket on either side (two ordinary accounts of one bank) the words alone pair nothing", () => {
+  const plain = { ...pbase(), accounts: [gt("gm", "GoTyme"), gt("gx", "GoTyme · Other")] };
+  assert.equal(pairMoves(keep(keep(plain, "gm", MAIN(), 1), "gx", POCKET(), 2)).pairs.length, 0);
 });

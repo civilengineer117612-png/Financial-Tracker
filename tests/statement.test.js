@@ -170,8 +170,9 @@ test("statement follow-ups: unsure lines wait for your choice, a failed check ho
   assert.match(app, /\(p\.lines\.length \|\| \(f\.statement && f\.keep !== false\)\) && acct && !held \? "" : " disabled"/, "Add stays off while held (and with nothing to add and nothing to keep)");
   assert.match(app, /if \(form\.statement && !form\.statement\.check\.ok && !form\.looked\) break;/, "and saving is refused too, not just greyed");
   assert.match(app, /data-action="stm-looked" aria-pressed="\$\{!!f\.looked\}">I looked at the amounts</);
-  assert.match(app, /activeAccounts\(\)\.filter\(\(a\) => a\.class === "asset" && a\.bank === statement\.bankId\)/, "the accounts linked to the statement's bank");
-  assert.match(app, /auto = linked\.length === 1 && !statement\?\.pocket \? linked\[0\]\.id : null/, "chosen for you only when exactly one account is linked to that bank, and never for a Go Save pocket");
+  assert.match(app, /activeAccounts\(\)\.filter\(\(a\) => a\.class === "asset" && !M\.isPocket\(a\) && a\.bank === statement\.bankId\)/, "the ordinary accounts linked to the statement's bank (pockets of that bank do not count)");
+  assert.match(app, /activeAccounts\(\)\.filter\(\(a\) => M\.isPocket\(a\) && a\.last4 === statement\.pocket\.last4\)/, "a pocket statement goes to the pocket whose last four digits it names");
+  assert.match(app, /auto = linked\.length === 1 \? linked\[0\]\.id : null/, "chosen for you only when exactly one account fits");
   assert.match(app, /account_id: auto \?\? \(statement \? null : cashFirst\(activeAccounts\(\)\)\[0\]\?\.id \?\? null\)/, "a statement is never filed under Cash by default: the owner chooses");
   assert.match(app, /chosen for you/);
   assert.match(app, /seq\.length > 6 \? `<span class="dotcount" data-of="\$\{seq\.length\}">1 of \$\{seq\.length\}<\/span>`/);

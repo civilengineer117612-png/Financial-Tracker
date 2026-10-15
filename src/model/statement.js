@@ -77,7 +77,7 @@ function readSummary(rows) {
 // "in" (money in), "unsure" (money out that does not say what it was: you choose).
 export function classifyLine({ text, type = "", direction }) {
   const t = String(text ?? "").trim(), ty = String(type ?? "").trim();
-  if (/go\s*save/i.test(t)) return { meaning: "move", payee: t };
+  if (/go\s*save/i.test(t) || /^transfer (from|to) deposit account\b/i.test(t)) return { meaning: "move", payee: t };   // a Go Save pocket and its main account ("Deposit account"): always your own money
   // GCash: "Buy Load ..." is spending; "Received GCash from <bank> ..." is money in; "Transfer from A to B" is money in or out by the column it is in, and the OTHER number is the person
   // (so the unsure lines group per person). The numbers themselves are the person's key and are not kept in any message.
   if (/^buy load\b/i.test(t)) return { meaning: "spending", payee: "Buy load" };
