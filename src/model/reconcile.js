@@ -6,6 +6,7 @@
 // Pure logic; amounts are centavos, dates are "YYYY-MM-DD".
 import { accountLines, proveMonths } from "./proof.js";
 import { accountByLast4, planTransfer } from "./transfers.js";
+import { isPocket } from "./banks.js";
 import { countedEntries } from "./balances.js";
 import { categoryFor } from "./importer.js";
 import { applyDrafts, planExpense } from "./drafts.js";
@@ -24,19 +25,26 @@ export function pairMoves(state, { days = 3, maxFee = 10000 } = {}) {
   const outs = lines.filter((l) => l.direction === "out" && (l.meaning === "move" || l.meaning === "unsure"));
   const ins = lines.filter((l) => l.direction === "in" && (l.meaning === "in" || l.meaning === "move"));
   const pointer = (l) => (l.last4 ? accountByLast4(state.accounts, l.last4) : null);   // the account of yours a line names
+  // A Go Save pocket and the main account of the same bank name each other only as "Go Save account" / "Deposit account", with no digits: they pair when exactly one
+  // of the two accounts is a pocket, the amount is the same and the days are close, and ONLY when the match is the one possibility on both sides (never a guess between pockets).
+  const acct = (id) => (state.accounts ?? []).find((a) => a.id === id);
+  const goText = (l) => /go\s*save|deposit account/i.test(l.payee || l.text || "");
+  const pocketLink = (o, i) => { const ao = acct(o.account_id), ai = acct(i.account_id); return !!(ao && ai && ao.bank && ao.bank === ai.bank && isPocket(ao) !== isPocket(ai) && goText(o) && goText(i)); };
   const cands = [];
   for (const o of outs) {
     const po = pointer(o);
     for (const i of ins) {
       if (i.account_id === o.account_id) continue;
-      const pi = pointer(i);
+      const pi = pointer(i), viaPocket = !po && !pi && pocketLink(o, i);
       // at least one end names the other account, and neither names a different one
-      if ((!po && !pi) || (po && po.id !== i.account_id) || (pi && pi.id !== o.account_id)) continue;
+      if ((!po && !pi && !viaPocket) || (po && po.id !== i.account_id) || (pi && pi.id !== o.account_id)) continue;
       const fee = o.amount - i.amount, d = gap(o.date, i.date);
       if (fee < 0 || fee > maxFee || d > days) continue;
-      cands.push({ o, i, fee, d, from_id: o.account_id, to_id: i.account_id });
+      cands.push({ o, i, fee, d, viaPocket, from_id: o.account_id, to_id: i.account_id });
     }
   }
+  const ambiguous = new Set(cands.filter((c) => c.viaPocket && (cands.filter((x) => x.viaPocket && x.o === c.o).length > 1 || cands.filter((x) => x.viaPocket && x.i === c.i).length > 1)));   // two pockets could fit: guess nothing
+  for (let k = cands.length - 1; k >= 0; k--) if (ambiguous.has(cands[k])) cands.splice(k, 1);
   cands.sort((x, y) => x.d - y.d || x.fee - y.fee);
   const usedOut = new Set(), usedIn = new Set(), pairs = [];
   for (const c of cands) {

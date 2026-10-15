@@ -111,7 +111,7 @@ test("Undo after a removal, Monthly payment, and the one-time card for ledgers t
 test("an entry in a hidden category still shows it (marked hidden) while it is edited; a reserve account can be paid from", () => {
   assert.match(app, /const pickCategoriesWith = \(id\) => \{[^\n]*name: c\.name \+ " \(hidden\)"/);
   assert.ok((app.match(/pickCategoriesWith\(/g) ?? []).length >= 5, "every form that edits an entry uses it");
-  assert.match(app, /return activeAccounts\(\)\.sort\(/, "the pickers no longer leave out a reserve account");
+  assert.match(app, /return activeAccounts\(\)\.filter\(\(a\) => pockets \|\| !M\.isPocket\(a\)\)\.sort\(/, "the pickers no longer leave out a reserve account (only a savings pocket is left out of Paid from)");
   assert.ok(!/activeAccounts\(\)\.filter\(\(a\) => !a\.reserve_for\)/.test(app));
 });
 

@@ -278,6 +278,8 @@
   .bigamt { font-size: 24px; font-weight: 700; margin: 4px 0 12px; font-variant-numeric: tabular-nums; }
   .txdl { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0 0 14px; } .txdl dt { color: var(--mid); } .txdl dd { margin: 0; text-align: right; } .txdl dd.who { justify-content: flex-end; }
   .row small { color: var(--mid); display: block; }
+  .row.pocket { padding-left: 28px; } .row.pocket, .row.pocket .amt { color: var(--muted); }   /* a savings pocket under its bank's main account on Cards */
+  .row.pocketrow { align-items: center; }
   .row .amt { white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }   /* the small line under an amount ("you owe", "Remove") lines up with the amount's right edge */
   .card { border: 1px solid var(--ink); border-radius: 12px; padding: 16px; margin: 10px 0; }
   .card .big { font-size: 26px; font-weight: bold; margin: 6px 0 10px; font-variant-numeric: tabular-nums; }

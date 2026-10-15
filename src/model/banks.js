@@ -28,7 +28,7 @@ export const bankForName = (name) => BANKS.find((b) => { const n = name.trim().t
 
 const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }] });
 
-// input: {id, bank?, sub?, name?, kind: "asset"|"liability", opening (centavos), date, covers?}
+// input: {id, bank?, sub?, name?, kind: "asset"|"liability", opening (centavos), date, covers?, pocket?}
 // With a bank the name is made for you ("GoTyme" or "GoTyme · Emergency Fund"); without one the typed name is used.
 export function planAccount(state, input) {
   let name, bank;
@@ -45,7 +45,7 @@ export function planAccount(state, input) {
   if (state.accounts.some((a) => a.name.toLowerCase() === name.toLowerCase())) return fail("DUPLICATE_NAME", bank ? "You already have \u201C" + name + "\u201D. To add another account at " + bank.name + ", say which part it is (for example Savings or Payroll)." : "You already have an account with that name.");
   const sibling = bank ? state.accounts.find((a) => a.bank === bank.id && (a.icon || a.icon_url)) : null;
   const account = {
-    id: input.id, name, class: input.kind, role: "", hidden_by_default: false, archived: false,
+    id: input.id, name, class: input.kind, role: input.pocket && input.kind === "asset" ? "pocket" : "", hidden_by_default: false, archived: false,
     opening_balance: input.opening ?? 0, opening_date: input.date,
     ...(bank ? { bank: bank.id } : {}), ...(sibling?.icon ? { icon: sibling.icon } : sibling?.icon_url ? { icon_url: sibling.icon_url } : {}),
     ...(input.kind === "asset" && input.covers ? { reserve_for: input.covers } : {}),
@@ -53,6 +53,18 @@ export function planAccount(state, input) {
   const problems = validateShape("Account", account);
   if (problems.length) return { ok: false, violations: problems };
   return { ok: true, violations: [], account, state: { ...state, accounts: [...state.accounts, account] } };
+}
+
+// A savings pocket (a GoTyme Go Save pocket, say) is an account of its own that holds money kept apart: it is counted in what you have and takes part in
+// Move money and in statements, but it is never offered under "Paid from". It is stored in the account's spare `role` field ("pocket"): no data change.
+export const isPocket = (a) => a?.role === "pocket";
+export function setAccountPocket(state, accountId, on) {
+  const a = state.accounts.find((x) => x.id === accountId);
+  if (!a) return fail("UNKNOWN_ACCOUNT", "no account " + accountId);
+  if (on && a.class !== "asset") return fail("NOT_AN_ASSET", "Only an account that holds money can be a savings pocket.");
+  if (on && a.reserve_for) return fail("IS_A_RESERVE", "This account is a reserve for a card, so it cannot be a savings pocket.");
+  const next = { ...a, role: on ? "pocket" : "" };
+  return { ok: true, violations: [], state: { ...state, accounts: state.accounts.map((x) => (x.id === accountId ? next : x)) } };
 }
 
 // Link an account made earlier (with a typed name) to a bank, or unlink it (bankId null). A newly linked account that
