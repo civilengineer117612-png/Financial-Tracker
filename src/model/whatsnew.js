@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-16-pocket-auto", date: "2026-10-16", text: "Importing a Go Save pocket statement now makes its pocket for you (Go Save ····3002); rename it in Setup once you know which one it is." },
   { id: "2026-10-16-line", date: "2026-10-16", text: "Trends is now a line you can zoom: pick 1M to All, pinch to zoom, and drag across it to measure a stretch of days." },
   { id: "2026-10-16-who", date: "2026-10-16", text: "Trends now shows who your money went to. Name a person or number once, give it a category, and every payment to them leaves Unlogged." },
   { id: "2026-10-15-cards-eye", date: "2026-10-15", text: "Cards now opens with every amount hidden behind dots; tap the eye to show them, and they hide again next time." },

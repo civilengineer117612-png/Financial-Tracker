@@ -3429,8 +3429,22 @@ console.log("Welcome card, category editing, required marks");
   // a Go Save pocket's statement is recognised, said plainly, and never filed under an account for you
   await importer("sample-pocket.pdf");
   check(await seen(page, "#sheet", "Go Save pocket ending 3002"), "a pocket statement is shown as a Go Save pocket with its last four digits");
-  check((await text(page, "#stm-pocket")).includes("not your main") && await page.locator("#f-save").isDisabled() && !(await text(page, "#sheet")).includes("chosen for you"), "it says it is not the main account, and Add waits for the account to be chosen");
+  check((await text(page, "#stm-pocket")).includes("not your main") && (await text(page, "#stm-pocket")).includes("is made for it when you tap Add") && (await text(page, "#sheet")).includes("chosen for you") && (await text(page, "#sheet")).includes("(new)") && await page.locator("#f-save").isEnabled(), "it says it is not the main account, and a new pocket is chosen for you and made when Add is tapped");
+  { const before = JSON.parse((await stored(page)).local).state.accounts.length;
+    check(before === 1, "nothing is made before Add (" + before + " account)"); }
+  await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.accounts.length === 2, null, { timeout: 5000 });
+  { const led = JSON.parse((await stored(page)).local), pk = led.state.accounts.find((a) => a.role === "pocket");
+    check(pk && pk.last4 === "3002" && pk.name.includes("Go Save") && pk.name.endsWith("3002") && led.state.statementRecords.some((r) => r.account_id === pk.id), "Add made one pocket for that number (" + pk?.name + ") and kept the statement under it");
+    check(!led.state.transactions.length || led.state.entries.some((e) => e.account_id === pk.id), "its lines went to the new pocket"); }
+  check(await seen(page, "#toast", "Pocket created"), "the toast says the pocket was created");
   await ctx.close();
+  // the same statement again finds the pocket it made: chosen for you, nothing more is made
+  { const accNow = (led) => led.state.accounts; 
+    ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [{ id: "gx", name: "GoTyme \u00b7 Go Save \u00b7\u00b7\u00b7\u00b73002", class: "asset", role: "pocket", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-01-01", bank: "gotyme", last4: "3002" }] } } }));
+    await page.click('button[data-action="open-scan-pick"]'); await page.setInputFiles("input[data-import]", FX("sample-pocket.pdf"));
+    check(await seen(page, "#sheet", "Go Save pocket ending 3002") && (await text(page, "#sheet")).includes("chosen for you") && !(await text(page, "#sheet")).includes("(new)") && await page.locator('#sheet [data-action="pick-acct"][data-id="gx"][aria-pressed="true"]').count() === 1, "a number that already has a pocket is filed there, no new one is offered");
+    await ctx.close(); }
   // savings pockets: never under Paid from; offered for Move money; a pocket statement goes to the pocket with its digits; on Cards each sits under its bank's main account, shown only when opened
   const pkAcc = (id, name, last4) => ({ id, name, class: "asset", role: "pocket", hidden_by_default: false, archived: false, opening_balance: 450000, opening_date: "2026-10-02", bank: "gotyme", last4 });
   const mainG = { id: "gm", name: "GoTyme", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 120000, opening_date: "2026-10-02", bank: "gotyme" };

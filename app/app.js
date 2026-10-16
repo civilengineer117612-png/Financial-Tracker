@@ -747,6 +747,9 @@ const photoUrls = new Map();   // saved photos shown on this screen: attachment 
 // The two ways to give the app a photo, always both on offer: the camera, or an image you already have (photos or files).
 // mode: "quick" (saved at once when sure), "1" (check every field first), "payslip" (read as a payslip).
 // Reads old spending from a notes screenshot (the on-phone reader), a CSV file or an Excel file, then shows what will be added. Nothing leaves the phone.
+// A Go Save pocket statement whose number matches no account gets ONE new pocket made for it when Add is tapped (nothing is made before): this stands for it in the pickers.
+const NEW_POCKET = "new-pocket";
+const newPocketAccount = (np) => ({ id: NEW_POCKET, name: "Go Save \u00b7\u00b7\u00b7\u00b7" + np.last4 + " (new)", class: "asset", role: "pocket", archived: false, opening_balance: 0 });
 async function importFile(file) {
   const today0 = today(), say = (m) => { ui.form = { busy: m }; renderSheet(); };
   ui.sheet = { type: "import" }; say("Reading " + file.name + "...");
@@ -768,8 +771,8 @@ async function importFile(file) {
     // a statement goes to the account linked to its bank when there is one (chosen for you; you can change it)
     // (only when exactly ONE account is linked to that bank; a statement is never filed under Cash by default: the owner chooses)
     // A pocket statement goes to the pocket whose last four digits it names; any other statement to the one ordinary account linked to its bank (pockets of that bank do not count).
-    const linked = statement?.pocket ? activeAccounts().filter((a) => M.isPocket(a) && a.last4 === statement.pocket.last4) : statement?.bankId ? activeAccounts().filter((a) => a.class === "asset" && !M.isPocket(a) && a.bank === statement.bankId) : [], auto = linked.length === 1 ? linked[0].id : null;
-    ui.form = { items, notRead, statement, choice: {}, looked: false, autoAccount: auto, linkedCount: linked.length, order: statement ? "dmy" : M.dateOrder(items.map((x) => x.dateRaw), today0), account_id: auto ?? (statement ? null : cashFirst(activeAccounts())[0]?.id ?? null) };
+    const linked = statement?.pocket ? activeAccounts().filter((a) => M.isPocket(a) && a.last4 === statement.pocket.last4) : statement?.bankId ? activeAccounts().filter((a) => a.class === "asset" && !M.isPocket(a) && a.bank === statement.bankId) : [], newPocket = statement?.pocket && !linked.length && !activeAccounts().some((a) => a.last4 === statement.pocket.last4) ? { last4: statement.pocket.last4, bankId: statement.bankId ?? null } : null, auto = newPocket ? NEW_POCKET : linked.length === 1 ? linked[0].id : null;
+    ui.form = { items, notRead, statement, newPocket, choice: {}, looked: false, autoAccount: auto, linkedCount: linked.length, order: statement ? "dmy" : M.dateOrder(items.map((x) => x.dateRaw), today0), account_id: auto ?? (statement ? null : cashFirst(activeAccounts())[0]?.id ?? null) };
   } catch (err) { if (err instanceof PdfCancelled) { ui.sheet = null; renderSheet(); return; } ui.form = { error: String(err?.message ?? err) }; }
   if (ui.sheet?.type === "import") renderSheet();
 }
@@ -1445,7 +1448,7 @@ const reserveCovers = () => M.reserveCover(S().accounts, M.countedEntries(S()));
 // Under a "Paid from" row of chips: one thin bar for each reserve account, with its picture, so the owed and free parts are seen before choosing.
 const reserveStrip = () => reserveCovers().map((c) => { const a = S().accounts.find((x) => x.id === c.reserve_id); return a && !a.archived ? `<div class="coverrow">${iconOf(a, 20)}${coverBar(c.share, a.name + ": " + coverLabel(c))}</div>` : ""; }).join("");
 // `pockets`: also offer the savings pockets (a statement can be from one). An account already chosen is always listed, even a pocket, so editing never loses it.
-const paidChips = (selected, pockets = false) => { const list = accountsFor(null, pockets), cur = selected && !list.some((a) => a.id === selected) ? S().accounts.find((a) => a.id === selected) : null; return accountPicker(cur ? [...list, cur] : list, selected) + reserveStrip(); };
+const paidChips = (selected, pockets = false, extra = []) => { const list = [...accountsFor(null, pockets), ...extra], cur = selected && !list.some((a) => a.id === selected) ? S().accounts.find((a) => a.id === selected) : null; return accountPicker(cur ? [...list, cur] : list, selected) + reserveStrip(); };
 // The Cards screen (menu): every account in one place. Credit cards show what you owe and what was spent on and paid toward each in the
 // period; debit cards, savings, wallets and cash show their balance and what was spent from them. A card is just one of the accounts.
 // Savings pockets sit right under the main account of their own bank (the first ordinary account of that bank) and are SHOWN ONLY when that account is opened (a tap on
@@ -2577,7 +2580,7 @@ function renderSheet() {
     else if (f.error) body = `<h3>Import old spending</h3><p class="note" role="alert"><b>${esc(f.error)}</b></p>`;
     else {
       const kept = importKept(f), waiting = f.items.filter((x) => x.meaning === "unsure" && !f.choice?.[x.id]).length, held = !!f.statement && !f.statement.check.ok && !f.looked;
-      const p = f.order ? M.previewImport(S(), kept, f.order, ledger.settings.payee_book) : null, acct = S().accounts.find((a) => a.id === f.account_id);
+      const p = f.order ? M.previewImport(S(), kept, f.order, ledger.settings.payee_book) : null, acct = S().accounts.find((a) => a.id === f.account_id) ?? (f.account_id === NEW_POCKET && f.newPocket ? newPocketAccount(f.newPocket) : undefined);
       const sample = f.items.find((x) => M.readDate(x.dateRaw) && !M.readDate(x.dateRaw).iso)?.dateRaw;
       const orderLine = sample ? `<p class="note" id="imp-order">${f.order ? `Dates read as <b>${f.order === "dmy" ? "day/month" : "month/day"}</b>: ${esc(sample)} is <b>${esc(longDate(M.previewImport(S(), [{ dateRaw: sample, name: "x", amount: 1 }], f.order).lines[0]?.date ?? today()))}</b>.` : `<b>Which comes first in ${esc(sample)}?</b>`}</p>
         <div class="seg" role="group" aria-label="Date order">${[["dmy", "Day / month"], ["mdy", "Month / day"]].map(([o, t]) => `<button data-action="import-order" data-id="${o}" aria-pressed="${f.order === o}">${t}</button>`).join("")}</div>` : "";
@@ -2588,11 +2591,11 @@ function renderSheet() {
           return `<div class="mrow mimp ask"><span class="mn">${esc(g.name)}<small>${n} ${n === 1 ? "line" : "lines"} \u00b7 ${peso(g.total)}</small></span><span class="chips"><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="spending" aria-pressed="${all("spending")}">Spending</button><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="not" aria-pressed="${all("not")}">Not spending</button></span>
           ${n > 1 ? `<button class="link small" data-action="stm-show" data-id="${esc(g.key)}">${f.open?.[g.key] ? "Hide the lines" : `Show the ${n} lines`}</button>${f.open?.[g.key] ? `<div class="stmlines">${g.lines.map((x) => `<div class="mrow mline mimp"><span class="mn">${esc(yearDate(x.dateRaw))}</span><span class="mv">${peso(x.amount)}</span></div>`).join("")}</div>` : ""}` : `<small class="hiddennote">${esc(yearDate(g.lines[0].dateRaw))}</small>`}</div>`; }).join("")}` : ""}` : "";
       body = `<h3>Import old spending</h3>${stBlock}${st ? `<p><button class="chip wide" data-action="stm-keep" aria-pressed="${f.keep !== false}">Keep this statement to prove your months</button></p><p class="note small">It stays on this phone, in Setup, Statements.</p>` : ""}${orderLine}
-        ${f.statement?.pocket ? `<p class="note" id="stm-pocket"><b>This is a Go Save pocket, not your main ${esc(f.statement.bank ?? "bank")} account.</b> Choose the savings pocket it is from. If you have none for it, add one in Setup first.</p>` : ""}<label>${f.statement ? "Which account is this statement from?" : "Paid from"}${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}${REQ}</label>${paidChips(f.account_id, !!f.statement)}${REQNOTE}${f.statement && f.linkedCount > 1 && !f.account_id ? `<p class="note small">More than one of your accounts is linked to ${esc(f.statement.bank ?? "this bank")}. Choose the one this statement is from.</p>` : ""}
+        ${f.statement?.pocket ? `<p class="note" id="stm-pocket"><b>This is a Go Save pocket, not your main ${esc(f.statement.bank ?? "bank")} account.</b> ${f.newPocket ? `A pocket called \u201C${esc(newPocketAccount(f.newPocket).name.replace(" (new)", ""))}\u201D is made for it when you tap Add. Rename it in Setup once you know which pocket it is.` : "Choose the savings pocket it is from."}</p>` : ""}<label>${f.statement ? "Which account is this statement from?" : "Paid from"}${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}${REQ}</label>${paidChips(f.account_id, !!f.statement, f.newPocket ? [newPocketAccount(f.newPocket)] : [])}${REQNOTE}${f.statement && f.linkedCount > 1 && !f.account_id ? `<p class="note small">More than one of your accounts is linked to ${esc(f.statement.bank ?? "this bank")}. Choose the one this statement is from.</p>` : ""}
         ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${waiting ? `. <b>${waiting} ${waiting === 1 ? "line needs" : "lines need"} your choice</b>: left out until you choose` : ""}${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
           <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline mimp"><span class="mn">${esc(longDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline mimp"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
           ${f.notRead.length ? `<details><summary>Not read (${f.notRead.length})</summary>${f.notRead.slice(0, 20).map((l) => `<p class="note">${esc(l)}</p>`).join("")}</details>` : ""}
-          ${acct ? `<p class="note">Lines dated before you added ${esc(acct.name)} are history only: they do not change its balance.</p>` : ""}
+          ${acct && acct.id !== NEW_POCKET ? `<p class="note">Lines dated before you added ${esc(acct.name)} are history only: they do not change its balance.</p>` : ""}
           ${f.statement && !f.statement.check.ok ? `<p><button class="chip wide" data-action="stm-looked" aria-pressed="${!!f.looked}">I looked at the amounts</button></p>` : ""}
           <p><button class="primary" id="f-save" data-action="save-import"${(p.lines.length || (f.statement && f.keep !== false)) && acct && !held ? "" : " disabled"}>${p.lines.length ? `Add ${p.lines.length} ${p.lines.length === 1 ? "draft" : "drafts"} to Verify` : "Keep the statement"}</button></p>` : ""}`;
     }
@@ -3705,16 +3708,22 @@ async function onClick(el) {
     case "import-order": form.order = id; renderSheet(); break;
     case "save-import": {
       if (form.statement && !form.statement.check.ok && !form.looked) break;   // held until "I looked at the amounts"
-      const p = M.previewImport(S(), importKept(form), form.order, ledger.settings.payee_book), r = M.planImport(S(), p.lines, { account_id: form.account_id, newId: () => newId("tx") });
+      let base = S(), accountId = form.account_id, pocketNote = "";
+      if (accountId === NEW_POCKET && form.newPocket) {   // the pocket is made now, with the import, never before
+        const pk = M.planPocketFromStatement(base, { id: newId("acct"), last4: form.newPocket.last4, bank: form.newPocket.bankId ?? undefined, date: form.statement?.period?.from ?? today() });
+        if (!pk.ok) { showToast(pk.violations[0].message); break; }
+        base = pk.state; accountId = pk.account.id; pocketNote = "Pocket created: " + pk.account.name + ".";
+      }
+      const p = M.previewImport(base, importKept(form), form.order, ledger.settings.payee_book), r = M.planImport(base, p.lines, { account_id: accountId, newId: () => newId("tx") });
       if (!r.ok) { showToast(r.message); break; }
       let next = r.state, kept = "";
       if (form.statement && form.keep !== false && form.statement.parsed) {   // keep the statement as read, to prove the months with (Setup, Statements)
-        const { record, lines } = M.recordFromParse(form.statement.parsed, { account_id: form.account_id, id: newId("stm") });
+        const { record, lines } = M.recordFromParse(form.statement.parsed, { account_id: accountId, id: newId("stm") });
         if (M.alreadyKept(next, record, lines)) kept = "That statement was already kept.";
         else { next = { ...next, statementRecords: [...(next.statementRecords ?? []), record], statementLines: [...(next.statementLines ?? []), ...lines] }; kept = "Statement kept: see Setup, Statements."; }
       }
       ui.sheet = null; renderSheet();
-      if (await commit(next)) showToast([r.count ? `${r.count} ${r.count === 1 ? "draft is" : "drafts are"} waiting in Verify.` : "", kept].filter(Boolean).join(" "));
+      if (await commit(next)) showToast([pocketNote, r.count ? `${r.count} ${r.count === 1 ? "draft is" : "drafts are"} waiting in Verify.` : "", kept].filter(Boolean).join(" "));
       break;
     }
     case "plan-cancel": ui.planDraft = null; ui.sheet = null; renderSheet(); break;
