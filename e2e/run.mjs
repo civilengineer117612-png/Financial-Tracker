@@ -3289,6 +3289,48 @@ console.log("Welcome card, category editing, required marks");
   await menuGo(page, "Budget");
   check(await page.locator('#screen .choice:has-text("Lakat/Date") small.hiddennote').count() === 1 && await page.locator("#screen small.hiddennote").count() === 1, "Budget marks only the hidden category, in its own place, with one quiet word");
   await ctx.close();
+  // Who: spending by payee inside Trends; naming a number once moves its payments out of Unlogged (verified ones only in the reports, drafts for real)
+  { const txW = (id, date, payee, status = "verified") => ({ id, date, payee, memo: "", status, source: "statement", created_at: TSW, ...(status === "verified" ? { verified_at: TSW } : {}) });
+    const pay = (id, cat, amt) => [{ transaction_id: id, category_id: cat, amount: amt }, { transaction_id: id, account_id: "w", amount: -amt }];
+    const seedP = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [{ id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 900000, opening_date: "2026-09-01" }],
+      transactions: [txW("p1", "2026-10-01", "09171234567"), txW("p2", "2026-10-02", "09171234567"), txW("p3", "2026-10-02", "Sample Shop"), txW("p4", "2026-10-02", "09179876543"), txW("p5", "2026-10-03", "09171234567", "draft")],
+      entries: [...pay("p1", "cat-unlogged", 150000), ...pay("p2", "cat-unlogged", 50000), ...pay("p3", "cat-food", 30000), ...pay("p4", "cat-unlogged", 40000), ...pay("p5", "cat-unlogged", 10000)] } };
+    ({ ctx, page, errors } = await open({ blockSw: true, seed: seedP }));
+    await menuGo(page, "Spending");
+    await page.click('#screen .seg button:has-text("Trends")');
+    check(await seen(page, "#screen", "WHO, OCTOBER 2026"), "Trends shows Who the money went to, for the chosen period");
+    const firstWho = (await text(page, "#screen .whocard .whorow >> nth=0")).replace(/\s+/g, " ");
+    check(firstWho.includes("0917\u20264567") && firstWho.includes("Not named yet") && firstWho.includes("2 payments") && firstWho.includes("\u20B12,000.00"), "the biggest payee first, its number shortened, not named yet, verified payments only: " + firstWho);
+    check(!(await text(page, "#screen .whocard")).includes("12345"), "the whole number is never shown");
+    await page.click('#screen .whorow[data-id="09171234567"]');
+    check(await seen(page, "#sheet", "Who is this?") && (await text(page, "#sheet")).includes("3 payments") && await page.locator("#sheet .pmonths .pmcol").count() === 6, "tapping it opens its window: how many payments (drafts too) and six months of bars");
+    check(await page.locator('#sheet button[data-action="payee-save"]').isDisabled(), "Save waits for a category");
+    check(await page.locator('#sheet button.chip[data-id="cat-unlogged"]').count() === 0, "Unlogged is not offered");
+    await page.fill("#p-name", "Sample Person");
+    await page.click('#sheet button.chip[data-id="cat-family"]');
+    check((await text(page, '#sheet button[data-action="payee-save"]')).includes("Save for all 3"), "it says how many payments it covers");
+    await page.click('#sheet button[data-action="payee-save"]');
+    check(await seen(page, "#toast", "Saved: Sample Person"), "saving says so");
+    const ledP = JSON.parse((await stored(page)).local);
+    check(ledP.settings.payee_book?.["09171234567"]?.name === "Sample Person" && ledP.settings.payee_book["09171234567"].category_id === "cat-family", "the name and category are kept in the phone's settings");
+    check(ledP.state.entries.find((e) => e.transaction_id === "p1" && e.category_id)?.category_id === "cat-unlogged" && ledP.state.entries.find((e) => e.transaction_id === "p5" && e.category_id)?.category_id === "cat-family", "a verified entry stays as it was; the draft moves to the category");
+    const whoNow = (await text(page, "#screen .whocard .whorow >> nth=0")).replace(/\s+/g, " ");
+    check(whoNow.includes("Sample Person") && whoNow.includes("Family"), "the row now shows the name and category: " + whoNow);
+    // a second number with the same name joins the same person, shown as one row that opens into its accounts
+    await page.click('#screen .whorow[data-id="09179876543"]');
+    await page.fill("#p-name", "sample person");
+    await page.click('#sheet button.chip[data-id="cat-family"]');
+    await page.click('#sheet button[data-action="payee-save"]');
+    await page.waitForSelector('#screen .whorow[data-action="who-open"]', { timeout: 4000 }).catch(() => {});
+    const person = page.locator('#screen .whorow[data-action="who-open"]');
+    check(await person.count() === 1 && (await person.innerText()).replace(/\s+/g, " ").includes("2 accounts") && (await person.innerText()).includes("\u20B12,400.00"), "two numbers with the same name are one person, the total first: " + (await person.count() ? (await person.innerText()).replace(/\s+/g, " ") : "no row"));
+    await person.click();
+    check(await page.locator("#screen .whosub").count() === 2, "tapped, it opens into its two accounts");
+    await page.click('#screen .seg button:has-text("Category")');
+    const catScreen = (await text(page, "#screen")).replace(/\s+/g, " ");
+    check(catScreen.includes("Family") && !catScreen.includes("Unlogged"), "By category now counts those payments under Family, not Unlogged");
+    check(errors.length === 0, "no errors on the Who list (" + errors.join(" | ") + ")");
+    await ctx.close(); }
   // A bank statement (PDF) read on the phone: an open one, then a locked one (invented statements in e2e/fixtures)
   const FX = (n) => new URL("./fixtures/" + n, import.meta.url).pathname;
   const accS = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-10-02" };
