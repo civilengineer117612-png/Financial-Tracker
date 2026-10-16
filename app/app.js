@@ -1520,6 +1520,60 @@ function whoHtml(from, to, label) {
   return `<h2 id="who">Who, ${esc(label)}</h2><p class="note small">Tap one to name it once; every payment to them follows. Moves between your own accounts are not here.</p>
     <div class="card whocard">${shown.map(one).join("")}</div>${rows.length > shown.length ? `<p class="center"><button class="link" data-action="who-all">Show all ${rows.length}</button></p>` : ""}`;
 }
+// The spending line on Trends: one thin line with a faint gradient under it, cut into days, weeks or months by how far it is zoomed. Quick ranges 1M to All;
+// pinch (or Ctrl and scroll) to zoom; drag a finger across to measure a span; tap for one point. The window is the chart's own (`ui.tl`), the figures above it
+// follow the period at the top. The svg stays put while a gesture runs (`paintLine` only rewrites what is inside it) so the fingers are never lost.
+const TL = { W: 320, H: 172, L: 8, R: 8, T: 24, B: 24 };
+const tlLimits = () => ({ today: today(), first: M.firstSpendingDate(SV()) });
+const tlState = () => {
+  if (!ui.tl) ui.tl = { key: "6M", ...M.rangeFor("6M", today(), M.firstSpendingDate(SV())), sel: null };
+  return ui.tl;
+};
+const tlSeries = () => { const t = tlState(); return M.seriesFor(SV(), { from: t.from, to: t.to }); };
+const tlX = (i, n) => TL.L + (n > 1 ? (i * (TL.W - TL.L - TL.R)) / (n - 1) : (TL.W - TL.L - TL.R) / 2);
+const tlIndexAt = (frac, n) => Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))));
+function tlCaption(series) {
+  const t = tlState(), sel = t.sel;
+  if (!sel) return "Drag across the line to measure a span. Pinch to zoom.";
+  const a = Math.min(sel.a, sel.b), b = Math.max(sel.a, sel.b);
+  if (a === b) { const x = series[a]; return x ? (x.step === "day" ? fullDate(x.start) : fullDate(x.start) + " to " + fullDate(x.end)) + ": " + peso(x.amount) + " spent." : ""; }
+  const m = M.measureSpan(series, a, b);
+  return `${fullDate(m.from)} to ${fullDate(m.to)} · ${m.days} days · ${peso(m.total)} spent · about ${peso(m.perDay)} a day.`;
+}
+function tlInner(series) {
+  const { W, H, L, R, T, B } = TL, n = series.length, t = tlState();
+  const hi = Math.max(1, ...series.map((x) => x.amount)), lo = Math.min(0, ...series.map((x) => x.amount));
+  const Y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B), base = Y(0);
+  const pts = series.map((x, i) => [tlX(i, n), Y(x.amount)]);
+  const d = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+  const area = n > 1 ? `<path class="tla" d="${d} L${pts[n - 1][0].toFixed(1)} ${base.toFixed(1)} L${pts[0][0].toFixed(1)} ${base.toFixed(1)} Z" fill="url(#tlg)"/>` : "";
+  const top = series.reduce((k, x, i) => (x.amount > series[k].amount ? i : k), 0);
+  const tip = (i, anchor) => `<text class="tlv" x="${pts[i][0].toFixed(1)}" y="${Math.max(11, pts[i][1] - 7).toFixed(1)}" text-anchor="${anchor}">${esc(M.formatPesosWhole(series[i].amount))}</text>`;
+  const sel = t.sel, a = sel ? Math.min(sel.a, sel.b) : -1, b = sel ? Math.max(sel.a, sel.b) : -1;
+  const band = sel && a !== b ? `<rect class="tlband" x="${tlX(a, n).toFixed(1)}" y="${T - 6}" width="${(tlX(b, n) - tlX(a, n)).toFixed(1)}" height="${H - T - B + 6}"/>` : "";
+  const mark = sel ? [a, b].filter((v, k, arr) => arr.indexOf(v) === k).map((i) => `<line class="tlcur" x1="${tlX(i, n).toFixed(1)}" x2="${tlX(i, n).toFixed(1)}" y1="${T - 6}" y2="${H - B}"/><circle class="tldot" cx="${pts[i][0].toFixed(1)}" cy="${pts[i][1].toFixed(1)}" r="4"/>`).join("") : "";
+  const dateOf = (x) => { const [, m, dd] = x.start.split("-"); return MONTH3[Number(m) - 1] + " " + Number(dd) + (x.start.slice(0, 4) !== today().slice(0, 4) ? " " + x.start.slice(2, 4) : ""); };
+  const ticks = n > 1 ? [0, Math.round((n - 1) / 2), n - 1].filter((v, k, arr) => arr.indexOf(v) === k).map((i, k, arr) => `<text class="tlx" x="${tlX(i, n).toFixed(1)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === n - 1 ? "end" : "middle"}">${esc(dateOf(series[i]))}</text>`).join("") : `<text class="tlx" x="${W / 2}" y="${H - 6}" text-anchor="middle">${esc(dateOf(series[0] ?? { start: today() }))}</text>`;
+  return `<defs><linearGradient id="tlg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".2"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+    <line class="tlbase" x1="${L}" x2="${W - R}" y1="${base.toFixed(1)}" y2="${base.toFixed(1)}"/>${band}${area}<path class="tlline" d="${d}"/>${series[top].amount > 0 ? tip(top, tlX(top, n) > W * 0.8 ? "end" : tlX(top, n) < W * 0.2 ? "start" : "middle") : ""}${mark}${ticks}`;
+}
+function spendLineHtml() {
+  const series = tlSeries(), t = tlState(), n = series.length;
+  const stepWord = { day: "days", week: "weeks", month: "months" }[series[0]?.step ?? "day"];
+  const chips = M.RANGES.map((k) => `<button data-action="tl-range" data-id="${k}" aria-pressed="${t.key === k}">${k}</button>`).join("");
+  return `<div id="tlbox" class="tlbox"><div class="seg tlranges" role="group" aria-label="How far back">${chips}</div>
+    <svg id="tlsvg" class="spendline" viewBox="0 0 ${TL.W} ${TL.H}" role="img" aria-label="Spending from ${esc(fullDate(t.from))} to ${esc(fullDate(t.to))}, by ${stepWord}. The list shows the same numbers.">${tlInner(series)}</svg>
+    <p class="caption" id="tlcap" aria-live="polite">${esc(tlCaption(series))}</p><p class="note small" id="tlstep">By ${stepWord} · ${n} ${n === 1 ? "point" : "points"}</p></div>`;
+}
+function paintLine() {
+  const svg = $("tlsvg"); if (!svg) return;
+  const series = tlSeries(), t = tlState(), stepWord = { day: "days", week: "weeks", month: "months" }[series[0]?.step ?? "day"];
+  svg.innerHTML = tlInner(series);
+  svg.setAttribute("aria-label", `Spending from ${fullDate(t.from)} to ${fullDate(t.to)}, by ${stepWord}. The list shows the same numbers.`);
+  $("tlcap").textContent = tlCaption(series);
+  $("tlstep").textContent = `By ${stepWord} · ${series.length} ${series.length === 1 ? "point" : "points"}`;
+  for (const b of document.querySelectorAll("#tlbox .tlranges button")) b.setAttribute("aria-pressed", String(b.dataset.id === t.key));
+}
 function viewMoney() {
   const p = period(), [from, to] = periodBounds(p), maps = S().categoryMaps, asOf = today(), nowM = M.monthOf(today()), nowY = Number(today().slice(0, 4));
   const cat = M.spendingByRange(SV(), { from, to, categoryMaps: maps, asOf });
@@ -1548,14 +1602,8 @@ function viewMoney() {
     const series = M.monthlySpending(SV(), { endMonth, months: n, categoryMaps: maps, asOf });
     const trend = M.budgetTrend(S(), { endMonth, months: n, categoryMaps: maps, asOf });
     if (!series.some((x) => x.amount !== 0) && !trend.some((x) => x.budget !== null)) return empty();
-    if (ui.asList) return done(listTable(["Month", "Spent"], [...series].reverse().map((x) => [esc(M.monthLabel(x.month)), peso(x.amount)]), "Total", series.reduce((nn, x) => nn + x.amount, 0)) + "<h2>Budget vs actual</h2>" + trendTable(trend)) + whoHtml(from, to, label);
-    const max = Math.max(...series.map((x) => x.amount), 1), sel = ui.sel, many = n > 8;
-    const cols = series.map((x) => `<button class="col${sel && sel !== x.month ? " dim" : ""}" data-action="pick-bar" data-id="${x.month}" aria-pressed="${sel === x.month}" aria-label="${esc(M.monthLabel(x.month) + ": " + peso(x.amount))}">
-        <span class="cval">${(!many && x.month === endMonth) || x.month === sel ? M.formatPesosWhole(x.amount) : ""}</span><span class="cbar" style="height:${x.amount > 0 ? Math.max(4, Math.round((x.amount * 130) / max)) : 0}px"></span></button>`).join("");
-    const hit = series.find((x) => x.month === sel);
-    return done(`<div class="cols${many ? " tight" : ""}">${cols}</div><div class="clabs${many ? " tight" : ""}">${series.map((x) => `<span>${many ? MONTH3[Number(x.month.slice(5)) - 1][0] : MONTH3[Number(x.month.slice(5)) - 1]}</span>`).join("")}</div>
-      <p class="caption" aria-live="polite">${hit ? esc(M.monthLabel(hit.month) + ": " + peso(hit.amount) + " spent.") : "Tap a column to see its month."}</p>
-  ${trendChart(trend)}`) + whoHtml(from, to, label);
+    if (ui.asList) { const steps = tlSeries(); return done(listTable(["Period", "Spent"], [...steps].reverse().map((x) => [esc(x.step === "day" ? fullDate(x.start) : fullDate(x.start) + " to " + fullDate(x.end)), peso(x.amount)]), "Total", steps.reduce((nn, x) => nn + x.amount, 0)) + "<h2>Budget vs actual</h2>" + trendTable(trend)) + whoHtml(from, to, label); }
+    return done(spendLineHtml() + trendChart(trend)) + whoHtml(from, to, label);
   }
 
   if (ui.view === "budget") {
@@ -3016,6 +3064,7 @@ async function onClick(el) {
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
     case "open-month": ui.period = { kind: "month", month: id }; ui.view = "budget"; ui.sel = null; ui.asList = false; renderScreen(); break;
     case "pick-bar": ui.sel = ui.sel === id ? null : id; renderScreen(); break;
+    case "tl-range": ui.tl = { key: id, ...M.rangeFor(id, today(), M.firstSpendingDate(SV())), sel: null }; paintLine(); break;
     case "sync-plan-budgets": {
       const month = M.addMonths(M.monthOf(today()), 1), plan = M.planInEffect(plansOf(), month + "-01");
       if (!plan) break;
@@ -3926,6 +3975,39 @@ document.addEventListener("pointermove", (e) => {
 });
 document.addEventListener("pointerup", () => { drag = null; });
 document.addEventListener("pointercancel", () => { drag = null; });
+
+// ---------- the spending line: pinch to zoom, drag to measure, tap for a point ----------
+{
+  const pts = new Map(); let pinch = null, dragged = false;
+  const frac = (e, svg) => { const r = svg.getBoundingClientRect(), x = ((e.clientX - r.left) / r.width) * TL.W; return Math.max(0, Math.min(1, (x - TL.L) / (TL.W - TL.L - TL.R))); };
+  const here = (e, svg) => tlIndexAt(frac(e, svg), tlSeries().length);
+  document.addEventListener("pointerdown", (e) => {
+    const svg = e.target.closest?.("#tlsvg"); if (!svg) return;
+    pts.set(e.pointerId, e); try { svg.setPointerCapture(e.pointerId); } catch { /* a pretend pointer cannot be captured */ }
+    const t = tlState();
+    if (pts.size === 2) { const [p, q] = [...pts.values()]; pinch = { d: Math.abs(p.clientX - q.clientX) || 1, w: { from: t.from, to: t.to }, at: frac({ clientX: (p.clientX + q.clientX) / 2 }, svg) }; t.sel = null; paintLine(); return; }
+    dragged = false; const i = here(e, svg); t.sel = { a: i, b: i, down: true }; paintLine();
+  });
+  document.addEventListener("pointermove", (e) => {
+    const svg = e.target.closest?.("#tlsvg"); if (!svg || !pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, e); const t = tlState();
+    if (pinch && pts.size >= 2) {
+      const [p, q] = [...pts.values()], d = Math.abs(p.clientX - q.clientX) || 1;
+      Object.assign(t, M.zoomWindow(pinch.w, pinch.d / d, pinch.at, tlLimits()), { key: null, sel: null }); paintLine(); return;
+    }
+    if (t.sel?.down) { const i = here(e, svg); if (i !== t.sel.b) dragged = true; t.sel.b = i; paintLine(); }
+  });
+  const up = (e) => {
+    pts.delete(e.pointerId); if (pts.size < 2) pinch = null;
+    const t = ui.tl; if (t?.sel?.down) { delete t.sel.down; paintLine(); }
+  };
+  document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
+  document.addEventListener("wheel", (e) => {   // Ctrl and scroll (or a trackpad pinch) zooms where the pointer is
+    const svg = e.target.closest?.("#tlsvg"); if (!svg || !(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault(); const t = tlState();
+    Object.assign(t, M.zoomWindow({ from: t.from, to: t.to }, Math.exp(e.deltaY * 0.01), frac(e, svg), tlLimits()), { key: null, sel: null }); paintLine();
+  }, { passive: false });
+}
 
 async function saveIcon() {
   const c = ui.form.crop; if (!c) return;

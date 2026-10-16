@@ -98,3 +98,4 @@ export { MAX_INTRO_SHOWS, INTROS, introFor, shouldShowIntro, markIntro, introDra
 export { recordFromParse, accountLines, proveMonths, acceptMonth, monthSummary, alreadyKept, removeStatement } from "./proof.js";
 export { pairMoves, moveLogged, planPairedMove, matchPayslips, statementDifference, planMissingDraft, startFromStatement } from "./reconcile.js";
 export { payeeKey, payeeLabel, withPayeeBook, spendingByPayee, payeeMonths, payeeCount, namePayee, categoryFromBook } from "./payees.js";
+export { RANGES, dailySpending, firstSpendingDate, rangeFor, stepFor, seriesFor, measureSpan, zoomWindow, addDays, daysBetween } from "./spendline.js";
