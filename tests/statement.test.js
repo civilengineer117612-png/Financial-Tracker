@@ -160,7 +160,7 @@ test("the PDF import: the reader is our own copy, a locked file asks for its pas
   assert.ok(!/pdf_password|pdfPassword\s*=|settings[^\n]*pdf-pw/.test(app), "the password is never stored");
   assert.match(app, /const importKept = \(f\) => f\.items\.filter\(\(x\) => x\.meaning !== "unsure" \|\| f\.choice\?\.\[x\.id\] === "spending"\);/, "an unsure line counts only once you choose Spending");
   assert.match(app, /const kept = importKept\(f\)/, "the preview counts what will be added");
-  assert.match(app, /M\.previewImport\(S\(\), importKept\(form\), form\.order, ledger\.settings\.payee_book\), r = M\.planImport/, "and only that is saved");
+  assert.match(app, /M\.previewImport\(base, importKept\(form\), form\.order, ledger\.settings\.payee_book\), r = M\.planImport/, "and only that is saved");
 });
 
 test("statement follow-ups: unsure lines wait for your choice, a failed check holds Add until you say you looked, the account is chosen by the statement's bank, and many cards show a count", () => {
@@ -172,7 +172,7 @@ test("statement follow-ups: unsure lines wait for your choice, a failed check ho
   assert.match(app, /data-action="stm-looked" aria-pressed="\$\{!!f\.looked\}">I looked at the amounts</);
   assert.match(app, /activeAccounts\(\)\.filter\(\(a\) => a\.class === "asset" && !M\.isPocket\(a\) && a\.bank === statement\.bankId\)/, "the ordinary accounts linked to the statement's bank (pockets of that bank do not count)");
   assert.match(app, /activeAccounts\(\)\.filter\(\(a\) => M\.isPocket\(a\) && a\.last4 === statement\.pocket\.last4\)/, "a pocket statement goes to the pocket whose last four digits it names");
-  assert.match(app, /auto = linked\.length === 1 \? linked\[0\]\.id : null/, "chosen for you only when exactly one account fits");
+  assert.match(app, /auto = newPocket \? NEW_POCKET : linked\.length === 1 \? linked\[0\]\.id : null/, "chosen for you only when exactly one account fits");
   assert.match(app, /account_id: auto \?\? \(statement \? null : cashFirst\(activeAccounts\(\)\)\[0\]\?\.id \?\? null\)/, "a statement is never filed under Cash by default: the owner chooses");
   assert.match(app, /chosen for you/);
   assert.match(app, /seq\.length > 6 \? `<span class="dotcount" data-of="\$\{seq\.length\}">1 of \$\{seq\.length\}<\/span>`/);

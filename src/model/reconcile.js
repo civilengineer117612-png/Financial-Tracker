@@ -5,8 +5,8 @@
 //  - Nothing is added by itself. `planPairedMove` makes ONE draft transfer (source "statement") when the owner taps; a move already in the ledger is not made twice.
 // Pure logic; amounts are centavos, dates are "YYYY-MM-DD".
 import { accountLines, proveMonths } from "./proof.js";
-import { accountByLast4, planTransfer } from "./transfers.js";
-import { isPocket } from "./banks.js";
+import { accountByLast4, planTransfer, setAccountLast4 } from "./transfers.js";
+import { isPocket, planAccount } from "./banks.js";
 import { countedEntries } from "./balances.js";
 import { categoryFor } from "./importer.js";
 import { applyDrafts, planExpense } from "./drafts.js";
@@ -146,4 +146,17 @@ export function startFromStatement(state, accountId) {
   const dateOf = new Map(state.transactions.map((t) => [t.id, t.date]));
   const ignored = new Set(state.entries.filter((e) => e.account_id === accountId && (dateOf.get(e.transaction_id) ?? "9") < from).map((e) => e.transaction_id)).size;
   return { ok: true, ignored, from, opening: first.opening, state: { ...state, accounts: state.accounts.map((a) => (a.id === accountId ? { ...a, opening_balance: first.opening, opening_date: from } : a)) } };
+}
+
+// A Go Save pocket's statement names only the pocket’s number and GoTyme cannot say which of the owner's pockets that is, so the app makes ONE pocket per
+// number ("GoTyme · Go Save ····3002"), ready to be renamed when the owner knows it. A pocket with these digits is never made twice.
+// Returns {ok, account, state} like planAccount; opening balance 0 on the statement's first day (Phase 3 can start it from the statement).
+export function planPocketFromStatement(state, { id, last4, bank = null, date }) {
+  if (!/^\d{4}$/.test(String(last4 ?? ""))) return { ok: false, violations: [{ message: "The statement does not say the last four digits of the pocket." }] };
+  if (state.accounts.some((a) => !a.archived && a.last4 === last4)) return { ok: false, violations: [{ message: "You already have an account ending in " + last4 + "." }] };
+  const label = "Go Save \u00b7\u00b7\u00b7\u00b7" + last4;
+  const made = planAccount(state, { id, kind: "asset", pocket: true, opening: 0, date, ...(bank ? { bank, sub: label } : { name: label }) });
+  if (!made.ok) return made;
+  const digits = setAccountLast4(made.state, id, last4);
+  return digits.ok ? { ok: true, violations: [], account: digits.state.accounts.find((a) => a.id === id), state: digits.state } : digits;
 }

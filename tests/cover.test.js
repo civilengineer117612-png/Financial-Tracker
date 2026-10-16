@@ -45,7 +45,7 @@ test("the bar: ink on the track colour, never red, with words only for a screen 
   assert.match(css, /\.cover \{ display: flex; height: 6px; border-radius: 3px; background: var\(--track\); overflow: hidden; flex: 1; \} \.cover span \{ display: block; background: var\(--ink\); \}/);
   assert.match(app, /const coverBar = \(share, label\) => `<span class="cover" role="img" aria-label="\$\{esc\(label\)\}">/);
   assert.match(app, /kept for \$\{accountName\(c\.card_id\)\}, \$\{peso\(c\.free\)\} free to spend/);
-  assert.match(app, /const paidChips = \(selected, pockets = false\) => \{[^\n]*accountPicker\(cur \? \[\.\.\.list, cur\] : list, selected\) \+ reserveStrip\(\); \};/);
+  assert.match(app, /const paidChips = \(selected, pockets = false, extra = \[\]\) => \{[^\n]*accountPicker\(cur \? \[\.\.\.list, cur\] : list, selected\) \+ reserveStrip\(\); \};/);
   assert.ok((app.match(/paidChips\(/g) ?? []).length >= 8, "every Paid from, Arrived in and Take it from row carries the strip");
   assert.match(app, /return a && !a\.archived \? `<div class="coverrow">\$\{iconOf\(a, 20\)\}\$\{coverBar\(c\.share, a\.name \+ ": " \+ coverLabel\(c\)\)\}<\/div>` : "";/, "a picture and a bar for each reserve account, not for an archived one");
   assert.match(app, /<div class="coverwrap">\$\{coverBar\(cv\.share, coverLabel\(cv\)\)\}<\/div>/, "Setup's account row");
