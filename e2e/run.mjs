@@ -601,16 +601,26 @@ check((await page.locator(".bfill").evaluateAll((els) => new Set(els.map((e) => 
 
 await page.click('#screen .seg button:has-text("Trends")');
 await shot(page, "15-money-month");
-const colH = await page.locator(".cbar").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
-check(colH.length === 6 && colH.slice(0, 3).every((h) => h === 0) && colH[4] === Math.max(...colH) && colH[3] < colH[4] && colH[5] < colH[3] && Math.abs(colH[3] / colH[4] - 690 / 1295) < 0.03 && Math.abs(colH[5] / colH[4] - 395 / 1295) < 0.03, "six months as columns, in proportion, September the tallest: " + colH.join(","));
-check((await text(page, ".clabs")).replace(/\s+/g, " ").trim() === "May Jun Jul Aug Sep Oct", "month names run oldest to newest");
-check((await page.locator(".cval").allInnerTexts()).filter(Boolean).join() === "₱395", "only the current month is labelled until you tap");
-await page.click(".col >> nth=4");
-check((await text(page, ".caption")).includes("September 2026: ₱1,295.00 spent."), "tapping a column says its month and amount");
+check(await page.locator("#tlsvg path.tlline").count() === 1 && await page.locator("#tlsvg linearGradient#tlg").count() === 1 && await page.locator("#tlsvg path.tla").count() === 1, "Trends is one line with a faint gradient under it");
+check((await page.locator("#tlbox .tlranges button").allInnerTexts()).join() === "1M,3M,6M,1Y,All" && await page.locator('#tlbox button[aria-pressed="true"]').innerText() === "6M", "quick ranges 1M, 3M, 6M, 1Y and All, six months to start");
+check((await text(page, "#tlstep")).startsWith("By weeks"), "six months are cut into weeks: " + await text(page, "#tlstep"));
+{ const peak = await page.locator("#tlsvg .tlv").first().textContent(); check(/^₱[\d,]+$/.test(peak), "the highest point carries its figure: " + peak); }
+{ const box = await page.locator("#tlsvg").boundingBox();
+  await page.mouse.move(box.x + box.width * 0.3, box.y + 40); await page.mouse.down(); await page.mouse.move(box.x + box.width * 0.9, box.y + 40, { steps: 6 }); await page.mouse.up();
+  const cap = await text(page, "#tlcap"); check(/ days · ₱[\d,.]+ spent · about ₱[\d,.]+ a day\./.test(cap) && await page.locator("#tlsvg rect.tlband").count() === 1, "dragging across the line measures the span: " + cap);
+  await page.mouse.click(box.x + box.width * 0.95, box.y + 40);
+  check(/spent\.$/.test(await text(page, "#tlcap")) && await page.locator("#tlsvg rect.tlband").count() === 0, "a tap picks one point: " + await text(page, "#tlcap")); }
+await page.click('#tlbox button[data-id="1M"]');
+check((await text(page, "#tlstep")).startsWith("By days") && await page.locator('#tlbox button[aria-pressed="true"]').innerText() === "1M", "1M cuts the line into days");
+await page.click('#tlbox button[data-id="1Y"]');
+check((await text(page, "#tlstep")).startsWith("By weeks"), "1Y is weeks"); 
+await page.click('#tlbox button[data-id="All"]');
+check(await page.locator('#tlbox button[aria-pressed="true"]').innerText() === "All", "All is a range too");
+await page.click('#tlbox button[data-id="6M"]');
 
 await page.click('#screen .modebar button');
 screen = await text(page, "#screen");
-check(screen.includes("September 2026") && screen.includes("₱1,295.00") && screen.includes("August 2026") && screen.includes("₱690.00"), "the list says the same as the columns");
+check(screen.includes("Period") && screen.includes("Total") && screen.includes("₱2,380.00"), "the list says the same as the line: every point, and the total");
 await page.click('#screen .seg button:has-text("Category")');
 screen = await text(page, "#screen");
 check(/Shopping\s+₱300\.00/.test(screen) && /Food\s+₱95\.00/.test(screen) && screen.includes("₱395.00") && await page.locator("#screen .modebar").count() === 0, "the category card has every amount, the total is the big number, and there is no chart/list switch");
@@ -719,7 +729,7 @@ await page.click('#sheet button[data-action="period-year"][data-id="2026"]');
 check((await text(page, ".ptitle")).includes("2026") && !(await text(page, ".ptitle")).includes("October") && (await text(page, "#screen")).includes("spent in 2026"), "choosing a year shows the whole year");
 await page.click('#screen .seg button:has-text("Trends")');
 if (await page.locator("#screen .modebar button:has-text('Chart')").count()) await page.click("#screen .modebar button");   // the list/chart choice sticks, and Category has no switch any more
-await page.waitForTimeout(300); check((await page.locator(".cols .col").count()) === 12, "and By month then shows its twelve months (" + (await page.locator(".cols .col").count()) + ", " + (await text(page, "#screen")).slice(0, 120).replace(/\n/g, " | ") + ")");
+await page.waitForTimeout(300); check((await page.locator("#tlsvg path.tlline").count()) === 1, "and Trends then still shows the line (" + (await text(page, "#screen")).slice(0, 120).replace(/\n/g, " | ") + ")");
 await page.click('#screen .seg button:has-text("Category")');
 await page.click('button[aria-label="Earlier"]');
 check((await text(page, ".ptitle")).includes("2025") && (await text(page, "#screen")).includes("Nothing verified in this period"), "the arrows step a whole year, and an empty one says so");
@@ -3330,6 +3340,36 @@ console.log("Welcome card, category editing, required marks");
     const catScreen = (await text(page, "#screen")).replace(/\s+/g, " ");
     check(catScreen.includes("Family") && !catScreen.includes("Unlogged"), "By category now counts those payments under Family, not Unlogged");
     check(errors.length === 0, "no errors on the Who list (" + errors.join(" | ") + ")");
+    await ctx.close(); }
+  // The spending line: pinch and Ctrl-scroll zoom it, the step follows the zoom, it never goes past today or before the first spending
+  { const spendTx = (id, date, amt) => [{ id, date, payee: "Sample Shop", memo: "", status: "verified", source: "manual", created_at: TSW, verified_at: TSW }, [{ transaction_id: id, category_id: "cat-food", amount: amt }, { transaction_id: id, account_id: "w", amount: -amt }]];
+    const dates = ["2025-11-03", "2026-01-15", "2026-03-10", "2026-05-20", "2026-07-04", "2026-08-30", "2026-09-12", "2026-09-28", "2026-10-02"];
+    const made = dates.map((d, i) => spendTx("z" + i, d, 10000 + i * 5000));
+    const seedZ = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [{ id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 900000, opening_date: "2025-10-01" }], transactions: made.map((m) => m[0]), entries: made.flatMap((m) => m[1]) } };
+    ({ ctx, page, errors } = await open({ blockSw: true, seed: seedZ }));
+    await menuGo(page, "Spending"); await page.click('#screen .seg button:has-text("Trends")');
+    const win = async () => (await text(page, "#tlstep")) + " | " + (await page.locator("#tlsvg").getAttribute("aria-label"));
+    const before = await win();
+    await page.click('#tlbox button[data-id="1Y"]');
+    check((await text(page, "#tlstep")).startsWith("By weeks") && (await page.locator("#tlsvg").getAttribute("aria-label")).includes("Oct 4, 2025"), "1Y reaches back a year, by weeks: " + await win());
+    const pinch = (kind) => page.evaluate((k) => {
+      const svg = document.getElementById("tlsvg"), r = svg.getBoundingClientRect(), y = r.top + r.height / 2, mk = (type, id, x) => svg.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: y, bubbles: true, pointerType: "touch" }));
+      const c = r.left + r.width / 2, a0 = k === "in" ? 30 : 110, a1 = k === "in" ? 120 : 20;
+      mk("pointerdown", 1, c - a0); mk("pointerdown", 2, c + a0);
+      for (let i = 1; i <= 8; i++) { const w = a0 + ((a1 - a0) * i) / 8; mk("pointermove", 1, c - w); mk("pointermove", 2, c + w); }
+      mk("pointerup", 1, c - a1); mk("pointerup", 2, c + a1);
+    }, kind);
+    await pinch("in"); await pinch("in");
+    const zin = await text(page, "#tlstep");
+    check(await page.locator('#tlbox button[aria-pressed="true"]').count() === 0 && zin.startsWith("By days"), "spreading two fingers zooms in, no quick range is lit, the line turns to days: " + await win());
+    await pinch("out"); await pinch("out"); await pinch("out");
+    const zout = await text(page, "#tlstep");
+    check(zout.startsWith("By weeks") || zout.startsWith("By months"), "pinching in the other way zooms out again: " + await win());
+    for (let k = 0; k < 14; k++) await page.evaluate(() => { const svg = document.getElementById("tlsvg"), r = svg.getBoundingClientRect(); svg.dispatchEvent(new WheelEvent("wheel", { deltaY: 120, ctrlKey: true, clientX: r.left + r.width / 2, clientY: r.top + 40, bubbles: true, cancelable: true })); });
+    const lab = await page.locator("#tlsvg").getAttribute("aria-label");
+    check(lab.includes("Nov 3, 2025") && lab.includes("Oct 3, 2026") && (await text(page, "#tlstep")).startsWith("By weeks"), "Ctrl and scroll zooms out to the first spending and today, no further: " + lab);
+    check(await page.locator("#tlsvg rect.tlband").count() === 0, "zooming clears a measured span");
+    check(errors.length === 0, "no errors with the spending line (" + errors.join(" | ") + ")");
     await ctx.close(); }
   // A bank statement (PDF) read on the phone: an open one, then a locked one (invented statements in e2e/fixtures)
   const FX = (n) => new URL("./fixtures/" + n, import.meta.url).pathname;
