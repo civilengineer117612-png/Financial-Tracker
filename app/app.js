@@ -33,6 +33,8 @@ let toastTimer = null;
 
 // ---------- reading helpers ----------
 const S = () => ledger.state;
+// The reports read the ledger through the owner's payee names: an entry still in Unlogged shows under its payee's category; nothing stored changes.
+const SV = () => M.withPayeeBook(ledger.state, ledger.settings.payee_book);
 const activeAccounts = () => S().accounts.filter((a) => !a.archived);
 const accountName = (id) => S().accounts.find((a) => a.id === id)?.name ?? "?";
 const categoryName = (id) => S().categories.find((c) => c.id === id)?.name ?? "?";
@@ -1499,9 +1501,28 @@ function viewCards() {
     <p><button class="link" data-action="tab" data-tab="setup" data-page="accounts">Add or change accounts</button></p>`;
 }
 
+// Who the money went to in the period (Trends): one row per person, the biggest first, one bar each. A person with several accounts (a GCash number and a bank
+// account given the same name) opens into them. A row opens the payee window: name it once, give it a category, and every payment to them follows.
+function whoHtml(from, to, label) {
+  const rows = M.spendingByPayee(S(), ledger.settings.payee_book, { from, to }).filter((r) => r.total > 0);
+  if (!rows.length) return "";
+  const max = rows[0].total, catName = (id) => (id ? expenseCategories().find((c) => c.id === id)?.name ?? "" : "");
+  const shown = ui.whoAll ? rows : rows.slice(0, 12);
+  const one = (r) => {
+    const many = r.members.length > 1, open = !!ui.whoOpen?.[r.id], cat = r.category_id && r.category_id !== M.UNLOGGED_CATEGORY_ID ? catName(r.category_id) : "";
+    const sub = [r.named ? cat || "No category yet" : cat ? cat : "Not named yet", many ? r.members.length + " accounts" : r.count + (r.count === 1 ? " payment" : " payments")].filter(Boolean).join(" \u00b7 ");
+    const head = `<button class="whorow" data-action="${many ? "who-open" : "who-edit"}" data-id="${esc(many ? r.id : r.members[0].key)}"${many ? ` aria-expanded="${open}"` : ""}>
+      <span class="whotop"><span>${esc(r.name)}${many ? ` <span aria-hidden="true">${open ? "\u25B4" : "\u25BE"}</span>` : ""}<small>${esc(sub)}</small></span><span class="whoamt">${peso(r.total)}</span></span>
+      <span class="whobar"><span style="width:${Math.max(1, Math.round((r.total * 100) / max))}%"></span></span></button>`;
+    const subs = many && open ? r.members.map((m) => `<button class="whorow whosub" data-action="who-edit" data-id="${esc(m.key)}"><span class="whotop"><span>${esc(m.label)}<small>${m.count} ${m.count === 1 ? "payment" : "payments"}</small></span><span class="whoamt">${peso(m.total)}</span></span></button>`).join("") : "";
+    return head + subs;
+  };
+  return `<h2 id="who">Who, ${esc(label)}</h2><p class="note small">Tap one to name it once; every payment to them follows. Moves between your own accounts are not here.</p>
+    <div class="card whocard">${shown.map(one).join("")}</div>${rows.length > shown.length ? `<p class="center"><button class="link" data-action="who-all">Show all ${rows.length}</button></p>` : ""}`;
+}
 function viewMoney() {
   const p = period(), [from, to] = periodBounds(p), maps = S().categoryMaps, asOf = today(), nowM = M.monthOf(today()), nowY = Number(today().slice(0, 4));
-  const cat = M.spendingByRange(S(), { from, to, categoryMaps: maps, asOf });
+  const cat = M.spendingByRange(SV(), { from, to, categoryMaps: maps, asOf });
   const label = periodLabel(p);
 
   // The headline first; then what to look at; then the chart; then the same thing as a list.
@@ -1524,17 +1545,17 @@ function viewMoney() {
     const endMonth = p.kind === "month" ? p.month : p.kind === "year" ? p.year + "-12" : M.monthOf(to);
     const span = (Number(endMonth.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(endMonth.slice(5)) - Number(from.slice(5, 7)) + 1;
     const n = p.kind === "month" ? 6 : p.kind === "year" ? 12 : Math.max(1, Math.min(24, span));
-    const series = M.monthlySpending(S(), { endMonth, months: n, categoryMaps: maps, asOf });
+    const series = M.monthlySpending(SV(), { endMonth, months: n, categoryMaps: maps, asOf });
     const trend = M.budgetTrend(S(), { endMonth, months: n, categoryMaps: maps, asOf });
     if (!series.some((x) => x.amount !== 0) && !trend.some((x) => x.budget !== null)) return empty();
-    if (ui.asList) return done(listTable(["Month", "Spent"], [...series].reverse().map((x) => [esc(M.monthLabel(x.month)), peso(x.amount)]), "Total", series.reduce((nn, x) => nn + x.amount, 0)) + "<h2>Budget vs actual</h2>" + trendTable(trend));
+    if (ui.asList) return done(listTable(["Month", "Spent"], [...series].reverse().map((x) => [esc(M.monthLabel(x.month)), peso(x.amount)]), "Total", series.reduce((nn, x) => nn + x.amount, 0)) + "<h2>Budget vs actual</h2>" + trendTable(trend)) + whoHtml(from, to, label);
     const max = Math.max(...series.map((x) => x.amount), 1), sel = ui.sel, many = n > 8;
     const cols = series.map((x) => `<button class="col${sel && sel !== x.month ? " dim" : ""}" data-action="pick-bar" data-id="${x.month}" aria-pressed="${sel === x.month}" aria-label="${esc(M.monthLabel(x.month) + ": " + peso(x.amount))}">
         <span class="cval">${(!many && x.month === endMonth) || x.month === sel ? M.formatPesosWhole(x.amount) : ""}</span><span class="cbar" style="height:${x.amount > 0 ? Math.max(4, Math.round((x.amount * 130) / max)) : 0}px"></span></button>`).join("");
     const hit = series.find((x) => x.month === sel);
     return done(`<div class="cols${many ? " tight" : ""}">${cols}</div><div class="clabs${many ? " tight" : ""}">${series.map((x) => `<span>${many ? MONTH3[Number(x.month.slice(5)) - 1][0] : MONTH3[Number(x.month.slice(5)) - 1]}</span>`).join("")}</div>
       <p class="caption" aria-live="polite">${hit ? esc(M.monthLabel(hit.month) + ": " + peso(hit.amount) + " spent.") : "Tap a column to see its month."}</p>
-  X${trendChart(trend)}`);
+  ${trendChart(trend)}`) + whoHtml(from, to, label);
   }
 
   if (ui.view === "budget") {
@@ -1599,7 +1620,7 @@ function trendTable(trend) {
 }
 
 function viewBudgets(hero, month, maps, asOf, now, label) {
-  const rows = M.budgetStatus(S(), { rules: S().rules, categoryMaps: maps, month, asOf });
+  const rows = M.budgetStatus(SV(), { rules: S().rules, categoryMaps: maps, month, asOf });
   const budgeted = rows.filter((r) => r.budget !== null).map((r) => ({ ...r, grade: M.budgetGrade(r.spent, r.budget) }))
     .sort((a, b) => b.spent * a.budget - a.spent * b.budget || (a.category_id < b.category_id ? -1 : 1));   // most used first
   const unbudgeted = rows.filter((r) => r.budget === null && r.spent > 0).sort((a, b) => b.spent - a.spent);
@@ -1923,7 +1944,7 @@ function viewBudgetNew() {
   const month = M.monthOf(today()), next = M.addMonths(month, 1), set = ledger.settings, plan = planOf();
   const inc = M.baseIncome(S(), { plan, pin: set.income_base_pin ?? null }), income = inc.amount;
   const share = (amount) => (income ? `<small aria-label="${M.showTenths(M.tenths(amount, income))} of income">${M.showTenths(M.tenths(amount, income))}</small>` : "");   // under the amount, on its own line, so the columns line up
-  const status = new Map(M.budgetStatus(S(), { rules: S().rules, categoryMaps: S().categoryMaps, month, asOf: today() }).map((r) => [r.category_id, r]));
+  const status = new Map(M.budgetStatus(SV(), { rules: S().rules, categoryMaps: S().categoryMaps, month, asOf: today() }).map((r) => [r.category_id, r]));
   const rows = expenseCategories().map((c) => ({ c, now: M.budgetFor(S().rules, c.id, month), later: M.budgetFor(S().rules, c.id, next), st: status.get(c.id) }));
   const spendTotal = rows.reduce((n, r) => n + (r.now ?? 0), 0);
   const sug = income && !plan ? runSuggest() : null;   // the same call as the Suggest sheet, so the rent you typed is used here too
@@ -2508,7 +2529,7 @@ function renderSheet() {
     else if (f.error) body = `<h3>Import old spending</h3><p class="note" role="alert"><b>${esc(f.error)}</b></p>`;
     else {
       const kept = importKept(f), waiting = f.items.filter((x) => x.meaning === "unsure" && !f.choice?.[x.id]).length, held = !!f.statement && !f.statement.check.ok && !f.looked;
-      const p = f.order ? M.previewImport(S(), kept, f.order) : null, acct = S().accounts.find((a) => a.id === f.account_id);
+      const p = f.order ? M.previewImport(S(), kept, f.order, ledger.settings.payee_book) : null, acct = S().accounts.find((a) => a.id === f.account_id);
       const sample = f.items.find((x) => M.readDate(x.dateRaw) && !M.readDate(x.dateRaw).iso)?.dateRaw;
       const orderLine = sample ? `<p class="note" id="imp-order">${f.order ? `Dates read as <b>${f.order === "dmy" ? "day/month" : "month/day"}</b>: ${esc(sample)} is <b>${esc(longDate(M.previewImport(S(), [{ dateRaw: sample, name: "x", amount: 1 }], f.order).lines[0]?.date ?? today()))}</b>.` : `<b>Which comes first in ${esc(sample)}?</b>`}</p>
         <div class="seg" role="group" aria-label="Date order">${[["dmy", "Day / month"], ["mdy", "Month / day"]].map(([o, t]) => `<button data-action="import-order" data-id="${o}" aria-pressed="${f.order === o}">${t}</button>`).join("")}</div>` : "";
@@ -2583,6 +2604,18 @@ function renderSheet() {
     const [pf, pt] = periodBounds(period());
     const loose = M.incomeWithoutPayslip(S(), { from: pf, to: pt });
     body = `<h3>Payslips, ${esc(periodLabel(period()))}</h3>${payslipRows({ from: pf, to: pt })}${loose.length ? `<h3>Added without a payslip</h3><p class="note">These count as income but have no payslip, for example a payslip photo saved as plain pay. Remove one if it is a double.</p>${loose.map((r) => `<div class="row"><div>${esc(r.payee || "Pay received")}<small>${esc(fullDate(r.date))}${r.account_id ? " · into " + esc(accountName(r.account_id)) : ""}</small></div><div class="amt">${peso(r.amount)}</div></div>${ui.confirmDelInc === r.transaction_id ? `<p class="note">Remove this entry? ${peso(r.amount)} also comes out of ${esc(r.account_id ? accountName(r.account_id) : "the account")}. <button class="link" data-action="del-inc-yes" data-id="${esc(r.transaction_id)}">Yes, remove it</button></p>` : `<p class="note"><button class="link" data-action="del-inc" data-id="${esc(r.transaction_id)}">Remove this entry</button></p>`}`).join("")}` : ""}`;
+  } else if (sh.type === "payee") {
+    const key = sh.id, months = M.payeeMonths(S(), key, { endMonth: M.monthOf(today()), months: 6 }), n = M.payeeCount(S(), key), max = Math.max(1, ...months.map((x) => x.amount));
+    const year = M.spendingByPayee(S(), {}, { from: today().slice(0, 4) + "-01-01", to: today() }).find((r) => r.members.some((m) => m.key === key));
+    const bars = months.map((x) => `<span class="pmcol" aria-label="${esc(M.monthLabel(x.month) + ": " + peso(x.amount))}"><span class="pmval">${x.amount > 0 ? M.formatPesosWhole(x.amount) : ""}</span><span class="pmbar" style="height:${x.amount > 0 ? Math.max(3, Math.round((x.amount * 56) / max)) : 0}px"></span><small>${MONTH3[Number(x.month.slice(5)) - 1]}</small></span>`).join("");
+    const cats = pickCategoriesWith(ui.form.category_id).filter((c) => c.id !== M.UNLOGGED_CATEGORY_ID);
+    body = `<h3>${esc(sh.label)}</h3><p class="note">${n} ${n === 1 ? "payment" : "payments"}${year ? " \u00b7 " + peso(year.members.find((m) => m.key === key).total) + " in " + today().slice(0, 4) : ""}</p>
+      <div class="pmonths">${bars}</div>
+      <label for="p-name">Who is this? (only on this phone)</label><input id="p-name" data-field="pname" maxlength="40" autocomplete="off" value="${esc(ui.form.pname ?? "")}" placeholder="e.g. Mama, Landlord">
+      <label>Category${REQ}</label>${categoryPicker(cats, ui.form.category_id)}${REQNOTE}
+      <p class="note small">Give two numbers the same name and they show as one person. ${n > 1 ? `All ${n} payments` : "This payment"} to ${esc(sh.label)} leave Unlogged, and the next statement does the same by itself.</p>
+      <p><button class="primary" id="f-save" data-action="payee-save"${ui.form.category_id ? "" : " disabled"}>${n > 1 ? `Save for all ${n}` : "Save"}</button></p>
+      <p class="center"><button class="link" data-action="close-sheet">Not now</button></p>`;
   } else if (sh.type === "last4") {
     const a = S().accounts.find((x) => x.id === sh.id);
     body = `<h3>Last 4 digits of ${esc(a.name)}</h3>
@@ -3166,6 +3199,20 @@ async function onClick(el) {
     case "rename-cat": { const c = S().categories.find((x) => x.id === id), b = c ? M.bucketOf(c, ledger.settings.bucket_overrides ?? {}) : null; ui.sheet = { type: "cat", id }; ui.form = { name: c?.name ?? "", bucket: b, bucket0: b }; renderSheet(); break; }
     case "pick-edit-bucket": ui.form.bucket = el.dataset.bucket; for (const b of document.querySelectorAll("#c-edit-bucket button")) b.setAttribute("aria-pressed", String(b.dataset.bucket === ui.form.bucket)); break;
     case "cards-list": ui.cardsList = !ui.cardsList; renderScreen(); break;
+    case "who-open": ui.whoOpen = { ...(ui.whoOpen ?? {}), [id]: !ui.whoOpen?.[id] }; renderScreen(); break;
+    case "who-all": ui.whoAll = true; renderScreen(); break;
+    case "who-edit": {
+      const p = (ledger.settings.payee_book ?? {})[id] ?? {}, t = S().transactions.find((x) => M.payeeKey(x.payee) === id);
+      ui.sheet = { type: "payee", id, label: M.payeeLabel(t?.payee ?? id) }; ui.form = { pname: p.name ?? "", category_id: p.category_id ?? null }; renderSheet(); break;
+    }
+    case "payee-save": {
+      const r = M.namePayee(S(), ledger.settings.payee_book, ui.sheet.id, { name: ui.form.pname, category_id: ui.form.category_id });
+      if (!r.ok) { showToast(r.message); break; }
+      const label = ui.form.pname?.trim() || ui.sheet.label;
+      ui.sheet = null;
+      if (await commit(r.state, { ...ledger.settings, payee_book: r.book })) showToast("Saved: " + label);
+      renderAll(); break;
+    }
     case "cards-eye": ui.cardsShown = !ui.cardsShown; renderScreen(); break;
     case "cat-edit": ui.catEdit = true; ui.confirmRemoveCat = null; renderScreen(); break;
     case "cat-done": ui.catEdit = false; ui.confirmRemoveCat = null; renderScreen(); break;
@@ -3609,7 +3656,7 @@ async function onClick(el) {
     case "import-order": form.order = id; renderSheet(); break;
     case "save-import": {
       if (form.statement && !form.statement.check.ok && !form.looked) break;   // held until "I looked at the amounts"
-      const p = M.previewImport(S(), importKept(form), form.order), r = M.planImport(S(), p.lines, { account_id: form.account_id, newId: () => newId("tx") });
+      const p = M.previewImport(S(), importKept(form), form.order, ledger.settings.payee_book), r = M.planImport(S(), p.lines, { account_id: form.account_id, newId: () => newId("tx") });
       if (!r.ok) { showToast(r.message); break; }
       let next = r.state, kept = "";
       if (form.statement && form.keep !== false && form.statement.parsed) {   // keep the statement as read, to prove the months with (Setup, Statements)

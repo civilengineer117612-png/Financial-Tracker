@@ -2,6 +2,7 @@
 // reader), a CSV file, or an Excel (.xlsx) file such as a Google Sheet downloaded. Pure functions; nothing is saved here. Every line becomes a DRAFT that
 // waits in Verify (owner's rule: everything from a picture or a file is checked, one at a time). Nothing leaves the phone and no library is needed: an
 // .xlsx file is a zip of XML files, opened with the browser's own unzip (DecompressionStream).
+import { categoryFromBook } from "./payees.js";
 import { planExpense, applyDrafts } from "./drafts.js";
 import { categoriesOfKind, UNLOGGED_CATEGORY_ID } from "./seed.js";
 import { guessType } from "./types.js";
@@ -159,8 +160,10 @@ const key = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 // The category of one line: the file's own category name if you have a category so named; else a quick tile with this name; else the category your own
 // verified entries of this name had most often; else the kind its name
 // reads as (LRT is transport, Lunch is food); else Unlogged, to be chosen in Verify. {category_id, how}
-export function categoryFor(state, item) {
+export function categoryFor(state, item, book = null) {
   const cats = state.categories.filter((c) => c.kind === "expense" && c.id !== UNLOGGED_CATEGORY_ID);
+  const named = book ? categoryFromBook(state, book, item.name) : null;   // the category you gave this payee in Spending, Trends, Who
+  if (named) return { category_id: named, how: "your name for them" };
   const byLabel = item.label && cats.find((c) => key(c.name) === key(item.label));
   if (byLabel) return { category_id: byLabel.id, how: "your file's category" };
   const tile = (state.presets ?? []).find((p) => key(p.name) === key(item.name) && cats.some((c) => c.id === p.category_id));
@@ -173,13 +176,13 @@ export function categoryFor(state, item) {
 }
 
 // The plan for a list of read lines: dated, categorised, already-logged ones left out. order: "dmy" | "mdy". Returns {lines, duplicates, undated}.
-export function previewImport(state, items, order) {
+export function previewImport(state, items, order, book = null) {
   const have = new Set(state.transactions.map((t) => { const amt = state.entries.find((e) => e.transaction_id === t.id && e.category_id)?.amount; return `${t.date}|${key(t.payee)}|${amt}`; }));
   const lines = [], duplicates = [], undated = [];
   for (const it of items) {
     const p = readDate(it.dateRaw), date = p ? isoOf(p, order) : null;
     if (!date) { undated.push(it); continue; }
-    const line = { date, name: it.name, amount: it.amount, ...categoryFor(state, it) };
+    const line = { date, name: it.name, amount: it.amount, ...categoryFor(state, it, book) };
     if (have.has(`${date}|${key(it.name)}|${it.amount}`)) duplicates.push(line); else lines.push(line);
   }
   return { lines, duplicates, undated };
