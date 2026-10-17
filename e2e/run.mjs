@@ -2672,7 +2672,7 @@ console.log("Space, pictures and the photo reader");
   check(await seen(page, "#toast", "The photo reader is on this phone", 120000), "the button downloads the reader");
   check(await seen(page, "#about-reader", "The photo reader is on this phone.", 20000) && await page.locator("#warm-btn").waitFor({ state: "hidden", timeout: 20000 }).then(() => true, () => false), "and the line changes, with no button left");   // waits for both (the line and the hidden button change a tick apart on a slow runner)
   await menuGo(page, "Weekly review");
-  check((await text(page, "#screen")).includes("One reminder") && (await text(page, "#screen")).includes("2 pictures are kept on this phone only"), "a due backup reminder at the Weekly review names the pictures");
+  check((await text(page, "#screen")).includes("One reminder") && (await text(page, "#screen")).includes("2 pictures are kept on this phone. Back up includes them."), "a due backup reminder at the Weekly review names the pictures");
   check((await text(page, "#screen")).includes("Your pictures have not been backed up yet."), "and says the pictures have never been backed up");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }

@@ -134,10 +134,11 @@ New ideas are NOT built the moment they are said. Every item has one level, and 
 - When a PR is merged, show the Backlog in at most 5 lines (P1 first) and wait for the owner's number. The owner's own "yes" to a drawing approves the DESIGN, not the order of work.
 - "qq" side questions and Waiting-list notes are not backlog items.
 - The list lives here (owner keeps it short; remove an item when it is merged):
-  - P1: statement proof (Phases 0 to 3 and the savings pockets are merged or open; what is left: nothing planned; see STATEMENT PROOF).
+  - P1: none. The owner said "build all P2" (Oct 17): one PR at a time, in this order: 7 (done with this PR), 6, 5, then the rollout 2 and 3 one screen at a time, each written up and drawn first.
   - P2 1: Back up everything and Restore everything (one tap makes the ledger file and the pictures files; screenshot first).
   - P2 2: rollout of the look and popups, PR 2: thin bars in Cash flow, Budget and Goals (write up first, one screen at a time).
   - P2 3: rollout PR 3: Trends and other charts, row alignment.
+  - P2 6: change the category of an income draft in Verify (only amount, date and name can be edited now).
   - P2 5: a clearer name for what you spent on Add expense (a "Paid to (optional)" box exists; the owner's answers on whether it is seen are pending).
 
 ## One thing at a time (owner's rule)
