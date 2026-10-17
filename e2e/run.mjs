@@ -659,24 +659,24 @@ check((await page.locator("#menu .drawer").count()) === 0 && (await text(page, "
 check((await page.locator("#nav [aria-current]").count()) === 0, "no bottom button is marked while a menu screen is open");
 
 // ---- setting budgets ----
-let budgetRows = await page.locator(".choice").allInnerTexts();
+let budgetRows = await page.locator("button.catrow").allInnerTexts();
 check(budgetRows.length === 8 && !budgetRows.some((r) => r.includes("Unlogged")) && budgetRows.every((r) => r.includes("No budget")), "every spending category can have a budget, except Unlogged; none set yet");
 await shot(page, "18-budget");
 const setBudget = async (cat, amount, startLabel) => {
-  await page.click(`.choice:has-text("${cat}")`);
+  await page.click(`button.catrow:has-text("${cat}")`);
   await page.fill("#f-amount", amount);
   if (startLabel) await page.click(`#sheet button:has-text("${startLabel}")`);
   await page.click("#f-save");
   await seen(page, "#toast", (Number(amount) === 0 ? "Budget removed for " : "Budget saved for ") + cat);   // wait for THIS save, not an older message
 };
-await page.click('.choice:has-text("Shopping")');
+await page.click('button.catrow:has-text("Shopping")');
 check((await page.inputValue("#f-amount")) === "" && (await page.getAttribute('#sheet button:has-text("This month")', "aria-pressed")) === "true", "a first budget starts this month by default");
 check(await page.locator("#f-save").isDisabled(), "saving is off until there is an amount");
 check(await stars(page) === 1 && (await text(page, "#sheet")).includes("needed before you can save"), "a budget marks the amount with the *");
 await page.fill("#f-amount", "350"); await page.click("#f-save");
 check(await seen(page, "#toast", "Budget saved for Shopping"), "a budget is saved");
 check(await seen(page, "#screen", "₱350.00 a month"), "and shown beside the category");
-await page.click('.choice:has-text("Shopping")');
+await page.click('button.catrow:has-text("Shopping")');
 check((await page.inputValue("#f-amount")) === "350.00" && (await page.getAttribute('#sheet button:has-text("Next month")', "aria-pressed")) === "true", "a change to an existing budget starts next month by default");
 await page.click('#sheet button:has-text("Cancel")');
 await setBudget("Shopping", "250", "This month");
@@ -684,11 +684,11 @@ await setBudget("Food", "100");
 await setBudget("Rent", "2000");
 check(await seen(page, "#screen", "₱250.00 a month"), "changing a budget this month replaces it from now on");
 await setBudget("Family", "500", "Next month");
-const famText = await text(page, ".choice:has-text('Family')");
+const famText = await text(page, "button.catrow:has-text('Family')");
 if (!famText.includes("from November 2026")) console.log("   Family row was:", JSON.stringify(famText));
 check(famText.includes("from November 2026"), "a budget that starts next month says so");
 await setBudget("Family", "0", "This month");
-check((await text(page, ".choice:has-text('Family')")).includes("No budget"), "0 removes a budget");
+check((await text(page, "button.catrow:has-text('Family')")).includes("No budget"), "0 removes a budget");
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.state.rules.length === 6 && ledgerNow.state.rules.every((r) => r.kind === "budget"), "every change is a new dated row; none was edited: " + ledgerNow.state.rules.length);
 check(ledgerNow.state.rules.filter((r) => r.subject_id === "cat-shopping").map((r) => r.amount).join() === "35000,25000", "the first Shopping budget is still there, then the new one");
@@ -2354,7 +2354,7 @@ console.log("Sinking funds");
   await menuGo(page, "Cards");
   check((await text(page, "#cards-setaside")).includes("\u20B1500.00 of this is set aside for planned spending, not savings"), "Cards says how much of 'in your accounts' is waiting to be spent");
   await menuGo(page, "Budget");
-  await page.click('.choice:has-text("Insurance")');
+  await page.click('button.catrow:has-text("Insurance")');
   check(await page.locator('#sheet button[data-action="toggle-sinking"][aria-pressed="true"]').count() === 1, "the budget window shows the switch on");
   await page.click('#sheet button[data-action="toggle-sinking"]'); await page.waitForTimeout(400);
   check(await page.locator('#sheet button[data-action="toggle-sinking"][aria-pressed="false"]').count() === 1 && !JSON.parse((await stored(page)).local).settings.sinking_funds?.["cat-ins"], "turning it off removes it from the settings");
@@ -3228,7 +3228,7 @@ console.log("Welcome card, category editing, required marks");
   // Budget keeps a hidden category in its place with a quiet word
   ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...seedC, settings: { ...seedC.settings, hidden_categories: ["cat-lakat"] } } }));
   await menuGo(page, "Budget");
-  check(await page.locator('#screen .choice:has-text("Lakat/Date") small.hiddennote').count() === 1 && await page.locator("#screen small.hiddennote").count() === 1, "Budget marks only the hidden category, in its own place, with one quiet word");
+  check(await page.locator('#screen button.catrow:has-text("Lakat/Date") small.hiddennote').count() === 1 && await page.locator("#screen small.hiddennote").count() === 1, "Budget marks only the hidden category, in its own place, with one quiet word");
   await ctx.close();
   // Who: spending by payee inside Trends; naming a number once moves its payments out of Unlogged (verified ones only in the reports, drafts for real)
   { const txW = (id, date, payee, status = "verified") => ({ id, date, payee, memo: "", status, source: "statement", created_at: TSW, ...(status === "verified" ? { verified_at: TSW } : {}) });
