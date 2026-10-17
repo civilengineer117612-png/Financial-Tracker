@@ -1256,7 +1256,7 @@ await page.setInputFiles("input[data-scan]:not([capture])", { name: "receipt.png
 check(await seen(page, "#sheet", "Check what I read", 180000), "the receipt is read again, to split it");
 await page.click('#sheet .chip:has-text("Wallet")');
 check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Food")').count() === 1, "Food is the first category");
-await page.click('#sheet button:has-text("Split between two categories")');
+await page.click('#sheet button:has-text("Split receipt")');
 check(await page.locator("#f-save").isDisabled(), "a split cannot be saved until the second category and its amount are given");
 await page.click('#sheet button[data-action="pick-split"]:has-text("Essentials")'); await page.fill("#f-split", "50");
 check((await text(page, "#split-note")).includes("Food gets ₱100.00, Essentials gets ₱50.00"), "it says what each category gets");
@@ -3394,6 +3394,19 @@ console.log("Welcome card, category editing, required marks");
     await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.entries.some((e) => e.transaction_id === "i1" && e.category_id === "cat-gift"), null, { timeout: 5000 });
     { const led = JSON.parse((await stored(page)).local).state, es = led.entries.filter((e) => e.transaction_id === "i1");
       check(es.some((e) => e.category_id === "cat-gift" && e.amount === -150000) && es.some((e) => e.account_id === "w" && e.amount === 150000) && led.transactions.find((t) => t.id === "i1").status === "draft", "it moved to Gift, the amount and the account unchanged, still a draft"); }
+    await ctx.close(); }
+  // Split receipt (scan and voice forms): short words, one line saying when to use it, the second category and its amount
+  { const st = { ...seedC.state, categories: [...seedC.state.categories, { id: "cat-essentials", name: "Essentials", kind: "expense", role: "essentials" }] };
+    ({ ctx, page, errors } = await open({ blockSw: true, noSpeech: true, seed: { ...seedC, state: st } }));
+    await page.click('button[data-action="open-voice"]'); await page.waitForSelector("#v-text");
+    await page.fill("#v-text", "groceries 1200 at Sample Market using Test Debit"); await page.click("#f-save");
+    await page.waitForSelector('#sheet button[data-action="toggle-split"]');
+    check((await text(page, '#sheet button[data-action="toggle-split"]')).trim() === "Split receipt", "the split link is called Split receipt");
+    await page.click('button[data-action="toggle-split"]');
+    const sp = await text(page, "#sheet");
+    check(sp.includes("Do not split") && sp.includes("One receipt, two kinds of spending, like groceries and cleaning supplies.") && sp.includes("Second category") && sp.includes("Its amount"), "opened, it says when to use it and asks for the second category and its amount");
+    await page.evaluate(() => document.querySelector('#sheet [data-action="pick-split"][data-id="cat-food"]')?.click()); await page.fill("#f-split", "300");
+    check((await text(page, "#split-note")).includes("Essentials gets \u20B1900.00, Food gets \u20B1300.00"), "and says what each category gets");
     await ctx.close(); }
   // Due day: on the due day a draft payment waits in Verify, once, and a thrown-away one does not come back that month
   { const seedD = { ...seedC, state: { ...seedC.state, accounts: seedC.state.accounts.map((a) => (a.id === "c" ? { ...a, due_day: 3, statement_balance: 250000, statement_date: "2026-09-20" } : a)) } };

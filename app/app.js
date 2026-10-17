@@ -2654,9 +2654,9 @@ function renderSheet() {
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(f.date)}">
       <label for="f-payee">${move ? "Name" : into ? "From" : "Paid to"} (optional)</label><input id="f-payee" data-field="payee" value="${esc(f.payee ?? "")}" autocomplete="off">
       ${move ? moveFields(f) : `<label>Category${REQ}</label>${into ? categoryPicker(incomeCategories(), f.category_id, "cat", "pick-cat", "Choose what it is") : categoryPicker(pickCategoriesWith(f.category_id), f.category_id)}`}
-      ${into || move ? "" : `<p><button class="link" data-action="toggle-split" aria-pressed="${f.split === true}">${f.split ? "Do not split this receipt" : "Split between two categories"}</button></p>
-      ${f.split ? `<label>Second category</label>${categoryPicker(pickCategories().filter((c) => c.id !== f.category_id), f.split_cat, "split", "pick-split", "Choose a second category")}
-        <label for="f-split">Amount that belongs to the second category (\u20B1)</label><input id="f-split" data-field="split_amt" inputmode="decimal" value="${esc(f.split_amt ?? "")}" autocomplete="off">
+      ${into || move ? "" : `<p><button class="link" data-action="toggle-split" aria-pressed="${f.split === true}">${f.split ? "Do not split" : "Split receipt"}</button></p>
+      ${f.split ? `<p class="note small">One receipt, two kinds of spending, like groceries and cleaning supplies.</p><label>Second category</label>${categoryPicker(pickCategories().filter((c) => c.id !== f.category_id), f.split_cat, "split", "pick-split", "Choose a second category")}
+        <label for="f-split">Its amount (\u20B1)</label><input id="f-split" data-field="split_amt" inputmode="decimal" value="${esc(f.split_amt ?? "")}" autocomplete="off">
         <p class="note" id="split-note" role="status"></p>` : ""}`}
       ${move ? "" : `<label>${into ? "Arrived in" : "Paid from"}${REQ}</label>${paidChips(f.account_id)}`}
       ${f.dupOf ? dupBlock(f.dupOf) : ""}

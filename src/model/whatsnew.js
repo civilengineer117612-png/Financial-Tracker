@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-17-split-receipt", date: "2026-10-17", text: "The receipt split is now called Split receipt, says when to use it, and asks only for the second category and its amount." },
   { id: "2026-10-17-swipe-photo", date: "2026-10-17", text: "A full-size photo now closes when you swipe it down, as well as when you tap outside it." },
   { id: "2026-10-17-income-category", date: "2026-10-17", text: "In Verify, Edit on money in now lets you change its category before you tap Correct." },
   { id: "2026-10-17-item-box", date: "2026-10-17", text: "Add expense has an optional Item box under Amount for what you bought, and Edit entry calls it Item too." },
