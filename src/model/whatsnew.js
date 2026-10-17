@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-17-swipe-photo", date: "2026-10-17", text: "A full-size photo now closes when you swipe it down, as well as when you tap outside it." },
   { id: "2026-10-17-income-category", date: "2026-10-17", text: "In Verify, Edit on money in now lets you change its category before you tap Correct." },
   { id: "2026-10-17-item-box", date: "2026-10-17", text: "Add expense has an optional Item box under Amount for what you bought, and Edit entry calls it Item too." },
   { id: "2026-10-17-backup-note", date: "2026-10-17", text: "The backup reminders now say that Back up includes your pictures, which is true since Back up and Restore do both together." },

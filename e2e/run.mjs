@@ -1203,6 +1203,15 @@ check(await page.locator(".lightbox img").isVisible(), "a photo entry offers See
 check(await page.locator(".lightbox button").count() === 1 && (await text(page, ".lightbox button")).trim() === "Close" && await page.locator(".lightbox .lbplus, .lightbox .lbminus, .lightbox .lbfit").count() === 0, "the viewer has no plus, minus or Fit buttons");
 await closeViewer();
 check(await page.locator(".lightbox").count() === 0, "tapping the dark background closes the viewer");
+{ // swipe down to close: a short pull springs back, a long pull closes
+  await page.click('#sheet button:has-text("See the photo")'); await page.waitForFunction(() => document.querySelector(".lightbox img")?.complete);
+  const b = await page.locator(".lightbox .lbstage").boundingBox(), x = b.x + b.width / 2, y = b.y + b.height / 3;
+  await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y + 40, { steps: 4 }); await page.mouse.move(x, y + 70, { steps: 4 });
+  check(await page.locator(".lightbox img").evaluate((i) => i.style.transform.includes("translate(0px, 70px)")) && Number(await page.locator(".lightbox").evaluate((e) => e.style.opacity)) < 1, "pulling the photo down moves it with the finger and fades the background");
+  await page.mouse.up(); await page.waitForTimeout(150);
+  check(await page.locator(".lightbox").count() === 1 && await page.locator(".lightbox").evaluate((e) => e.style.opacity === ""), "let go early, the photo springs back and stays open");
+  await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y + 90, { steps: 6 }); await page.mouse.move(x, y + 160, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(200);
+  check(await page.locator(".lightbox").count() === 0, "pulled far enough down, the photo closes"); }
 await page.click('#sheet button:has-text("Close")');
 await page.click('#nav button:has-text("Verify")');
 check(await page.waitForSelector("img.shot[data-photo]:not([hidden])", { timeout: 4000 }).then(() => true, () => false), "Verify shows the photo beside the entry");
