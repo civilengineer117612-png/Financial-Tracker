@@ -114,7 +114,7 @@ const stars = async (page) => page.locator("#sheet label .req").count();   // ho
 
 
 // The app has no way to load a plan file any more (nobody has one yet), so tests that need a plan put one in the phone's settings, as parsed by the model.
-import { parsePlan, planWithBudgets, CHANGES } from "../src/model/index.js";
+import { parsePlan, planWithBudgets, CHANGES, emptyState, recordFromParse } from "../src/model/index.js";
 async function writeLedger(page, led) {
   const text = JSON.stringify(led);
   await page.evaluate(async ([text]) => { localStorage.setItem("financialTracker.ledger", text); await new Promise((res) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => { const tx = r.result.transaction("kv", "readwrite"); tx.objectStore("kv").put(text, "ledger"); tx.oncomplete = () => { r.result.close(); res(); }; }; }); }, [text]);
@@ -3330,6 +3330,33 @@ console.log("Welcome card, category editing, required marks");
       check(t.status === "draft" && es.some((e) => e.account_id === "c" && e.amount === 250000) && es.some((e) => e.account_id === "d" && e.amount === -250000), "on the due day a draft payment from the backing account waits for the statement balance"); }
     await page.reload(); await page.waitForSelector("#nav button"); await page.waitForTimeout(600);
     check(JSON.parse((await stored(page)).local).state.transactions.filter((x) => x.payee.startsWith("Card payment (due")).length === 1, "opening the app again does not make a second one");
+    await ctx.close(); }
+  // A credit card against its statement (invented amounts): the statement prints what is owed; a purchase the ledger lacks can be added as a draft, a payment is only named
+  { const ln = (date, text, amount, direction, balance, meaning) => ({ date, text, payee: text, type: "", amount, direction, balance, meaning });
+    const parsed = { ok: true, style: "x", period: { from: "2026-09-01", to: "2026-09-30" }, summary: { opening: 1000000 }, check: { ok: true },
+      lines: [ln("2026-09-05", "Sample Cafe", 95000, "out", 1095000, "spending"), ln("2026-09-10", "Sample Fuel", 120000, "out", 1215000, "spending"), ln("2026-09-14", "Sample Store", 80000, "out", 1295000, "spending"), ln("2026-09-25", "Payment, thank you", 500000, "in", 795000, "in")] };
+    const { record, lines } = recordFromParse(parsed, { account_id: "c", id: "rec1", now: new Date(TSW) });
+    const tx = (id, date, payee, amount) => ({ t: { id, date, payee, memo: "", status: "verified", source: "manual", created_at: TSW, verified_at: TSW }, es: [{ transaction_id: id, category_id: "cat-food", amount }, { transaction_id: id, account_id: "c", amount: -amount, card_state: "posted" }] });
+    const pay = { t: { id: "p", date: "2026-09-25", payee: "Card payment", memo: "", status: "verified", source: "manual", created_at: TSW, verified_at: TSW }, es: [{ transaction_id: "p", account_id: "d", amount: -500000 }, { transaction_id: "p", account_id: "c", amount: 500000, card_state: "posted" }] };
+    const list = [tx("a", "2026-09-05", "Sample Cafe", 95000), tx("b", "2026-09-10", "Sample Fuel", 120000), tx("e", "2026-09-18", "Sample Snack", 7000), pay];
+    const cardState = { ...emptyState(), accounts: [acc2("d", "Test Debit", "asset", { opening_balance: 3000000, reserve_for: "c" }), acc2("c", "Test Card", "liability", { opening_balance: -1000000, last4: "3333" })],
+      categories: [{ id: "cat-food", name: "Food", kind: "expense", role: "food" }, { id: "cat-unlogged", name: "Unlogged", kind: "expense" }],
+      statementRecords: [record], statementLines: lines, transactions: list.map((x) => x.t), entries: list.flatMap((x) => x.es) };
+    ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, seed: { ...OWNER_STYLE, state: cardState } }));
+    await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer")); await page.waitForTimeout(250);
+    await page.click('.setrow:has-text("Statements")'); await page.waitForTimeout(300);
+    await page.click('button[data-action="st-month"]'); await page.waitForTimeout(300);
+    const mw = await text(page, "#sheet");
+    check(mw.includes("You owed") && mw.includes("Purchases and fees") && mw.includes("\u20B17,950.00") && /owes \u20B1730\.00 less than the statement/.test(mw), "a card month reads in what you owe, proved against the statement: " + mw.replace(/\n+/g, " | ").slice(0, 200));
+    await page.click('button[data-action="st-compare"]'); await page.waitForTimeout(300);
+    const cw = await text(page, "#sheet");
+    check(cw.includes("The statement says you owe") && cw.includes("Your ledger says you owe") && cw.includes("your ledger owes less") && cw.includes("explain all of it") && cw.includes("Sample Store") && cw.includes("Sample Snack"), "Compare says what the statement and the ledger say you owe, with the purchase missing and the entry the statement lacks");
+    check(await page.locator('#sheet button[data-action="st-adddraft"]').count() === 1 && !cw.includes("Start this account"), "only the purchase has Add as draft, and a card has no start-from-statement button");
+    await page.click('#sheet button[data-action="st-adddraft"]');
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.some((t) => t.source === "statement"), null, { timeout: 5000 });
+    { const led = JSON.parse((await stored(page)).local).state, t = led.transactions.find((x) => x.source === "statement"), es = led.entries.filter((e) => e.transaction_id === t.id);
+      check(t.status === "draft" && es.some((e) => e.account_id === "c" && e.amount === -80000), "the purchase became ONE draft expense on the card, not verified"); }
+    check(await seen(page, "#sheet", "your ledger owes more") && (await text(page, "#sheet")).includes("\u20B170.00"), "after the draft only the entry the statement lacks is left: the ledger owes 70.00 more");
     await ctx.close(); }
   // The bottom bar stays pinned to the bottom of the screen when a long page is scrolled (it drifted up the page on the iPhone)
   ({ ctx, page, errors } = await open({ blockSw: true }));
