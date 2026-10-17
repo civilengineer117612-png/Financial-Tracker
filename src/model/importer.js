@@ -175,15 +175,30 @@ export function categoryFor(state, item, book = null) {
   return { category_id: UNLOGGED_CATEGORY_ID, how: "not known: choose it in Verify" };
 }
 
+// Is a line from a file or a statement already in the ledger? The same amount spent, on a date within `days` of the line's, whatever the entry was called
+// (a receipt logged as "Lunch" and a statement line named after the shop are one purchase). A drafted or a verified entry counts; a cancelled one does not.
+// Each logged entry answers one line only (`used` holds the ids already answered); the same name and the closest date are taken first. With `accountId`
+// the entry must be on that account. Returns the transaction or null.
+const dayGap = (a, b) => Math.abs(Math.round((Date.parse(a) - Date.parse(b)) / 86400000));
+const loose = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+export function loggedMatch(state, { date, name, amount, accountId = null }, used = new Set(), days = 2) {
+  const cancelled = new Set(state.transactions.filter((t) => t.reverses).map((t) => t.reverses));
+  const spent = (t) => state.entries.find((e) => e.transaction_id === t.id && e.category_id)?.amount;
+  const hits = state.transactions.filter((t) => !t.reverses && !cancelled.has(t.id) && !used.has(t.id) && spent(t) === amount && dayGap(t.date, date) <= days
+    && (!accountId || state.entries.some((e) => e.transaction_id === t.id && e.account_id === accountId)));
+  hits.sort((x, y) => (loose(y.payee) === loose(name)) - (loose(x.payee) === loose(name)) || dayGap(x.date, date) - dayGap(y.date, date));
+  return hits[0] ?? null;
+}
+
 // The plan for a list of read lines: dated, categorised, already-logged ones left out. order: "dmy" | "mdy". Returns {lines, duplicates, undated}.
 export function previewImport(state, items, order, book = null) {
-  const have = new Set(state.transactions.map((t) => { const amt = state.entries.find((e) => e.transaction_id === t.id && e.category_id)?.amount; return `${t.date}|${key(t.payee)}|${amt}`; }));
-  const lines = [], duplicates = [], undated = [];
+  const used = new Set(), lines = [], duplicates = [], undated = [];
   for (const it of items) {
     const p = readDate(it.dateRaw), date = p ? isoOf(p, order) : null;
     if (!date) { undated.push(it); continue; }
     const line = { date, name: it.name, amount: it.amount, ...categoryFor(state, it, book) };
-    if (have.has(`${date}|${key(it.name)}|${it.amount}`)) duplicates.push(line); else lines.push(line);
+    const logged = loggedMatch(state, { date, name: it.name, amount: it.amount }, used);
+    if (logged) { used.add(logged.id); duplicates.push(line); } else lines.push(line);
   }
   return { lines, duplicates, undated };
 }

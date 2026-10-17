@@ -184,3 +184,23 @@ test("a month that does not follow lists the failing lines: what the bank prints
   const noBal = parsed({ from: "2026-08-01", to: "2026-08-31" }, { opening: 100000, closing: 85500 }, [line("2026-08-05", "Corner Cafe", 9500, "out", null), line("2026-08-20", "Bus fare", 5000, "out", null)]);
   assert.deepEqual(failingLines(withStatements(noBal), "gt", "2026-08"), []);
 });
+
+test("a purchase logged under another name and a day or two off is the same purchase: its draft is verified, nothing is doubled; each logged entry answers one line only", () => {
+  const mk = (id, date, payee, acct, status = "draft") => ({ t: { id, date, payee, memo: "", status, source: "manual", created_at: TS, ...(status === "verified" ? { verified_at: TS } : {}) }, es: [{ transaction_id: id, category_id: "cat-food", amount: 9500 }, { transaction_id: id, account_id: acct, amount: -9500 }] });
+  const both = (extra) => { const s = withStatements(AUG); return { ...s, transactions: [...s.transactions, ...extra.map((x) => x.t)], entries: [...s.entries, ...extra.flatMap((x) => x.es)] }; };
+  // "Lunch" logged one day after the statement's "Corner Cafe" line (Aug 5)
+  const r = acceptMonth(both([mk("d1", "2026-08-06", "Lunch", "gt")]), "gt", "2026-08", { newId: seqId(), now: new Date(TS) });
+  assert.equal(r.ok, true, r.message); assert.deepEqual([r.made, r.verified], [1, 1], "only the Bus fare line is new; the draft is the cafe line");
+  assert.equal(r.state.transactions.find((x) => x.id === "d1").status, "verified");
+  // three days off, or on another account: not the same purchase
+  const far = acceptMonth(both([mk("d2", "2026-08-09", "Lunch", "gt")]), "gt", "2026-08", { newId: seqId(), now: new Date(TS) });
+  assert.deepEqual([far.made, far.verified], [2, 0], "three days apart is a different purchase");
+  const other = acceptMonth(both([mk("d3", "2026-08-05", "Corner Cafe", "elsewhere")]), "gt", "2026-08", { newId: seqId(), now: new Date(TS) });
+  assert.deepEqual([other.made, other.verified], [2, 0], "an entry on another account is not this statement's line");
+  // one logged entry answers one statement line even when two lines have the same amount
+  const twice = parsed({ from: "2026-08-01", to: "2026-08-31" }, { opening: 100000, closing: 81000 }, [line("2026-08-05", "Corner Cafe", 9500, "out", 90500), line("2026-08-06", "Corner Cafe", 9500, "out", 81000)]);
+  const t = (() => { const s = withStatements(twice); return { ...s, transactions: [...s.transactions, mk("d4", "2026-08-05", "Lunch", "gt").t], entries: [...s.entries, ...mk("d4", "2026-08-05", "Lunch", "gt").es] }; })();
+  const two = acceptMonth(t, "gt", "2026-08", { newId: seqId(), now: new Date(TS) });
+  assert.deepEqual([two.made, two.verified], [1, 1], "the second identical line is still a new purchase");
+  assert.equal(monthSummary(t, "gt", "2026-08").spend.already, 1, "the month window counts the same way Accept does");
+});
