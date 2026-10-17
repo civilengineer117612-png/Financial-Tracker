@@ -45,6 +45,7 @@ export const TOPICS = [
     "A transfer out of one account and the money in to another is one move. Under Statements, Add as draft makes it a draft in Verify. A small difference is a fee.",
     "Compare with your ledger (in a month) shows the difference from the bank and the lines that explain it. Add as draft puts a missing line in Verify. If the account just started at another balance, Start this account from its statement fixes it.",
     "A statement kept under the wrong account can be removed: Statements, Statements kept, Remove. Entries and drafts are not touched. A statement with an accepted month stays.",
+    "A month marked as not adding up has a link, Show the lines: the lines that do not follow, with the balance the bank prints. A line is usually missing just before each.",
     "A Go Save pocket statement for a number you have no account for makes that pocket for you. Rename it in Setup when you know which one it is.",
     "A ? beside a screen's name brings back its short explanation.", "To get the new icon and name on iPhone: make a backup first, then add the app to your Home Screen again. Do not remove the old one until the backup is checked."] },
 ];

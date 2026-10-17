@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { emptyState, validateState, selfCheck, recordFromParse, proveMonths, acceptMonth, accountLines, monthSummary, alreadyKept, removeStatement } from "../src/model/index.js";
+import { emptyState, validateState, selfCheck, recordFromParse, proveMonths, acceptMonth, accountLines, monthSummary, alreadyKept, removeStatement, failingLines } from "../src/model/index.js";
 import { UNLOGGED_CATEGORY_ID } from "../src/model/seed.js";
 
 // Invented statements only: a bank, its months, its lines. Amounts in centavos.
@@ -170,4 +170,17 @@ test("a FIRST statement that starts from a zero balance mid-month covers that mo
   const later = { ...parsed({ from: "2026-07-04", to: "2026-07-31" }, { opening: 0, closing: 90500 }, []), lines: first.lines.map((l) => ({ ...l, date: l.date.replace("-06-", "-07-") })) };
   const withEarlier = keep(keep(base(), first, 1), later, 2);
   assert.equal(proveMonths(withEarlier, "gt").find((x) => x.month === "2026-07").status, "no-balance", "only the account's FIRST statement is treated this way");
+});
+
+test("a month that does not follow lists the failing lines: what the bank prints and what the lines before give", () => {
+  const wrongLine = parsed({ from: "2026-08-01", to: "2026-08-31" }, { opening: 100000, closing: 85500 }, [line("2026-08-05", "Corner Cafe", 9500, "out", 90000), line("2026-08-20", "Bus fare", 5000, "out", 85500)]);
+  const s = withStatements(wrongLine);
+  assert.deepEqual(failingLines(s, "gt", "2026-08"), [{ date: "2026-08-20", name: "Bus fare", amount: 5000, direction: "out", printed: 85500, expected: 85000 }]);
+  const sum = monthSummary(s, "gt", "2026-08");
+  assert.equal(sum.row.status, "broken"); assert.equal(sum.failing.length, 1); assert.match(sum.row.reason, /1 line does not follow/);
+  // a clean month, a month with no balances and a month broken only at the top have nothing to list
+  assert.deepEqual(monthSummary(withStatements(AUG), "gt", "2026-08").failing, []);
+  assert.deepEqual(failingLines(withStatements(AUG), "gt", "2026-08"), []);
+  const noBal = parsed({ from: "2026-08-01", to: "2026-08-31" }, { opening: 100000, closing: 85500 }, [line("2026-08-05", "Corner Cafe", 9500, "out", null), line("2026-08-20", "Bus fare", 5000, "out", null)]);
+  assert.deepEqual(failingLines(withStatements(noBal), "gt", "2026-08"), []);
 });

@@ -95,7 +95,7 @@ export { SINKING_LABEL, SINKING_NOTE, SINKING_HELP, sinkingStart, sinkingBalance
 
 export { MAX_INTRO_SHOWS, INTROS, introFor, shouldShowIntro, markIntro, introDrawing } from "./intros.js";
 
-export { recordFromParse, accountLines, proveMonths, acceptMonth, monthSummary, alreadyKept, removeStatement } from "./proof.js";
+export { recordFromParse, accountLines, proveMonths, acceptMonth, monthSummary, failingLines, alreadyKept, removeStatement } from "./proof.js";
 export { pairMoves, moveLogged, planPairedMove, matchPayslips, statementDifference, planMissingDraft, startFromStatement, planPocketFromStatement } from "./reconcile.js";
 export { payeeKey, payeeLabel, withPayeeBook, spendingByPayee, payeeMonths, payeeCount, namePayee, categoryFromBook } from "./payees.js";
 export { RANGES, dailySpending, firstSpendingDate, rangeFor, stepFor, seriesFor, measureSpan, zoomWindow, addDays, daysBetween } from "./spendline.js";

@@ -133,6 +133,19 @@ export function acceptMonth(state, accountId, month, { newId, now = new Date() }
 
 // What the month window shows before "Accept this month": the proof, and how the month's lines divide. spend: the lines that would become entries (spending and fees),
 // with how many are already in the ledger; leftOut: moves, money in and unsure lines (counted, not made into entries here).
+// The lines of a month that do not follow from the balance before them, the same test `proveMonths` makes: [{date, name, amount, direction, printed, expected}].
+// `printed` is the balance the bank prints on the line, `expected` what the lines before it lead to. Empty when the month has no balance on each line or all of it follows.
+export function failingLines(state, accountId, month) {
+  const ml = accountLines(state, accountId).filter((l) => l.date.slice(0, 7) === month);
+  if (!ml.length || !ml.every((l) => Number.isSafeInteger(l.balance))) return [];
+  const out = [];
+  ml.forEach((l, i) => {
+    const expected = (i === 0 ? ml[0].balance - signed(ml[0]) : ml[i - 1].balance) + signed(l);
+    if (expected !== l.balance) out.push({ date: l.date, name: l.payee || l.text, amount: l.amount, direction: l.direction, printed: l.balance, expected });
+  });
+  return out;
+}
+
 export function monthSummary(state, accountId, month) {
   const row = proveMonths(state, accountId).find((r) => r.month === month);
   if (!row) return null;
@@ -140,7 +153,7 @@ export function monthSummary(state, accountId, month) {
   const spend = ml.filter((l) => l.direction === "out" && (l.meaning === "spending" || l.meaning === "fee")), rest = ml.filter((l) => !spend.includes(l));
   const logged = new Set(state.transactions.map((t) => `${t.date}|${key(t.payee)}|${state.entries.find((e) => e.transaction_id === t.id && e.category_id)?.amount}`));
   const already = spend.filter((l) => logged.has(`${l.date}|${key(l.payee || l.text)}|${l.amount}`)).length;
-  return { row, spend: { count: spend.length, total: sum(spend), already },
+  return { row, failing: row.status === "broken" ? failingLines(state, accountId, month) : [], spend: { count: spend.length, total: sum(spend), already },
     leftOut: { count: rest.length, total: sum(rest), moves: rest.filter((l) => l.meaning === "move").length, moneyIn: rest.filter((l) => l.meaning === "in").length, unsure: rest.filter((l) => l.meaning === "unsure").length } };
 }
 
