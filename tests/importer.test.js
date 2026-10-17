@@ -137,3 +137,14 @@ test("a name you have logged before gets the category you gave it most often (ve
   assert.deepEqual(categoryFor(s, { name: "LRT" }), { category_id: "food", how: "your past entries" });
   assert.deepEqual(categoryFor(s, { name: "starbucks" }), { category_id: "dine", how: "your quick tile" }, "a quick tile still comes first");
 });
+
+test("an import line is already logged when the same amount was spent within two days, whatever it was called; each logged entry answers one line", () => {
+  const s = ledger();
+  s.transactions.push({ id: "t1", date: "2026-10-03", payee: "Lunch", memo: "", status: "draft", source: "manual", created_at: "2026-10-03T09:00:00.000+08:00" });
+  s.entries.push({ transaction_id: "t1", category_id: "food", amount: 9500 }, { transaction_id: "t1", account_id: "w", amount: -9500 });
+  const p = previewImport(s, [{ dateRaw: "2026-10-02", name: "Corner Cafe", amount: 9500 }, { dateRaw: "2026-10-03", name: "Corner Cafe", amount: 9500 }, { dateRaw: "2026-10-06", name: "Corner Cafe", amount: 9500 }], "dmy");
+  assert.equal(p.duplicates.length, 1, "Oct 2 is a day from the logged Lunch");
+  assert.deepEqual(p.lines.map((l) => l.date), ["2026-10-03", "2026-10-06"], "the logged entry was used once; Oct 6 is three days away");
+  const cancelled = { ...s, transactions: [...s.transactions, { id: "r1", date: "2026-10-03", payee: "Lunch", memo: "", status: "verified", source: "correction", reverses: "t1", created_at: "2026-10-03T09:00:00.000+08:00" }] };
+  assert.equal(previewImport(cancelled, [{ dateRaw: "2026-10-02", name: "Corner Cafe", amount: 9500 }], "dmy").duplicates.length, 0, "a cancelled entry does not count");
+});

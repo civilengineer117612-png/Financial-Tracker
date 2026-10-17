@@ -3,7 +3,7 @@
 // fee lines of a proved month into VERIFIED entries (source "statement"). Moves, money in and unsure lines are not turned into entries here
 // (the next phase matches those); they are counted. Pure logic: the app reads files and saves; every amount is in centavos.
 import { applyDrafts, planExpense, verifyDraft } from "./drafts.js";
-import { categoryFor } from "./importer.js";
+import { categoryFor, loggedMatch } from "./importer.js";
 import { phTimestamp } from "./util.js";
 
 const key = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -101,7 +101,7 @@ export function proveMonths(state, accountId) {
 }
 
 // Accepting a proved month: its spending and fee lines become VERIFIED entries (source "statement"), in the category the import would choose.
-// A line already in the ledger (same date, name and amount) is not made twice: a draft of it is verified, a verified one is left as it is.
+// A line already in the ledger (the same amount on that account within 2 days, whatever it was called) is not made twice: a draft of it is verified, a verified one is left as it is.
 // Nothing is changed unless the whole month goes through. Returns {ok, state, made, verified, alreadyLogged, leftOut:{moves, moneyIn, unsure}} or {ok:false, message}.
 export function acceptMonth(state, accountId, month, { newId, now = new Date() }) {
   const row = proveMonths(state, accountId).find((r) => r.month === month);
@@ -111,12 +111,11 @@ export function acceptMonth(state, accountId, month, { newId, now = new Date() }
   const ml = accountLines(state, accountId).filter((l) => l.date.slice(0, 7) === month);
   const spend = ml.filter((l) => l.direction === "out" && (l.meaning === "spending" || l.meaning === "fee"));
   const leftOut = { moves: ml.filter((l) => l.meaning === "move").length, moneyIn: ml.filter((l) => l.meaning === "in").length, unsure: ml.filter((l) => l.meaning === "unsure").length };
-  const amountOf = (t, s) => s.entries.find((e) => e.transaction_id === t.id && e.category_id)?.amount;
   let next = state, made = 0, verified = 0, alreadyLogged = 0;
   const used = new Set();
   for (const l of spend) {
     const name = l.payee || l.text, item = { name };
-    const same = next.transactions.find((t) => !used.has(t.id) && t.date === l.date && key(t.payee) === key(name) && amountOf(t, next) === l.amount && !t.reverses);
+    const same = loggedMatch(next, { date: l.date, name, amount: l.amount, accountId }, used);
     if (same) {
       used.add(same.id);
       if (same.status === "draft") { const v = verifyDraft(next, same.id, now); if (!v.ok) return { ok: false, message: `${name} (${l.date}): ${v.violations[0].message}` }; next = v.state; verified++; } else alreadyLogged++;
@@ -153,8 +152,8 @@ export function monthSummary(state, accountId, month) {
   if (!row) return null;
   const ml = accountLines(state, accountId).filter((l) => l.date.slice(0, 7) === month), sum = (xs) => xs.reduce((n, l) => n + l.amount, 0);
   const spend = ml.filter((l) => l.direction === "out" && (l.meaning === "spending" || l.meaning === "fee")), rest = ml.filter((l) => !spend.includes(l));
-  const logged = new Set(state.transactions.map((t) => `${t.date}|${key(t.payee)}|${state.entries.find((e) => e.transaction_id === t.id && e.category_id)?.amount}`));
-  const already = spend.filter((l) => logged.has(`${l.date}|${key(l.payee || l.text)}|${l.amount}`)).length;
+  const used = new Set();
+  const already = spend.filter((l) => { const m = loggedMatch(state, { date: l.date, name: l.payee || l.text, amount: l.amount, accountId }, used); if (m) used.add(m.id); return Boolean(m); }).length;   // the same rule Accept uses
   return { row, failing: row.status === "broken" ? failingLines(state, accountId, month) : [], spend: { count: spend.length, total: sum(spend), already },
     leftOut: { count: rest.length, total: sum(rest), moves: rest.filter((l) => l.meaning === "move").length, moneyIn: rest.filter((l) => l.meaning === "in").length, unsure: rest.filter((l) => l.meaning === "unsure").length } };
 }
