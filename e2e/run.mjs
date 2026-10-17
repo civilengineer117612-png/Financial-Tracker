@@ -3840,6 +3840,7 @@ console.log("\n-- Arrange categories and accounts by holding and dragging --");
   await page.click('.setrow:has-text("Accounts")'); await page.waitForTimeout(300);
   const a0 = await names('.sortlist .row[data-sort="acct"]');
   check(a0.join("|") === "Alpha Debit|Test Card|Test Wallet|Zeta Savings", "accounts show A to Z until you arrange them: " + a0.join(", "));
+  { const t = await text(page, "#screen"); check(!/tap the tile|Bank, wallet or cash|add last 4 digits/.test(t) && /Bank or wallet/.test(t) && /add last 4/.test(t) && !/Cash · add last 4/.test(t), "the line under an account name is short: its kind and the last four digits, no picture hint"); }
   const zeta = page.locator('.sortlist .row[data-sort="acct"]').filter({ hasText: "Zeta Savings" });
   const b = await hold(zeta);
   check(await page.locator(".sortlist.arranging").count() === 1, "holding an account starts arranging");
