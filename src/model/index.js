@@ -100,3 +100,5 @@ export { pairMoves, moveLogged, planPairedMove, matchPayslips, statementDifferen
 export { payeeKey, payeeLabel, withPayeeBook, spendingByPayee, payeeMonths, payeeCount, namePayee, categoryFromBook } from "./payees.js";
 export { RANGES, dailySpending, firstSpendingDate, rangeFor, stepFor, seriesFor, measureSpan, zoomWindow, addDays, daysBetween } from "./spendline.js";
 export { payerFor, nextDue, cardStatement, setCardDetails, planCardPayment, makeCardDueDrafts, DUE_CATCH_UP_DAYS } from "./cardpay.js";
+
+export { arranged, orderFrom } from "./order.js";
