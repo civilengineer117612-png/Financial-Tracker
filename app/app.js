@@ -1450,7 +1450,8 @@ const moneyViews = () => `<div class="seg" role="group" aria-label="What to show
 // ONE row for every list that shows a share or a spend (owner, Oct 17): the name at the left with an optional small line under it, the figure at the right, and ONE thin
 // flat bar under both, all inside one white card with hairlines between the rows. Percentages are not on the row (the bar is the share; the list twin has them).
 // row: {name (html), sub (html, optional), fig (html), pct (0-100), label (screen reader), cls, extra (html under the bar)}
-const barRow = (r) => `<div class="catrow${r.cls ? " " + r.cls : ""}"><div class="ct"><span class="ctn">${r.name}${r.sub ? `<small>${r.sub}</small>` : ""}</span><span class="amt">${r.fig}</span></div><div class="catbar" role="img" aria-label="${esc(r.label)}"><span style="width:${Math.max(0, Math.min(100, r.pct))}%"></span>${r.mark != null ? `<i class="flatmark" style="left:${Math.max(0, Math.min(100, r.mark))}%"></i>` : ""}</div>${r.extra ?? ""}</div>`;
+const barRow = (r) => { const tag = r.action ? "button" : "div", attrs = r.action ? ` data-action="${r.action}" data-id="${esc(r.id)}"` : "";
+  return `<${tag} class="catrow${r.cls ? " " + r.cls : ""}"${attrs}><div class="ct"><span class="ctn">${r.name}${r.sub ? `<small>${r.sub}</small>` : ""}</span><span class="amt">${r.fig}</span></div>${r.pct == null ? "" : `<div class="catbar" role="img" aria-label="${esc(r.label)}"><span style="width:${Math.max(0, Math.min(100, r.pct))}%"></span>${r.mark != null ? `<i class="flatmark" style="left:${Math.max(0, Math.min(100, r.mark))}%"></i>` : ""}</div>`}${r.extra ?? ""}</${tag}>`; };
 const barCard = (rows) => `<div class="card catcard">${rows.map(barRow).join("")}</div>`;
 // Rows of {label, amount} as bars scaled to the largest, folded after SHOWN_BARS.
 function shareBars(rows, total) {
@@ -1943,9 +1944,9 @@ const ord = (n) => (n % 100 >= 11 && n % 100 <= 13 ? "th" : { 1: "st", 2: "nd", 
 function viewGoals() {
   const goals = S().goals;
   const toggle = goals.some((g) => g.hidden_by_default) ? `<p><button class="link" data-action="toggle-reveal">${ui.reveal ? "Hide balances" : "Show balances"}</button></p>` : "";
-  const cards = goals.map((g) => {
+  const cards = barCard(goals.map((g) => {
     let p = M.goalProgress(S(), g);
-    if (!p) return "";
+    if (!p) return null;
     // The Emergency Fund's target is worked out from the plan in force, never kept as a typed number.
     const isEf = g.role === "emergency", ef = !isEf ? null : planOf() ? M.emergencyFundStatus(S(), planOf(), g) : M.emergencyFundFromBudgets(S(), g, { month: M.monthOf(today()) });
     if (isEf) p = { ...p, target: null, remaining: null, percent: null, reached: false };
@@ -1958,21 +1959,20 @@ function viewGoals() {
         <tr><td>Monthly contribution</td><td class="n">${ef.monthly ? peso(ef.monthly) : ef.source === "budgets" ? "not set" : "none in your plan"}</td></tr>
         <tr><td>Months to target</td><td class="n">${ef.reached ? "Reached" : ef.monthsToTarget === null ? "Not known yet" : "About " + ef.monthsToTarget}</td></tr></table>
         <p class="note">Target = ${ef.months} months of ${esc(ef.basis.join(", "))} from ${ef.source === "budgets" ? "your budgets" : "your plan"} (${peso(ef.monthlyBasis)} a month). It changes when ${ef.source === "budgets" ? "your budgets do" : "your plan does"}.${ef.missing.length ? " Your plan has no line named " + esc(ef.missing.join(", ")) + "." : ""}</p></details>`;
-    const efBody = !ef ? "" : `<div class="flatfig">${pairFig(ef.balance, ef.target, { left: "to go", doneWord: "Target reached", big: true, label: g.name })}</div>${flatBar(ef.percent, ef.percent + "% of the target")}
-        <div class="flatmeta"><span>${ef.percent}%</span></div>${efDet}`;
-    const body = hidden ? `<p class="note">Hidden. Tap Show balances above.</p>`
-      : ef ? efBody
-      : isEf ? `<div class="flatfig"><span class="flatbig">${peso(p.balance)}</span></div><p class="note">The target is 3 months of your rent, food and essentials, from your budgets. Set those budgets (Menu, Budget) and it appears here.</p>`
-      : `<div class="flatfig">${p.target != null ? pairFig(p.balance, p.target, { left: "to go", doneWord: "Goal reached", big: true, label: g.name }) : `<span class="flatbig">${peso(p.balance)}</span>`}</div>
-         ${p.target != null ? `${flatBar(p.percent, p.percent + "% of the goal")}<div class="flatmeta"><span>${p.percent}%</span></div>${eta || need ? `<p class="note small">${[eta ? "About " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : "", need ? peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""].filter(Boolean).join(" \u00b7 ")}</p>` : ""}` : `<div class="status">No target, just a place to build up.</div>`}`;
-    return `<div class="bcard goalcard"><div class="btop"><span class="bname who">${iconOf(S().accounts.find((a) => a.id === g.account_id) ?? { name: g.name }, 24)}<span>${esc(g.name)}</span></span></div>${body}
-      <p>${g.account_id ? `<button data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button>` : `<span class="note">No account yet. </span><button data-action="open-goal-account" data-id="${esc(g.id)}">Choose an account</button>`}</p>
-      <p class="note"><button class="link" data-action="goal-role" data-id="${esc(g.id)}">${g.role === "emergency" ? "This is your emergency fund (tap to undo)" : "Make this my emergency fund"}</button></p></div>`;
-  }).join("");
+    const acct = S().accounts.find((x) => x.id === g.account_id);
+    const name = `<span class="gname">${iconOf(acct ?? { name: g.name }, 24)}<span>${esc(g.name)}</span></span>`;
+    const acts = `<div class="goalact">${g.account_id ? `<button class="link" data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button>` : `<span class="note">No account yet.</span><button class="link" data-action="open-goal-account" data-id="${esc(g.id)}">Choose an account</button>`}<button class="link" data-action="goal-role" data-id="${esc(g.id)}">${g.role === "emergency" ? "This is your emergency fund (tap to undo)" : "Make this my emergency fund"}</button></div>`;
+    const when = [eta ? "About " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : "", need ? peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""].filter(Boolean).join(" \u00b7 ");
+    if (hidden) return { name, sub: "Hidden. Tap Show balances above.", fig: "", pct: null, extra: acts };
+    if (ef) return { name, fig: pairFig(ef.balance, ef.target, { left: "to go", doneWord: "Target reached", label: g.name }), pct: ef.percent, label: ef.percent + "% of the target", extra: efDet + acts };
+    if (isEf) return { name, sub: "The target is 3 months of your rent, food and essentials, from your budgets. Set those budgets (Menu, Budget) and it appears here.", fig: peso(p.balance), pct: null, extra: acts };
+    if (p.target == null) return { name, sub: "No target, just a place to build up.", fig: peso(p.balance), pct: null, extra: acts };
+    return { name, sub: when, fig: pairFig(p.balance, p.target, { left: "to go", doneWord: "Goal reached", label: g.name }), pct: p.percent, label: p.percent + "% of the goal", extra: acts };
+  }).filter(Boolean));
   const allShown = goals.length > 0 && goals.every((g) => !g.hidden_by_default || ui.reveal);
   const total = allShown ? goals.reduce((n, g) => n + (M.goalProgress(S(), g)?.balance ?? 0), 0) : null;
   const hero = total === null ? `<p class="sub">Your savings goals. Balances stay hidden until you show them.</p>` : `<div class="flathero"><div class="eyebrow">Saved toward goals</div><div class="flatbig">${peso(total)}</div><div class="flatsub">across ${goals.length} ${goals.length === 1 ? "goal" : "goals"}</div></div>`;
-  return `<h1>Goals</h1>${hero}${toggle}${cards || `<p class="note">No goals yet.</p>`}
+  return `<h1>Goals</h1>${hero}${toggle}${goals.length ? cards : `<p class="note">No goals yet.</p>`}
     <p><button class="primary" data-action="open-goal" style="margin-top:8px">Add a goal</button></p>`;
 }
 
@@ -2016,10 +2016,10 @@ function viewBudgetList() {
   const month = M.monthOf(today()), next = M.addMonths(month, 1);
   const rows = expenseCategories().map((c) => {
     const now = M.budgetFor(S().rules, c.id, month), later = M.budgetFor(S().rules, c.id, next);
-    const change = later !== now ? `<small>${later === null ? "ends" : peso(later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "";
-    return `<button class="choice" data-action="open-budget" data-id="${esc(c.id)}"><span>${esc(c.name)}${hiddenTag(c.id)}${change}</span><span class="bval">${now === null ? "No budget" : peso(now) + " a month"}</span></button>`;
-  }).join("");
-  return `<h1>Buckets</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${rows}
+    const change = later !== now ? `${later === null ? "ends" : peso(later) + " a month"} from ${esc(M.monthLabel(next))}` : "";
+    return { id: c.id, action: "open-budget", name: `${esc(c.name)}${hiddenTag(c.id)}`, sub: change, fig: now === null ? "No budget" : peso(now) + " a month", pct: null };
+  });
+  return `<h1>Buckets</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${barCard(rows)}
     <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
 }
 function viewBudget() { return viewBudgetList(); }

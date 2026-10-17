@@ -225,7 +225,7 @@ test("round 3: the Setup form waits behind a button once there are accounts, goa
   assert.match(js, /case "toggle-add-account": ui\.setupAdd = !ui\.setupAdd;/);
   assert.match(js, /const flatBar = \(pct, label, over = false, mark = null\) => `<span class="flatbar/);
   assert.ok(js.includes("Math.max(0, Math.min(100, pct))"), "a flat bar never runs past full or below empty");
-  assert.match(js, /\$\{flatBar\(ef\.percent, ef\.percent \+ "% of the target"\)\}/); assert.match(js, /\$\{flatBar\(p\.percent, p\.percent \+ "% of the goal"\)\}/);
+  assert.match(js, /pct: ef\.percent, label: ef\.percent \+ "% of the target"/); assert.match(js, /pct: p\.percent, label: p\.percent \+ "% of the goal"/);
   assert.ok(!js.includes('class="ring"'), "goals draw a thin flat bar, no ring");
   assert.match(js, /if \(dx > 90 && Math\.abs\(dy\) < 40 && dx > Math\.abs\(dy\) \* 2\.5\) \{ s0\.c\.querySelector\('button\[data-action="verify-ok"\]'\)\?\.click\(\); \}/, "only a clear swipe to the right counts");
   assert.ok(!js.includes('verify-delete"]\')?.click'), "a swipe never deletes");

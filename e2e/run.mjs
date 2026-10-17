@@ -2276,7 +2276,7 @@ console.log("Signs and folded entries");
   await page.click("#entries-toggle");
   check(await page.locator("#entries-list").isHidden(), "and a second tap folds them again");
   await menuGo(page, "Budget");
-  check((await text(page, "#screen")).includes("a month") && await page.locator('.choice[data-action="open-budget"]').count() >= 1, "Buckets lists each category with its monthly limit");
+  check((await text(page, "#screen")).includes("a month") && await page.locator('button.catrow[data-action="open-budget"]').count() >= 1, "Buckets lists each category with its monthly limit");
   check(errors.length === 0, "no script errors with signs and folded entries");
   await ctx.close(); }
 
@@ -2299,7 +2299,7 @@ console.log("Round 3: tabs, ring, swipe, folds");
   const tab = await page.locator('.seg[aria-label="What to show"] button[aria-pressed="true"]').evaluate((b) => ({ bg: getComputedStyle(b).backgroundColor, border: getComputedStyle(b).borderTopWidth }));
   check(tab.bg === "rgb(255, 255, 255)" && tab.border === "0px" && await page.locator('.seg[aria-label="What to show"] button').count() === 4, "Cash flow's four views are a segmented control: white pill on a track, no boxes");
   await menuGo(page, "Goals");
-  check(await page.locator("#screen .flatbar").count() === 1 && (await page.locator("#screen .flatbar").getAttribute("aria-label")).includes("% of the goal") && (await text(page, "#screen")).includes("/ ₱10,000.00"), "a goal shows one thin bar with the percent, and saved / target in figures");
+  check(await page.locator("#screen .catbar").count() === 1 && (await page.locator("#screen .catbar").getAttribute("aria-label")).includes("% of the goal") && (await text(page, "#screen")).includes("/ ₱10,000.00"), "a goal shows one thin bar with the percent, and saved / target in figures");
   await menuGo(page, "Cards");
   check(await page.locator("details.why").count() === 1 && !(await text(page, "#screen")).includes("Paying a card bill is not spending"), "the long note on Cards is folded under Why?");
   await page.click("details.why summary");
@@ -3667,7 +3667,7 @@ console.log("\n-- Goals in the flat look --");
     await page.click('button:has-text("Goals")'); await page.waitForTimeout(300);
     t = await text(page, "#screen");
     check(/saved toward goals/i.test(t) && t.includes("15,000.00") && t.includes("across 2 goals"), "Goals opens with the total saved");
-    check(await page.locator("#screen .flatbar").count() === 2 && !(await page.locator("#screen svg.ring").count()), "each goal has a thin bar, no ring");
+    check(await page.locator("#screen .catbar").count() === 2 && !(await page.locator("#screen svg.ring").count()), "each goal has a thin bar, no ring");
     check(t.includes("28%") && /12,000\.00\s*\/\s*.*42,000\.00/.test(t) && t.includes("37%"), "each goal says its percent and reads saved / target");
     await page.click("#screen .pair >> nth=0"); await page.waitForTimeout(300);
     t = await text(page, "#screen");

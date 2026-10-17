@@ -82,3 +82,9 @@ test("one row recipe for every share bar: Category, Accounts and the Budget view
   assert.ok(js.includes("const cards = barCard(budgeted.map"), "the Budget view too");
   assert.ok(!js.includes("function flipChart") && !m.includes('class="brow') && !js.includes('class="bcard budrow'), "the old Accounts and Budget bars are gone");
 });
+
+test("Buckets and Goals draw their rows through the same barCard, and the old goal card and choice rows are gone", () => {
+  const b = js.slice(js.indexOf("function viewBudgetList()"), js.indexOf("function viewBudget()"));
+  const g = js.slice(js.indexOf("function viewGoals()"), js.indexOf("// ---------- weekly check-in"));
+  assert.ok(b.includes("barCard(rows)") && g.includes("barCard(goals.map") && !g.includes("goalcard") && !b.includes('class="choice"'));
+});
