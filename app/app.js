@@ -643,12 +643,12 @@ function openPayslipFromPhoto(blob, text, queueId) {
 
 // The photo full screen over the window, so it can be compared with the figures. Zoom: pinch with two fingers (or double-tap, or the mouse
 // wheel); drag to move when zoomed in. Tap the dark background around the photo to close: the window underneath is exactly as it was
-// (nothing typed is lost). Escape also closes it.
+// (nothing typed is lost). Swipe the photo down (not zoomed in) to close it: it follows the finger, fades, and springs back if let go early. Escape also closes it.
 function viewShot(url) {
   const box = document.createElement("div");
-  box.className = "lightbox"; box.setAttribute("role", "dialog"); box.setAttribute("aria-label", "Photo. Tap outside the photo to close.");
+  box.className = "lightbox"; box.setAttribute("role", "dialog"); box.setAttribute("aria-label", "Photo. Swipe down or tap outside the photo to close.");
   box.innerHTML = `<button class="sronly lbclose" aria-label="Close the photo">Close</button>
-    <div class="lbstage"><img alt="The photo, full size" src="${esc(url)}" draggable="false"></div><p class="note small lbhint">Pinch or double-tap to zoom. Tap outside the photo to close.</p>`;
+    <div class="lbstage"><img alt="The photo, full size" src="${esc(url)}" draggable="false"></div><p class="note small lbhint">Pinch or double-tap to zoom. Swipe down or tap outside to close.</p>`;
   const stage = box.querySelector(".lbstage"), img = stage.querySelector("img");
   let k = 1, tx = 0, ty = 0;
   const MAX = 8;
@@ -670,7 +670,8 @@ function viewShot(url) {
     const [px, py] = mid(cx, cy);
     return Math.abs(px - tx) <= w / 2 && Math.abs(py - ty) <= h / 2;
   };
-  const pts = new Map(); let pinch = null, lastTap = { t: 0, x: 0, y: 0 }, down = null, multi = false;
+  const pts = new Map(); let pinch = null, lastTap = { t: 0, x: 0, y: 0 }, down = null, multi = false, pull = null;   // pull: a downward swipe in progress, {dy}
+  const SWIPE_CLOSE = 100;   // pixels down that close the photo
   const close = () => { box.remove(); document.removeEventListener("keydown", onKey); }, onKey = (e) => { if (e.key === "Escape") close(); };
   stage.addEventListener("pointerdown", (e) => {
     stage.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -689,8 +690,18 @@ function viewShot(url) {
       const [a, b] = [...pts.values()], [px, py] = mid((a.x + b.x) / 2, (a.y + b.y) / 2);
       zoomAt(pinch.k * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.d), px, py);
     } else if (pts.size === 1 && k > 1) { tx += e.clientX - p.x; ty += e.clientY - p.y; pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); apply(); }
+    else if (pts.size === 1 && down && !multi) {   // not zoomed in: a mostly-downward drag pulls the photo away
+      const dx = e.clientX - down.x, dy = e.clientY - down.y;
+      if (!pull && dy > 12 && dy > Math.abs(dx) * 1.5) { pull = { dy: 0 }; lastTap.t = 0; }   // a pull is not the first half of a double-tap
+      if (pull) { pull.dy = Math.max(0, dy); img.style.transform = `translate(0px, ${pull.dy}px) scale(1)`; box.style.opacity = String(1 - Math.min(pull.dy / 400, 0.5)); }
+    }
   });
   const up = (e) => {
+    if (pull) {   // far enough down closes the photo; otherwise it springs back
+      const far = pull.dy >= SWIPE_CLOSE; pull = null; pts.delete(e.pointerId); pinch = null; down = null;
+      if (far && e.type === "pointerup") { close(); return; }
+      box.style.opacity = ""; apply(); return;
+    }
     // a short tap with no movement on the dark background closes the viewer
     if (e.type === "pointerup" && down && !multi && pts.size === 1 && Date.now() - down.t < 350 && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 10 && !onPicture(e.clientX, e.clientY)) { close(); return; }
     pts.delete(e.pointerId); pinch = null;
@@ -3964,7 +3975,8 @@ async function onClick(el) {
         showToast("The photo reader is on this phone");
       } catch { showToast("The download did not finish. Check your connection and try again."); if (note) note.textContent = ""; }
       if (btn) btn.disabled = false;
-      refreshAbout();
+      // The saved copies are written by the app's background helper a moment after the last file arrives, so the line is checked again until it agrees (up to 5 seconds).
+      for (let i = 0; i < 20; i++) { await refreshAbout(); const b = $("warm-btn"); if (!b || b.hidden) break; await new Promise((r) => setTimeout(r, 250)); }
       break;
     }
     case "hide-account": {
