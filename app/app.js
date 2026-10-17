@@ -2325,6 +2325,7 @@ function renderSheet() {
       <label for="f-payee">${d.kind === "expense" ? "Item" : "Name (optional)"}</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
       ${t.schedule_id ? `<label for="f-memo">Note (optional, like "covers Sept to Oct")</label><input id="f-memo" data-field="memo" value="${esc(ui.form.memo ?? "")}" autocomplete="off">` : ""}
       ${d.editable ? `<label>Category${REQ}</label>${categoryPicker(pickCategoriesWith(ui.form.category_id), ui.form.category_id)}<label>Paid from${REQ}</label>${paidChips(ui.form.account_id)}` : ""}
+      ${d.kind === "income" && S().entries.filter((e) => e.transaction_id === t.id).length === 2 ? `<label>Category</label>${categoryPicker(incomeCategories(), ui.form.category_id, "cat", "pick-cat", "Choose what it is")}` : ""}
       ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${accountPicker(accountsFor(null, true), ui.form.from_id, "pick-from", "from", "Choose an account")}<label>To</label>${accountPicker(accountsFor(null, true), ui.form.to_id, "pick-to", "to", "Choose an account")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
