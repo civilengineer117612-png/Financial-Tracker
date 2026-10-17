@@ -2286,6 +2286,7 @@ function renderSheet() {
   } else if (sh.type === "other") {
     body = `<h3>Add expense</h3>
       <label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      <label for="f-payee">Item</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off" autocapitalize="sentences">
       <label>Category${REQ}</label>${categoryPicker(pickCategoriesWith(ui.form.category_id), ui.form.category_id)}
       <label>Paid from${REQ}</label>${paidChips(ui.form.account_id)}
       ${REQNOTE}
@@ -2321,7 +2322,7 @@ function renderSheet() {
     body = `<h3>Edit entry</h3>
       ${d.editable || d.kind === "transfer" || d.kind === "income" || (t.schedule_id && d.kind === "split") ? `<label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">` : ""}
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}">
-      <label for="f-payee">Name (optional)</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
+      <label for="f-payee">${d.kind === "expense" ? "Item" : "Name (optional)"}</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
       ${t.schedule_id ? `<label for="f-memo">Note (optional, like "covers Sept to Oct")</label><input id="f-memo" data-field="memo" value="${esc(ui.form.memo ?? "")}" autocomplete="off">` : ""}
       ${d.editable ? `<label>Category${REQ}</label>${categoryPicker(pickCategoriesWith(ui.form.category_id), ui.form.category_id)}<label>Paid from${REQ}</label>${paidChips(ui.form.account_id)}` : ""}
       ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${accountPicker(accountsFor(null, true), ui.form.from_id, "pick-from", "from", "Choose an account")}<label>To</label>${accountPicker(accountsFor(null, true), ui.form.to_id, "pick-to", "to", "Choose an account")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
@@ -3804,7 +3805,7 @@ async function onClick(el) {
     case "save-other": {
       const amount = M.parsePesos(form.amount).centavos;
       ui.sheet = null; renderSheet();
-      await logExpense({ transaction_id: newId("tx"), payee: "", category_id: form.category_id, amount, account_id: form.account_id, source: "manual" }, categoryName(form.category_id) + " " + peso(amount));
+      await logExpense({ transaction_id: newId("tx"), payee: (form.payee ?? "").trim(), category_id: form.category_id, amount, account_id: form.account_id, source: "manual" }, categoryName(form.category_id) + " " + peso(amount));
       break;
     }
     case "save-tile": {
