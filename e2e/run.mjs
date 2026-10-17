@@ -2653,7 +2653,7 @@ console.log("Pay plan");
   ({ ctx, page, errors } = await open({ blockSw: true, seed }));
   await menuGo(page, "Pay plan");
   let st = (await text(page, "#screen")).replace(/\s+/g, " ");
-  check(st.includes("You can skip it. Budget works without it.") && st.toLowerCase().includes("how to use it") && st.includes("must add up to that payday's pay"), "the empty Pay plan screen keeps its words and adds a how-to note");
+  check(st.includes("You can skip it. Buckets works without it.") && st.toLowerCase().includes("how to use it") && st.includes("must add up to that payday's pay"), "the empty Pay plan screen keeps its words and adds a how-to note");
   check(await page.locator('#screen button.primary').count() === 1 && await page.locator('button[data-action="open-planform"]').count() === 1, "with one filled button: Type in a pay plan");
   await page.click('button[data-action="open-planform"]');
   await page.waitForSelector(".pp-big");
@@ -2702,7 +2702,7 @@ console.log("Pay plan");
   check((await text(page, "#sheet .pp-big")).includes("₱10,000") && await page.locator("#sheet .pp-row").count() >= 2, "Add a newer plan starts from the current plan");
   await page.click('#sheet button:has-text("Cancel")');
   await menuGo(page, "Help"); await page.locator("#screen details.mrow summary", { hasText: "Pay plan" }).click();
-  check((await text(page, "#screen")).includes("Budget or Pay plan?") && (await text(page, "#screen")).includes("Budget is enough on its own"), "Help compares Budget and Pay plan");
+  check((await text(page, "#screen")).includes("Buckets or Pay plan?") && (await text(page, "#screen")).includes("Buckets is enough on its own"), "Help compares Budget and Pay plan");
   await menuGo(page, "Setup"); await page.click('button[data-action="cat-edit"]'); await page.click('.row:has-text("Food")'); await page.waitForSelector("#c-name");
   check((await text(page, "#sheet")).includes("Your Pay plan has a line called Food. After a rename"), "renaming a category the saved plan uses says the plan line will no longer match");
   const inPlan = new Set(JSON.parse((await stored(page)).local).settings.plans[0].lines.map((x) => x.name.toLowerCase()));
@@ -2742,6 +2742,9 @@ console.log("Pay plan lines");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
+// Buckets has its own popup the first times it opens: close it so the next tap reaches the strip.
+async function toBuckets(page) { await page.click('#screen .hub button:has-text("Buckets")'); await page.waitForTimeout(350); if (await page.locator("#sheet .in-draw").count()) { await page.click('button[data-action="intro-done"]'); await page.waitForFunction(() => !document.querySelector("#sheet .in-draw")); } }
+
 // ===== 5pi. the small popup that says what the screen is for =====
 console.log("Pay plan popup");
 { const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 100000, opening_date: "2026-09-01" };
@@ -2753,12 +2756,12 @@ console.log("Pay plan popup");
   check(await page.locator("#sheet .in-bar").count() >= 3 && (await page.locator("#sheet .in-bar").first().evaluate((e) => getComputedStyle(e).animationName)) === "introgrow", "the drawing moves");
   await page.click('button[data-action="intro-done"]'); await page.waitForFunction(() => !document.querySelector("#sheet .in-draw"));
   check(JSON.parse((await stored(page)).local).settings.intro_seen?.plan === 1, "Got it counts the popup as shown once");
-  await page.click('#screen .hub button:has-text("Buckets")'); await page.click('#screen .hub button:has-text("Pay plan")'); await page.waitForSelector(".in-draw");
+  await toBuckets(page); await page.click('#screen .hub button:has-text("Pay plan")'); await page.waitForSelector(".in-draw");
   check(await page.locator(".in-draw").count() === 1, "it comes back the next time, until the check is ticked");
   await page.click('button[data-action="intro-off"]');
   check((await page.getAttribute('button[data-action="intro-off"]', "aria-checked")) === "true", "the check can be ticked");
   await page.click('button[data-action="intro-done"]'); await page.waitForFunction(() => !document.querySelector("#sheet .in-draw"));
-  await page.click('#screen .hub button:has-text("Buckets")'); await page.click('#screen .hub button:has-text("Pay plan")'); await page.waitForTimeout(400);
+  await toBuckets(page); await page.click('#screen .hub button:has-text("Pay plan")'); await page.waitForTimeout(400);
   check(await page.locator(".in-draw").count() === 0 && JSON.parse((await stored(page)).local).settings.intro_off?.plan === true, "with the check ticked it does not come back");
   await page.click('#top button[data-action="intro"][data-id="plan"]'); await page.waitForSelector(".in-draw");
   await page.click('button[data-action="intro-done"]'); await page.waitForFunction(() => !document.querySelector("#sheet .in-draw"));
@@ -2778,10 +2781,11 @@ console.log("Popups on every screen");
     ["Trips", "Spend on the road, count it once.", "Add dates and it fills itself."], ["Buffer", "A cushion for rainy months.", "Tap to add to it."], ["Setup", "Make the app yours.", "Tap anything to change it."]];
   const seenAll = [];
   for (const [name, one, two] of screens) {
-    await page.click("#menuBtn"); await page.click(`#menu .item:has-text("${name}")`);
+    const menuName = name === "Budget" ? "Plan & Save" : name, title = name === "Budget" ? "Buckets" : name;
+    await page.click("#menuBtn"); await page.click(`#menu .item:has-text("${menuName}")`);
     await page.waitForSelector(".in-draw", { timeout: 4000 });
     const t = await text(page, "#sheet");
-    seenAll.push(t.includes(name) && t.includes(one) && t.includes(two) && t.includes("Don't show this again") && await page.locator("#sheet .in-bar, #sheet .in-col, #sheet .in-pop, #sheet .in-slide, #sheet .in-arc, #sheet .in-sweep, #sheet .in-draw-line").count() > 0);
+    seenAll.push(t.includes(title) && t.includes(one) && t.includes(two) && t.includes("Don't show this again") && await page.locator("#sheet .in-bar, #sheet .in-col, #sheet .in-pop, #sheet .in-slide, #sheet .in-arc, #sheet .in-sweep, #sheet .in-draw-line").count() > 0);
     await page.click('button[data-action="intro-done"]');
     await page.waitForFunction(() => !document.querySelector("#sheet .in-draw"));
   }
