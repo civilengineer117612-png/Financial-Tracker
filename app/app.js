@@ -2027,7 +2027,17 @@ function viewCheckin() {
 }
 
 // The switch is a settings key, off by default; off, this is exactly the screen it always was.
-function viewBudget() { return viewBudgetNew(); }
+function viewBudgetList() {
+  const month = M.monthOf(today()), next = M.addMonths(month, 1);
+  const rows = expenseCategories().map((c) => {
+    const now = M.budgetFor(S().rules, c.id, month), later = M.budgetFor(S().rules, c.id, next);
+    const change = later !== now ? `<small>${later === null ? "ends" : peso(later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "";
+    return `<button class="choice" data-action="open-budget" data-id="${esc(c.id)}"><span>${esc(c.name)}${hiddenTag(c.id)}${change}</span><span class="bval">${now === null ? "No budget" : peso(now) + " a month"}</span></button>`;
+  }).join("");
+  return `<h1>Buckets</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${rows}
+    <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
+}
+function viewBudget() { return viewBudgetList(); }
 
 // ---- Buckets: income, the buckets and, under each, its categories and limits ----
 // Income at the top, every amount as a share of it, then two blocks: "Spending" (the budgets) and "Saved and set aside". Nothing here is saved by

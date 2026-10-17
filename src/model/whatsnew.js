@@ -1,7 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
-  { id: "2026-10-17-buckets", date: "2026-10-17", text: "Budget is now Plan & Save, with the tabs Buckets, Goals and Pay plan. Tap a bucket to see its categories; the Spending and Saved views are gone." },
+  { id: "2026-10-17-buckets", date: "2026-10-17", text: "Budget is now Plan & Save in the menu, with the tabs Buckets, Goals and Pay plan; the Setup switch for the new Budget is gone." },
   { id: "2026-10-17-pair-figure", date: "2026-10-17", text: "Progress figures now read like 900 / 1,000. Tap one to see what is left instead, and every screen follows (Cash flow budgets, Goals, Trips, Statements, Scheduled, Weekly review)." },
   { id: "2026-10-17-flat-goals", date: "2026-10-17", text: "Goals show one thin bar each, with the emergency fund's table under Details, and a total saved at the top." },
   { id: "2026-10-17-accounts-short", date: "2026-10-17", text: "In Setup, the Accounts and Categories rows look the same while you hold and drag them, and the line under an account name is now short, with the last four digits at the bottom as ***1234." },

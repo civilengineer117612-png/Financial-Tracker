@@ -40,8 +40,8 @@ function monthly(extra) { const s = base(); for (const m of M6) { slip(s, m + "-
 function twice() { const s = base(); for (const m of M6) { slip(s, m + "-15", 1000000); slip(s, m + "-30", 2000000); logMonth(s, m); } return s; }
 const sug = (s, o = {}) => suggestBudgets({ state: s, today: TODAY, month: MONTH, ...o });
 
-test("Buckets is the only Budget screen: the switch, the old screen and Setup's Budget options are gone (a saved setting is left alone, never deleted)", () => {
-  assert.match(app, /function viewBudget\(\) \{ return viewBudgetNew\(\); \}/);
+test("Buckets is the only Budget screen (the simple list): the switch, the old screen and Setup's Budget options are gone (a saved setting is left alone, never deleted)", () => {
+  assert.match(app, /function viewBudget\(\) \{ return viewBudgetList\(\); \}/, "the simple list of categories and their monthly limits is the Buckets screen");
   assert.ok(!app.includes("function viewBudgetOld") && !app.includes("toggle-new-budget") && !app.includes("Try the new Budget") && !app.includes("Budget options"), "no old screen, no switch, no Setup page for it");
   assert.ok(!/try_new_budget/.test(app), "the app no longer reads the old setting; an old ledger that has it keeps it, unused");
   assert.ok(!/try_new_budget/.test(readFileSync(new URL("../src/model/seed.js", import.meta.url), "utf8")), "no setting is switched on by default");
