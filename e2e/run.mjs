@@ -2226,8 +2226,8 @@ const FIX = { v: 3, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings:
   // a picture the backup never held
   await page.click('#nav button:has-text("Verify")');
   check(await seen(page, "#screen", "Picture not on this phone"), "an entry whose picture is missing says \"picture not on this phone\"");
-  await menuGo(page, "Setup"); await page.click('button:has-text("Restore from a backup")');
-  check((await text(page, "#sheet")).includes("Receipt and payslip pictures are not in a backup"), "Restore says plainly that pictures are not in the backup");
+  await menuGo(page, "Setup"); await page.click('button[data-action="more-backup"]'); await page.click('button:has-text("Restore the ledger only")');   // this ledger keeps a picture, so the single option sits under More
+  check((await text(page, "#sheet")).includes("Receipt and payslip pictures are not in a backup"), "Restore of the ledger only says plainly that pictures are not in the backup");
   await page.click('#sheet button:has-text("Cancel")').catch(() => {});
   // goals by role: nothing is found by name
   await menuGo(page, "Goals"); await page.click('button[data-action="toggle-reveal"]');
