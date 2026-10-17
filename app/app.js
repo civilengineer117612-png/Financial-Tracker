@@ -2450,7 +2450,8 @@ function renderSheet() {
       <label for="f-amount">Target (\u20B1, optional)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       <label for="g-date">Finish by (optional)</label><input id="g-date" type="date" data-field="deadline" value="${esc(ui.form.deadline ?? "")}">
       <label>Where the money sits (optional: you can choose it later)</label>${paidChips(ui.form.account_id)}
-      <label>What it is for (optional)</label><div class="chips"><button class="chip" data-action="pick-goal-role" aria-pressed="${ui.form.role === "emergency"}">My emergency fund</button></div>
+      <button class="wl-check" role="checkbox" aria-checked="${ui.form.role === "emergency"}" data-action="pick-goal-role"><span class="box" aria-hidden="true"></span>Emergency fund</button>
+      <p class="note small">Tick it if this goal is your emergency fund.</p>
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-goal" style="margin-top:14px" disabled>Save goal</button></p>`;
   } else if (sh.type === "goal-account") {
