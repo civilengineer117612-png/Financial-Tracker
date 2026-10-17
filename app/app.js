@@ -17,6 +17,11 @@ const badLinesHtml = (st, f) => {
   const rows = !open ? "" : M.badLineDetails(st.parsed.lines, st.parsed.summary, st.check.bad).map((x) => `<div class="row"><div>${esc(yearDate(x.date))}<small>${esc(x.name)}</small><small>Bank prints ${peso(x.printed)} \u00b7 the lines before give ${x.expected < 0 ? "-" + peso(-x.expected) : peso(x.expected)}</small></div><div class="amt">${peso(x.amount)}</div></div>`).join("");
   return `<p style="margin:6px 0"><button class="link small" data-action="stm-show" data-id="__bad">${open ? `Hide the ${n} ${n === 1 ? "line" : "lines"}` : `Show the ${n} ${n === 1 ? "line" : "lines"}`}</button></p>${open ? `<p class="note small" style="margin:0 0 4px">A line is usually missing from the statement just before each of these.</p><div class="card" style="padding:4px 14px">${rows}</div>` : ""}`;
 };
+// A month that does not add up: a quiet link opens the lines that do not follow from the balance before them (what the bank prints, what the lines before give).
+const failingMonthHtml = (lines, open) => {
+  const n = lines.length, rows = !open ? "" : lines.map((x) => `<div class="row"><div>${esc(yearDate(x.date))}<small>${esc(x.name)}</small><small>Bank prints ${peso(x.printed)} \u00b7 the lines before give ${x.expected < 0 ? "-" + peso(-x.expected) : peso(x.expected)}</small></div><div class="amt">${peso(x.amount)}</div></div>`).join("");
+  return `<p style="margin:0 0 4px"><button class="link small" data-action="st-fail">${open ? `Hide the ${n} ${n === 1 ? "line" : "lines"}` : `Show the ${n} ${n === 1 ? "line" : "lines"}`}</button></p>${open ? `<p class="note small" style="margin:0 0 4px">A line is usually missing from the statement just before ${n === 1 ? "it" : "each of these"}.</p><div class="card" style="padding:4px 14px;margin:0 0 10px">${rows}</div>` : ""}`;
+};
 const newId = (prefix) => prefix + "-" + crypto.randomUUID();
 const peso = M.formatPesos;
 const BACKUP_NOTE_DAYS = 7;   // the Log page mentions a missing or old backup once it is a week old
@@ -2748,6 +2753,7 @@ function renderSheet() {
       const r = m.row, ok = stmGood(r);
       body = `<h3 style="margin:0 0 4px">${monthLabel(sh.month)}</h3><p class="note" style="margin:0 0 10px">${esc(acct?.name ?? "")}</p>
         <p class="note" style="margin:0 0 10px">${ok ? STM_OK + " " : STM_NO + " "}${r.accepted ? "Accepted. The entries from this month are verified." : esc(r.reason)}</p>
+        ${m.failing.length ? failingMonthHtml(m.failing, !!ui.form?.stFailOpen) : ""}
         <dl style="margin:0">${[["Opens", r.opening], ["Money in", r.moneyIn], ["Money out", r.moneyOut], ["Closes", r.closing]].map(([k, v]) => `<div class="row"><div>${k}</div><div class="amt">${v === null ? "\u2013" : peso(v)}</div></div>`).join("")}</dl>
         ${(() => { const d = M.statementDifference(S(), sh.account_id, sh.month); return d.ok ? `<button class="setrow" data-action="st-compare" data-acct="${esc(sh.account_id)}" data-month="${sh.month}" style="padding:12px 0;width:100%"><div class="st"><b>Compare with your ledger</b><small>${d.difference === 0 ? "Your ledger agrees with the bank" : `Your ledger is ${peso(Math.abs(d.difference))} ${d.difference > 0 ? "above" : "below"} the bank`}</small></div><span class="chev">\u203a</span></button>` : ""; })()}
         ${ok && !r.accepted ? `<p class="note" style="margin:12px 0 4px">Accepting makes verified entries from</p>
@@ -3834,7 +3840,8 @@ async function onClick(el) {
     case "open-entries": ui.sheet = { type: "entries" }; renderSheet(); break;
     case "toggle-cancelled": ui.showCancelled = !ui.showCancelled; renderSheet(); break;
     case "wn-all": ui.wnAll = !ui.wnAll; renderScreen(); break;
-    case "st-month": ui.sheet = { type: "stmonth", account_id: el.dataset.acct, month: el.dataset.month }; renderSheet(); break;
+    case "st-month": ui.sheet = { type: "stmonth", account_id: el.dataset.acct, month: el.dataset.month }; ui.form = {}; renderSheet(); break;
+    case "st-fail": ui.form = { ...ui.form, stFailOpen: !ui.form?.stFailOpen }; renderSheet(); break;
     case "st-compare": ui.confirmStart = false; ui.sheet = { type: "stcompare", account_id: el.dataset.acct, month: el.dataset.month }; renderSheet(); break;
     case "st-adddraft": {
       const sh = ui.sheet, d = M.statementDifference(S(), sh.account_id, sh.month), m = d.ok ? d.missing.find((x) => x.line.id === el.dataset.line) : null;
