@@ -1,7 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
-  { id: "2026-10-17-accounts-short", date: "2026-10-17", text: "In Setup, the Accounts and Categories rows look the same while you hold and drag them, and the line under an account name is now short." },
+  { id: "2026-10-17-accounts-short", date: "2026-10-17", text: "In Setup, the Accounts and Categories rows look the same while you hold and drag them, and the line under an account name is now short, with the last four digits at the bottom as ***1234." },
   { id: "2026-10-17-logged-match", date: "2026-10-17", text: "Importing and Accept this month now see that a purchase is already logged when the same amount was spent within two days, even if you named it differently." },
   { id: "2026-10-17-arrange-lists", date: "2026-10-17", text: "In Setup, hold a category or an account and drag it to arrange your own order; the pickers follow it, with the last used on top." },
   { id: "2026-10-17-goal-tick", date: "2026-10-17", text: "On a goal, marking your emergency fund is now a tick box with a one-line note instead of a button that looked like a question." },
