@@ -1537,14 +1537,12 @@ function whoHtml(from, to, label) {
   const one = (r) => {
     const many = r.members.length > 1, open = !!ui.whoOpen?.[r.id], cat = r.category_id && r.category_id !== M.UNLOGGED_CATEGORY_ID ? catName(r.category_id) : "";
     const sub = [r.named ? cat || "No category yet" : cat ? cat : "Not named yet", many ? r.members.length + " accounts" : r.count + (r.count === 1 ? " payment" : " payments")].filter(Boolean).join(" \u00b7 ");
-    const head = `<button class="whorow" data-action="${many ? "who-open" : "who-edit"}" data-id="${esc(many ? r.id : r.members[0].key)}"${many ? ` aria-expanded="${open}"` : ""}>
-      <span class="whotop"><span>${esc(r.name)}${many ? ` <span aria-hidden="true">${open ? "\u25B4" : "\u25BE"}</span>` : ""}<small>${esc(sub)}</small></span><span class="whoamt">${peso(r.total)}</span></span>
-      <span class="whobar"><span style="width:${Math.max(1, Math.round((r.total * 100) / max))}%"></span></span></button>`;
-    const subs = many && open ? r.members.map((m) => `<button class="whorow whosub" data-action="who-edit" data-id="${esc(m.key)}"><span class="whotop"><span>${esc(m.label)}<small>${m.count} ${m.count === 1 ? "payment" : "payments"}</small></span><span class="whoamt">${peso(m.total)}</span></span></button>`).join("") : "";
-    return head + subs;
+    const head = { id: many ? r.id : r.members[0].key, action: many ? "who-open" : "who-edit", attrs: many ? ` aria-expanded="${open}"` : "", name: `${esc(r.name)}${many ? ` <span aria-hidden="true">${open ? "\u25B4" : "\u25BE"}</span>` : ""}`, sub: esc(sub), fig: peso(r.total), pct: Math.max(1, Math.round((r.total * 100) / max)), label: `${r.name}: ${Math.round((r.total * 100) / max)}% of the biggest` };
+    const subs = many && open ? r.members.map((m) => ({ id: m.key, action: "who-edit", cls: "whosub", name: esc(m.label), sub: `${m.count} ${m.count === 1 ? "payment" : "payments"}`, fig: peso(m.total), pct: null })) : [];
+    return [head, ...subs];
   };
   return `<h2 id="who">Who, ${esc(label)}</h2><p class="note small">Tap one to name it once; every payment to them follows. Moves between your own accounts are not here.</p>
-    <div class="card whocard">${shown.map(one).join("")}</div>${rows.length > shown.length ? `<p class="center"><button class="link" data-action="who-all">Show all ${rows.length}</button></p>` : ""}`;
+    ${barCard(shown.flatMap(one))}${rows.length > shown.length ? `<p class="center"><button class="link" data-action="who-all">Show all ${rows.length}</button></p>` : ""}`;
 }
 // The spending line on Trends: one thin line with a faint gradient under it, cut into days, weeks or months by how far it is zoomed. Quick ranges 1M to All;
 // pinch (or Ctrl and scroll) to zoom; drag a finger across to measure a span; tap for one point. The window is the chart's own (`ui.tl`), the figures above it
@@ -1587,9 +1585,9 @@ function spendLineHtml() {
   const series = tlSeries(), t = tlState(), n = series.length;
   const stepWord = { day: "days", week: "weeks", month: "months" }[series[0]?.step ?? "day"];
   const chips = M.RANGES.map((k) => `<button data-action="tl-range" data-id="${k}" aria-pressed="${t.key === k}">${k}</button>`).join("");
-  return `<div id="tlbox" class="tlbox"><div class="seg tlranges" role="group" aria-label="How far back">${chips}</div>
+  return `<div class="card chartcard"><div id="tlbox" class="tlbox"><div class="seg tlranges" role="group" aria-label="How far back">${chips}</div>
     <svg id="tlsvg" class="spendline" viewBox="0 0 ${TL.W} ${TL.H}" role="img" aria-label="Spending from ${esc(fullDate(t.from))} to ${esc(fullDate(t.to))}, by ${stepWord}. The list shows the same numbers.">${tlInner(series)}</svg>
-    <p class="caption" id="tlcap" aria-live="polite">${esc(tlCaption(series))}</p><p class="note small" id="tlstep">By ${stepWord} · ${n} ${n === 1 ? "point" : "points"}</p></div>`;
+    <p class="caption" id="tlcap" aria-live="polite">${esc(tlCaption(series))}</p><p class="note small" id="tlstep">By ${stepWord} · ${n} ${n === 1 ? "point" : "points"}</p></div></div>`;
 }
 function paintLine() {
   const svg = $("tlsvg"); if (!svg) return;
@@ -1683,10 +1681,10 @@ function trendChart(trend) {
     return `<path class="tl ${cls}" d="${d}"/>${dots}`;
   };
   const labels = trend.map((x) => `<button class="tmonth" data-action="open-month" data-id="${x.month}" aria-label="Open ${esc(M.monthLabel(x.month))}">${esc(M.monthLabel(x.month).slice(0, 3))}</button>`).join("");
-  return `<svg class="trend" viewBox="0 0 ${W} ${H}" role="img" aria-label="Budget and actual spending for the last ${n} months. The table below has the same numbers.">${line("budget", "tb")}${line("actual", "ta")}</svg>
+  return `<div class="card chartcard"><div class="eyebrow">Month by month</div><svg class="trend" viewBox="0 0 ${W} ${H}" role="img" aria-label="Budget and actual spending for the last ${n} months. The table below has the same numbers.">${line("budget", "tb")}${line("actual", "ta")}</svg>
     <div class="tlabs">${labels}</div>
     <p class="legend"><span><svg width="22" height="10" aria-hidden="true"><line x1="0" y1="5" x2="22" y2="5" class="tb" stroke-width="2" stroke-dasharray="4 3"/></svg>Budget</span><span><svg width="22" height="10" aria-hidden="true"><line x1="0" y1="5" x2="22" y2="5" class="ta" stroke-width="2"/></svg>Actual</span></p>
-    <p class="note">A gap means nothing was budgeted or logged. Tap a month to open it.</p>`;
+    <p class="note">A gap means nothing was budgeted or logged. Tap a month to open it.</p></div>`;
 }
 function trendTable(trend) {
   const cell = (v) => v == null ? "No data" : peso(v);
