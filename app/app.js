@@ -1447,14 +1447,17 @@ const pendingNote = (n) => (n > 0 ? `<p class="note"><button class="link" data-a
 const modeBar = () => `<div class="modebar"><button data-action="chart-mode" data-mode="${ui.asList ? "chart" : "list"}" aria-label="${ui.asList ? "Show as a chart" : "Show as a list"}">${ui.asList ? "Chart" : "List"}</button></div>`;
 const moneyViews = () => `<div class="seg" role="group" aria-label="What to show">${[["category", "Category"], ["budget", "Budget"], ["account", "Accounts"], ["month", "Trends"]].map(([v, t]) => `<button data-action="chart-view" data-view="${v}" aria-pressed="${ui.view === v}">${t}</button>`).join("")}</div>`;
 
-// A chart you tap to flip: bars become a donut and the donut becomes bars. Nothing else happens on a tap.
-function flipChart(rows, total, { shape = "bars" } = {}) {
+// ONE row for every list that shows a share or a spend (owner, Oct 17): the name at the left with an optional small line under it, the figure at the right, and ONE thin
+// flat bar under both, all inside one white card with hairlines between the rows. Percentages are not on the row (the bar is the share; the list twin has them).
+// row: {name (html), sub (html, optional), fig (html), pct (0-100), label (screen reader), cls, extra (html under the bar)}
+const barRow = (r) => `<div class="catrow${r.cls ? " " + r.cls : ""}"><div class="ct"><span class="ctn">${r.name}${r.sub ? `<small>${r.sub}</small>` : ""}</span><span class="amt">${r.fig}</span></div><div class="catbar" role="img" aria-label="${esc(r.label)}"><span style="width:${Math.max(0, Math.min(100, r.pct))}%"></span>${r.mark != null ? `<i class="flatmark" style="left:${Math.max(0, Math.min(100, r.mark))}%"></i>` : ""}</div>${r.extra ?? ""}</div>`;
+const barCard = (rows) => `<div class="card catcard">${rows.map(barRow).join("")}</div>`;
+// Rows of {label, amount} as bars scaled to the largest, folded after SHOWN_BARS.
+function shareBars(rows, total) {
   const shown = foldRows(rows.filter((r) => r.amount > 0), total);
   if (!shown.length) return `<p class="note">Nothing verified in this period.</p>`;
-  const max = Math.max(...shown.map((r) => r.amount), 1);
-  return `<div class="bars flip" data-action="chart-mode" data-mode="list" role="button" tabindex="0" aria-label="Bars of where the money went. Tap to show the list.">${shown.map((r) => `<div class="brow${r.grade ? " g-" + r.grade : ""}">
-      <span class="btop"><span class="bname">${r.label}</span><span class="bval">${peso(r.amount)}${r.percent ? " \u00b7 " + r.percent + "%" : ""}</span></span>
-      <span class="btrack"><span class="bfill" style="width:${Math.max(1, Math.round((r.amount * 100) / max))}%"></span></span></div>`).join("")}</div>`;
+  const top = Math.max(...shown.map((r) => r.amount), 1);
+  return barCard(shown.map((r) => ({ name: r.label, fig: peso(r.amount), pct: Math.max(2, Math.round((r.amount * 100) / top)), label: `${r.plain ?? r.label}: ${Math.round((r.amount * 100) / top)}% of the largest` })));
 }
 
 // A small arrow beside an amount: up is money spent, down is money paid in (the words are read aloud, not shown).
@@ -1637,18 +1640,18 @@ function viewMoney() {
     const acc = M.spendingByAccount(S(), { from, to });
     if (!acc.rows.length) return empty();
     const pct = (a) => (acc.total > 0 && a > 0 ? Math.round((a * 1000) / acc.total) / 10 : 0);
-    const rows = acc.rows.map((r) => ({ id: r.account_id, label: withIcon(S().accounts.find((a) => a.id === r.account_id) ?? { name: r.name }, 24), amount: r.amount, percent: pct(r.amount) }));
+    const rows = acc.rows.map((r) => ({ id: r.account_id, label: withIcon(S().accounts.find((a) => a.id === r.account_id) ?? { name: r.name }, 24), plain: accountName(r.account_id), amount: r.amount, percent: pct(r.amount) }));
     if (ui.asList) return done(listTable(["Account", "Spent", "Share"], rows.map((r) => [esc(accountName(r.id)), peso(r.amount), r.percent + "%"]), "Total", acc.total));
-    return done(flipChart(rows, acc.total, { shape: "bars" }));
+    return done(shareBars(rows, acc.total));
   }
 
   if (!cat.rows.length) return empty();
   // The bars here show each category's share of the spending, so they are one calm blue; budget colours belong to the Budgets view.
   const rows = cat.rows.map((r) => {
-    return { id: r.category_id, label: esc(r.name), amount: r.amount, percent: r.percent, grade: null };
+    return { id: r.category_id, name: r.name, label: esc(r.name), amount: r.amount, percent: r.percent, grade: null };
   });
   const top = Math.max(...rows.map((r) => r.amount), 1);   // each bar is scaled to the largest category, so the list is its own twin
-  return hero + `<div class="card catcard">${rows.filter((r) => r.amount > 0).map((r) => `<div class="catrow"><div class="ct"><span>${r.label}</span><span class="amt">${peso(r.amount)}</span></div><div class="catbar" role="img" aria-label="${esc(r.label)}: ${Math.round((r.amount * 100) / top)}% of the largest"><span style="width:${Math.max(2, Math.round((r.amount * 100) / top))}%"></span></div></div>`).join("")}</div>
+  return hero + barCard(rows.filter((r) => r.amount > 0).map((r) => ({ name: r.label, fig: peso(r.amount), pct: Math.max(2, Math.round((r.amount * 100) / top)), label: `${r.name}: ${Math.round((r.amount * 100) / top)}% of the largest` }))) + `
     <p class="entrylink"><button class="link" data-action="open-entries">See every entry</button></p>`;
 }
 
@@ -1703,13 +1706,12 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
     return hero + varianceTable(budgeted);
   }
   // One slim line per category: its name with its shape, "spent / budget" (tap the figure for what is left, for every row at once), and the bar.
-  const cards = budgeted.map((r) => { const lvl = r.grade.level, over = lvl === "critical";
-    return `<div class="bcard budrow" aria-label="${esc(categoryName(r.category_id) + ": " + peso(r.spent) + " of " + peso(r.budget) + ", " + LEVELS[lvl] + ", " + words(r))}">
-      <span class="btop"><span class="bname">${glyph(lvl)} ${esc(categoryName(r.category_id))}</span><span class="bval">${pairFig(r.spent, r.budget, { over: "over", label: categoryName(r.category_id) })}</span></span>
-      <span class="meter g-${lvl}" aria-hidden="true"><span class="fill" style="width:${r.spent > 0 ? Math.max(1, Math.min(100, Math.round((r.spent * 100) / r.budget))) : 0}%"></span>${aheadOfMonth(r.spent, r.budget, elapsed) ? `<span class="tick" style="left:${elapsed}%"></span>` : ""}</span>
-      ${over || r.pending > 0 ? `<span class="sub2">${over ? esc(LEVELS[lvl]) : ""}${over && r.pending > 0 ? " \u00b7 " : ""}${r.pending > 0 ? esc("+" + peso(r.pending) + " not verified") : ""}</span>` : ""}</div>`; }).join("");
+  const cards = barCard(budgeted.map((r) => { const lvl = r.grade.level, over = lvl === "critical", name = categoryName(r.category_id);
+    const sub = [over ? LEVELS[lvl] : "", r.pending > 0 ? "+" + peso(r.pending) + " not verified" : ""].filter(Boolean).join(" \u00b7 ");
+    return { name: `${glyph(lvl)} ${esc(name)}`, sub: esc(sub), fig: pairFig(r.spent, r.budget, { over: "over", label: name }), cls: "g-" + lvl, pct: r.spent > 0 ? Math.max(1, Math.round((r.spent * 100) / r.budget)) : 0,
+      mark: aheadOfMonth(r.spent, r.budget, elapsed) ? elapsed : null, label: name + ": " + peso(r.spent) + " of " + peso(r.budget) + ", " + LEVELS[lvl] + ", " + words(r) }; }));
   const rest = unbudgeted.length ? `<h2>No budget set</h2>${unbudgeted.map((r) => `<div class="row"><div>${esc(categoryName(r.category_id))}</div><div class="amt">${peso(r.spent)}</div></div>`).join("")}` : "";
-  return hero + legend(budgeted.some((r) => aheadOfMonth(r.spent, r.budget, elapsed)), [...new Set(budgeted.map((r) => r.grade.level))]) + `<div>${cards}</div>${rest}`;
+  return hero + legend(budgeted.some((r) => aheadOfMonth(r.spent, r.budget, elapsed)), [...new Set(budgeted.map((r) => r.grade.level))]) + `${cards}${rest}`;
 }
 
 // ---------- Budget: the monthly amounts ----------
