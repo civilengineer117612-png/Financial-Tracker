@@ -3362,11 +3362,15 @@ console.log("Welcome card, category editing, required marks");
     await page.fill("#f-amount", "95"); await page.fill("#f-payee", "  Lunch  "); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save");
     await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.some((t) => t.payee === "Lunch" && t.status === "draft"), null, { timeout: 5000 });
     check(true, "the Item is kept (trimmed) as the entry's name, a draft in Verify");
+    await page.click('#nav button:has-text("Verify")');
+    check(await seen(page, "#screen .card", "Lunch") && (await text(page, "#screen .card")).trim().split("\n")[0].trim() === "Lunch", "Verify's title is the Item");
+    await ctx.close();
+    ({ ctx, page, errors } = await open({ blockSw: true, seed: seedC }));   // a fresh ledger: Verify shows one entry at a time, so one draft is cleaner
     await page.click('#nav button:has-text("Log")'); await page.click('button[data-action="open-other"]'); await page.waitForSelector("#sheet #f-amount");
     await page.fill("#f-amount", "40"); await page.click('#sheet .chip:has-text("Food")'); await page.click("#f-save");
     await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.filter((t) => t.status === "draft" && t.payee === "").length === 1, null, { timeout: 5000 });
     await page.click('#nav button:has-text("Verify")');
-    check(await seen(page, "#screen", "Lunch") && (await text(page, "#screen")).includes("Food"), "Verify shows the Item, and the category name when no Item was typed");
+    check(await seen(page, "#screen .card", "Food") && (await text(page, "#screen .card")).trim().split("\n")[0].trim() === "Food", "with no Item typed, Verify's title is the category name");
     await ctx.close(); }
   // Due day: on the due day a draft payment waits in Verify, once, and a thrown-away one does not come back that month
   { const seedD = { ...seedC, state: { ...seedC.state, accounts: seedC.state.accounts.map((a) => (a.id === "c" ? { ...a, due_day: 3, statement_balance: 250000, statement_date: "2026-09-20" } : a)) } };
