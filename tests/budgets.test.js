@@ -130,14 +130,14 @@ test("the Budget view draws the line only on rows that are ahead, and the legend
   assert.match(app, /const aheadOfMonth = M\.paceAhead;/);
 });
 
-test("Spending, Budget: one slim row per category; tapping a row turns the figure into what is left; the table twin is only in List", () => {
+test("Spending, Budget: one slim row per category; its figure reads spent / budget and a tap turns it into what is left, for every row at once; the table twin is only in List", () => {
   const app = readApp(new URL("../app/app.js", import.meta.url), "utf8");
   const view = app.slice(app.indexOf("function viewBudgets("), app.indexOf("// ---------- Budget: the monthly amounts"));
-  assert.match(view, /data-action="toggle-bud"/); assert.match(view, /aria-expanded="\$\{on\}"/);
-  assert.match(view, /\$\{over \? esc\(words\(r\)\) : on \? esc\(words\(r\)\) : peso\(r\.spent\)\}/, "closed: what is spent; open: what is left; over budget: always the words");
-  assert.match(view, /\$\{on \|\| over \? `<span class="sub2">\$\{peso\(r\.spent\)\} of \$\{peso\(r\.budget\)\}/, "open: spent of budget");
+  assert.match(view, /pairFig\(r\.spent, r\.budget, \{ over: "over"/, "the row figure is the paired figure");
+  assert.ok(!view.includes("toggle-bud") && !view.includes("aria-expanded"), "no per-row open and close any more");
   assert.ok(!/status">\$\{glyph/.test(view), "the long line under every bar is gone");
   assert.ok(!view.includes("<h2>Budget vs actual</h2>"), "the table is not repeated under the bars: List shows it");
-  assert.match(app, /case "toggle-bud":/);
-  assert.match(readApp(new URL("../app/index.html", import.meta.url), "utf8"), /button\.budrow \{[^}]*min-height: 44px/, "a row is a 44 px target");
+  assert.match(app, /case "toggle-pair": await commit\(S\(\), \{ \.\.\.ledger\.settings, figure_left: !ledger\.settings\.figure_left \}/, "one setting for the whole app");
+  assert.match(app, /const pairFig = \(done, total, \{ fmt = peso, tail = "", left = "left", over = null/);
+  assert.match(readApp(new URL("../app/index.html", import.meta.url), "utf8"), /button\.budrow \{[^}]*min-height: 44px|\.pair \{ display: inline-block; cursor: pointer; padding: 6px 0 3px/, "the figure is a 44 px target");
 });

@@ -170,8 +170,8 @@ test("signs, folded entries, Budget bars, one date link: money out has a minus, 
   assert.match(js, /case "toggle-entries":/);
   assert.match(js, /pic = \{ log: '<path d="M7 17 17 7M8 7h9v9"\/>'/, "the Log icon is an arrow going out (money out), not a plus");
   assert.ok(js.includes('data-action="open-cal">Select date</button>') && js.includes('<div class="logmeta"><span class="sub">${ui.dayPick && ui.dayPick !== today() ? "" : esc(longDate(today()))}</span>${backupLink}</div>') && !js.includes('class="link topdate"'), "one date link (Select date); the date at the top is plain text");
-  assert.match(js, /const sp = Math\.max\(0, r\.st\?\.spent \?\? 0\), t = Math\.min\(1000, M\.tenths\(sp, r\.now\)\);/, "a budget row's bar is spent over budget and never runs past full");
-  assert.match(js, /\$\{flow\(true, sp\)\}\$\{M\.showTenths\(t\)\}/, "with the figure written beside it, an arrow standing for spent");
+  assert.match(js, /sp = Math\.max\(0, r\.st\?\.spent \?\? 0\);/); assert.match(js, /flatBar\(Math\.min\(100, Math\.round\(\(sp \* 100\) \/ r\.now\)\)/, "a budget row's bar is spent over budget and never runs past full");
+  assert.match(js, /pairFig\(sp, r\.now, \{ over: "over"/, "a budget row's figure is spent / budget, tap for what is left");
 });
 
 test("motion and icons: taps press, bars grow, the folded list drops in only on the tap, everything stops for Reduce Motion; Goals is a flag", () => {
@@ -220,27 +220,27 @@ test("polish: the strip matches the bottom bar (marker, no filled box), budget b
   assert.match(css, /\.card dd\.big \{ font-size: 20px; overflow-wrap: normal; \}/);
 });
 
-test("round 3: the Setup form waits behind a button once there are accounts, goals draw a ring, an entry swiped right is marked Correct, long notes fold under Why?", () => {
+test("round 3: the Setup form waits behind a button once there are accounts, goals draw a flat bar, an entry swiped right is marked Correct, long notes fold under Why?", () => {
   const js = read("app/app.js"), css = read("app/index.html"), help = read("src/model/help.js");
   assert.match(js, /const formOpen = ui\.setupAdd \|\| S\(\)\.accounts\.length === 0;/, "a new phone opens on the form; after that it is behind a button");
   assert.match(js, /ui\.setupError = null; ui\.setupAdd = false;/, "adding an account puts the form away");
   assert.match(js, /case "toggle-add-account": ui\.setupAdd = !ui\.setupAdd;/);
-  assert.match(js, /const ring = \(pct, label\) => `<svg class="ring"/);
-  assert.ok(js.includes("Math.max(0, Math.min(100, pct)) / 100 * 113.1"), "the ring never runs past full or below empty");
-  assert.match(js, /\$\{ring\(ef\.percent, ef\.percent \+ "% of the target"\)\}/); assert.match(js, /\$\{ring\(p\.percent, p\.percent \+ "% of the goal"\)\}/);
-  assert.ok(!js.includes('aria-label="${p.percent}% of the goal"><span class="fill"'), "no bar left beside the ring");
+  assert.match(js, /const flatBar = \(pct, label, over = false, mark = null\) => `<span class="flatbar/);
+  assert.ok(js.includes("Math.max(0, Math.min(100, pct))"), "a flat bar never runs past full or below empty");
+  assert.match(js, /\$\{flatBar\(ef\.percent, ef\.percent \+ "% of the target"\)\}/); assert.match(js, /\$\{flatBar\(p\.percent, p\.percent \+ "% of the goal"\)\}/);
+  assert.ok(!js.includes('class="ring"'), "goals draw a thin flat bar, no ring");
   assert.match(js, /if \(dx > 90 && Math\.abs\(dy\) < 40 && dx > Math\.abs\(dy\) \* 2\.5\) \{ s0\.c\.querySelector\('button\[data-action="verify-ok"\]'\)\?\.click\(\); \}/, "only a clear swipe to the right counts");
   assert.ok(!js.includes('verify-delete"]\')?.click'), "a swipe never deletes");
   assert.match(help, /Swipe an entry to the right to mark it Correct\./);
   assert.match(js, /const why = \(html, label = "Why\?"\) => `<details class="why"><summary>\$\{label\}<\/summary><p class="note">\$\{html\}<\/p><\/details>`;/);
   assert.ok((js.match(/\$\{why\(/g) ?? []).length >= 4, "the long notes on Budget, Cards, Weekly review and Setup are folded");
   assert.match(css, /\.seg\[aria-label="What to show"\] button\[aria-pressed="true"\]::after/, "Cash flow's views are tabs with a line under the current one");
-  assert.match(css, /\.ring \{ width: 64px; height: 64px; flex: none; \}/);
+  assert.ok(!/\.ring \{/.test(css), "the ring is gone with the old Goals look");
 });
 
 test("Setup is a short list of pages and Help runs in a clear order with a small What's new", async () => {
   const js = read("app/app.js"), css = read("app/index.html");
-  for (const id of ["accounts", "categories", "budget", "backup", "about"]) assert.ok(js.includes(`["${id}", `), "a Setup row for " + id);
+  for (const id of ["accounts", "categories", "backup", "about"]) assert.ok(js.includes(`["${id}", `), "a Setup row for " + id);
   assert.match(js, /const page = ui\.setupPage && blocks\[ui\.setupPage\] \? ui\.setupPage : null;/);
   assert.match(js, /if \(ui\.tab !== "setup"\) ui\.setupPage = null;/, "leaving Setup returns it to the list");
   assert.match(js, /case "setup-page": ui\.setupPage = el\.dataset\.id \|\| null;/);

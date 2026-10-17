@@ -1,7 +1,7 @@
 // The ONE place the screens' names are written. The menu, the bottom bar, the Help topics and the Help drawings all read them from here, so renaming a
 // screen changes every one of them together (tests/helpart.test.js proves a drawing follows a rename).
 export const SCREEN_NAMES = {
-  log: "Log", verify: "Verify", money: "Cash flow", income: "Income", cards: "Cards", budget: "Budget", goals: "Goals", plan: "Pay plan (optional)", scheduled: "Scheduled", checks: "Checks",
+  log: "Log", verify: "Verify", money: "Cash flow", income: "Income", cards: "Cards", budget: "Plan & Save", goals: "Goals", plan: "Pay plan (optional)", scheduled: "Scheduled", checks: "Checks",
   trips: "Trips", buffer: "Buffer", scan: "Scan", checkin: "Weekly review", help: "Help", setup: "Setup",
 };
 
@@ -14,11 +14,10 @@ export const HUBS = { budget: ["budget", "goals", "plan"], checkin: ["checkin", 
 export const hubOf = (id) => Object.keys(HUBS).find((h) => HUBS[h].includes(id)) ?? null;
 export const menuRows = (ids) => ids.filter((id) => !Object.values(HUBS).some((m) => m.slice(1).includes(id)));   // the menu shows the first screen of each hub
 // Short names for the strip (the long one stays in the menu and Help).
-export const STRIP_NAMES = { money: "Cash flow", cards: "Cards", budget: "Budget", goals: "Goals", plan: "Pay plan", checkin: "Weekly review", checks: "Checks" };
+export const STRIP_NAMES = { money: "Cash flow", cards: "Cards", budget: "Buckets", goals: "Goals", plan: "Pay plan", checkin: "Weekly review", checks: "Checks" };
 
-// Menu entries hidden when the owner has switched on the new Budget (Setup, "Try the new Budget"): the pay plan lives inside Budget, under By payday.
-// With the switch off nothing is hidden. The screen itself still exists for one more release (and Help still has its topic).
-export const menuHidden = (settings) => new Set(settings?.try_new_budget ? ["plan"] : []);
+// Nothing is hidden from the menu any more (there used to be a switch for a new Budget that hid the Pay plan): Buckets, Goals and Pay plan are three tabs.
+export const menuHidden = () => new Set();
 
 // Words the drawings use that are not screens: the steps an entry goes through, and the four numbers of a month.
 export const TERMS = {
