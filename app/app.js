@@ -1758,18 +1758,17 @@ const schedAmount = (s) => { const v = M.viewOf(S(), s, today()); return s.kind 
 function viewScheduled() {
   const t = today(), list = S().schedules ?? [], md = (d) => longDate(d).replace(/^\w+, /, "");
   const nextText = (v) => v.next ? `${esc(md(v.next.due))} \u00b7 ${esc(M.daysText(Math.round((Date.parse(v.next.due + "T00:00:00Z") - Date.parse(t + "T00:00:00Z")) / 86400000)))}` : "";
-  const rows = list.map((s) => {
+  const rows = barCard(list.map((s) => {
     const v = M.viewOf(S(), s, t), inst = s.kind === "installment";
     const left = inst ? `${pairFig(v.paid, v.of, { fmt: (n) => String(n), tail: "paid", left: "to pay", doneWord: "Paid off", label: s.name })}` : `the ${ordinal(s.day)} of each month${v.ended ? " \u00b7 stopped" : ""}`;
-    const bar = inst ? `<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${v.of ? Math.round((v.paid * 100) / v.of) : 0}%"></span></span>` : "";
     const right = inst ? `${peso(v.stillToPay)}<span class="sr"> still to pay</span>` : `${peso(schedAmount(s))}<span class="sr"> a month</span>`;
-    return `<button class="choice" data-action="open-schedule" data-id="${esc(s.id)}"><span>${esc(s.name)}${bar}<small>${left}</small>${v.active ? `<small>${nextText(v)}</small>` : ""}</span><span class="bval">${right}</span></button>`;
-  }).join("");
+    return { id: s.id, action: "open-schedule", name: esc(s.name), sub: `${left}${v.active ? `<br>${nextText(v)}` : ""}`, fig: right, pct: inst ? (v.of ? Math.round((v.paid * 100) / v.of) : 0) : null, label: s.name + ": " + (inst ? v.paid + " of " + v.of + " paid" : "") };
+  }));
   const hints = M.scheduleHints(S(), t, planOf(), { dismissed: ledger.settings.schedule_hints_dismissed ?? [] });
   const hintHtml = hints.length ? `<h2>Maybe add</h2><p class="note">Found in your own history and your Pay plan. Nothing is added until you save it.</p>${hints.map((h) => `<div class="row"><div>${esc(h.name)}<small>${h.approx ? "about " : ""}${peso(h.amount)} around the ${esc(ordinal(h.day))}${h.source === "history" ? " \u00b7 paid in " + h.months + " of the last " + h.of + " months" : " \u00b7 from your Pay plan"}</small></div>
       <div class="amt"><button data-action="hint-add" data-id="${esc(h.key)}">Add</button><br><button class="link" data-action="hint-no" data-id="${esc(h.key)}">Not this</button></div></div>`).join("")}` : "";
   return `<h1>Scheduled</h1><p class="sub">Rent, subscriptions and installment plans. Each payment waits in Verify on its due day.</p>
-    ${hintHtml}${rows || `<p class="note">Nothing scheduled yet. Add rent, a subscription or an installment plan.</p>`}
+    ${hintHtml}${list.length ? rows : `<p class="note">Nothing scheduled yet. Add rent, a subscription or an installment plan.</p>`}
     <p><button class="primary" data-action="open-schedule-new" style="margin-top:8px">Add a scheduled payment</button></p>`;
 }
 const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th");
@@ -1837,7 +1836,7 @@ function viewTrips() {
       <div class="status">${glyph(g.level)}${esc(LEVELS[g.level])} \u00b7 ${esc(g.over ? "Over by " + peso(sum.spent - sum.budget) : peso(sum.budget - sum.spent) + " left")}</div>` : "";
     const rows = sum.rows.length ? `<table class="tbl"><tr><th>Category</th><th class="n">Spent</th></tr>${sum.rows.map((r) => `<tr><td>${esc(r.name)}</td><td class="n">${peso(r.amount)}</td></tr>`).join("")}</table>` : `<p class="note">Nothing verified on this trip yet.</p>`;
     const days = M.tripDays(t);
-    return `<div class="bcard"><div class="btop"><span class="bname">${esc(t.name)}</span><span class="bval">${sum.budget != null ? pairFig(sum.spent, sum.budget, { over: "over", label: t.name }) : peso(sum.spent)}</span></div>
+    return `<div class="bcard tripcard"><div class="btop"><span class="bname">${esc(t.name)}</span><span class="bval">${sum.budget != null ? pairFig(sum.spent, sum.budget, { over: "over", label: t.name }) : peso(sum.spent)}</span></div>
       <p class="note">${days ? esc(days) + ` \u00b7 <button class="link" data-action="open-trip-dates" data-id="${esc(t.id)}">Change dates</button>` : `<button class="link" data-action="open-trip-dates" data-id="${esc(t.id)}">Add dates</button>`}</p>${meter}
       ${sum.pending > 0 ? `<p class="note">plus ${peso(sum.pending)} not verified yet</p>` : ""}${rows}
       <p><button data-action="open-trip-detail" data-id="${esc(t.id)}">See the entries</button></p>

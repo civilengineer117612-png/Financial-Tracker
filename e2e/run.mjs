@@ -1396,7 +1396,7 @@ await page.click('button:has-text("Delete")'); await page.click('button:has-text
   check((await text(page, "#sch-line")).includes("This plan takes \u20B12,000.00 a month for 3 months."), "one plain line says what the plan takes each month");
   await page.click("#f-save");
   check(await seen(page, "#toast", "Test Phone is scheduled"), "the plan is saved (its first payment is not due yet, so no draft)");
-  check((await text(page, "#screen")).includes("0 / 3 paid") && (await text(page, "#screen")).includes("\u20B16,000.00") && await page.locator("#screen .choice .meter").count() === 1, "the plan shows 0 / 3 paid with a bar, and what is still to pay");
+  check((await text(page, "#screen")).includes("0 / 3 paid") && (await text(page, "#screen")).includes("\u20B16,000.00") && await page.locator("#screen .catrow .catbar").count() === 1, "the plan shows 0 / 3 paid with a bar, and what is still to pay");
   await page.click('#nav button:has-text("Log")');
   check((await text(page, "#screen")).toLowerCase().includes("due soon") && (await text(page, "#screen")).includes("Test Phone") && /due in \d+ days/.test(await text(page, "#screen")), "Log lists it under Due soon with the days left");
 
