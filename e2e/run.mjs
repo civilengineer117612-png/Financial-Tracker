@@ -3685,6 +3685,29 @@ console.log("\n-- Goals in the flat look --");
     await ctx.close(); }
 }
 
+// ===== Suggest a budget: a window from Buckets, nothing saved until Confirm =====
+console.log("\n-- Suggest a budget --");
+{ const mkA = (id, name, ob) => ({ id, name, class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: "2026-03-01" });
+  const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, income_base_pin: 2500000, starter_rent: 800000 }, state: { ...OWNER_STYLE.state, accounts: [mkA("b", "Test Bank", 1800000), mkA("s", "Test Savings", 1500000)], rules: [],
+    goals: [{ id: "g1", name: "Test Laptop", account_id: "b", target: 4500000, hidden_by_default: false }], transactions: [], entries: [], attachments: [] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Budget"); await page.waitForTimeout(400); if (await page.locator('button[data-action="intro-done"]').count()) await page.click('button[data-action="intro-done"]');
+  check(await page.locator('button[data-action="open-suggest"]').count() === 1 && await page.locator("#screen button.catrow").count() >= 5, "Buckets is the simple list with one 'Suggest a budget' link");
+  await page.click('button[data-action="open-suggest"]'); await page.waitForSelector("#sheet .catcard");
+  const t = (await text(page, "#sheet")).replace(/\s+/g, " ");
+  check(t.includes("Suggest a budget") && t.includes("Income") && t.includes("\u20B125,000.00 a month") && t.includes("Needs") && t.includes("Wants") && t.includes("Savings") && /target 50\.0%/.test(t), "the window shows the income and the needs, wants and savings against their targets");
+  check(await page.locator("#sheet .catrow .catbar").count() >= 8 && /saved and set aside/i.test(t), "each category has its suggested figure and a thin bar, and the saved lines sit apart");
+  check(await page.locator('#sheet input[data-field^="y_"]').count() === 0, "the own-figure boxes are hidden until asked for");
+  await page.click('#sheet button[data-action="sug-edit"]');
+  check(await page.locator('#sheet input[data-field^="y_"]').count() >= 5, "'Type my own figures' shows one box per category");
+  check(JSON.parse((await stored(page)).local).state.rules.length === 0, "nothing is saved before Confirm");
+  await page.click('#sheet button[data-action="use-all-sug"]'); await page.click('#sheet button[data-action="review-sug"]');
+  check((await text(page, "#sheet")).includes("Save these budgets?"), "Confirm shows what would change first");
+  await page.click('#sheet button[data-action="save-sug"]'); await page.waitForTimeout(600);
+  check(JSON.parse((await stored(page)).local).state.rules.length >= 3, "Save budgets writes ordinary budget rules");
+  check((await text(page, "#screen")).includes("a month"), "Buckets now shows the new limits");
+  check(errors.length === 0, "no script errors in Suggest a budget: " + errors.join("; ")); await ctx.close(); }
+
 await browser.close();
 console.log(failures ? "\n" + failures + " check(s) FAILED" : "\nAll checks passed");
 process.exit(failures ? 1 : 0);
