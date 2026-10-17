@@ -134,7 +134,7 @@ New ideas are NOT built the moment they are said. Every item has one level, and 
 - AUTOPILOT (owner, Oct 17, standing): when a PR is merged, report it with the Backlog (at most 5 lines, P1 first) and GO ON to the next pending item at once (P1, then the P2s in number order) without waiting for the owner's number. Stop only for what needs the owner: the screenshot-first drawing of a visible change, the write-up of a major change, and a question whose answer changes how the app behaves (one copy-paste box). Whenever the owner's yes or answers are needed, ALSO send a push notification to the owner's app (PushNotification tool, one short line saying what waits), not only the reply. While one item waits for a yes, prepare the next in a scratch copy; still one open PR at a time. The owner's own "yes" to a drawing approves the DESIGN, not the order of work.
 - "qq" side questions and Waiting-list notes are not backlog items.
 - The list lives here (owner keeps it short; remove an item when it is merged):
-  - P1: none. The owner said "build all P2" (Oct 17): one PR at a time. Done: 7, 5, 6, 8, 9, 10, 11, 12. Next: 13 (the owner's notes), then the rollout 2 and 3 one screen at a time, each written up and drawn first.
+  - P1: none. The owner said "build all P2" (Oct 17): one PR at a time. Done: 7, 5, 6, 8, 9, 10, 11, 12. Next: 13, then the rollout 2 and 3 one screen at a time, each written up and drawn first.
   - P2 1: Back up everything and Restore everything (one tap makes the ledger file and the pictures files; screenshot first).
   - P2 2: rollout of the look and popups, PR 2: thin bars in Cash flow, Budget and Goals (write up first, one screen at a time).
   - P2 3: rollout PR 3: Trends and other charts, row alignment.
