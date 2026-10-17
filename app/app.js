@@ -1478,7 +1478,7 @@ function viewCards() {
   const byCash = [...o.money].sort((x, y) => Number(isCash(acct(y.account_id))) - Number(isCash(acct(x.account_id)))), grouped = pocketsUnder(byCash, acct, ui.pocketsOpen ?? {});
   const ptoggle = (id) => { const n = grouped.counts.get(id), open = !!ui.pocketsOpen?.[id]; return n ? `<button class="link small" data-action="toggle-pockets" data-id="${esc(id)}" aria-expanded="${open}">${n} savings ${n === 1 ? "pocket" : "pockets"} ${open ? "\u25B4" : "\u25BE"}</button>` : ""; };
   // Pictures and signs say what words used to: a small arrow up is spent, an arrow down is paid in; a card's debt has a minus.
-  const row = (a, main, small) => `<div class="row${M.isPocket(a) ? " pocket" : ""}"><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}${M.isPocket(a) ? "<small>Savings pocket</small>" : ""}${small ? `<small>${small}</small>` : ""}${ptoggle(a.id)}</div></div><div class="amt">${main}</div></div>`;
+  const row = (a, main, small) => `<div class="row${M.isPocket(a) ? " pocket" : ""}${a.class === "liability" ? " tapcard" : ""}"${a.class === "liability" ? ` role="button" tabindex="0" data-action="open-card" data-id="${esc(a.id)}" aria-label="${esc(a.name)}: pay this card"` : ""}><div class="who">${iconOf(a, 28)}<div>${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}${M.isPocket(a) ? "<small>Savings pocket</small>" : ""}${small ? `<small>${small}</small>` : ""}${ptoggle(a.id)}</div></div><div class="amt">${main}</div></div>`;
   const cards = o.cards.length ? o.cards.map((c) => row(acct(c.account_id), amt(`${c.owe > 0 ? "\u2212" : ""}${peso(c.owe)}<span class="sr"> you owe</span>`), whenShown([c.spent > 0 ? flow(true, c.spent) : "", c.paid > 0 ? flow(false, c.paid) : ""].filter(Boolean).join(" "))) ).join("") : `<p class="note">No credit cards yet. In Setup, add an account and choose "Credit card".</p>`;
   const money = o.money.length ? grouped.rows.map((m) => row(acct(m.account_id), amt(peso(m.balance)), whenShown(m.spent > 0 ? flow(true, m.spent) : ""))).join("") : `<p class="note">No accounts yet.</p>`;
   const net = M.netPosition(o.held, o.owe), covers = reserveCovers();
@@ -1491,7 +1491,7 @@ function viewCards() {
     const id = (it.c ?? it.m).account_id, a = acct(id), cv = covers.find((x) => x.reserve_id === id);
     const amount = amt(it.c ? `${peso(it.c.owe)}<span class="sr"> you owe</span>` : peso(it.m.balance));
     const small = !shown ? "" : it.c ? [it.c.spent > 0 ? flow(true, it.c.spent) : "", it.c.paid > 0 ? flow(false, it.c.paid) : ""].filter(Boolean).join(" ") : (it.m.spent > 0 ? flow(true, it.m.spent) : "");
-    return `<div class="swcard"><div class="swtop">${iconOf(a, 40)}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${it.c ? ICONS.cards : ICONS.buffer}</svg></div>
+    return `<div class="swcard"${it.c ? ` role="button" tabindex="0" data-action="open-card" data-id="${esc(id)}" aria-label="${esc(a.name)}: pay this card"` : ""}><div class="swtop">${iconOf(a, 40)}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${it.c ? ICONS.cards : ICONS.buffer}</svg></div>
       <div class="swname">${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}</div><div class="swamt">${amount}</div>${cv && shown ? coverBar(cv.share, coverLabel(cv)) : small ? `<div class="swsmall">${small}</div>` : M.isPocket(a) ? `<div class="swsmall">Savings pocket</div>` : ""}${ptoggle(id)}</div>`;
   };
   const netCard = `<div class="netcard" role="group" aria-label="${shown ? `Free ${esc(peso(net.free))}: in your accounts ${esc(peso(o.held))}, owed on cards ${esc(peso(o.owe))}` : "Amounts are hidden"}"><div class="netbigrow"><div class="netbig">${amt(`${net.free < 0 ? "\u2212" : ""}${peso(Math.abs(net.free))}`)}</div><button class="link eye" data-action="cards-eye" aria-pressed="${shown}" aria-label="${shown ? "Hide amounts" : "Show amounts"}">${shown ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>` : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7c2 0 3.8.6 5.3 1.5M22 12s-3.6 7-10 7c-2 0-3.8-.6-5.3-1.5"/><path d="M3 3l18 18"/></svg>`}</button></div>${shown ? coverBar(net.share, "Owed on cards is " + Math.round(net.share * 100) + "% of what is in your accounts") : `<span class="cover" role="img" aria-label="Amounts are hidden"><span style="width:0%"></span></span>`}<div class="netsides"><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.buffer}</svg>${amt(peso(o.held))}</span><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.cards}</svg>${amt(peso(o.owe))}</span></div></div>`;
@@ -2672,6 +2672,28 @@ function renderSheet() {
       <p class="note small">Give two numbers the same name and they show as one person. ${n > 1 ? `All ${n} payments` : "This payment"} to ${esc(sh.label)} leave Unlogged, and the next statement does the same by itself.</p>
       <p><button class="primary" id="f-save" data-action="payee-save"${ui.form.category_id ? "" : " disabled"}>${n > 1 ? `Save for all ${n}` : "Save"}</button></p>
       <p class="center"><button class="link" data-action="close-sheet">Not now</button></p>`;
+  } else if (sh.type === "cardpay") {
+    const card = S().accounts.find((x) => x.id === sh.id), shown = !!ui.cardsShown, DOTS = "₱•••••", st = M.cardStatement(S(), sh.id), due = M.nextDue(card?.due_day, today());
+    const [pf, pt] = periodBounds(period()), owe = M.accountsOverview(S(), { from: pf, to: pt }).cards.find((c) => c.account_id === sh.id)?.owe ?? 0;
+    const dueWords = (d) => `${M.daysText(d.days)} (${MONTH3[Number(d.date.slice(5, 7)) - 1]} ${Number(d.date.slice(8, 10))})`;
+    if (sh.view === "details") {
+      body = `<h3 style="margin:0 0 2px">Due day and last statement</h3><p class="note" style="margin:0 0 10px">${esc(card?.name ?? "")}</p>
+        <label for="cd-due">Due day of the month</label><input id="cd-due" data-field="due" inputmode="numeric" maxlength="2" autocomplete="off" value="${esc(ui.form.due ?? "")}" style="margin-bottom:10px">
+        <label for="cd-stmt">Last statement balance (₱)</label><input id="cd-stmt" data-field="stmt" inputmode="decimal" autocomplete="off" value="${esc(ui.form.stmt ?? "")}" style="margin-bottom:6px">
+        <p class="note small" style="margin:0 0 12px">${st?.from === "statement" ? `A statement you kept shows ${shown ? peso(st.balance) : DOTS}; it is used instead of what you type.` : "A statement you keep fills this by itself and wins over what you type."}</p>
+        <p id="cd-msg" class="note" role="alert"></p>
+        <p style="margin:6px 0 8px"><button class="primary" id="f-save" data-action="card-details-save" style="width:100%">Save</button></p>
+        <p style="text-align:center;margin:0"><button class="link" data-action="card-back">Back</button></p>`;
+    } else {
+      const facts = [st ? `Last statement ${shown ? peso(st.balance) : DOTS}` : "", due ? dueWords(due) : ""].filter(Boolean).join(" · ");
+      body = `<h3 style="margin:0 0 2px">${esc(card?.name ?? "")}</h3><p class="note" style="margin:0 0 10px">You owe now</p><div class="hero" style="margin:0 0 4px">${shown ? peso(owe) : `<span aria-label="Amount hidden">${DOTS}</span>`}</div>
+        <p class="note small" style="margin:0 0 12px">${facts ? `${esc(facts)} · ` : ""}<button class="link small" data-action="card-details">${facts ? "Change" : "Add the due day and last statement"}</button></p>
+        <label>Paid from${REQ}${ui.form.from_id && ui.form.from_id === M.payerFor(S(), sh.id) ? ` <span class="labelnote">backs this card</span>` : ""}</label>${accountPicker(accountsFor(null).filter((a) => a.class === "asset"), ui.form.from_id, "pick-from", "from", "Choose an account")}
+        <label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" autocomplete="off" value="${esc(ui.form.amount ?? "")}" placeholder="How much you paid" style="margin-bottom:10px">
+        ${REQNOTE}<p class="note small" style="margin:0 0 6px">This is a payment to your card, not spending. It waits in Verify.</p>
+        <p style="margin:6px 0 8px"><button class="primary" id="f-save" data-action="card-pay" style="width:100%" disabled>Pay this card</button></p>
+        <p style="text-align:center;margin:0"><button class="link" data-action="close-sheet">Not now</button></p>`;
+    }
   } else if (sh.type === "last4") {
     const a = S().accounts.find((x) => x.id === sh.id);
     body = `<h3>Last 4 digits of ${esc(a.name)}</h3>
@@ -2827,8 +2849,8 @@ function renderSheet() {
       <p class="note">Anything entered since this backup was made will be gone. Pictures are not in a backup, so those entries will say "picture not on this phone".</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
-  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "catcard" || sh.type === "intro" || sh.type === "planform" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
+  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || sh.type === "planform" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
   refreshSave();
@@ -2918,6 +2940,9 @@ function refreshSave() {
     }
   } else if (type === "schedule-amount") {
     const a = M.parsePesos(f.amount ?? ""); btn.disabled = !(a.ok && a.centavos > 0 && M.isPhDate(f.date ?? ""));
+  } else if (type === "cardpay") {
+    if (ui.sheet.view === "details") { btn.disabled = false; return; }
+    const a = M.parsePesos(f.amount ?? ""); btn.disabled = !(a.ok && a.centavos > 0 && f.from_id);
   } else if (type === "move") {
     const a = M.parsePesos(f.amount), fee = (f.fee ?? "").trim() ? M.parsePesos(f.fee) : { ok: true, centavos: 0 };
     const why = !(a.ok && a.centavos > 0) ? "Enter the amount to save." : !f.from_id ? "Choose where the money comes from." : !f.to_id ? "Choose where it goes." : f.from_id === f.to_id ? "Choose two different accounts." : !(fee.ok && fee.centavos >= 0) ? "Enter the fee like 15 or 15.50, or leave it empty." : "";
@@ -3270,6 +3295,29 @@ async function onClick(el) {
       ui.sheet = null;
       if (await commit(r.state, { ...ledger.settings, payee_book: r.book })) showToast("Saved: " + label);
       renderAll(); break;
+    }
+    case "open-card": {   // tap a credit card: what you owe, and one way to pay it (Paid from starts as the account that backs it, the amount as the last statement)
+      const st = M.cardStatement(S(), id);
+      ui.sheet = { type: "cardpay", id, view: "main" }; ui.form = { from_id: M.payerFor(S(), id), amount: ui.cardsShown && st ? (st.balance / 100).toFixed(2) : "" }; renderSheet(); refreshSave(); break;
+    }
+    case "card-details": { const c = S().accounts.find((x) => x.id === ui.sheet.id), st = M.cardStatement(S(), ui.sheet.id); ui.sheet.view = "details"; ui.form = { ...ui.form, due: c?.due_day ? String(c.due_day) : "", stmt: c?.statement_balance ? (c.statement_balance / 100).toFixed(2) : st?.from === "typed" ? (st.balance / 100).toFixed(2) : "" }; renderSheet(); break; }
+    case "card-back": ui.sheet.view = "main"; renderSheet(); refreshSave(); break;
+    case "card-details-save": {
+      const stmt = (ui.form.stmt ?? "").trim() ? M.parsePesos(ui.form.stmt) : { ok: true, centavos: null };
+      const msg = $("cd-msg"), say = (t) => { if (msg) msg.textContent = t; };
+      if (!stmt.ok) { say("Type the statement balance like 10974.06, or leave it empty."); break; }
+      const r = M.setCardDetails(S(), ui.sheet.id, { due_day: (ui.form.due ?? "").trim(), statement_balance: stmt.centavos, date: today() });
+      if (!r.ok) { say(r.message); break; }
+      ui.sheet.view = "main"; const st = M.cardStatement(r.state, ui.sheet.id); ui.form = { from_id: ui.form.from_id, amount: ui.cardsShown && st ? (st.balance / 100).toFixed(2) : ui.form.amount ?? "" };
+      await commit(r.state); renderSheet(); refreshSave(); break;
+    }
+    case "card-pay": {
+      const a = M.parsePesos(ui.form.amount), card = S().accounts.find((x) => x.id === ui.sheet.id);
+      const r = M.planCardPayment(S(), { card_id: ui.sheet.id, from_id: ui.form.from_id, amount: a.centavos, date: logDay(), newId: () => newId("tx") });
+      if (!r.ok) { showToast("Could not save: " + r.message); break; }
+      const from = ui.form.from_id; ui.sheet = null; renderSheet();
+      if (await commit(r.state, { ...ledger.settings, last_account_id: from })) showToast(peso(a.centavos) + " paid to " + card.name + ". Verify it to count it.");
+      break;
     }
     case "cards-eye": ui.cardsShown = !ui.cardsShown; renderScreen(); break;
     case "cat-edit": ui.catEdit = true; ui.confirmRemoveCat = null; renderScreen(); break;

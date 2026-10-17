@@ -174,14 +174,15 @@ export function planTransfer(state, input, now = new Date()) {
   if (!state.accounts.some((a) => a.id === from) || !state.accounts.some((a) => a.id === to)) return fail("UNKNOWN_ACCOUNT", "choose both accounts");
   const transaction = { id, date, payee, memo: "", status: "draft", source, ...(captured ? { edited_before_verify: false } : {}), created_at: phTimestamp(now),
     ...(reference_no ? { reference_no } : {}), ...(shot_time ? { shot_time } : {}), ...(trip_id != null ? { trip_add: trip_id } : {}) };
-  const entries = [{ transaction_id: id, account_id: to, amount }, { transaction_id: id, account_id: from, amount: -amount }];
+  const cardState = (accountId) => (state.accounts.find((a) => a.id === accountId)?.class === "liability" ? { card_state: "posted" } : {});   // a card entry must say pending or posted: a payment to (or from) a card is posted
+  const entries = [{ transaction_id: id, account_id: to, amount, ...cardState(to) }, { transaction_id: id, account_id: from, amount: -amount, ...cardState(from) }];
   const check = checkTransactionSave(state, { transaction, entries });
   if (!check.ok) return { ok: false, violations: check.violations, state };
   let next = { ...state, transactions: [...state.transactions.filter((t) => t.id !== id), transaction], entries: [...state.entries.filter((e) => e.transaction_id !== id), ...entries] };
   if (fee > 0) {
     const made = ensureBankFees(next); next = made.state;
     const fid = feeIdOf(id), ft = { id: fid, date, payee: "Fee", memo: "", status: "draft", source, ...(captured ? { edited_before_verify: false } : {}), created_at: phTimestamp(now), ...(trip_id != null ? { trip_add: trip_id } : {}) };
-    const fes = [{ transaction_id: fid, category_id: made.category_id, amount: fee }, { transaction_id: fid, account_id: from, amount: -fee }];
+    const fes = [{ transaction_id: fid, category_id: made.category_id, amount: fee }, { transaction_id: fid, account_id: from, amount: -fee, ...cardState(from) }];
     const fc = checkTransactionSave(next, { transaction: ft, entries: fes });
     if (!fc.ok) return { ok: false, violations: fc.violations, state };
     next = { ...next, transactions: [...next.transactions.filter((t) => t.id !== fid), ft], entries: [...next.entries.filter((e) => e.transaction_id !== fid), ...fes] };

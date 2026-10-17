@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-17-pay-card", date: "2026-10-17", text: "Tap a credit card on Cards to pay it: Paid from starts as the account that backs it, you can add a due day and the last statement, and Move money into a card now saves." },
   { id: "2026-10-17-compare-drafts", date: "2026-10-17", text: "In Compare with your ledger, money in and lines that do not say what they were can now be added as drafts in one tap." },
   { id: "2026-10-17-failing-lines", date: "2026-10-17", text: "A statement month that does not add up can now show the lines that do not follow, with the balance the bank prints." },
   { id: "2026-10-16-pocket-auto", date: "2026-10-16", text: "Importing a Go Save pocket statement now makes its pocket for you (Go Save ····3002); rename it in Setup once you know which one it is." },
