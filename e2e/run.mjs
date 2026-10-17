@@ -3322,6 +3322,15 @@ console.log("Welcome card, category editing, required marks");
   await page.click("#f-save");
   check(await seen(page, "#toast", "set as a transfer"), "Move money into a credit card saves (it used to say it could not)");
   await ctx.close();
+  // Due day: on the due day a draft payment waits in Verify, once, and a thrown-away one does not come back that month
+  { const seedD = { ...seedC, state: { ...seedC.state, accounts: seedC.state.accounts.map((a) => (a.id === "c" ? { ...a, due_day: 3, statement_balance: 250000, statement_date: "2026-09-20" } : a)) } };
+    ({ ctx, page, errors } = await open({ blockSw: true, seed: seedD }));
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.some((t) => t.payee === "Card payment (due Oct 3)"), null, { timeout: 6000 });
+    { const led = JSON.parse((await stored(page)).local).state, t = led.transactions.find((x) => x.payee === "Card payment (due Oct 3)"), es = led.entries.filter((e) => e.transaction_id === t.id);
+      check(t.status === "draft" && es.some((e) => e.account_id === "c" && e.amount === 250000) && es.some((e) => e.account_id === "d" && e.amount === -250000), "on the due day a draft payment from the backing account waits for the statement balance"); }
+    await page.reload(); await page.waitForSelector("#nav button"); await page.waitForTimeout(600);
+    check(JSON.parse((await stored(page)).local).state.transactions.filter((x) => x.payee.startsWith("Card payment (due")).length === 1, "opening the app again does not make a second one");
+    await ctx.close(); }
   // The bottom bar stays pinned to the bottom of the screen when a long page is scrolled (it drifted up the page on the iPhone)
   ({ ctx, page, errors } = await open({ blockSw: true }));
   await menuGo(page, "Help"); await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await page.waitForTimeout(300);

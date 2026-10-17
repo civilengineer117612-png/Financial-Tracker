@@ -1733,10 +1733,12 @@ function viewBuffer() {
 // ---------- scheduled payments (src/model/schedules.js) ----------
 // Payments that fell due become DRAFTS in Verify; nothing is confirmed for you. Runs at start, when the app comes back, and after a schedule is added.
 async function runSchedules() {
-  if (!device.allowEntry || ui.upgrade?.failed || !(S().schedules ?? []).length) return false;
-  const r = M.makeDueDrafts(S(), today(), { reserve_source_id: ledger.settings.reserve_source_id });
-  if (!r.made.length) return false;
-  return commit(r.state, ledger.settings, { quiet: true });
+  if (!device.allowEntry || ui.upgrade?.failed) return false;
+  let state = S(), settings = ledger.settings, changed = false;
+  if ((state.schedules ?? []).length) { const r = M.makeDueDrafts(state, today(), { reserve_source_id: settings.reserve_source_id }); if (r.made.length) { state = r.state; changed = true; } }
+  const c = M.makeCardDueDrafts(state, settings.card_due_made, today(), { newId: () => newId("tx") });   // a credit card's due day: its payment waits in Verify
+  if (c.changed) { state = c.state; settings = { ...settings, card_due_made: c.made }; changed = true; }
+  return changed ? commit(state, settings, { quiet: true }) : false;
 }
 const schedAmount = (s) => { const v = M.viewOf(S(), s, today()); return s.kind === "installment" ? (v.next?.amount ?? 0) : (v.next?.amount ?? s.amount); };
 function viewScheduled() {

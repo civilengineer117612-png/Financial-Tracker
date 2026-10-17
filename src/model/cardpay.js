@@ -52,3 +52,31 @@ export function planCardPayment(state, { card_id, from_id, amount, date, newId, 
   const r = planTransfer(state, { transaction_id: newId(), date, from_account_id: from_id, to_account_id: card_id, amount, payee: "Card payment", source: "manual" }, now);
   return r.ok ? { ok: true, state: r.state } : fail(r.violations[0].message);
 }
+
+// ---------- the due day: a draft payment waits in Verify ----------
+// On the day a card is due (and for a week after, if the app was closed) ONE draft payment to the card is made: from the account that backs it, for what is
+// still owed of the last statement (the statement balance less what was already paid into the card since the statement). Nothing is made without a due day,
+// a last statement and a backing account. A card is drafted once a month (`made`: {cardId: "YYYY-MM"}, kept in settings), so a draft the owner threw away
+// does not come back that month. Drafts are never verified by itself. Returns {state, made, drafts: [{card_id, amount, date}], changed}.
+export const DUE_CATCH_UP_DAYS = 7;
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function makeCardDueDrafts(state, made, today, { newId, now = new Date() }) {
+  let next = state, marked = { ...(made ?? {}) };
+  const drafts = [], month = today.slice(0, 7), [y, m] = today.split("-").map(Number);
+  for (const card of state.accounts) {
+    if (card.class !== "liability" || card.archived || !Number.isInteger(card.due_day) || marked[card.id] === month) continue;
+    const date = `${y}-${pad(m)}-${pad(Math.min(card.due_day, lastDay(y, m)))}`;
+    if (today < date || days(date, today) > DUE_CATCH_UP_DAYS) continue;
+    const from_id = payerFor(next, card.id), st = cardStatement(next, card.id);
+    if (!from_id || !st) continue;
+    const since = st.date ?? `${y}-${pad(m)}-01`, byId = new Map(next.transactions.map((t) => [t.id, t]));
+    const paid = next.entries.filter((e) => e.account_id === card.id && e.amount > 0 && (byId.get(e.transaction_id)?.date ?? "") >= since && !byId.get(e.transaction_id)?.reverses).reduce((n, e) => n + e.amount, 0);
+    const amount = st.balance - paid;
+    marked[card.id] = month;
+    if (amount <= 0) continue;   // already paid since the statement: nothing to draft
+    const r = planTransfer(next, { transaction_id: newId(), date, from_account_id: from_id, to_account_id: card.id, amount, payee: `Card payment (due ${MON[Number(date.slice(5, 7)) - 1]} ${Number(date.slice(8, 10))})`, source: "manual" }, now);
+    if (!r.ok) { delete marked[card.id]; continue; }
+    next = r.state; drafts.push({ card_id: card.id, amount, date });
+  }
+  return { state: next, made: marked, drafts, changed: JSON.stringify(marked) !== JSON.stringify(made ?? {}) };
+}
