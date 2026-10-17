@@ -3668,7 +3668,7 @@ console.log("\n-- Goals in the flat look --");
     t = await text(page, "#screen");
     check(/saved toward goals/i.test(t) && t.includes("15,000.00") && t.includes("across 2 goals"), "Goals opens with the total saved");
     check(await page.locator("#screen .catbar").count() === 2 && !(await page.locator("#screen svg.ring").count()), "each goal has a thin bar, no ring");
-    check(t.includes("28%") && /12,000\.00\s*\/\s*.*42,000\.00/.test(t) && t.includes("37%"), "each goal says its percent and reads saved / target");
+    { const aria = (await page.locator("#screen .catbar").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).join(" | "); check(aria.includes("28%") && aria.includes("37%") && /12,000\.00\s*\/\s*.*42,000\.00/.test(t), "each goal says its percent (to a screen reader, on its bar) and reads saved / target: " + aria); }
     await page.click("#screen .pair >> nth=0"); await page.waitForTimeout(300);
     t = await text(page, "#screen");
     check(t.includes("30,000.00 to go") && t.includes("5,000.00 to go") && !/\d \/ \u20B1/.test(t), "one tap on a figure turns every goal into what is to go");
