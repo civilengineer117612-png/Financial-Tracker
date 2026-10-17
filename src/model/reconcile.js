@@ -10,6 +10,9 @@ import { isPocket, planAccount } from "./banks.js";
 import { countedEntries } from "./balances.js";
 import { categoryFor } from "./importer.js";
 import { applyDrafts, planExpense } from "./drafts.js";
+import { planPayReceived } from "./plan.js";
+import { categoryFromBook } from "./payees.js";
+import { UNLOGGED_CATEGORY_ID } from "./seed.js";
 
 const DAY = 86400000;
 const gap = (a, b) => Math.abs(Math.round((Date.parse(a) - Date.parse(b)) / DAY));
@@ -123,12 +126,24 @@ export function statementDifference(state, accountId, month) {
   return { ok: true, month, asOf: last, status: row.status, statementClosing: row.closing, ledgerBalance, difference, explained, carried: difference - explained, missing, extra };
 }
 
-// One draft expense for a statement line the ledger lacks (spending or a fee): in the category the import would choose, source "statement", never verified by itself.
-export function planMissingDraft(state, line, { newId, now = new Date() }) {
-  if (line.direction !== "out" || (line.meaning !== "spending" && line.meaning !== "fee")) return { ok: false, message: "Only spending and fees can be added in one tap." };
+// One DRAFT for a statement line the ledger lacks, source "statement", never verified by itself:
+//  - spending or a fee: an expense in the category the import would choose;
+//  - money out that does not say what it was (unsure): an expense in Unlogged, unless the owner already named that payee (Trends, Who);
+//  - money in: income in the account, in "Other income" (the first income category when there is none), to be checked in Verify.
+// A move between the owner's own accounts is not made here (Phase 2 pairs those). `book` is the owner's payee names.
+export function planMissingDraft(state, line, { newId, now = new Date(), book = null }) {
   const name = line.payee || line.text, id = newId();
-  const r = planExpense(state, { transaction_id: id, date: line.date, payee: name, category_id: categoryFor(state, { name }).category_id, amount: line.amount, account_id: line.account_id, source: "statement" }, now);
-  return r.ok ? { ok: true, state: applyDrafts(state, r.drafts) } : { ok: false, message: r.violations[0].message };
+  if (line.direction === "in" && line.meaning === "in") {
+    const income = state.categories.filter((c) => c.kind === "income"), cat = income.find((c) => c.id === "cat-other-income") ?? income[0];
+    if (!cat) return { ok: false, message: "There is no income category to put it in." };
+    const r = planPayReceived(state, { transaction_id: id, date: line.date, amount: line.amount, account_id: line.account_id, category_id: cat.id, payee: name, source: "statement" }, now);
+    return r.ok ? { ok: true, state: r.state, kind: "income" } : { ok: false, message: r.violations[0].message };
+  }
+  const spend = line.direction === "out" && (line.meaning === "spending" || line.meaning === "fee"), unsure = line.direction === "out" && line.meaning === "unsure";
+  if (!spend && !unsure) return { ok: false, message: "Only spending, fees, money in and lines that do not say what they were can be added in one tap." };
+  const category_id = spend ? categoryFor(state, { name }, book).category_id : categoryFromBook(state, book, name) ?? UNLOGGED_CATEGORY_ID;
+  const r = planExpense(state, { transaction_id: id, date: line.date, payee: name, category_id, amount: line.amount, account_id: line.account_id, source: "statement" }, now);
+  return r.ok ? { ok: true, state: applyDrafts(state, r.drafts), kind: "expense" } : { ok: false, message: r.violations[0].message };
 }
 
 // Start an account from its statement: the account's opening balance and date become the FIRST statement month's opening balance and the day its statement starts,
