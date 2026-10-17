@@ -56,7 +56,7 @@ test("Log reads top to bottom: header, date and backup, SPENT TODAY, the amount,
 test("Spending: month switcher, large total with what is left, four segments, one white category card with thin accent bars, See every entry", () => {
   const m = js.slice(js.indexOf("function viewMoney()"), js.indexOf("// Each budget as a meter"));
   assert.ok(!m.includes("flipChart(rows, cat.total") && !js.includes("DONUT_BLUES") && !js.includes("svg class=\"donut\""), "the donut is gone");
-  assert.match(m, /<div class="card catcard">/); assert.match(m, /<span class="catbar-x"|class="catbar" role="img"/);
+  assert.match(m, /barCard\(rows\.filter/, "Category draws the shared card"); assert.match(js, /const barCard = \(rows\) => `<div class="card catcard">/); assert.match(js, /class="catbar" role="img"/);
   assert.match(m, /Math\.max\(2, Math\.round\(\(r\.amount \* 100\) \/ top\)\)/, "each bar is scaled to the largest category");
   assert.match(m, /data-action="open-entries">See every entry/);
   assert.match(m, /\$\{ui\.view === "category" \? "" : modeBar\(\)\}/, "the card is its own list: no chart/list switch on Category");
@@ -73,4 +73,12 @@ test("the deploy copies folders inside app/ (the fonts): a plain cp stops at a f
   assert.match(wf, /^\s*cp -r app\/\* _site\/app\/\s*$/m, "app/ is copied with its folders");
   assert.ok(!/^\s*cp app\/\* _site\/app\/\s*$/m.test(wf), "never the flat copy");
   assert.ok(readdirSync(new URL("../app", import.meta.url), { withFileTypes: true }).some((d) => d.isDirectory() && d.name === "fonts"), "there is a folder in app/, which is why");
+});
+
+test("one row recipe for every share bar: Category, Accounts and the Budget view all draw through barRow, and no old bar markup is left in them", () => {
+  const m = js.slice(js.indexOf("function viewMoney()"), js.indexOf("// ---------- Budget: the monthly amounts"));
+  assert.ok((js.match(/const barRow = /g) ?? []).length === 1);
+  for (const k of ["shareBars(rows, acc.total)", "barCard(rows.filter"]) assert.ok(m.includes(k), k);
+  assert.ok(js.includes("const cards = barCard(budgeted.map"), "the Budget view too");
+  assert.ok(!js.includes("function flipChart") && !m.includes('class="brow') && !js.includes('class="bcard budrow'), "the old Accounts and Budget bars are gone");
 });

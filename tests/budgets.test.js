@@ -123,7 +123,7 @@ test("the pace line is drawn only when the share of the budget used is more than
 });
 test("the Budget view draws the line only on rows that are ahead, and the legend (not a note at the bottom) explains it", () => {
   const app = readApp(new URL("../app/app.js", import.meta.url), "utf8");
-  assert.match(app, /\$\{aheadOfMonth\(r\.spent, r\.budget, elapsed\) \? `<span class="tick" style="left:\$\{elapsed\}%"><\/span>` : ""\}/);
+  assert.match(app, /mark: aheadOfMonth\(r\.spent, r\.budget, elapsed\) \? elapsed : null/, "the Today line is drawn only on a row that is ahead");
   assert.match(app, /legend\(budgeted\.some\(\(r\) => aheadOfMonth\(r\.spent, r\.budget, elapsed\)\), \[\.\.\.new Set\(budgeted\.map\(\(r\) => r\.grade\.level\)\)\]\)/, "the key lists only the shapes in use");
   assert.match(app, /<i class="tickkey" aria-hidden="true"><\/i>Today<\/span>/, "and the line is called Today");
   assert.ok(!app.includes("The black line is today's place in the month."), "the old note under the list is gone");
