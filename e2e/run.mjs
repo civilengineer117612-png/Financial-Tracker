@@ -2226,8 +2226,8 @@ const FIX = { v: 3, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings:
   // a picture the backup never held
   await page.click('#nav button:has-text("Verify")');
   check(await seen(page, "#screen", "Picture not on this phone"), "an entry whose picture is missing says \"picture not on this phone\"");
-  await menuGo(page, "Setup"); await page.click('button:has-text("Restore from a backup")');
-  check((await text(page, "#sheet")).includes("Receipt and payslip pictures are not in a backup"), "Restore says plainly that pictures are not in the backup");
+  await menuGo(page, "Setup"); await page.click('button[data-action="more-backup"]'); await page.click('button:has-text("Restore the ledger only")');   // this ledger keeps a picture, so the single option sits under More
+  check((await text(page, "#sheet")).includes("Receipt and payslip pictures are not in a backup"), "Restore of the ledger only says plainly that pictures are not in the backup");
   await page.click('#sheet button:has-text("Cancel")').catch(() => {});
   // goals by role: nothing is found by name
   await menuGo(page, "Goals"); await page.click('button[data-action="toggle-reveal"]');
@@ -2665,7 +2665,7 @@ console.log("Space, pictures and the photo reader");
     attachments: [{ id: "att1", transaction_id: "slip", type: "photo", file: "att1.jpg", file_timestamp: TS }, { id: "att2", transaction_id: "slip", type: "photo", file: "att2.jpg", file_timestamp: TS }] } };
   ({ ctx, page, errors } = await open({ seed }));
   await menuGo(page, "Setup");
-  check(await seen(page, "#screen", "2 pictures are kept on this phone only. They are not in the backup."), "Setup's Backup says how many pictures are not in it");
+  check(await seen(page, "#screen", "2 pictures are kept on this phone. Back up includes them."), "Setup's Backup says how many pictures are kept and that Back up includes them");
   check(await seen(page, "#about-reader", "is not on this phone yet") && !(await page.locator("#warm-btn").isHidden()), "the photo reader says it is not on the phone yet, with a button to download it");
   check(await seen(page, "#about-storage", "of the phone's space"), "and the space the app uses is shown");
   await page.click("#warm-btn");
@@ -2755,7 +2755,8 @@ console.log("Pictures file");
   const made = await idb(async (db) => { const c = document.createElement("canvas"); c.width = 300; c.height = 200; const x = c.getContext("2d"); x.fillStyle = "#c33"; x.fillRect(0, 0, 300, 200); x.fillStyle = "#fff"; x.fillText("INVENTED RECEIPT", 20, 100);
     const b = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.9)); await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").put(b, "pic-a"); t.oncomplete = res; }); return b.size; });
   await page.reload(); await page.waitForSelector("#nav button");
-  await menuGo(page, "Setup");
+  const more = async () => { if (await page.locator('button[data-action="more-backup"][aria-expanded="false"]').count()) await page.click('button[data-action="more-backup"]'); };
+  await menuGo(page, "Setup"); await more();
   check(await page.locator('button[data-action="open-pic-backup"]').count() === 1, "Setup offers Back up pictures when there are pictures");
   await page.click('button[data-action="open-pic-backup"]');
   const PW = "a long passphrase for the pictures";
@@ -2766,7 +2767,7 @@ console.log("Pictures file");
   check(!readFileSync(file).toString("latin1").includes("INVENTED RECEIPT") && !readFileSync(file).toString("latin1").includes("pic-a"), "and it is encrypted");
   check(await seen(page, "#toast", "Pictures file created"), "the app says so");
   await idb(async (db) => { await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").delete("pic-a"); t.oncomplete = res; }); });
-  await menuGo(page, "Setup");
+  await menuGo(page, "Setup"); await more();
   await page.click('button[data-action="open-pic-restore"]');
   await page.setInputFiles("#r-file", file); await page.fill("#r-pass", "not the passphrase at all"); await page.click("#f-save");
   check(await seen(page, "#f-msg", "Wrong passphrase, or the file is damaged"), "a wrong passphrase is refused in plain words");
@@ -2776,15 +2777,47 @@ console.log("Pictures file");
   check(await seen(page, "#toast", "1 picture is back"), "the picture is put back");
   const back = await idb(async (db) => { const b = await new Promise((res) => { const q = db.transaction("photos").objectStore("photos").get("pic-a"); q.onsuccess = () => res(q.result); }); return b ? b.size : null; });
   check(back === made, "it is the same picture, byte for byte in size (" + back + " of " + made + ")");
-  await menuGo(page, "Setup"); await page.click('button[data-action="open-pic-restore"]');
+  await menuGo(page, "Setup"); await more(); await page.click('button[data-action="open-pic-restore"]');
   await page.setInputFiles("#r-file", file); await page.fill("#r-pass", PW); await page.click("#f-save");
   check(await seen(page, "#sheet", "0 pictures that belong") && await page.locator("#f-save").isDisabled(), "a second time there is nothing missing, and nothing to do");
   await page.click("#scrim");
-  await menuGo(page, "Setup"); await page.click('button[data-action="open-pic-check"]');
+  await menuGo(page, "Setup"); await more(); await page.click('button[data-action="open-pic-check"]');
   await page.setInputFiles("#r-file", file); await page.fill("#r-pass", "not the passphrase at all"); await page.click("#f-save");
   check(await seen(page, "#f-msg", "Wrong passphrase, or the file is damaged"), "Check a pictures file refuses a wrong passphrase");
   await page.fill("#r-pass", PW); await page.click("#f-save");
   check(await seen(page, "#sheet", "every picture is whole. Nothing on this phone was changed") && await page.locator("#f-save").count() === 0, "and with the right one says it is whole, with no button to change anything");
+  await page.click("#scrim");
+  // Back up and Restore do the ledger and the pictures together: one passphrase, the ledger file and the pictures files, put back in one go
+  await idb(async (db) => { await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").put(new Blob([new Uint8Array(200).fill(7)], { type: "image/jpeg" }), "pic-a"); t.oncomplete = res; }); });
+  const madeBoth = await idb(async (db) => new Promise((res) => { const q = db.transaction("photos").objectStore("photos").get("pic-a"); q.onsuccess = () => res(q.result.size); }));
+  await menuGo(page, "Setup");
+  check(await page.locator('button[data-action="open-backup"][data-all="1"]').innerText() === "Back up" && await page.locator('button[data-action="open-restore"][data-all="1"]').innerText() === "Restore", "with pictures, Setup offers Back up and Restore, which do the ledger and the pictures together");
+  await page.click('button[data-action="open-backup"][data-all="1"]');
+  await page.fill("#b-pass", PW); await page.fill("#b-pass2", PW);
+  const got = []; page.on("download", (d) => got.push(d));
+  await page.click("#f-save");
+  await page.waitForFunction(() => /Backup made/.test(document.querySelector("#toast")?.innerText ?? ""), null, { timeout: 60000 });
+  await page.waitForTimeout(500);
+  const both = []; for (const d of got) { const f = join(tmpdir(), "both-" + Date.now() + "-" + d.suggestedFilename()); await d.saveAs(f); both.push({ name: d.suggestedFilename(), file: f }); }
+  const ledgerFile = both.find((x) => /^finance-backup-.*\.json$/.test(x.name)), picsFile = both.find((x) => /\.fpics$/.test(x.name));
+  check(!!ledgerFile && !!picsFile && both.length === 2, "one tap made the ledger file and the pictures file: " + both.map((x) => x.name).join(", "));
+  check(await seen(page, "#toast", "the ledger file and 1 pictures file") && !!JSON.parse((await stored(page)).local).settings.last_pictures_backup_at, "the app says so, and both last-backup dates are kept");
+  await idb(async (db) => { await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").delete("pic-a"); t.oncomplete = res; }); });
+  await menuGo(page, "Setup"); await page.click('button[data-action="open-restore"][data-all="1"]');
+  check(await page.locator("#r-file").getAttribute("multiple") !== null, "Restore takes several files at once");
+  await page.setInputFiles("#r-file", [ledgerFile.file, picsFile.file]); await page.fill("#r-pass", "not the passphrase at all"); await page.click("#f-save");
+  check(await seen(page, "#f-msg", "Wrong passphrase, or the file is damaged"), "a wrong passphrase is refused in plain words");
+  await page.setInputFiles("#r-file", [picsFile.file]); await page.fill("#r-pass", PW); await page.click("#f-save");
+  check(await seen(page, "#f-msg", "Choose the backup file as well"), "pictures files alone are not enough: the backup file is needed too");
+  await page.setInputFiles("#r-file", [ledgerFile.file, picsFile.file]); await page.click("#f-save");
+  check(await seen(page, "#sheet", "Replace this phone's data?") && (await text(page, "#sheet")).includes("1 picture missing here will be put back"), "the right passphrase shows the ledger and how many pictures will come back");
+  await page.click("#f-save"); await page.click("#f-save");
+  let backAgain = null;   // the app restarts itself after the restore: poll until the pictures are in
+  for (let n = 0; n < 40 && backAgain === null; n++) {
+    await page.waitForTimeout(250);
+    backAgain = await idb(async (db) => { const b = await new Promise((res) => { const q = db.transaction("photos").objectStore("photos").get("pic-a"); q.onsuccess = () => res(q.result); }); return b ? b.size : null; }).catch(() => null);
+  }
+  check(backAgain === madeBoth, "the picture came back with the ledger, byte for byte in size (" + backAgain + " of " + madeBoth + ")");
   check(errors.length === 0, "no script errors");
   await ctx.close(); }
 
