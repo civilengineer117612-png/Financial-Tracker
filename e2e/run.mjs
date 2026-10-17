@@ -3288,6 +3288,40 @@ console.log("Welcome card, category editing, required marks");
   await page.click('#nav button:has-text("Log")'); await page.click('button[data-action="open-other"]'); await page.waitForSelector("#sheet #f-amount");
   check(await page.locator("#sheet .coverrow .cover").count() === 1, "and under Paid from");
   await ctx.close();
+  // Tap a credit card on Cards: what you owe, Paid from already set to the account that backs it, one button that makes the payment (a draft transfer, not spending)
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: seedC }));
+  await menuGo(page, "Cards", { keepHidden: true });
+  await page.click('.swcard[data-action="open-card"]');
+  check(await seen(page, "#sheet", "You owe now") && (await text(page, "#sheet")).includes("\u20B1\u2022\u2022\u2022\u2022\u2022") && !(await text(page, "#sheet")).includes("3,000"), "tapping a card opens its window; with amounts hidden on Cards, the window keeps them hidden");
+  check(await page.locator('#sheet [data-action="pick-from"][data-id="d"][aria-pressed="true"]').count() === 1 && (await text(page, "#sheet")).includes("backs this card"), "Paid from starts as the account that backs the card, and says so");
+  check(await page.locator("#f-save").isDisabled(), "Pay waits for an amount");
+  await page.fill("#f-amount", "1000");
+  check(await page.locator("#f-save").isEnabled(), "an amount turns Pay on");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "paid to Test Card"), "paying says so");
+  { const led = JSON.parse((await stored(page)).local).state, t = led.transactions.find((x) => x.payee === "Card payment"), es = led.entries.filter((e) => e.transaction_id === t.id);
+    check(t.status === "draft" && es.some((e) => e.account_id === "c" && e.amount === 100000 && e.card_state === "posted") && es.some((e) => e.account_id === "d" && e.amount === -100000) && !es.some((e) => e.category_id), "it is ONE draft transfer into the card from the account that backs it, with no spending category"); }
+  await ctx.close();
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: seedC }));
+  await menuGo(page, "Cards");
+  await page.click('.swcard[data-action="open-card"]');
+  check((await text(page, "#sheet")).includes("\u20B13,000.00") && await page.locator('#sheet button[data-action="card-details"]').count() === 1, "with amounts shown, the window shows what is owed now and offers the due day and last statement");
+  await page.click('#sheet button[data-action="card-details"]');
+  await page.fill("#cd-due", "40"); await page.fill("#cd-stmt", "2500"); await page.click("#f-save");
+  check((await text(page, "#cd-msg")).includes("1 to 31"), "a due day outside 1 to 31 is refused in plain words");
+  await page.fill("#cd-due", "28"); await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.accounts.find((a) => a.id === "c").due_day === 28, null, { timeout: 5000 });
+  await seen(page, "#sheet", "Last statement \u20B12,500.00");
+  { const cardText = await text(page, "#sheet");
+    check(cardText.includes("Last statement \u20B12,500.00") && /due (today|tomorrow|in \d+ days)/.test(cardText) && await page.inputValue("#f-amount") === "2500.00", "saved: the window shows the last statement and the due day, and the amount starts as the statement balance: " + cardText.replace(/\n+/g, " | ").slice(0, 160)); }
+  check(JSON.parse((await stored(page)).local).state.accounts.find((a) => a.id === "c").statement_balance === 250000, "the typed balance is kept on the card");
+  await page.click('#sheet button[data-action="close-sheet"]');
+  // Move money into a card used to be refused ("entry on card account needs card_state"); it saves now
+  await page.click('button[data-action="open-move"]'); await page.waitForSelector("#sheet #f-amount");
+  await page.click('#sheet [data-action="pick-from"][data-id="d"]'); await page.click('#sheet [data-action="pick-to"][data-id="c"]'); await page.fill("#f-amount", "100");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "set as a transfer"), "Move money into a credit card saves (it used to say it could not)");
+  await ctx.close();
   // The bottom bar stays pinned to the bottom of the screen when a long page is scrolled (it drifted up the page on the iPhone)
   ({ ctx, page, errors } = await open({ blockSw: true }));
   await menuGo(page, "Help"); await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await page.waitForTimeout(300);

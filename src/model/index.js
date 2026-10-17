@@ -99,3 +99,4 @@ export { recordFromParse, accountLines, proveMonths, acceptMonth, monthSummary, 
 export { pairMoves, moveLogged, planPairedMove, matchPayslips, statementDifference, planMissingDraft, startFromStatement, planPocketFromStatement } from "./reconcile.js";
 export { payeeKey, payeeLabel, withPayeeBook, spendingByPayee, payeeMonths, payeeCount, namePayee, categoryFromBook } from "./payees.js";
 export { RANGES, dailySpending, firstSpendingDate, rangeFor, stepFor, seriesFor, measureSpan, zoomWindow, addDays, daysBetween } from "./spendline.js";
+export { payerFor, nextDue, cardStatement, setCardDetails, planCardPayment } from "./cardpay.js";

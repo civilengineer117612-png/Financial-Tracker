@@ -25,6 +25,9 @@ export const SCHEMAS = {
     bank: optional(text),   // ADDED: which bank the account belongs to (src/model/banks.js); accounts of one bank share a picture
     icon_url: optional({ type: "iconurl" }),   // ADDED: where a bank logo is shown from when it could not be copied onto the phone (allow-listed icon services only)
     icon: optional({ type: "icon" }),   // ADDED: a small picture the owner chose for this account, kept on the phone
+    due_day: optional({ type: "day" }),   // ADDED (no version change, absent is valid): on a credit card, the day of the month its payment is due (1 to 31; a short month uses its last day)
+    statement_balance: optional(centavos),   // ADDED (no version change): on a credit card, the balance its last statement showed, typed by the owner (a kept statement wins over it)
+    statement_date: optional(date),   // ADDED (no version change): the day that typed balance was saved
     last4: optional({ type: "last4" }),   // ADDED (version 7): the last 4 digits of the account number, only those, so a payment screenshot can tell the owner's own accounts apart. Empty when not given
   },
   Goal: { id, account_id: optional(id), name, target: optional(centavos), deadline: optional(date), hidden_by_default: bool,
