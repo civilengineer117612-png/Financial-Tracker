@@ -8,10 +8,10 @@ test("sizes read in plain megabytes and gigabytes", () => {
   assert.equal(formatSize(1073741824), "1.0 GB"); assert.equal(formatSize(1.26 * 1073741824), "1.3 GB");
   assert.equal(formatSize(NaN), ""); assert.equal(formatSize(-1), ""); assert.equal(formatSize(undefined), "");
 });
-test("the pictures note says how many are not in the backup, and says nothing when there are none", () => {
+test("the pictures note says how many are kept and that Back up includes them, and says nothing when there are none", () => {
   assert.equal(picturesNote(0), ""); assert.equal(picturesNote(undefined), ""); assert.equal(picturesNote(-2), "");
-  assert.equal(picturesNote(1), "1 picture is kept on this phone only. It is not in the backup.");
-  assert.equal(picturesNote(12), "12 pictures are kept on this phone only. They are not in the backup.");
+  assert.equal(picturesNote(1), "1 picture is kept on this phone. Back up includes it.");
+  assert.equal(picturesNote(12), "12 pictures are kept on this phone. Back up includes them.");
 });
 test("the reader is ready only when every one of its files is on the phone", () => {
   assert.equal(readerStatus(6, 6).ready, true); assert.match(readerStatus(6, 6).text, /is on this phone/);

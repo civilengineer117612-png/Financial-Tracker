@@ -8,10 +8,10 @@ export function formatSize(bytes) {
   return (bytes / 1073741824).toFixed(1) + " GB";
 }
 
-// Pictures live only on the phone: a backup holds the entries, never the pictures. Empty when there are none.
+// Pictures live only on the phone, and Back up makes their files along with the ledger file. Empty when there are none.
 export function picturesNote(count) {
   if (!Number.isInteger(count) || count <= 0) return "";
-  return count === 1 ? "1 picture is kept on this phone only. It is not in the backup." : count + " pictures are kept on this phone only. They are not in the backup.";
+  return count === 1 ? "1 picture is kept on this phone. Back up includes it." : count + " pictures are kept on this phone. Back up includes them.";
 }
 
 // The photo reader's files are saved once (about 30 MB). stored = how many of its files are on the phone, total = how many it needs.

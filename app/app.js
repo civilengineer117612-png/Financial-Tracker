@@ -1343,7 +1343,7 @@ function viewSetup() {
     <p><button data-action="open-pic-restore" style="width:100%">Put pictures back from a file</button></p>
     <p><button data-action="open-pic-check" style="width:100%">Check a pictures file</button></p>` : ""}`;
   const backupHtml = `    <h2>Backup</h2>
-    <p class="note">${backupAgeText()}</p>${pics ? `<p class="note">${pics} ${pics === 1 ? "picture is" : "pictures are"} kept on this phone. Back up includes ${pics === 1 ? "it" : "them"}.</p>` : ""}
+    <p class="note">${backupAgeText()}</p>${M.picturesNote(pics) ? `<p class="note">${esc(M.picturesNote(pics))}</p>` : ""}
     ${pics ? `<p><button class="primary" data-action="open-backup" data-all="1" data-howto="backup">Back up</button></p>
     <p><button data-action="open-restore" data-all="1" style="width:100%">Restore</button></p>
     <p><button class="link" data-action="more-backup" aria-expanded="${Boolean(ui.moreBackup)}">${ui.moreBackup ? "Fewer options" : "More: only the ledger, or only the pictures"}</button></p>
