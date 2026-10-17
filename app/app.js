@@ -196,6 +196,9 @@ const withIcon = (a, size) => iconOf(a, size) + `<span>${esc(a.name)}</span>`;
 
 // Accounts for a payment, the one you used last first (for this preset, then in general).
 const isCash = (a) => a.bank === "cash" || /^cash\b/i.test(a.name);
+// The order the owner arranged by hand (settings category_order, account_order). Nothing arranged: A to Z, Cash first for accounts.
+const orderedCats = (list) => M.arranged(list, ledger.settings.category_order);
+const orderedAccts = (list) => (ledger.settings.account_order?.length ? M.arranged(list, ledger.settings.account_order) : cashFirst(M.arranged(list, [])));
 const cashFirst = (list) => [...list.filter(isCash), ...list.filter((a) => !isCash(a))];   // Cash sits at the top of every account list
 function accountsFor(presetId, pockets = false) {
   const { last_account_by_preset: byPreset = {}, last_account_id: last } = ledger.settings;
@@ -203,7 +206,7 @@ function accountsFor(presetId, pockets = false) {
   // A reserve account can be paid from (a QR payment from the debit account that backs a card is real spending); when that leaves it short of what the
   // card owes, the usual reserve warning says so. It never blocks.
   // A savings pocket is never offered under "Paid from"; Move money (From, To) and statements ask for it with `pockets`.
-  return activeAccounts().filter((a) => pockets || !M.isPocket(a)).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  return activeAccounts().filter((a) => pockets || !M.isPocket(a)).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));   // (the chips of Paid from keep this order; the dropdown below follows the owner's arrangement)
 }
 
 // A transfer's lines in Verify and in its detail: where from, where to, its fee, and the foreign amount a paper showed.
@@ -374,6 +377,7 @@ let lastTabSig = null, lastViewSig = null, swapTimer = null;
 function renderScreen() {
   if (ui.tab === "cards" && lastTabSig !== "cards") { ui.cardsShown = false; ui.pocketsOpen = {}; }   // Cards opens with every amount hidden and every pocket folded; nothing is remembered
   if (ui.tab !== "log") ui.arrange = false;
+  if (ui.tab !== "setup") ui.sortArr = null;
   if (ui.tab !== "setup") ui.setupPage = null;
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
   const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
@@ -1300,7 +1304,8 @@ function viewSetup() {
   const used = new Set(S().entries.map((e) => e.account_id));
   const reserveExists = S().accounts.some((a) => a.reserve_for);
   const hosts = activeAccounts().filter((a) => a.class === "asset" && !a.reserve_for);
-  const rows = cashFirst(S().accounts.filter((a) => !a.archived)).map((a) => `<div class="row"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? (M.isPocket(a) ? "Savings pocket" : "Bank, wallet or cash") : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"} · <button class="link" data-action="edit-last4" data-id="${esc(a.id)}">${a.last4 ? "ends in " + esc(a.last4) : "add last 4 digits"}</button></small></div></div>
+  const arrA = ui.sortArr === "acct";
+  const rows = orderedAccts(S().accounts.filter((a) => !a.archived)).map((a) => arrA ? `<div class="row sortrow" data-sort="acct" data-id="${esc(a.id)}"><div class="who">${iconOf(a, 44)}<div>${esc(a.name)}</div></div></div>` : `<div class="row" data-sort="acct" data-id="${esc(a.id)}"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? (M.isPocket(a) ? "Savings pocket" : "Bank, wallet or cash") : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"} · <button class="link" data-action="edit-last4" data-id="${esc(a.id)}">${a.last4 ? "ends in " + esc(a.last4) : "add last 4 digits"}</button></small></div></div>
       <div class="amt">${peso(M.naturalBalance(a, M.countedEntries(S())))}${(() => { const cv = reserveCovers().find((x) => x.reserve_id === a.id); return cv ? `<div class="coverwrap">${coverBar(cv.share, coverLabel(cv))}</div>` : ""; })()}${!used.has(a.id) ? `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`
         : M.naturalBalance(a, M.countedEntries(S())) === 0 ? `<br><button class="link" data-action="hide-account" data-id="${esc(a.id)}">Hide</button>` : ""}</div></div>`).join("");
   const hiddenAccts = S().accounts.filter((a) => a.archived);
@@ -1323,20 +1328,23 @@ function viewSetup() {
     ${ui.setupError ? `<p id="a-error" role="alert"><b>${esc(ui.setupError)}</b></p>` : ""}
     <p><button class="primary" data-action="add-account" style="margin-top:14px">Add account</button></p>${S().accounts.length ? `<p class="center"><button class="link" data-action="toggle-add-account">Cancel</button></p>` : ""}`;
   const accountsHtml = `    ${formOpen ? addForm : ""}
-    <h2>Your accounts</h2>
-    ${rows || `<p class="note">No accounts yet.</p>`}${keepNote}${hiddenHtml}
+    <div class="h2row${arrA ? " sorthead" : ""}"><h2>Your accounts</h2>${arrA ? `<button class="link done" data-action="sort-done">Done</button>` : ""}</div>
+    ${arrA ? `<p class="note small sortnote">Drag a row to move it. Done when it is right.</p>` : S().accounts.filter((a) => !a.archived).length > 1 ? `<p class="note small">A to Z. Hold an account to arrange your own order.</p>` : ""}
+    <div class="sortlist${arrA ? " arranging group" : ""}">${rows || `<p class="note">No accounts yet.</p>`}</div>${keepNote}${hiddenHtml}
     ${formOpen ? "" : `<p><button id="add-account-open" data-action="toggle-add-account" style="width:100%">Add an account</button></p>`}`;
   const bucketLine = (c) => esc(M.BUCKET_LABELS[M.bucketOf(c, ledger.settings.bucket_overrides ?? {})]);
-  const catRow = (c) => ui.catEdit
-    ? `<div class="row catedit"><button class="rowbtn" data-action="rename-cat" data-id="${esc(c.id)}"><span>${esc(c.name)}<small>${bucketLine(c)}</small></span><span class="chev" aria-hidden="true">\u203A</span></button>${M.removeKind(S(), c.id) === "remove"
+  const arrC = ui.sortArr === "cat";
+  const catRow = (c) => arrC ? `<div class="row sortrow" data-sort="cat" data-id="${esc(c.id)}"><div>${esc(c.name)}<small>${bucketLine(c)}</small></div></div>` : ui.catEdit
+    ? `<div class="row catedit" data-sort="cat" data-id="${esc(c.id)}"><button class="rowbtn" data-action="rename-cat" data-id="${esc(c.id)}"><span>${esc(c.name)}<small>${bucketLine(c)}</small></span><span class="chev" aria-hidden="true">\u203A</span></button>${M.removeKind(S(), c.id) === "remove"
         ? `<button class="catx" data-action="remove-cat" data-id="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">${ui.confirmRemoveCat === c.id ? "Tap again to remove" : "\u00D7"}</button>`
         : `<button class="catx" data-action="hide-cat" data-id="${esc(c.id)}" aria-label="Hide ${esc(c.name)}">\u2013</button>`}</div>`
-    : `<div class="row"><div>${esc(c.name)}<small>${bucketLine(c)}</small></div></div>`;
+    : `<div class="row" data-sort="cat" data-id="${esc(c.id)}"><div>${esc(c.name)}<small>${bucketLine(c)}</small></div></div>`;
   const pencilSvg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
   const hiddenCats = expenseCategories().filter((c) => M.isHiddenCategory(ledger.settings, c.id));
-  const categoriesHtml = `    <div class="h2row"><h2>Categories</h2>${ui.catEdit ? `<button class="link done" data-action="cat-done">Done</button>` : `<button class="iconbtn" data-action="cat-edit" aria-label="Edit categories">${pencilSvg}</button>`}</div>
+  const categoriesHtml = `    <div class="h2row${arrC ? " sorthead" : ""}"><h2>Categories</h2>${arrC ? `<button class="link done" data-action="sort-done">Done</button>` : ui.catEdit ? `<button class="link done" data-action="cat-done">Done</button>` : `<button class="iconbtn" data-action="cat-edit" aria-label="Edit categories">${pencilSvg}</button>`}</div>
     ${ui.catEdit ? `<p class="note small">Tap a category to change it. \u00D7 removes one with no entries; \u2013 hides one that has entries (its history stays).</p>` : ""}
-    ${pickCategories().map(catRow).join("")}
+    ${arrC ? `<p class="note small sortnote">Drag a row to move it. Done when it is right.</p>` : ""}
+    <div class="sortlist${arrC ? " arranging group" : ""}">${orderedCats(pickCategories()).map(catRow).join("")}</div>
     <p><button data-action="add-cat" style="width:100%">Add a category</button></p>
     ${hiddenCats.length ? `<h2>Hidden categories</h2><p class="note">Their entries, budgets and history stay. They are left out of the pickers.</p>${hiddenCats.map((c) => `<div class="row"><div>${esc(c.name)}</div><div class="amt"><button class="link" data-action="show-cat" data-id="${esc(c.id)}">Show again</button></div></div>`).join("")}` : ""}`;
   const budgetHtml = `    ${planOf() ? `<h2>Pay plan</h2>
@@ -2243,14 +2251,14 @@ function categoryPicker(items, selectedId, key = "cat", action = "pick-cat", pla
   const ids = new Set(items.map((c) => c.id)), verified = new Set(S().transactions.filter((t) => t.status === "verified").map((t) => t.id));
   const lastId = [...S().entries].reverse().find((e) => e.category_id && ids.has(e.category_id) && verified.has(e.transaction_id))?.category_id;
   const last = items.filter((c) => c.id === lastId);
-  return picker(key, [["Last used", last], [last.length ? "All categories" : "", byName(items.filter((c) => c.id !== lastId))]], selectedId, action, placeholder);
+  return picker(key, [["Last used", last], [last.length ? "All categories" : "", orderedCats(items.filter((c) => c.id !== lastId))]], selectedId, action, placeholder);
 }
 // Accounts: the one used last (newest verified entry), then Cash and the rest A to Z, then the cards.
 function accountPicker(items, selectedId, action = "pick-acct", key = "acct", placeholder = "Choose an account") {
   // "Last used" counts verified entries only, as it does for categories: a draft from a wrong scan never leads the list
   const ids = new Set(items.map((a) => a.id)), verified = new Set(S().transactions.filter((t) => t.status === "verified").map((t) => t.id));
   const lastAcct = [...S().entries].reverse().find((e) => e.account_id && ids.has(e.account_id) && verified.has(e.transaction_id))?.account_id, last = items.filter((a) => a.id === lastAcct);
-  const rest = items.filter((a) => a.id !== lastAcct), cards = byName(rest.filter((a) => a.class === "liability")), plain = cashFirst(byName(rest.filter((a) => a.class !== "liability")));
+  const rest = items.filter((a) => a.id !== lastAcct), cards = orderedAccts(rest.filter((a) => a.class === "liability")), plain = orderedAccts(rest.filter((a) => a.class !== "liability"));
   return picker(key, [["Last used", last], ["Accounts", plain], ["Cards", cards]], selectedId, action, placeholder);
 }
 // What the paper is: A to Z, "Something else" last. The face shows what the app read; "Choose" while it has not decided (and Save stays held).
@@ -3561,6 +3569,7 @@ async function onClick(el) {
     case "edit-tile": { const p = S().presets.find((x) => x.id === id); if (!p) break; ui.confirmRemoveTile = false; ui.sheet = { type: "tile", id }; ui.form = { name: p.name, amount: (p.amount / 100).toFixed(2), category_id: p.category_id }; renderSheet(); break; }
     case "add-tile": ui.confirmRemoveTile = false; ui.sheet = { type: "tile", id: null }; ui.form = { name: "", amount: "", category_id: expenseCategories()[0]?.id }; renderSheet(); break;
     case "arrange-done": ui.arrange = false; renderScreen(); break;
+    case "sort-done": ui.sortArr = null; renderScreen(); break;
     case "arrange-start": enterArrange(); break;
     case "remove-tile-now": {   // like taking an app off a phone's home screen: it shrinks away, the others slide over
       const r = M.removePreset(S(), id);
@@ -4304,6 +4313,63 @@ document.addEventListener("pointerdown", (e) => {
   tdrag.index = tdrag.order.indexOf(tdrag.id);
   try { t.setPointerCapture(e.pointerId); } catch { /* the tdrag still works without capture */ }
 });
+// ---- Setup: hold a category or an account to arrange the list, drag a row to move it ----
+// Holding a row (about half a second) lets the rows be dragged; the others slide aside; Done finishes. The order is saved as a plain list of ids
+// (settings category_order, account_order); a row that was never moved follows A to Z, so nothing is lost when a new one is added.
+let sortHold = null, sdrag = null;
+document.addEventListener("pointerdown", (e) => {
+  const r = e.target.closest(".sortlist [data-sort][data-id]");
+  if (!r || ui.tab !== "setup" || ui.sheet || e.target.closest("input, select")) return;
+  const key = r.dataset.sort;
+  if (ui.sortArr !== key) {
+    if (ui.sortArr || (key === "cat" && ui.catEdit && e.target.closest(".catx"))) return;
+    const at = { x: e.clientX, y: e.clientY }, id = r.dataset.id, pid = e.pointerId;
+    // The finger is still down: the same touch goes on to drag the row it is holding.
+    sortHold = { at, t: setTimeout(() => { sortHold = null; suppressClick = true; ui.sortArr = key; ui.catEdit = false; renderScreen(); navigator.vibrate?.(12);
+      const row = [...document.querySelectorAll(".sortlist.arranging .sortrow[data-id]")].find((x) => x.dataset.id === id); if (row) startSdrag(row, key, at.y, pid); }, 450) };
+    return;
+  }
+  startSdrag(r, key, e.clientY, e.pointerId);
+});
+function startSdrag(r, key, y, pointerId) {
+  const rows = [...document.querySelectorAll(`.sortlist.arranging .sortrow[data-id]`)];
+  sdrag = { id: r.dataset.id, el: r, y0: y, moved: false, rows, rects: rows.map((x) => x.getBoundingClientRect()), order: rows.map((x) => x.dataset.id), key };
+  sdrag.index = sdrag.order.indexOf(sdrag.id);
+  try { r.setPointerCapture(pointerId); } catch { /* the drag still works without capture */ }
+}
+document.addEventListener("pointermove", (e) => {
+  if (sortHold && Math.hypot(e.clientX - sortHold.at.x, e.clientY - sortHold.at.y) > 10) { clearTimeout(sortHold.t); sortHold = null; }
+  if (!sdrag) return;
+  const dy = e.clientY - sdrag.y0;
+  if (!sdrag.moved && Math.abs(dy) < 6) return;
+  if (!sdrag.moved) { sdrag.moved = true; sdrag.el.classList.add("dragging"); }
+  sdrag.el.style.transform = `translateY(${dy}px)`;
+  const home = sdrag.rects[sdrag.rows.indexOf(sdrag.el)], cy = home.top + home.height / 2 + dy;
+  let best = sdrag.index, bestD = Infinity;
+  sdrag.rects.forEach((r, k) => { const d = Math.abs(cy - (r.top + r.height / 2)); if (d < bestD) { bestD = d; best = k; } });
+  if (best !== sdrag.index) {
+    sdrag.order.splice(sdrag.index, 1); sdrag.order.splice(best, 0, sdrag.id); sdrag.index = best;
+    sdrag.order.forEach((id, k) => {
+      if (id === sdrag.id) return;
+      const el = sdrag.rows.find((x) => x.dataset.id === id), from = sdrag.rects[sdrag.rows.indexOf(el)], to = sdrag.rects[k];
+      el.style.transform = `translateY(${to.top - from.top}px)`;
+    });
+  }
+});
+const endSort = async () => {
+  if (sortHold) { clearTimeout(sortHold.t); sortHold = null; setTimeout(() => { suppressClick = false; }, 60); }
+  if (!sdrag) return;
+  const d = sdrag; sdrag = null;
+  if (!d.moved) return;
+  suppressClick = true;
+  const slot = d.rects[d.index], home = d.rects[d.rows.indexOf(d.el)];
+  d.el.classList.remove("dragging"); d.el.style.transform = `translateY(${slot.top - home.top}px)`;
+  await new Promise((r) => setTimeout(r, 190));
+  if (d.order.join() !== d.rows.map((x) => x.dataset.id).join()) { await commit(S(), { ...ledger.settings, [d.key === "cat" ? "category_order" : "account_order"]: M.orderFrom(d.order) }, { quiet: true }); return; }
+  renderScreen();
+};
+document.addEventListener("pointerup", endSort);
+document.addEventListener("pointercancel", endSort);
 // Holding a button that has a how-to (Log, Verify, the camera, the + tile) plays it; a normal tap does what it always did. Tiles keep their own hold (arrange).
 let hwTimer = null, hwAt = null;
 document.addEventListener("pointerdown", (e) => {

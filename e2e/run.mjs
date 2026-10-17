@@ -3828,6 +3828,52 @@ console.log("Compare with the ledger");
   check(errors.length === 0, "no script errors on the comparison screens: " + errors.join("; "));
   await ctx.close(); }
 
+console.log("\n-- Arrange categories and accounts by holding and dragging --");
+{ const acc2 = (id, name, cls, extra = {}) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-09-01", ...extra });
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc2("w", "Test Wallet", "asset", { opening_balance: 250000 }), acc2("d", "Alpha Debit", "asset", { opening_balance: 1000000 }), acc2("z", "Zeta Savings", "asset", { opening_balance: 500000 }), acc2("c", "Test Card", "liability")] } };
+  const { ctx, page, errors } = await open({ blockSw: true, setupFlat: false, seed });
+  await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer")); await page.waitForTimeout(250);
+  const names = (sel) => page.$$eval(sel, (els) => els.map((e) => (e.querySelector(".who > div") ?? e.querySelector(":scope > div")).firstChild.textContent.trim()));
+  const hold = async (row) => { const b = await row.boundingBox(); await page.mouse.move(b.x + 60, b.y + b.height / 2); await page.mouse.down(); await page.waitForTimeout(650); return b; };
+  const dragBy = async (b, dy, shotPath) => { for (let i = 1; i <= 8; i++) { await page.mouse.move(b.x + 60, b.y + b.height / 2 + (dy * i) / 8); await page.waitForTimeout(25); } if (shotPath) await page.screenshot({ path: shotPath }); await page.mouse.up(); await page.waitForTimeout(500); };
+  // accounts: A to Z with Cash-like first not applicable here; nothing arranged = A to Z
+  await page.click('.setrow:has-text("Accounts")'); await page.waitForTimeout(300);
+  const a0 = await names('.sortlist .row[data-sort="acct"]');
+  check(a0.join("|") === "Alpha Debit|Test Card|Test Wallet|Zeta Savings", "accounts show A to Z until you arrange them: " + a0.join(", "));
+  const zeta = page.locator('.sortlist .row[data-sort="acct"]').filter({ hasText: "Zeta Savings" });
+  const b = await hold(zeta);
+  check(await page.locator(".sortlist.arranging").count() === 1, "holding an account starts arranging");
+  await dragBy(b, -2 * b.height - 20, undefined);
+  const a1 = await names('.sortlist .sortrow[data-sort="acct"]');
+  check(a1[0] === "Zeta Savings", "dragging Zeta to the top moves it first: " + a1.join(", "));
+  await page.click('button[data-action="sort-done"]'); await page.waitForTimeout(250);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("financialTracker.ledger") || "{}").settings?.account_order);
+  check(Array.isArray(saved) && saved[0] === "z", "the order is kept as a list of ids in settings");
+  const a2 = await names('.sortlist .row[data-sort="acct"]');
+  check(a2[0] === "Zeta Savings", "after Done the list keeps it: " + a2.join(", "));
+  // categories
+  await page.click('button[data-action="setup-page"][data-id=""]'); await page.waitForTimeout(250);
+  await page.click('.setrow:has-text("Categories")'); await page.waitForTimeout(300);
+  const c0 = await names('.sortlist .row[data-sort="cat"]');
+  check(c0.join("|") === "Essentials|Family|Food|Lakat/Date|Rent|Shopping|Subscription|Upskill", "categories show A to Z until you arrange them: " + c0.join(", "));
+  const upskill = page.locator('.sortlist .row[data-sort="cat"]').filter({ hasText: "Upskill" });
+  const cb = await hold(upskill);
+  await dragBy(cb, -7 * cb.height, undefined);
+  const c1 = await names('.sortlist .sortrow[data-sort="cat"]');
+  check(c1[0] === "Upskill", "dragging Upskill to the top moves it first: " + c1.join(", "));
+  await page.click('button[data-action="sort-done"]'); await page.waitForTimeout(250);
+  check((await names('.sortlist .row[data-sort="cat"]'))[0] === "Upskill", "Done keeps the category order");
+  // the pickers: Last used first, then the owner's order
+  await page.click('#nav button:has-text("Log")'); await page.click('button:has-text("Add expense")'); await page.waitForTimeout(250);
+  await page.click("#sheet .pickrow >> nth=0"); await page.waitForTimeout(150);
+  const pc = await page.$$eval("#sheet .picklist >> nth=0 >> .pickitem", (els) => els.map((e) => e.textContent.trim()));
+  check(pc[0] === "Upskill", "the category dropdown follows the owner's order: " + pc.slice(0, 4).join(", "));
+  await page.click("#sheet .pickrow >> nth=1"); await page.waitForTimeout(150);
+  const pa = await page.$$eval("#sheet .pick >> nth=1 >> .pickitem", (els) => els.map((e) => e.textContent.trim()));
+  check(pa[0].includes("Zeta Savings"), "the Paid from dropdown follows the owner's account order: " + pa.join(", "));
+  await ctx.close(); check(errors.length === 0, "no script errors while arranging: " + errors.join("; ")); }
+
+
 await browser.close();
 console.log(failures ? "\n" + failures + " check(s) FAILED" : "\nAll checks passed");
 process.exit(failures ? 1 : 0);
