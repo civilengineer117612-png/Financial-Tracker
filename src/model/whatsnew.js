@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-17-card-compare", date: "2026-10-17", text: "A credit card can now be compared with its statement: what the statement says you owe against your ledger, with purchases and fees you missed ready to add as drafts." },
   { id: "2026-10-17-card-due", date: "2026-10-17", text: "When a credit card has a due day and a last statement, a draft payment to it appears in Verify on the due day, from the account that backs it." },
   { id: "2026-10-17-pay-card", date: "2026-10-17", text: "Tap a credit card on Cards to pay it: Paid from starts as the account that backs it, you can add a due day and the last statement, and Move money into a card now saves." },
   { id: "2026-10-17-compare-drafts", date: "2026-10-17", text: "In Compare with your ledger, money in and lines that do not say what they were can now be added as drafts in one tap." },
