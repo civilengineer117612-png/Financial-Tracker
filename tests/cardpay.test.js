@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { emptyState, validateState, selfCheck, payerFor, nextDue, cardStatement, setCardDetails, planCardPayment, planTransfer, verifyDraft, naturalBalance, countedEntries } from "../src/model/index.js";
+import { emptyState, validateState, selfCheck, payerFor, nextDue, cardStatement, setCardDetails, planCardPayment, makeCardDueDrafts, planTransfer, verifyDraft, naturalBalance, countedEntries } from "../src/model/index.js";
 
 // Invented accounts and amounts only.
 const acct = (id, name, cls, extra = {}) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-09-01", ...extra });
@@ -70,4 +70,57 @@ test("Move money into a card used to be refused (a card entry needs pending or p
   assert.equal(owed(before) - owed(v.state), 1097406, "the card owes exactly the payment less");
   assert.equal(fromBefore(before) - fromBefore(v.state), 1097406 + 1500, "the paying account holds the payment and its fee less (the fee is verified with it)");
   assert.deepEqual(selfCheck({ state: v.state }), []); assert.deepEqual(validateState(v.state), []);
+});
+
+// ----- the due day -----
+const withCard = (extra = {}) => { const b = base(); return { ...b, accounts: b.accounts.map((a) => (a.id === "c" ? { ...a, due_day: 28, statement_balance: 1097406, statement_date: "2026-10-01", ...extra } : a)) }; };
+const dues = (st, made, today) => makeCardDueDrafts(st, made, today, { newId: (() => { let k = 0; return () => "due" + ++k; })(), now: new Date("2026-10-28T09:00:00+08:00") });
+
+test("on the due day ONE draft payment is made from the account that backs the card, for the last statement balance, dated the due day", () => {
+  const r = dues(withCard(), {}, "2026-10-28");
+  assert.equal(r.drafts.length, 1); assert.deepEqual(r.drafts[0], { card_id: "c", amount: 1097406, date: "2026-10-28" });
+  const t = r.state.transactions.find((x) => x.id === "due1");
+  assert.deepEqual([t.status, t.date, t.payee], ["draft", "2026-10-28", "Card payment (due Oct 28)"]);
+  assert.deepEqual(r.state.entries.filter((e) => e.transaction_id === "due1").map((e) => [e.account_id, e.amount]), [["c", 1097406], ["d", -1097406]]);
+  assert.deepEqual(r.made, { c: "2026-10" }); assert.equal(r.changed, true);
+  assert.deepEqual(selfCheck({ state: r.state }), []); assert.deepEqual(validateState(r.state), []);
+});
+
+test("not before the due day, not more than a week after it, and once a month: a draft thrown away does not come back that month, the next month brings the next one", () => {
+  assert.equal(dues(withCard(), {}, "2026-10-27").drafts.length, 0, "the day before");
+  assert.equal(dues(withCard(), {}, "2026-11-04").drafts.length, 0, "eight days after the 28th");
+  assert.equal(dues(withCard(), {}, "2026-11-03").drafts.length, 0, "the 3rd is before November's 28th: nothing yet");
+  assert.equal(dues(withCard(), {}, "2026-10-30").drafts.length, 1, "two days late (the app was closed) still drafts");
+  const first = dues(withCard(), {}, "2026-10-28");
+  const again = dues(first.state, first.made, "2026-10-29");
+  assert.equal(again.drafts.length, 0); assert.equal(again.state.transactions.length, first.state.transactions.length, "running again changes nothing");
+  assert.equal(again.changed, false);
+  const gone = { ...first.state, transactions: [], entries: [] };
+  assert.equal(dues(gone, first.made, "2026-10-29").drafts.length, 0, "a draft that was thrown away does not come back this month");
+  assert.equal(dues(first.state, first.made, "2026-11-28").drafts.length, 0, "the same statement, already paid, is not asked for twice");
+  const newer = { ...first.state, accounts: first.state.accounts.map((a) => (a.id === "c" ? { ...a, statement_balance: 500000, statement_date: "2026-11-01" } : a)) };
+  const nov = dues(newer, first.made, "2026-11-28");
+  assert.deepEqual(nov.drafts.map((d) => d.amount), [500000], "a new statement brings the next month's draft");
+});
+
+test("a short month uses its last day; a card without a due day, a last statement or a backing account makes nothing and is tried again later", () => {
+  const feb = withCard({ due_day: 31, statement_date: "2027-01-31" });
+  assert.deepEqual(dues(feb, {}, "2027-02-28").drafts.map((d) => d.date), ["2027-02-28"]);
+  const noDay = withCard({ due_day: undefined }); delete noDay.accounts[1].due_day;
+  assert.equal(dues(noDay, {}, "2026-10-28").drafts.length, 0);
+  const noStmt = withCard({ statement_balance: undefined, statement_date: undefined });
+  assert.equal(dues(noStmt, {}, "2026-10-28").drafts.length, 0);
+  const noPayer = { ...withCard(), accounts: withCard().accounts.map((a) => ({ ...a, reserve_for: undefined })) };
+  const r = dues(noPayer, {}, "2026-10-28"); assert.equal(r.drafts.length, 0); assert.deepEqual(r.made, {}, "not marked as done, so it is tried again once there is a backing account");
+});
+
+test("what was already paid into the card since the statement is taken off; a card paid in full gets no draft", () => {
+  const paidPart = planCardPayment(withCard(), { card_id: "c", from_id: "d", amount: 400000, date: "2026-10-10", newId: () => "p1" }).state;
+  const r = dues(paidPart, {}, "2026-10-28");
+  assert.equal(r.drafts[0].amount, 1097406 - 400000, "only what is still owed of the statement");
+  const paidAll = planCardPayment(withCard(), { card_id: "c", from_id: "d", amount: 1097406, date: "2026-10-10", newId: () => "p2" }).state;
+  const none = dues(paidAll, {}, "2026-10-28");
+  assert.equal(none.drafts.length, 0); assert.deepEqual(none.made, { c: "2026-10" }, "marked, so it is not looked at again this month");
+  const before = planCardPayment(withCard(), { card_id: "c", from_id: "d", amount: 1097406, date: "2026-09-20", newId: () => "p3" }).state;
+  assert.equal(dues(before, {}, "2026-10-28").drafts[0].amount, 1097406, "a payment before the statement does not count");
 });
