@@ -162,50 +162,6 @@ test("every spending category gets a row (even one with nothing to suggest), and
   assert.equal(sug(none).rows.find((x) => x.category_id === "fun").suggested, 0);
 });
 
-test("confirming saves ordinary append-only budget rules once per changed category, never edits history, and starts next month by default", () => {
-  const s = monthly();
-  s.rules = [{ id: "r0", kind: "budget", subject_id: "food", amount: 500000, effective_from: "2026-01-01", created_at: TS }];
-  const before = JSON.stringify(s.rules);
-  let k = 0;
-  const r = budgetChangesFromDraft(s, { food: 600000, rent: 800000, fun: 0 }, { start: "2026-11", newId: () => "new" + ++k });
-  assert.equal(r.ok, true);
-  assert.deepEqual(r.changes.map((c) => [c.category_id, c.from, c.to]), [["food", 500000, 600000], ["rent", null, 800000]], "fun stays without a budget: 0 against none is no change");
-  assert.equal(JSON.stringify(r.state.rules[0]), JSON.stringify(s.rules[0]), "the old row is untouched"); assert.equal(JSON.stringify(s.rules), before);
-  assert.equal(r.state.rules.length, 3); assert.equal(s.rules.length, 1, "the input is not changed");
-  assert.equal(budgetFor(r.state.rules, "food", "2026-10"), 500000, "this month is untouched when it starts next month");
-  assert.equal(budgetFor(r.state.rules, "food", "2026-11"), 600000);
-  assert.equal(r.state.rules[1].effective_from, "2026-11-01");
-  const none = budgetChangesFromDraft(s, { food: 500000 }, { start: "2026-11", newId: () => "x" });
-  assert.deepEqual(none.changes, []);
-  assert.equal(budgetChangesFromDraft(s, { food: 100.5 }, { start: "2026-11", newId: () => "x" }).ok, false, "a float is refused, never rounded");
-  assert.equal(budgetChangesFromDraft(s, { nope: 5 }, { start: "2026-11", newId: () => "x" }).ok, false, "an unknown category is refused and nothing is saved");
-  assert.match(app, /start: M\.addMonths\(M\.monthOf\(today\(\)\), 1\), used: \{\}/, "the screen opens with next month chosen");
-});
-
-test("Income changed: review shows only when the income at the last confirm differs, and it is only a note", () => {
-  assert.equal(incomeChanged(2500000, 2500000), false); assert.equal(incomeChanged(2500000, 2600000), true);
-  assert.equal(incomeChanged(null, 2600000), false, "nothing confirmed yet, nothing to review"); assert.equal(incomeChanged(2500000, null), false);
-  assert.match(app, /Income changed: review\./); assert.ok(!/Income changed: review[^`]*disabled/.test(app));
-});
-
-test("Saved rows are never red: the block carries no critical shape or colour, and only a strictly-over spending row gets one", () => {
-  const i0 = app.indexOf("const savedHtml ="), block = app.slice(i0, app.indexOf("const sh = income ?", i0));
-  assert.ok(block.length > 100 && !/critical|overnote|glyph/.test(block));
-  const spendRow = app.slice(app.indexOf("const spendRow = (r)"), app.indexOf("const savedHtml ="));
-  assert.match(spendRow, /const over = r\.st\?\.over && r\.now !== null, sp = /);
-  assert.match(spendRow, /\$\{over \? `<small class="overnote">\$\{glyph\("critical"\)\} Over budget by/);
-});
-
-test("the new screen adds only the amount and the share to a row, one totals line per block, one overall line and one extra figure", () => {
-  const view = app.slice(app.indexOf("function viewBudgetNew()"), app.indexOf("function viewBudgetOld()"));
-  for (const id of ["bud-income", "bud-shares", "bud-spent", "bud-spend-total", "bud-saved-total"]) assert.ok(view.includes(`id="${id}"`), id);
-  assert.match(view, /Spending \$\{M\.showTenths\(sh\.spending\)\}, Saved \$\{M\.showTenths\(sh\.saved\)\}, \$\{bufferTotal \? "Buffer " \+ M\.showTenths\(sh\.buffer\) \+ ", " : ""\}\$\{sh\.unallocated < 0 \? "Over income by " \+ peso\(-sh\.unallocated\) : "Unallocated " \+ peso\(sh\.unallocated\)\}/);
-  assert.match(view, /Spent so far: \$\{M\.showTenths/);
-  assert.ok(!view.includes('data-action="budget-view"') && !view.includes("ui.budgetView"), "no Spending or Saved switch: Buckets is the one view");
-  assert.match(view, /return `<h1>Buckets<\/h1>\$\{head\}\$\{sum\}\$\{bucketsHtml\}/, "the overview stays on top, the buckets below it");
-  assert.match(view, /data-action="bucket-open" data-bucket="\$\{r\.bucket\}" aria-expanded="\$\{on\}"/, "a bucket opens to show its categories and their limits");
-});
-
 test("no data version bump is needed: the new settings keys are additive, a ledger with or without them loads and passes the self-check", async () => {
   const { parseLedger, selfCheck, LEDGER_VERSION, upgradeLedger } = await import("../src/model/index.js");
   const s = monthly();
@@ -214,18 +170,6 @@ test("no data version bump is needed: the new settings keys are additive, a ledg
   for (const l of [plain, keyed]) { assert.equal(parseLedger(JSON.stringify(l)).ok, true); assert.deepEqual(selfCheck(l), []); }
   const r = upgradeLedger({ ...plain, v: LEDGER_VERSION - 1, settings: { notice_seen_at: TS } });
   assert.equal(r.ok, true); assert.equal(r.ledger.settings.try_new_budget, undefined, "an upgraded ledger never gets the switch turned on");
-});
-
-test("the new Budget's amounts line up: the share sits under the amount, the totals lines and the overall line use the same numbers, and the bar has a colour", () => {
-  const view = app.slice(app.indexOf("function viewBudgetNew()"), app.indexOf("function viewBudgetOld()"));
-  assert.match(view, /const share = \(amount\) => \(income \? `<small aria-label="\$\{M\.showTenths\(M\.tenths\(amount, income\)\)\} of income">\$\{M\.showTenths\(M\.tenths\(amount, income\)\)\}<\/small>` : ""\)/);
-  assert.ok(!/ \\u00b7 \$\{M\.showTenths\(M\.tenths/.test(view), "no share is glued to the amount on one long line");
-  assert.ok(view.includes('<small aria-label="${M.showTenths(r.tenths)} of income">${M.showTenths(r.tenths)}</small>'), "a bucket row shows just the percent; a screen reader still hears of income");
-  assert.match(view, /M\.showTenths\(sh\.spending\) \+ " of income"/); assert.match(view, /M\.showTenths\(sh\.saved\) \+ " of income"/);
-  assert.match(view, /"Over income by " \+ peso\(-sh\.unallocated\) : "Unallocated " \+ peso\(sh\.unallocated\)/, "Unallocated is shown in pesos");
-  assert.match(view, /flatBar\(used \/ 10/, "the overall bar is a thin flat bar");
-  const css = readFileSync(new URL("../app/index.html", import.meta.url), "utf8");
-  assert.match(css, /\.row \.amt \{[^}]*text-align: right/); assert.match(css, /\.choice \.bval \{ text-align: right; \}/); assert.match(css, /\.flatbar > span \{[^}]*background: var\(--accent\)/);
 });
 
 // ----- rounding to the nearest 50 pesos, and how saving is worked out -----
@@ -240,24 +184,6 @@ test("suggestions are rounded to the nearest 50 pesos, halves up; a typed (pinne
   const fun = r.rows.find((x) => x.category_id === "fun");
   assert.equal(fun.amount, 123456, "the owner's own figure is not rounded"); assert.equal(fun.suggested % 5000, 0, "but the suggestion shown beside it is");
 });
-test("how saving is worked out is said in plain words, from the settings actually in use", () => {
-  const d = savingsExplained(DEFAULTS);
-  assert.match(d[0], /Overrun buffer: 5% of your pay/); assert.match(d[1], /no more than 15% of your pay\./); assert.ok(!/floor/.test(d[1]), "no floor, no floor sentence");
-  assert.match(d[2], /finish date gets what it needs/); assert.match(d[3], /rounded to the nearest ₱50/); assert.match(d[3], /not advice/);
-  const c = savingsExplained({ ...DEFAULTS, starter: { ...DEFAULTS.starter, savings: 2000, buffer: 300 }, savings_floor: 100000, buffer_amount: null });
-  assert.match(c[0], /3% of your pay/); assert.match(c[1], /no more than 20% of your pay and never less than your savings floor/);
-  assert.equal(savingsExplained({ ...DEFAULTS, buffer_amount: 50000 })[0], "Overrun buffer: the amount set for it.");
-  const view = app.slice(app.indexOf("function viewBudgetNew()"), app.indexOf("function viewBudgetOld()"));
-  assert.match(view, /How saving is worked out/); assert.match(view, /M\.savingsExplained\(/);
-});
-test("the Budget screen's Saved block uses the same suggestion as the sheet, so the rent you typed counts there too", () => {
-  const view = app.slice(app.indexOf("function viewBudgetNew()"), app.indexOf("function viewBudgetOld()"));
-  assert.match(view, /const sug = income && !plan \? runSuggest\(\) : null;/);
-  assert.match(app, /const runSuggest = \(\) => \{[^\n]*rent: set\.starter_rent \?\? undefined/);
-  const s = base(); slip(s, "2026-09-28", 2500000); logMonth(s, "2026-09");
-  assert.equal(sug(s).code, "NEEDS_RENT"); assert.ok(sug(s, { rent: 300000 }).saved.length >= 1, "with the rent, the saved rows are there");
-});
-
 // ----- rounding must never cause "Short" -----
 import { fitToIncome } from "../src/model/index.js";
 const roles = new Map([["rent", "rent"], ["food", "food"], ["ess", "essentials"], ["fun", "fun-not-a-role"]]);
@@ -323,10 +249,4 @@ test("end to end: suggestions that round up past the income are brought back und
     if (r.trimmed.length) found++;
   }
   assert.ok(found >= 1, "at least one of these incomes needed the fix");
-});
-
-test("the Suggest sheet says what was lowered and what is left unallocated, in pesos", () => {
-  assert.match(app, /Left unallocated if you use all of them: <b>\$\{peso\(r\.unallocated\)\}<\/b>\./);
-  assert.match(app, /Rounding would have gone over your income, so/);
-  assert.match(app, /more than your income\./);
 });

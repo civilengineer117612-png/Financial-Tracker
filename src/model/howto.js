@@ -25,7 +25,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const EXAMPLE_TILES = [{ name: "Coffee", amount: 15000, category: "Food" }, { name: "Jeep", amount: 1300, category: "Transport" }, { name: "Lunch", amount: 9500, category: "Food" }];
 
 // The Budget clip's data: {income: centavos a month, rows: [{name, amount (this month's budget), bucket: "need" | "want" | "savings" | "other"}],
-// buckets: [{bucket, label, amount}] or null when the new Budget is off}. The first row is the one changed; the change shown is +P500 (or P3,000 for a
+// buckets: [{bucket, label, amount}] or null}. The first row is the one changed; the change shown is +P500 (or P3,000 for a
 // category with no budget yet), only in the picture.
 const EXAMPLE_BUDGET = { income: 3000000, rows: [{ name: "Food", amount: 600000, bucket: "need" }, { name: "Transport", amount: 250000, bucket: "need" }, { name: "Fun", amount: 300000, bucket: "want" }],
   buckets: [{ bucket: "need", label: "Needs", amount: 1400000 }, { bucket: "want", label: "Wants", amount: 700000 }, { bucket: "savings", label: "Savings", amount: 400000 }] };

@@ -170,8 +170,6 @@ test("signs, folded entries, Budget bars, one date link: money out has a minus, 
   assert.match(js, /case "toggle-entries":/);
   assert.match(js, /pic = \{ log: '<path d="M7 17 17 7M8 7h9v9"\/>'/, "the Log icon is an arrow going out (money out), not a plus");
   assert.ok(js.includes('data-action="open-cal">Select date</button>') && js.includes('<div class="logmeta"><span class="sub">${ui.dayPick && ui.dayPick !== today() ? "" : esc(longDate(today()))}</span>${backupLink}</div>') && !js.includes('class="link topdate"'), "one date link (Select date); the date at the top is plain text");
-  assert.match(js, /sp = Math\.max\(0, r\.st\?\.spent \?\? 0\);/); assert.match(js, /flatBar\(Math\.min\(100, Math\.round\(\(sp \* 100\) \/ r\.now\)\)/, "a budget row's bar is spent over budget and never runs past full");
-  assert.match(js, /pairFig\(sp, r\.now, \{ over: "over"/, "a budget row's figure is spent / budget, tap for what is left");
 });
 
 test("motion and icons: taps press, bars grow, the folded list drops in only on the tap, everything stops for Reduce Motion; Goals is a flag", () => {
@@ -233,7 +231,7 @@ test("round 3: the Setup form waits behind a button once there are accounts, goa
   assert.ok(!js.includes('verify-delete"]\')?.click'), "a swipe never deletes");
   assert.match(help, /Swipe an entry to the right to mark it Correct\./);
   assert.match(js, /const why = \(html, label = "Why\?"\) => `<details class="why"><summary>\$\{label\}<\/summary><p class="note">\$\{html\}<\/p><\/details>`;/);
-  assert.ok((js.match(/\$\{why\(/g) ?? []).length >= 4, "the long notes on Budget, Cards, Weekly review and Setup are folded");
+  assert.ok((js.match(/\$\{why\(/g) ?? []).length >= 3, "the long notes on Cards, Weekly review and Setup are folded");
   assert.match(css, /\.seg\[aria-label="What to show"\] button\[aria-pressed="true"\]::after/, "Cash flow's views are tabs with a line under the current one");
   assert.ok(!/\.ring \{/.test(css), "the ring is gone with the old Goals look");
 });

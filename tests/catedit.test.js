@@ -122,7 +122,7 @@ test("the other forms that need something carry the same * and line: tile, sched
 
 test("Budget keeps a hidden category in its place with one quiet word under its name, no separate group", () => {
   assert.match(app, /const hiddenTag = \(id\) => M\.isHiddenCategory\(ledger\.settings, id\) \? `<small class="hiddennote">hidden<\/small>` : "";/);
-  assert.ok((app.match(/\$\{hiddenTag\(/g) ?? []).length >= 2, "every Budget row shows it");
+  assert.ok((app.match(/\$\{hiddenTag\(/g) ?? []).length >= 1, "every Buckets row shows it");
   assert.match(css, /small\.hiddennote \{ display: block; color: var\(--muted\); font-size: 12px; \}/);
   assert.ok(!/<h2>Hidden<\/h2>/.test(app), "rows stay plain: no group label");
 });

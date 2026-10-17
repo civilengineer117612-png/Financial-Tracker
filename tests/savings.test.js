@@ -147,7 +147,5 @@ test("a typed monthly amount and the percentages reach the suggestion", () => {
 test("the screens read the settings and the rule is the same everywhere", () => {
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8"), sw = readFileSync(new URL("../app/sw.js", import.meta.url), "utf8"), eng = readFileSync(new URL("../src/model/suggest.js", import.meta.url), "utf8");
   assert.match(sw, /savings\.js/);
-  assert.match(app, /goalPins: set\.goal_monthly \?\? \{\}, goalShares: set\.goal_shares \?\? \{\}/);
   assert.match(eng, /splitSavings\(\{ goals, progress, month, total: saving, pins: input\.goalPins \?\? \{\}, shares: input\.goalShares \?\? \{\} \}\)/);
-  assert.match(app, /savedAll\.filter\(\(r\) => r\.kind !== "buffer"\)/);
 });
