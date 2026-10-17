@@ -40,12 +40,11 @@ function monthly(extra) { const s = base(); for (const m of M6) { slip(s, m + "-
 function twice() { const s = base(); for (const m of M6) { slip(s, m + "-15", 1000000); slip(s, m + "-30", 2000000); logMonth(s, m); } return s; }
 const sug = (s, o = {}) => suggestBudgets({ state: s, today: TODAY, month: MONTH, ...o });
 
-test("the new Budget is behind a switch that is off by default, and off it is exactly the old screen (a before/after on the code itself)", () => {
-  assert.match(app, /function viewBudget\(\) \{ return ledger\.settings\.try_new_budget \? viewBudgetNew\(\) : viewBudgetOld\(\); \}/);
-  const old = app.slice(app.indexOf("function viewBudgetOld() {")).split("\n}\n")[0] + "\n}\n";
-  assert.equal(old, readFileSync(new URL("./golden/old-viewbudget.txt", import.meta.url), "utf8"), "the old screen is byte for byte what it was before this change");
+test("Buckets is the only Budget screen (the simple list): the switch, the old screen and Setup's Budget options are gone (a saved setting is left alone, never deleted)", () => {
+  assert.match(app, /function viewBudget\(\) \{ return viewBudgetList\(\); \}/, "the simple list of categories and their monthly limits is the Buckets screen");
+  assert.ok(!app.includes("function viewBudgetOld") && !app.includes("toggle-new-budget") && !app.includes("Try the new Budget") && !app.includes("Budget options"), "no old screen, no switch, no Setup page for it");
+  assert.ok(!/try_new_budget/.test(app), "the app no longer reads the old setting; an old ledger that has it keeps it, unused");
   assert.ok(!/try_new_budget/.test(readFileSync(new URL("../src/model/seed.js", import.meta.url), "utf8")), "no setting is switched on by default");
-  assert.match(app, /case "toggle-new-budget": await commit\(S\(\), \{ \.\.\.ledger\.settings, try_new_budget: !ledger\.settings\.try_new_budget \}\)/);
 });
 
 test("the summary: Spending and Saved are plainly rounded to a tenth of a percent, Unallocated is in pesos (centavos), and nothing forces the shares to add to 100.0%", () => {
@@ -190,10 +189,10 @@ test("Income changed: review shows only when the income at the last confirm diff
 });
 
 test("Saved rows are never red: the block carries no critical shape or colour, and only a strictly-over spending row gets one", () => {
-  const block = app.slice(app.indexOf("const savedHtml ="), app.indexOf("let sum = \"\";"));
+  const i0 = app.indexOf("const savedHtml ="), block = app.slice(i0, app.indexOf("const sh = income ?", i0));
   assert.ok(block.length > 100 && !/critical|overnote|glyph/.test(block));
-  const spendRow = app.slice(app.indexOf("const spendRows ="), app.indexOf("const savedHtml ="));
-  assert.match(spendRow, /const over = r\.st\?\.over && r\.now !== null;/);
+  const spendRow = app.slice(app.indexOf("const spendRow = (r)"), app.indexOf("const savedHtml ="));
+  assert.match(spendRow, /const over = r\.st\?\.over && r\.now !== null, sp = /);
   assert.match(spendRow, /\$\{over \? `<small class="overnote">\$\{glyph\("critical"\)\} Over budget by/);
 });
 
@@ -202,9 +201,9 @@ test("the new screen adds only the amount and the share to a row, one totals lin
   for (const id of ["bud-income", "bud-shares", "bud-spent", "bud-spend-total", "bud-saved-total"]) assert.ok(view.includes(`id="${id}"`), id);
   assert.match(view, /Spending \$\{M\.showTenths\(sh\.spending\)\}, Saved \$\{M\.showTenths\(sh\.saved\)\}, \$\{bufferTotal \? "Buffer " \+ M\.showTenths\(sh\.buffer\) \+ ", " : ""\}\$\{sh\.unallocated < 0 \? "Over income by " \+ peso\(-sh\.unallocated\) : "Unallocated " \+ peso\(sh\.unallocated\)\}/);
   assert.match(view, /Spent so far: \$\{M\.showTenths/);
-  assert.match(view, /\[\["spending", "Spending"\], \["saved", "Saved"\], \["buckets", "Buckets"\]\]/, "one switch, like Cash flow: Spending first, then Saved, then Buckets");
-  assert.match(view, /const bview = ui\.budgetView \?\? "spending";/, "Spending shows first");
-  assert.match(view, /\$\{head\}\$\{sum\}\n    \$\{views\}<div class="viewbody">\$\{part\}<\/div>/, "the overview stays on top, one part at a time below it");
+  assert.ok(!view.includes('data-action="budget-view"') && !view.includes("ui.budgetView"), "no Spending or Saved switch: Buckets is the one view");
+  assert.match(view, /return `<h1>Buckets<\/h1>\$\{head\}\$\{sum\}\$\{bucketsHtml\}/, "the overview stays on top, the buckets below it");
+  assert.match(view, /data-action="bucket-open" data-bucket="\$\{r\.bucket\}" aria-expanded="\$\{on\}"/, "a bucket opens to show its categories and their limits");
 });
 
 test("no data version bump is needed: the new settings keys are additive, a ledger with or without them loads and passes the self-check", async () => {
@@ -224,9 +223,9 @@ test("the new Budget's amounts line up: the share sits under the amount, the tot
   assert.ok(view.includes('<small aria-label="${M.showTenths(r.tenths)} of income">${M.showTenths(r.tenths)}</small>'), "a bucket row shows just the percent; a screen reader still hears of income");
   assert.match(view, /M\.showTenths\(sh\.spending\) \+ " of income"/); assert.match(view, /M\.showTenths\(sh\.saved\) \+ " of income"/);
   assert.match(view, /"Over income by " \+ peso\(-sh\.unallocated\) : "Unallocated " \+ peso\(sh\.unallocated\)/, "Unallocated is shown in pesos");
-  assert.match(view, /<div class="meter goal"/);
+  assert.match(view, /flatBar\(used \/ 10/, "the overall bar is a thin flat bar");
   const css = readFileSync(new URL("../app/index.html", import.meta.url), "utf8");
-  assert.match(css, /\.row \.amt \{[^}]*text-align: right/); assert.match(css, /\.choice \.bval \{ text-align: right; \}/); assert.match(css, /\.meter\.goal \.fill \{ background: var\(--chart\)/);
+  assert.match(css, /\.row \.amt \{[^}]*text-align: right/); assert.match(css, /\.choice \.bval \{ text-align: right; \}/); assert.match(css, /\.flatbar > span \{[^}]*background: var\(--accent\)/);
 });
 
 // ----- rounding to the nearest 50 pesos, and how saving is worked out -----

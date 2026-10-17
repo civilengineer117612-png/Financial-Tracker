@@ -191,7 +191,7 @@
   .meter .tick { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1.5px; background: var(--ink); border-radius: 2px; box-shadow: 0 0 0 1.5px var(--paper); }
   .status { display: flex; align-items: center; color: var(--mid); font-size: 14px; }
   .bcard { padding: 10px 0; border-bottom: 1px solid var(--line); }
-  button.budrow { display: block; width: 100%; text-align: left; min-height: 44px; padding: 12px 14px; margin: 8px 0; font: inherit; font-weight: 400; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  button.budrow, div.budrow { display: block; width: 100%; text-align: left; min-height: 44px; padding: 12px 14px; margin: 8px 0; font: inherit; font-weight: 400; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
   .budrow .btop { display: flex; justify-content: space-between; align-items: center; gap: 10px; } .budrow .bname { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; } .budrow .bval { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .budrow .meter { display: block; margin-top: 10px; } .budrow .sub2 { display: block; margin-top: 8px; font-size: 13px; color: var(--muted); }
   .bcard .btop { margin-bottom: 0; }
@@ -529,8 +529,6 @@ button.qmark{background:none;border:0;color:var(--muted);font:inherit;font-size:
   .seg[aria-label="What to show"] button[aria-pressed="true"] { background: none; color: var(--ink); font-weight: 700; }
   .seg[aria-label="What to show"] button[aria-pressed="true"]::after { content: ""; position: absolute; bottom: -1px; left: 14%; right: 14%; height: 2px; background: var(--ink); border-radius: 2px 2px 0 0; }
   .modebar { display: flex; justify-content: flex-end; margin: 0; } .modebar button { background: none; border: 0; min-height: 44px; padding: 4px 0 4px 16px; color: var(--mid); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }
-  .goalrow { display: flex; align-items: center; gap: 14px; margin: 8px 0 2px; } .goalrow .status { margin: 0; }
-  .ring { width: 64px; height: 64px; flex: none; } .ring circle { fill: none; stroke-width: 4; } .ring .rt { stroke: var(--wash); } .ring .rf { stroke: var(--chart); stroke-linecap: round; } .ring text { font-size: 11px; font-weight: 700; fill: var(--ink); font-variant-numeric: tabular-nums; }
   details.why { margin: 8px 0; } details.why summary { color: var(--mid); font-size: 14px; cursor: pointer; list-style: none; text-decoration: underline; text-underline-offset: 3px; } details.why summary::-webkit-details-marker { display: none; } details.why .note { margin-top: 4px; }
   /* ---- how-to clips: Cards, Weekly review, Checks, Buffer ---- */
   .hw-month { display: flex; justify-content: space-between; align-items: center; margin: -2px 0 2px; } .hw-arrow { width: 34px; height: 30px; border-radius: 10px; background: var(--wash); display: grid; place-content: center; font-size: 18px; } .hw-dim { opacity: .4; }
@@ -628,6 +626,30 @@ button.qmark{background:none;border:0;color:var(--muted);font:inherit;font-size:
   @media (max-width: 340px) { .mlist { padding: 0 4px; } .mlist details.mrow .mpart { padding-left: 8px; } }   /* at 320 px the Help drawings must stay 11 px or more as shown */
   .flow { display: inline-flex; align-items: center; gap: 3px; margin-right: 8px; } .flow svg { color: var(--muted); }
   .tiles.two .tile { align-items: flex-start; gap: 6px; min-height: 76px; } .tiles.two .tile svg { color: var(--muted); } .tiles.two .tile b { font-size: 20px; font-weight: 600; }
+  /* the flat look for Budget and Goals (the Cash flow look): one thin bar, the figure above it */
+  .flatbar { display: block; height: 6px; border-radius: 3px; background: var(--track); margin-top: 8px; overflow: hidden; width: 100%; }
+  .flatbar > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; } .flatbar.over > span { background: var(--critical); }
+  .flathero { margin: 6px 2px 12px; } .flathero .eyebrow { font-size: 12px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+  .flatbig { display: block; font-size: 34px; font-weight: 600; margin: 6px 0 2px; font-variant-numeric: tabular-nums; } .flatsub { color: var(--muted); font-size: 14px; }
+  .flathero .flatbar { margin-top: 12px; }
+  .flatfig { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 12px; } .flatfig .flatbig { font-size: 26px; margin: 0; } .flatof { color: var(--muted); }
+  .flatmeta { display: flex; justify-content: space-between; color: var(--muted); font-size: 14px; margin-top: 8px; }
+  .goaldet { margin-top: 10px; } .goaldet[data-keep] > summary { border-bottom: 0; } .goaldet > summary { cursor: pointer; min-height: 44px; display: inline-flex; align-items: center; list-style: none; text-decoration: underline; } .goaldet > summary::-webkit-details-marker { display: none; }
+  .bcard.goalcard { padding: 14px 16px; margin: 10px 0; } .goalcard .tbl { margin: 0 -4px; }
+  /* "900 / 1,000": tap the figure for what is left (one choice for the whole app) */
+  .pair { display: inline-block; cursor: pointer; padding: 6px 0 3px; margin-top: -6px; border-bottom: 1px dotted var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; -webkit-user-select: none; user-select: none; }
+  .pair .pt { color: var(--muted); font-weight: 400; } .pair.big .pv { font-size: 26px; font-weight: 600; } .pair.big .pt { font-size: 18px; }
+  /* Buckets: every row is name and figure on one line, ONE full-width thin bar under them, nothing outside its card */
+  .flatbar { position: relative; overflow: visible; } .flatbar > span { border-radius: 3px; } .flatmark { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); border-radius: 1px; }
+  .choice.withbar { flex-wrap: wrap; align-items: baseline; row-gap: 4px; } .choice.withbar > .cn { flex: 1; min-width: 0; } .choice.withbar > .flatbar { flex: 0 0 100%; margin-top: 4px; } .choice.withbar > small { flex: 0 0 100%; }
+  .choice .overnote { margin-top: 0; }
+  .card#bud-income .eyebrow { margin-top: 0; } .card#bud-income .flatbig { margin: 4px 0 6px; } .sumblock { margin: 4px 2px 6px; }
+  .group > .bkrow { padding: 6px 0 12px; border-bottom: 1px solid var(--line); } .group > .bkrow:last-child { border-bottom: 0; } .bkrow > .row { border-bottom: 0; padding-bottom: 4px; } .bkrow > .flatbar { margin-top: 2px; }
+  .card .eyebrow { font-size: 12px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+  .flatbig .flatof { font-size: 18px; font-weight: 400; } .bval .pair + small { display: block; margin-top: 6px; }
+  .group > .askrow { border-bottom: 1px solid var(--line); padding: 4px 0 10px; } .group > .askrow:last-child { border-bottom: 0; } .askrow > .row { border-bottom: 0; } .askrow > .chips { margin-top: 0; }
+  .hub + .note, .hub ~ .note:first-of-type { margin-top: 16px; }
+  button.choice[data-action="open-budget"] { align-items: center; padding: 14px 0; } button.choice[data-action="open-budget"] small { margin-top: 2px; }
 </style>
 </head>
 <body>

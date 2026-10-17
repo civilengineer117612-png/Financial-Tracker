@@ -53,7 +53,7 @@ function clipFor(id) {
     const month = M.monthOf(today()), set = ledger.settings, income = M.baseIncome(S(), { plan: planOf(), pin: set.income_base_pin ?? null }).amount ?? 0;
     const cats = expenseCategories().map((c) => ({ c, amount: M.budgetFor(S().rules, c.id, month) ?? 0 }));
     const rows = [...cats.filter((x) => x.amount > 0), ...cats.filter((x) => x.amount === 0)].map((x) => ({ name: x.c.name, amount: x.amount, bucket: M.bucketOf(x.c, set.bucket_overrides ?? {}) }));
-    const bk = set.try_new_budget ? M.bucketRows({ categories: S().categories, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets, income, budgets: Object.fromEntries(cats.map((x) => [x.c.id, x.amount])), skipId: M.UNLOGGED_CATEGORY_ID }).rows.filter((r) => r.bucket !== "other") : null;
+    const bk = M.bucketRows({ categories: S().categories, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets, income, budgets: Object.fromEntries(cats.map((x) => [x.c.id, x.amount])), skipId: M.UNLOGGED_CATEGORY_ID }).rows.filter((r) => r.bucket !== "other");
     budget = { income, rows, buckets: bk };
   }
   const trips = id === "trips" ? S().tags.map((t) => ({ name: t.name, days: M.tripDays(t), spent: M.tagSummary(S(), t.id, { categoryMaps: S().categoryMaps, asOf: today() }).spent })) : [];
@@ -265,7 +265,19 @@ function renderAll() { renderBanner(); renderScreen(); renderNav(); renderSheet(
 // and audio capture beside Log and Verify) can be added without crowding the bottom bar.
 // Plain line icons (drawn in the text colour). Groups are separated by thin lines, like a settings list.
 // A progress ring with the percent in the middle. The figures beside it say the same in words (its list twin).
-const ring = (pct, label) => `<svg class="ring" viewBox="0 0 44 44" role="img" aria-label="${esc(label)}"><circle class="rt" cx="22" cy="22" r="18"/><circle class="rf" cx="22" cy="22" r="18" stroke-dasharray="${(Math.max(0, Math.min(100, pct)) / 100 * 113.1).toFixed(1)} 113.1" transform="rotate(-90 22 22)"/><text x="22" y="26.5" text-anchor="middle">${Math.round(pct)}%</text></svg>`;
+// One thin flat bar (the Cash flow look): ink-green on the track, red only when strictly over a budget (and then always with a shape and words next to it).
+const flatBar = (pct, label, over = false, mark = null) => `<span class="flatbar${over ? " over" : ""}" role="img" aria-label="${esc(label)}"><span style="width:${Math.max(0, Math.min(100, pct))}%"></span>${mark != null ? `<i class="flatmark" style="left:${Math.max(0, Math.min(100, mark))}%"></i>` : ""}</span>`;
+// One figure, two readings, like the time on a video: "900 / 1,000" and, with a tap, what is left. One choice for the whole app (setting `figure_left`), so every
+// screen reads the same way. `fmt` writes a number (money by default), `tail` follows the first reading ("paid"), `left` follows the second ("left", "to go"),
+// `over` words an excess (a budget: shape and words, never colour alone), `done` says it when nothing is left.
+const pairFig = (done, total, { fmt = peso, tail = "", left = "left", over = null, doneWord = "Nothing left", big = false, label = "" } = {}) => {
+  const lm = ledger.settings.figure_left === true, diff = total - done;
+  const body = !lm ? `<span class="pv">${esc(fmt(done))}</span><span class="pt"> / ${esc(fmt(total))}${tail ? " " + esc(tail) : ""}</span>`
+    : diff < 0 && over ? `<span class="pv">${glyph("critical")} ${esc(fmt(-diff))}</span><span class="pt"> ${esc(over)}</span>`
+    : diff <= 0 ? `<span class="pv">${esc(doneWord)}</span>` : `<span class="pv">${esc(fmt(diff))}</span><span class="pt"> ${esc(left)}</span>`;
+  const say = `${label ? label + ": " : ""}${fmt(done)} of ${fmt(total)}${tail ? " " + tail : ""}. ${lm ? "Showing what is left." : ""} Tap to switch between the total and what is left.`;
+  return `<span class="pair${big ? " big" : ""}" role="button" tabindex="0" data-action="toggle-pair" aria-label="${esc(say)}">${body}</span>`;
+};
 // A long explanation stays out of sight until asked for. The words are the same; they are just folded under "Why?".
 const why = (html, label = "Why?") => `<details class="why"><summary>${label}</summary><p class="note">${html}</p></details>`;
 // Setup normally shows a short list of pages. The tests ask for the old one long page with a flag in sessionStorage.
@@ -388,7 +400,7 @@ function renderScreen() {
   $("screen").innerHTML = hubStrip() + (m ? html.slice(m[0].length) : html);
   // Changing screen fades the whole screen in; changing the view (category, budget...) or chart/list fades in ONLY what is under the view
   // buttons, so the top (month, total, buttons) stays perfectly still. Fade only, nothing slides.
-  const tabSig = ui.tab, viewSig = [ui.view, ui.asList, ui.period?.kind, ui.incomeView, ui.budgetView].join(), scr = $("screen");
+  const tabSig = ui.tab, viewSig = [ui.view, ui.asList, ui.period?.kind, ui.incomeView].join(), scr = $("screen");
   const bar = scr.querySelector(".modebar, .viewmark");
   let body = null;
   if (bar) { body = document.createElement("div"); body.className = "viewbody"; while (bar.nextSibling) body.appendChild(bar.nextSibling); scr.appendChild(body); }
@@ -747,8 +759,8 @@ async function savePayslip() {
   const hasOvertime = r.lines.some((l) => l.kind === "overtime");
   if (hasOvertime) {
     const emerg = M.goalByRole(S(), "emergency");
-    if (!emerg) note = " Choose which goal is your emergency fund (Menu, Budget, Goals) to get the overtime draft.";
-    else if (!emerg.account_id) note = " Choose an account for your emergency fund (Menu, Budget, Goals) to get the overtime draft.";
+    if (!emerg) note = " Choose which goal is your emergency fund (Menu, Buckets, Goals) to get the overtime draft.";
+    else if (!emerg.account_id) note = " Choose an account for your emergency fund (Menu, Buckets, Goals) to get the overtime draft.";
     else if (!next.transactions.some((t) => t.id === "ot-" + id)) { const d = M.overtimeDraft(next, id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date()); if (d?.ok && d.transaction) { next = M.applyDrafts(next, [d]); note = " The Emergency Fund draft is waiting in Verify."; } }
   }
   ui.sheet = null; renderSheet();
@@ -1271,7 +1283,7 @@ function statementsHtml() {
   if (!accts.length) return `<p class="note">No statements yet. In Scan, Import old spending, pick a bank statement (PDF) and keep it. Oldest month first is easiest.</p>`;
   return accts.map((a) => {
     const rows = M.proveMonths(S(), a.id), good = rows.filter(stmGood).length, pct = rows.length ? Math.round((100 * good) / rows.length) : 0;
-    return `<div class="card" style="padding:16px"><div class="note" style="margin:0 0 4px">${esc(a.name)}</div><div class="stbig">${good} of ${rows.length} ${rows.length === 1 ? "month" : "months"}</div>
+    return `<div class="card" style="padding:16px"><div class="note" style="margin:0 0 4px">${esc(a.name)}</div><div class="stbig">${pairFig(good, rows.length, { fmt: (n) => String(n), tail: rows.length === 1 ? "month" : "months", left: "to prove", doneWord: "All proved", big: true, label: "Months proved" })}</div>
       <div class="stbar" role="img" aria-label="${good} of ${rows.length} months proved"><i style="width:${pct}%"></i></div><div class="note" style="margin:0">proved by the bank's own statements</div></div>
       <div class="setlist">${rows.map((r) => `<button class="setrow" data-action="st-month" data-acct="${esc(a.id)}" data-month="${r.month}"><div class="st"><b>${monthLabel(r.month)}</b><small>${stmGood(r) ? `${peso(r.opening)} to ${peso(r.closing)}` : esc(r.reason)}</small></div><span style="white-space:nowrap">${stmGood(r) ? STM_OK : STM_NO} ${r.accepted ? "Accepted" : STM_WORD[r.status]}</span><span class="chev">\u203a</span></button>`).join("")}</div>${keptHtml(a)}`;
   }).join("") + movesHtml() + `<p class="note">Add a statement from Scan, Import old spending. Oldest month first is easiest.</p>`;
@@ -1347,11 +1359,6 @@ function viewSetup() {
     <div class="sortlist group${arrC ? " arranging" : ""}">${orderedCats(pickCategories()).map(catRow).join("")}</div>
     <p><button data-action="add-cat" style="width:100%">Add a category</button></p>
     ${hiddenCats.length ? `<h2>Hidden categories</h2><p class="note">Their entries, budgets and history stay. They are left out of the pickers.</p>${hiddenCats.map((c) => `<div class="row"><div>${esc(c.name)}</div><div class="amt"><button class="link" data-action="show-cat" data-id="${esc(c.id)}">Show again</button></div></div>`).join("")}` : ""}`;
-  const budgetHtml = `    ${planOf() ? `<h2>Pay plan</h2>
-    <p class="note">A plan is in effect. <button class="link" data-action="tab" data-tab="${ledger.settings.try_new_budget ? "budget" : "plan"}">${ledger.settings.try_new_budget ? "Open it in Budget" : "Open it"}</button></p>` : ""}
-    <h2>Try the new Budget</h2>
-    <p class="note">Shows your income, each limit as a share of it, and what you save. Off by default.</p>
-    <p><button data-action="toggle-new-budget" aria-pressed="${Boolean(ledger.settings.try_new_budget)}" style="width:100%">${ledger.settings.try_new_budget ? "On (tap to turn off)" : "Off (tap to turn on)"}</button></p>`;
   const pics = (S().attachments ?? []).length;
   // No pictures: only the ledger, so the plain buttons stay. Pictures kept: the two big buttons do everything at once and the single ones fold away.
   const ledgerBtns = (first) => first ? `<p><button class="primary" data-action="open-backup" data-howto="backup">Back up now</button></p>
@@ -1382,7 +1389,6 @@ function viewSetup() {
   const blocks = {
     accounts: accountsHtml + reserveHtml,
     categories: categoriesHtml,
-    budget: budgetHtml,
     backup: backupHtml,
     statements: statementsHtml(),
     about: aboutHtml,
@@ -1391,7 +1397,6 @@ function viewSetup() {
   const rowsHome = [
     ["accounts", "cards", "Accounts", nAcc ? `${nAcc} ${nAcc === 1 ? "account" : "accounts"}` : "Add the accounts you pay from"],
     ["categories", "tag", "Categories", `${nCat} ${nCat === 1 ? "category" : "categories"}`],
-    ["budget", "budget", "Budget options", ledger.settings.try_new_budget ? "New Budget is on" : "New Budget is off"],
     ["backup", "backup", "Backup and restore", (() => { const d = M.daysSinceBackup(ledger.settings, today()); return d === null ? "No backup yet" : d === 0 ? "Backed up today" : "Last backup " + d + (d === 1 ? " day ago" : " days ago"); })()],
     ["statements", "statements", "Statements", stmSub()],
     ["about", "info", "About this app", M.isDevBuild() ? "Development copy" : "Version " + M.APP_BUILD],
@@ -1714,13 +1719,12 @@ function viewBudgets(hero, month, maps, asOf, now, label) {
   if (ui.asList) {
     return hero + varianceTable(budgeted);
   }
-  // One slim line per category: its name with its shape, what is spent, and the bar. Tap a row and the figure turns into what is left, with "spent of budget" below.
-  const open = ui.budOpen ?? new Set();
-  const cards = budgeted.map((r) => { const lvl = r.grade.level, on = open.has(r.category_id), over = lvl === "critical";
-    return `<button class="bcard budrow" data-action="toggle-bud" data-id="${esc(r.category_id)}" aria-expanded="${on}" aria-label="${esc(categoryName(r.category_id) + ": " + peso(r.spent) + " of " + peso(r.budget) + ", " + LEVELS[lvl] + ", " + words(r))}">
-      <span class="btop"><span class="bname">${glyph(lvl)} ${esc(categoryName(r.category_id))}</span><span class="bval">${over ? esc(words(r)) : on ? esc(words(r)) : peso(r.spent)}</span></span>
+  // One slim line per category: its name with its shape, "spent / budget" (tap the figure for what is left, for every row at once), and the bar.
+  const cards = budgeted.map((r) => { const lvl = r.grade.level, over = lvl === "critical";
+    return `<div class="bcard budrow" aria-label="${esc(categoryName(r.category_id) + ": " + peso(r.spent) + " of " + peso(r.budget) + ", " + LEVELS[lvl] + ", " + words(r))}">
+      <span class="btop"><span class="bname">${glyph(lvl)} ${esc(categoryName(r.category_id))}</span><span class="bval">${pairFig(r.spent, r.budget, { over: "over", label: categoryName(r.category_id) })}</span></span>
       <span class="meter g-${lvl}" aria-hidden="true"><span class="fill" style="width:${r.spent > 0 ? Math.max(1, Math.min(100, Math.round((r.spent * 100) / r.budget))) : 0}%"></span>${aheadOfMonth(r.spent, r.budget, elapsed) ? `<span class="tick" style="left:${elapsed}%"></span>` : ""}</span>
-      ${on || over ? `<span class="sub2">${peso(r.spent)} of ${peso(r.budget)}${over ? " \u00b7 " + esc(LEVELS[lvl]) : on ? " \u00b7 " + esc(LEVELS[lvl]) : ""}${r.pending > 0 ? " \u00b7 " + esc("+" + peso(r.pending) + " not verified") : ""}</span>` : ""}</button>`; }).join("");
+      ${over || r.pending > 0 ? `<span class="sub2">${over ? esc(LEVELS[lvl]) : ""}${over && r.pending > 0 ? " \u00b7 " : ""}${r.pending > 0 ? esc("+" + peso(r.pending) + " not verified") : ""}</span>` : ""}</div>`; }).join("");
   const rest = unbudgeted.length ? `<h2>No budget set</h2>${unbudgeted.map((r) => `<div class="row"><div>${esc(categoryName(r.category_id))}</div><div class="amt">${peso(r.spent)}</div></div>`).join("")}` : "";
   return hero + legend(budgeted.some((r) => aheadOfMonth(r.spent, r.budget, elapsed)), [...new Set(budgeted.map((r) => r.grade.level))]) + `<div>${cards}</div>${rest}`;
 }
@@ -1772,7 +1776,7 @@ function viewScheduled() {
   const nextText = (v) => v.next ? `${esc(md(v.next.due))} \u00b7 ${esc(M.daysText(Math.round((Date.parse(v.next.due + "T00:00:00Z") - Date.parse(t + "T00:00:00Z")) / 86400000)))}` : "";
   const rows = list.map((s) => {
     const v = M.viewOf(S(), s, t), inst = s.kind === "installment";
-    const left = inst ? `${v.paid} of ${v.of} paid${v.paidOff ? " \u00b7 paid off" : ""}` : `the ${ordinal(s.day)} of each month${v.ended ? " \u00b7 stopped" : ""}`;
+    const left = inst ? `${pairFig(v.paid, v.of, { fmt: (n) => String(n), tail: "paid", left: "to pay", doneWord: "Paid off", label: s.name })}` : `the ${ordinal(s.day)} of each month${v.ended ? " \u00b7 stopped" : ""}`;
     const bar = inst ? `<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${v.of ? Math.round((v.paid * 100) / v.of) : 0}%"></span></span>` : "";
     const right = inst ? `${peso(v.stillToPay)}<span class="sr"> still to pay</span>` : `${peso(schedAmount(s))}<span class="sr"> a month</span>`;
     return `<button class="choice" data-action="open-schedule" data-id="${esc(s.id)}"><span>${esc(s.name)}${bar}<small>${left}</small>${v.active ? `<small>${nextText(v)}</small>` : ""}</span><span class="bval">${right}</span></button>`;
@@ -1849,7 +1853,7 @@ function viewTrips() {
       <div class="status">${glyph(g.level)}${esc(LEVELS[g.level])} \u00b7 ${esc(g.over ? "Over by " + peso(sum.spent - sum.budget) : peso(sum.budget - sum.spent) + " left")}</div>` : "";
     const rows = sum.rows.length ? `<table class="tbl"><tr><th>Category</th><th class="n">Spent</th></tr>${sum.rows.map((r) => `<tr><td>${esc(r.name)}</td><td class="n">${peso(r.amount)}</td></tr>`).join("")}</table>` : `<p class="note">Nothing verified on this trip yet.</p>`;
     const days = M.tripDays(t);
-    return `<div class="bcard"><div class="btop"><span class="bname">${esc(t.name)}</span><span class="bval">${peso(sum.spent)}${sum.budget != null ? " of " + peso(sum.budget) : ""}</span></div>
+    return `<div class="bcard"><div class="btop"><span class="bname">${esc(t.name)}</span><span class="bval">${sum.budget != null ? pairFig(sum.spent, sum.budget, { over: "over", label: t.name }) : peso(sum.spent)}</span></div>
       <p class="note">${days ? esc(days) + ` \u00b7 <button class="link" data-action="open-trip-dates" data-id="${esc(t.id)}">Change dates</button>` : `<button class="link" data-action="open-trip-dates" data-id="${esc(t.id)}">Add dates</button>`}</p>${meter}
       ${sum.pending > 0 ? `<p class="note">plus ${peso(sum.pending)} not verified yet</p>` : ""}${rows}
       <p><button data-action="open-trip-detail" data-id="${esc(t.id)}">See the entries</button></p>
@@ -1919,11 +1923,11 @@ function viewPlan() {
   const plan = planOf(), all = plansOf();
   const howto = `<h2>How to use it</h2><p class="note">Use it when you are paid in parts and want each payday planned.</p><p class="note">Each line is tracked only when its name matches one of your categories, such as Rent or Food.</p><p class="note">Every payday's lines must add up to that payday's pay.</p>`;
   const buttons = (first) => `<p><button class="${first ? "primary" : ""}" data-action="open-planform" style="${first ? "" : "width:100%"}">${first ? "Type in a pay plan" : "Add a newer plan"}</button></p>`;
-  if (!plan) return `<h1>Pay plan</h1><p class="note">${all.length ? "Your plan starts " + esc(longDate([...all].sort((x, y) => (x.effective_from < y.effective_from ? -1 : 1))[0].effective_from)) + "." : "Your plan for each payday: how much goes to rent, daily spending and savings. You can skip it. Budget works without it."}</p>${all.length ? "" : buttons(true) + howto}`;
-  return `<h1>Pay plan</h1><p class="sub">This divides each payday. Budget sets your limit per category for the month.</p><p class="sub">${esc(paydaysLine(plan))}</p>
+  if (!plan) return `<h1>Pay plan</h1><p class="note">${all.length ? "Your plan starts " + esc(longDate([...all].sort((x, y) => (x.effective_from < y.effective_from ? -1 : 1))[0].effective_from)) + "." : "Your plan for each payday: how much goes to rent, daily spending and savings. You can skip it. Buckets works without it."}</p>${all.length ? "" : buttons(true) + howto}`;
+  return `<h1>Pay plan</h1><p class="sub">This divides each payday. Buckets sets your limit per category for the month.</p><p class="sub">${esc(paydaysLine(plan))}</p>
     ${planAgreeHtml(plan)}${planBody(plan, all)}${buttons(false)}${howto}`;
 }
-// The plan's tables: lines by payday, income against what arrived, this cutoff. Shared by the Pay plan screen and the Budget's "By payday" section.
+// The plan's tables: lines by payday, income against what arrived, this cutoff (the Pay plan screen).
 function planBody(plan, all) {
   const t = M.planTotals(plan), two = plan.paydays.length === 2, [p1, p2] = plan.paydays;
   const lines = plan.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="n">${peso(l.first)}</td>${two ? `<td class="n">${peso(l.second)}</td>` : ""}<td class="n">${peso(l.first + l.second)}</td></tr>`).join("");
@@ -1965,21 +1969,25 @@ function viewGoals() {
     const monthly = line ? line.first + line.second : 0;
     const eta = monthly > 0 && p.remaining ? Math.ceil(p.remaining / monthly) : null;
     const need = g.deadline && p.remaining ? M.requiredPerMonth(p, g.deadline, today().slice(0, 7)) : null;
-    const efBody = !ef ? "" : `<table class="tbl"><tr><td>Target</td><td class="n">${peso(ef.target)}</td></tr><tr><td>Balance now</td><td class="n">${peso(ef.balance)}</td></tr>
+    const efDet = !ef ? "" : `<details class="goaldet" data-keep="goal-${esc(g.id)}"${ui.pdet?.["goal-" + g.id] ? " open" : ""}><summary>Details</summary><table class="tbl"><tr><td>Target</td><td class="n">${peso(ef.target)}</td></tr><tr><td>Balance now</td><td class="n">${peso(ef.balance)}</td></tr>
         <tr><td>Monthly contribution</td><td class="n">${ef.monthly ? peso(ef.monthly) : ef.source === "budgets" ? "not set" : "none in your plan"}</td></tr>
         <tr><td>Months to target</td><td class="n">${ef.reached ? "Reached" : ef.monthsToTarget === null ? "Not known yet" : "About " + ef.monthsToTarget}</td></tr></table>
-        <div class="goalrow">${ring(ef.percent, ef.percent + "% of the target")}<div class="status">${ef.reached ? "Target reached" : peso(ef.remaining) + " to go"}</div></div>
-        <p class="note">Target = ${ef.months} months of ${esc(ef.basis.join(", "))} from ${ef.source === "budgets" ? "your budgets" : "your plan"} (${peso(ef.monthlyBasis)} a month). It changes when ${ef.source === "budgets" ? "your budgets do" : "your plan does"}.${ef.missing.length ? " Your plan has no line named " + esc(ef.missing.join(", ")) + "." : ""}</p>`;
+        <p class="note">Target = ${ef.months} months of ${esc(ef.basis.join(", "))} from ${ef.source === "budgets" ? "your budgets" : "your plan"} (${peso(ef.monthlyBasis)} a month). It changes when ${ef.source === "budgets" ? "your budgets do" : "your plan does"}.${ef.missing.length ? " Your plan has no line named " + esc(ef.missing.join(", ")) + "." : ""}</p></details>`;
+    const efBody = !ef ? "" : `<div class="flatfig">${pairFig(ef.balance, ef.target, { left: "to go", doneWord: "Target reached", big: true, label: g.name })}</div>${flatBar(ef.percent, ef.percent + "% of the target")}
+        <div class="flatmeta"><span>${ef.percent}%</span></div>${efDet}`;
     const body = hidden ? `<p class="note">Hidden. Tap Show balances above.</p>`
       : ef ? efBody
-      : isEf ? `<div class="btop"><span class="bval">${peso(p.balance)}</span></div><p class="note">The target is 3 months of your rent, food and essentials, from your budgets. Set those budgets (Menu, Budget) and it appears here.</p>`
-      : `<div class="btop"><span class="bval">${peso(p.balance)}${p.target != null ? " of " + peso(p.target) : ""}</span></div>
-         ${p.target != null ? `<div class="goalrow">${ring(p.percent, p.percent + "% of the goal")}<div class="status">${p.reached ? "Goal reached" : peso(p.remaining) + " to go"}${eta ? " \u00b7 about " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : ""}${need ? " \u00b7 " + peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""}</div></div>` : `<div class="status">No target, just a place to build up.</div>`}`;
-    return `<div class="bcard"><div class="btop"><span class="bname who">${iconOf(S().accounts.find((a) => a.id === g.account_id) ?? { name: g.name }, 24)}<span>${esc(g.name)}</span></span></div>${body}
+      : isEf ? `<div class="flatfig"><span class="flatbig">${peso(p.balance)}</span></div><p class="note">The target is 3 months of your rent, food and essentials, from your budgets. Set those budgets (Menu, Budget) and it appears here.</p>`
+      : `<div class="flatfig">${p.target != null ? pairFig(p.balance, p.target, { left: "to go", doneWord: "Goal reached", big: true, label: g.name }) : `<span class="flatbig">${peso(p.balance)}</span>`}</div>
+         ${p.target != null ? `${flatBar(p.percent, p.percent + "% of the goal")}<div class="flatmeta"><span>${p.percent}%</span></div>${eta || need ? `<p class="note small">${[eta ? "About " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : "", need ? peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""].filter(Boolean).join(" \u00b7 ")}</p>` : ""}` : `<div class="status">No target, just a place to build up.</div>`}`;
+    return `<div class="bcard goalcard"><div class="btop"><span class="bname who">${iconOf(S().accounts.find((a) => a.id === g.account_id) ?? { name: g.name }, 24)}<span>${esc(g.name)}</span></span></div>${body}
       <p>${g.account_id ? `<button data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button>` : `<span class="note">No account yet. </span><button data-action="open-goal-account" data-id="${esc(g.id)}">Choose an account</button>`}</p>
       <p class="note"><button class="link" data-action="goal-role" data-id="${esc(g.id)}">${g.role === "emergency" ? "This is your emergency fund (tap to undo)" : "Make this my emergency fund"}</button></p></div>`;
   }).join("");
-  return `<h1>Goals</h1><p class="sub">Your savings goals. Balances stay hidden until you show them.</p>${toggle}${cards || `<p class="note">No goals yet.</p>`}
+  const allShown = goals.length > 0 && goals.every((g) => !g.hidden_by_default || ui.reveal);
+  const total = allShown ? goals.reduce((n, g) => n + (M.goalProgress(S(), g)?.balance ?? 0), 0) : null;
+  const hero = total === null ? `<p class="sub">Your savings goals. Balances stay hidden until you show them.</p>` : `<div class="flathero"><div class="eyebrow">Saved toward goals</div><div class="flatbig">${peso(total)}</div><div class="flatsub">across ${goals.length} ${goals.length === 1 ? "goal" : "goals"}</div></div>`;
+  return `<h1>Goals</h1>${hero}${toggle}${cards || `<p class="note">No goals yet.</p>`}
     <p><button class="primary" data-action="open-goal" style="margin-top:8px">Add a goal</button></p>`;
 }
 
@@ -2014,14 +2022,24 @@ function viewCheckin() {
   const fix = `<h2 class="today">A mistake in something verified?</h2><p class="note">A verified entry is final. Here, and only here, you can cancel one from the last two weeks and enter it again.</p>
     <button class="choice" data-action="open-correct"${fixable ? "" : " disabled"}><span>Put right a verified entry</span><span class="bval">${fixable ? fixable + " can be put right" : "none to put right"}</span></button>`;
   return `<h1>Weekly review</h1><p class="sub">Week of ${esc(longDate(w.week_start))} to ${esc(longDate(w.week_end))}</p>
-    <p class="note">Open each account, look at the real balance, and type it in. ${done} of ${accts.length} counted.</p>${backupLine}${(() => { const l = M.picturesBackupLine((S().attachments ?? []).length, ledger.settings.last_pictures_backup_at ?? "", today()); return l ? `<p class="note">${esc(l)} <button class="link" data-action="tab" data-tab="setup" data-page="backup">Back up pictures</button></p>` : ""; })()}${rows}${gapNote}${fix}${questions}
+    <p class="note">Open each account, look at the real balance, and type it in. ${accts.length ? pairFig(done, accts.length, { fmt: (n) => String(n), tail: "counted", left: "to count", doneWord: "All counted" }) : ""}</p>${backupLine}${(() => { const l = M.picturesBackupLine((S().attachments ?? []).length, ledger.settings.last_pictures_backup_at ?? "", today()); return l ? `<p class="note">${esc(l)} <button class="link" data-action="tab" data-tab="setup" data-page="backup">Back up pictures</button></p>` : ""; })()}${rows}${gapNote}${fix}${questions}
     ${why("Money the ledger cannot explain is recorded as Unlogged. It never blocks anything.")}`;
 }
 
 // The switch is a settings key, off by default; off, this is exactly the screen it always was.
-function viewBudget() { return ledger.settings.try_new_budget ? viewBudgetNew() : viewBudgetOld(); }
+function viewBudgetList() {
+  const month = M.monthOf(today()), next = M.addMonths(month, 1);
+  const rows = expenseCategories().map((c) => {
+    const now = M.budgetFor(S().rules, c.id, month), later = M.budgetFor(S().rules, c.id, next);
+    const change = later !== now ? `<small>${later === null ? "ends" : peso(later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "";
+    return `<button class="choice" data-action="open-budget" data-id="${esc(c.id)}"><span>${esc(c.name)}${hiddenTag(c.id)}${change}</span><span class="bval">${now === null ? "No budget" : peso(now) + " a month"}</span></button>`;
+  }).join("");
+  return `<h1>Buckets</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${rows}
+    <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
+}
+function viewBudget() { return viewBudgetList(); }
 
-// ---- the new Budget (Setup, "Try the new Budget") ----
+// ---- Buckets: income, the buckets and, under each, its categories and limits ----
 // Income at the top, every amount as a share of it, then two blocks: "Spending" (the budgets) and "Saved and set aside". Nothing here is saved by
 // looking at it; "Suggest a budget" proposes, and only Confirm writes ordinary budget rules.
 function viewBudgetNew() {
@@ -2036,33 +2054,45 @@ function viewBudgetNew() {
   const saved = savedAll.filter((r) => r.kind !== "buffer"), bufferRows = savedAll.filter((r) => r.kind === "buffer");   // Saved counts Goals only: the overrun buffer is its own line
   const savedTotal = saved.reduce((n, r) => n + r.amount, 0), bufferTotal = bufferRows.reduce((n, r) => n + r.amount, 0);
   const shareable = M.shareableGoals(S().goals, new Map(S().goals.map((g) => [g.id, M.goalProgress(S(), g)])));
-  const head = `<div class="card" id="bud-income"><dl><dt>Income (base)</dt><dd class="big">${income ? peso(income) + " a month" : "Not known yet"}</dd></dl>
+  const head = `<div class="card" id="bud-income"><div class="eyebrow">Income (base)</div><div class="flatbig">${income ? `${peso(income)}<span class="flatof"> a month</span>` : "Not known yet"}</div>
     ${income ? `<p class="note">${esc(inc.text)}.${inc.source === "plan" ? " A plan is loaded, so its figure is used." : ""}</p>` : `<p class="note"><b>${esc(M.NO_INCOME_PROMPT)}</b></p>`}
     <p class="note"><button class="link" data-action="open-income-base">${set.income_base_pin ? "Change my figure" : "Type a different figure"}</button>${set.income_base_pin ? ` \u00b7 <button class="link" data-action="clear-income-pin">Use my payslips again</button>` : ""}</p>
     ${M.incomeChanged(set.budget_income_seen ?? null, income) ? `<p class="note" id="bud-changed">Income changed: review.</p>` : ""}</div>
     <p><button class="primary" data-action="open-suggest">Suggest a budget</button></p>`;
   const funds = new Map(M.sinkingFunds(S(), set, { month, asOf: today() }).map((f) => [f.category_id, f]));
-  const spendRows = rows.map((r) => {
+  const spendRow = (r) => {
     const sf = funds.get(r.c.id);   // saving up: the bar and "over" use what was set aside since it began, not just this month
     if (sf) {
       const t = Math.min(1000, sf.setAside > 0 ? M.tenths(Math.max(0, sf.spent), sf.setAside) : 0);
-      return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}${hiddenTag(r.c.id)}<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${t / 10}%"></span></span><small>${sf.over ? glyph("critical") + " Over by " + peso(sf.spent - sf.setAside) : peso(sf.available) + " saved up to spend"} \u00b7 ${peso(sf.spent)} spent</small></span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month"}<small>saving up</small></span></button>`;
+      return `<button class="choice withbar" data-action="open-budget" data-id="${esc(r.c.id)}"><span class="cn">${esc(r.c.name)}${hiddenTag(r.c.id)}</span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month"}<small>saving up</small></span>${flatBar(t / 10, r.c.name + ": saving up", sf.over)}<small>${sf.over ? glyph("critical") + " Over by " + peso(sf.spent - sf.setAside) : peso(sf.available) + " saved up to spend"} \u00b7 ${peso(sf.spent)} spent</small></button>`;
     }
-    const over = r.st?.over && r.now !== null;
+    const over = r.st?.over && r.now !== null, sp = Math.max(0, r.st?.spent ?? 0);
     const change = (r.later !== r.now ? `<small>${r.later === null ? "ends" : peso(r.later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "")
       + (M.committedIn(S(), r.c.id, month, today()) ? `<small>Committed by installments this month: ${peso(M.committedIn(S(), r.c.id, month, today()))}</small>` : "");
-    const bar = r.now > 0 ? (() => { const sp = Math.max(0, r.st?.spent ?? 0), t = Math.min(1000, M.tenths(sp, r.now)); return `<span class="meter goal" aria-hidden="true"><span class="fill" style="width:${t / 10}%"></span></span><small>${flow(true, sp)}${M.showTenths(t)}</small>`; })() : "";
-    return `<button class="choice" data-action="open-budget" data-id="${esc(r.c.id)}"><span>${esc(r.c.name)}${hiddenTag(r.c.id)}${bar}${change}${over ? `<small class="overnote">${glyph("critical")} Over budget by ${peso(r.st.spent - r.now)}</small>` : ""}</span><span class="bval">${r.now === null ? "No budget" : peso(r.now) + " a month" + share(r.now)}</span></button>`;
-  }).join("");
+    return `<button class="choice withbar" data-action="open-budget" data-id="${esc(r.c.id)}"><span class="cn">${esc(r.c.name)}${hiddenTag(r.c.id)}</span><span class="bval">${r.now === null ? "No budget" : pairFig(sp, r.now, { over: "over", label: r.c.name }) + share(r.now)}</span>${r.now > 0 ? flatBar(Math.min(100, Math.round((sp * 100) / r.now)), r.c.name + ": " + peso(sp) + " of " + peso(r.now), over) : ""}${over ? `<small class="overnote">${glyph("critical")} Over budget by ${peso(r.st.spent - r.now)}</small>` : ""}${change}</button>`;
+  };
   const savedHtml = saved.length ? saved.map((r) => `<div class="row"><div>${esc(r.name)}<small>${esc(r.pinned ? "The amount you typed" : r.label)}</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}${r.goal_id && !plan ? `<button class="link" data-action="open-goal-monthly" data-id="${esc(r.goal_id)}">Change</button>` : ""}</div></div>`).join("")
     : `<p class="note">${plan ? "Your plan has no savings, goal or buffer lines." : income ? (sug?.code === "NEEDS_RENT" ? "Suggest a budget asks for your rent first, then shows what to set aside." : "Nothing suggested yet. Suggest a budget to see it.") : "Add income first."}</p>`;
+  const sh = income ? M.shares(income, spendTotal, savedTotal, bufferTotal) : null;   // the totals lines and the overall line use the SAME three numbers, so they always agree
+  const fundList = [...funds.values()];
+  const setAsideHtml = fundList.length ? `<h2>Set aside for spending</h2><p class="note">${esc(M.SINKING_NOTE)}</p>${fundList.map((f) => `<div class="row"><div>${esc(f.name)}<small>${peso(f.setAside)} set aside \u00b7 ${peso(f.spent)} spent</small></div><div class="amt">${peso(Math.max(0, f.available))}</div></div>`).join("")}` : "";
+  const bucketOfCat = (c) => M.bucketOf(c, set.bucket_overrides ?? {});
   const bk = M.bucketRows({ categories: S().categories, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets, income: income ?? 0,
     budgets: Object.fromEntries(rows.map((r) => [r.c.id, r.now ?? 0])), goals: savedTotal, buffer: bufferTotal, skipId: M.UNLOGGED_CATEGORY_ID });
-  const bucketLine = (r) => `<div class="row" data-bucket="${r.bucket}"><div>${esc(r.label)}${r.target != null ? `<small>Target ${M.showTenths(r.target)}</small>` : ""}</div><div class="amt">${peso(r.amount)} a month${r.tenths != null ? `<small aria-label="${M.showTenths(r.tenths)} of income">${M.showTenths(r.tenths)}</small>` : ""}</div></div>
-    ${r.tenths != null ? `<div class="meter goal" role="img" aria-label="${esc(r.label)}: ${M.showTenths(r.tenths)} of income${r.target != null ? ", target " + M.showTenths(r.target) : ""}"><span class="fill" style="width:${Math.min(100, r.tenths / 10)}%"></span></div>` : ""}`;
+  // One bucket = one card row: tap it and the categories in it open under it (their limits, set the same way as always); Savings also holds what is saved and set aside.
+  const detailOf = (key) => {
+    const mine = rows.filter((x) => bucketOfCat(x.c) === key);
+    const list = mine.length ? `<div class="bkcats">${mine.map(spendRow).join("")}</div>` : `<p class="note small">No categories here yet.</p>`;
+    if (key !== "savings") return list;
+    return list + `<h3>Saved and set aside</h3>${savedHtml}${plan ? "" : `<details class="explain" id="bud-how"><summary>How saving is worked out</summary>${M.savingsExplained(M.resolveSettings(set.suggest_settings ?? {}).settings ?? M.SUGGEST_DEFAULTS).map((x) => `<p class="note">${esc(x)}</p>`).join("")}</details>`}<p class="note" id="bud-saved-total">Total: ${peso(savedTotal)}${sh ? " \u00b7 " + M.showTenths(sh.saved) + " of income" : ""}</p>
+      ${bufferRows.map((r) => `<div class="row" id="bud-buffer-line"><div>${esc(r.name)}<small>Its own line. Not savings, so it is not in the total above.</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}</div></div>`).join("")}
+      <p><button data-action="open-savings" style="width:100%">Add a savings category</button></p>${!plan && shareable.length >= 2 ? `<p class="note"><button class="link" data-action="open-shares">Change the percentages</button> that share what is left between ${shareable.length} goals${set.goal_shares ? ` \u00b7 <button class="link" data-action="clear-shares">Share equally again</button>` : ""}</p>` : ""}${setAsideHtml}`;
+  };
+  const bucketLine = (r) => { const on = !!ui.bucketOpen?.[r.bucket];
+    return `<div class="bkrow" data-bucket="${r.bucket}"><button class="bkhead" data-action="bucket-open" data-bucket="${r.bucket}" aria-expanded="${on}"><span class="row"><span class="bkl">${esc(r.label)}<i class="bkcaret" aria-hidden="true">\u203A</i>${r.target != null ? `<small>Target ${M.showTenths(r.target)}</small>` : ""}</span><span class="amt">${peso(r.amount)} a month${r.tenths != null ? `<small aria-label="${M.showTenths(r.tenths)} of income">${M.showTenths(r.tenths)}</small>` : ""}</span></span></button>${r.tenths != null ? flatBar(Math.min(100, r.tenths / 10), r.label + ": " + M.showTenths(r.tenths) + " of income" + (r.target != null ? ", target " + M.showTenths(r.target) : ""), false, r.target != null ? r.target / 10 : null) : ""}${on ? `<div class="bkdetail">${detailOf(r.bucket)}</div>` : ""}</div>`; };
   const unsure = M.unclear(S().categories, set.bucket_overrides ?? {}, M.UNLOGGED_CATEGORY_ID);
-  const confirmHtml = unsure.length ? `<h3 id="bud-confirm">Which bucket?</h3><p class="note">These names are unclear, so they wait in Other. Tap one answer for each. You can change it in Setup.</p>${unsure.map((c) =>
-    `<div class="row"><div>${esc(c.name)}</div></div><div class="chips">${bucketChips(c.id, null)}</div>`).join("")}` : "";
+  const confirmHtml = unsure.length ? `<h3 id="bud-confirm">Which bucket?</h3><p class="note">These names are unclear, so they wait in Other. Tap one answer for each. You can change it in Setup.</p><div class="group">${unsure.map((c) =>
+    `<div class="askrow"><div class="row"><div>${esc(c.name)}</div></div><div class="chips">${bucketChips(c.id, null)}</div></div>`).join("")}</div>` : "";
   // The list twin of the bucket bars: the same rows and numbers as a table (tap either one to switch; the choice stays while the app is open).
   const pctOf = (a) => (income ? M.showTenths(M.tenths(a, income)) : "");
   const bucketTable = `<table class="tbl" id="bud-bucket-table"><tr><th>Bucket</th><th class="n">A month</th><th class="n">Of income</th><th class="n">Target</th></tr>${[
@@ -2070,36 +2100,24 @@ function viewBudgetNew() {
     ...(bk.invested.amount > 0 ? [[esc(bk.invested.label) + "<small>in Savings</small>", peso(bk.invested.amount), pctOf(bk.invested.amount), ""]] : []),
     ...(bk.buffer.amount > 0 ? [[esc(bk.buffer.label) + "<small>not savings</small>", peso(bk.buffer.amount), pctOf(bk.buffer.amount), ""]] : []),
   ].map((r) => `<tr>${r.map((c, i) => `<td${i ? ' class="n"' : ""}>${c}</td>`).join("")}</tr>`).join("")}</table>`;
-  const bucketBars = `${bk.rows.map(bucketLine).join("")}
+  const bucketBars = `<div class="group">${bk.rows.map(bucketLine).join("")}
     ${bk.invested.amount > 0 ? `<div class="row" id="bud-invested"><div>${esc(bk.invested.label)}<small>Counted in Savings. Spent, not held, so never part of the emergency fund.</small></div><div class="amt">${peso(bk.invested.amount)} a month</div></div>` : ""}
-    ${bk.buffer.amount > 0 ? `<div class="row" id="bud-buffer"><div>${esc(bk.buffer.label)}<small>Its own line. Not savings.</small></div><div class="amt">${peso(bk.buffer.amount)} a month${bk.buffer.tenths != null ? `<small>${M.showTenths(bk.buffer.tenths)} of income</small>` : ""}</div></div>` : ""}`;
-  const bucketsHtml = income ? `<h2>Buckets</h2><p class="sub">${esc(M.TARGET_SOURCE)} Each bucket is shown against its target, as a reference and never as a limit.</p>
+    ${bk.buffer.amount > 0 ? `<div class="row" id="bud-buffer"><div>${esc(bk.buffer.label)}<small>Its own line. Not savings.</small></div><div class="amt">${peso(bk.buffer.amount)} a month${bk.buffer.tenths != null ? `<small>${M.showTenths(bk.buffer.tenths)} of income</small>` : ""}</div></div>` : ""}</div>`;
+  const bucketsHtml = `<p class="sub">${esc(M.TARGET_SOURCE)} Each bucket is shown against its target, as a reference and never as a limit.</p>
     <div class="modebar"><button data-action="bucket-mode" aria-label="${ui.bucketsAsList ? "Show the buckets as bars" : "Show the buckets as a table"}">${ui.bucketsAsList ? "Chart" : "List"}</button></div>
     <div class="flip" id="bud-buckets" data-action="bucket-mode" role="button" tabindex="0" aria-label="${ui.bucketsAsList ? "The table of the buckets. Tap to show the bars." : "Bars of the buckets. Tap to show the table."}">${ui.bucketsAsList ? bucketTable : bucketBars}</div>
     ${bk.unconfirmed.count ? `<p class="note" id="bud-unconfirmed">Includes ${peso(bk.unconfirmed.amount)} from ${bk.unconfirmed.count} unconfirmed ${bk.unconfirmed.count === 1 ? "category" : "categories"} - <button class="link" data-action="goto-confirm">confirm them</button></p>` : ""}
-    <p class="note"><button class="link" data-action="open-targets">Change the targets</button>${set.bucket_targets ? ` \u00b7 <button class="link" data-action="clear-targets">Use 50/30/20 again</button>` : ""}</p>${confirmHtml}` : "";
+    <p class="note"><button class="link" data-action="open-targets">Change the targets</button>${set.bucket_targets ? ` \u00b7 <button class="link" data-action="clear-targets">Use 50/30/20 again</button>` : ""}</p>${confirmHtml}`;
   let sum = "";
-  const sh = income ? M.shares(income, spendTotal, savedTotal, bufferTotal) : null;   // the totals lines and the overall line use the SAME three numbers, so they always agree
   if (income) {
     const spentNow = M.spendingByCategory(S(), { month }).total;
     const used = Math.max(0, Math.min(1000, M.tenths(spendTotal + savedTotal + bufferTotal, income)));
-    sum = `<div class="meter goal" role="img" aria-label="Spending and saved together are ${M.showTenths(used)} of income"><span class="fill" style="width:${used / 10}%"></span></div>
+    sum = `<div class="sumblock">${flatBar(used / 10, "Spending and saved together are " + M.showTenths(used) + " of income")}</div>
       <p class="note" id="bud-shares">Spending ${M.showTenths(sh.spending)}, Saved ${M.showTenths(sh.saved)}, ${bufferTotal ? "Buffer " + M.showTenths(sh.buffer) + ", " : ""}${sh.unallocated < 0 ? "Over income by " + peso(-sh.unallocated) : "Unallocated " + peso(sh.unallocated)}</p>
       <p class="note" id="bud-spent">Spent so far: ${M.showTenths(M.tenths(Math.max(0, spentNow), income))} of income</p>`;
   }
-  // Like Cash flow: the overview stays on top, and a switch shows one part at a time (Spending, Saved, Buckets). The choice stays while the app is open.
-  const bview = ui.budgetView ?? "spending";
-  const views = `<div class="seg" role="group" aria-label="What to show">${[["spending", "Spending"], ["saved", "Saved"], ["buckets", "Buckets"]].map(([v, t]) => `<button data-action="budget-view" data-view="${v}" aria-pressed="${bview === v}">${t}</button>`).join("")}</div><div class="viewmark"></div>`;
-  const fundList = [...funds.values()];
-  const setAsideHtml = fundList.length ? `<h2>Set aside for spending</h2><p class="note">${esc(M.SINKING_NOTE)}</p>${fundList.map((f) => `<div class="row"><div>${esc(f.name)}<small>${peso(f.setAside)} set aside \u00b7 ${peso(f.spent)} spent</small></div><div class="amt">${peso(Math.max(0, f.available))}</div></div>`).join("")}` : "";
-  const part = bview === "saved" ? `
-    <h2>Saved and set aside</h2>${savedHtml}${plan ? "" : `<details class="explain" id="bud-how"><summary>How saving is worked out</summary>${M.savingsExplained(M.resolveSettings(set.suggest_settings ?? {}).settings ?? M.SUGGEST_DEFAULTS).map((x) => `<p class="note">${esc(x)}</p>`).join("")}</details>`}<p class="note" id="bud-saved-total">Total: ${peso(savedTotal)}${sh ? " \u00b7 " + M.showTenths(sh.saved) + " of income" : ""}</p>
-    ${bufferRows.map((r) => `<div class="row" id="bud-buffer-line"><div>${esc(r.name)}<small>Its own line. Not savings, so it is not in the total above.</small></div><div class="amt">${peso(r.amount)} a month${share(r.amount)}</div></div>`).join("")}
-    <p><button data-action="open-savings" style="width:100%">Add a savings category</button></p>${!plan && shareable.length >= 2 ? `<p class="note"><button class="link" data-action="open-shares">Change the percentages</button> that share what is left between ${shareable.length} goals${set.goal_shares ? ` \u00b7 <button class="link" data-action="clear-shares">Share equally again</button>` : ""}</p>` : ""}${setAsideHtml}` : bview === "buckets" ? (bucketsHtml || `<p class="note">Add your income first: the buckets are shares of it.</p>`) : `
-    <h2>Spending</h2>${spendRows}<p class="note" id="bud-spend-total">Total budgeted: ${peso(spendTotal)}${sh ? " \u00b7 " + M.showTenths(sh.spending) + " of income" : ""}</p>`;
-  return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${head}${sum}
-    ${views}<div class="viewbody">${part}</div>
-    ${byPaydaySection()}
+  return `<h1>Buckets</h1>${head}${sum}${bucketsHtml}
+    <p class="note" id="bud-spend-total">Total budgeted: ${peso(spendTotal)}${sh ? " \u00b7 " + M.showTenths(sh.spending) + " of income" : ""}</p>
     ${why("A budget never changes the past. A change starts next month unless you choose otherwise.")}`;
 }
 const runSuggest = () => { const set = ledger.settings; return M.suggestBudgets({ state: S(), plan: planOf(), pin: set.income_base_pin ?? null, today: today(), month: M.monthOf(today()), settings: set.suggest_settings, pins: set.budget_pins ?? {}, rent: set.starter_rent ?? undefined, goalPins: set.goal_monthly ?? {}, goalShares: set.goal_shares ?? {}, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets }); };
@@ -2126,8 +2144,8 @@ async function savePinsFromForm() {
   if (JSON.stringify(pins) !== JSON.stringify(ledger.settings.budget_pins ?? {})) await commit(S(), { ...ledger.settings, budget_pins: pins }, { quiet: true });
 }
 
-// "By payday": the pay plan, inside Budget. The plan and the budgets it implies are written by ONE save (M.planWithBudgets), and this says whether they agree.
-// Says whether the plan and the budgets agree (and offers to make them match). Shared by Budget's By payday and the Pay plan screen.
+// The plan and the budgets it implies are written by ONE save (M.planWithBudgets), and this says whether they agree.
+// Says whether the plan and the budgets agree (and offers to make them match). Used by the Pay plan screen.
 function planAgreeHtml(plan) {
   const month = M.monthOf(today()), next = M.addMonths(month, 1);
   const now = M.planBudgetMismatches(S(), ledger.settings, month), then = M.planBudgetMismatches(S(), ledger.settings, next);
@@ -2139,13 +2157,6 @@ function planAgreeHtml(plan) {
   return agree;
 }
 
-function byPaydaySection() {
-  const plan = planOf(), all = plansOf(), month = M.monthOf(today()), next = M.addMonths(month, 1);
-  if (!plan) return `<p class="note">Paid in parts? <button class="link" data-action="tab" data-tab="plan">Plan each payday</button></p>`;   // with no plan, only a way to the Pay plan screen
-  const agree = planAgreeHtml(plan);
-  return `<h2 id="by-payday">By payday</h2><p class="sub">This divides each payday. Budget sets your limit per category for the month.</p><p class="sub">${esc(paydaysLine(plan))}</p>${agree}
-    ${planBody(plan, all)}`;
-}
 
 // With the new Budget on, saving a plan also sets the budgets it implies (one save). This says which, before anything is saved.
 function planBudgetPreview(plan) {
@@ -2153,16 +2164,6 @@ function planBudgetPreview(plan) {
   return `<p class="note">Saving also sets these budgets from ${esc(M.monthLabel(from))}: ${rows.length ? esc(rows.map((r) => `${r.name} ${peso(r.amount)}`).join(", ")) : "none"}.${unmatched.length ? ` No budget for ${esc(unmatched.join(", "))}: no spending category has that name.` : ""}</p>`;
 }
 
-function viewBudgetOld() {
-  const month = M.monthOf(today()), next = M.addMonths(month, 1);
-  const rows = expenseCategories().map((c) => {
-    const now = M.budgetFor(S().rules, c.id, month), later = M.budgetFor(S().rules, c.id, next);
-    const change = later !== now ? `<small>${later === null ? "ends" : peso(later) + " a month"} from ${esc(M.monthLabel(next))}</small>` : "";
-    return `<button class="choice" data-action="open-budget" data-id="${esc(c.id)}"><span>${esc(c.name)}${hiddenTag(c.id)}${change}</span><span class="bval">${now === null ? "No budget" : peso(now) + " a month"}</span></button>`;
-  }).join("");
-  return `<h1>Budget</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${rows}
-    <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
-}
 
 const emptyMoney = () => `<p class="note">Nothing verified for this month yet. Verified entries appear here.</p><p><button class="link" data-action="tab" data-tab="verify">Go to Verify</button></p>`;
 
@@ -2790,7 +2791,7 @@ function renderSheet() {
     body = `<h3>Where the leftover goes</h3>
       <p class="note">At month end, what is left in the buffer fills your goals in the order you tap. Each is filled to its target; the last takes the rest.</p>
       ${goals.length ? `<div class="chips">${goals.map((g) => `<button class="chip" data-action="pick-sweep" data-id="${esc(g.id)}" aria-pressed="${picked.includes(g.id)}">${picked.includes(g.id) ? picked.indexOf(g.id) + 1 + " \u00b7 " : ""}${esc(g.name)}</button>`).join("")}</div>`
-        : `<p class="note">Add goals first (Menu, Budget, Goals).</p>`}
+        : `<p class="note">Add goals first (Menu, Buckets, Goals).</p>`}
       ${picked.slice(0, -1).map((id) => { const g = goals.find((x) => x.id === id); return `<label for="t_${esc(id)}">Fill ${esc(g.name)} up to (\u20B1). Empty: its own target${g.target != null ? ", " + peso(g.target) : ", none"}</label><input id="t_${esc(id)}" data-field="t_${esc(id)}" inputmode="decimal" value="${esc(f["t_" + id] ?? "")}" autocomplete="off">`; }).join("")}
       <p class="note" id="sweep-msg" role="status"></p>
       <p><button class="primary" id="f-save" data-action="save-sweep" style="margin-top:14px" disabled>Save</button></p>`;
@@ -3099,7 +3100,7 @@ async function onClick(el) {
     case "open-menu": ui.menu = true; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "true"); break;
     case "close-menu": ui.menu = false; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "false"); break;
     case "tab": if (tab === "setup") ui.setupPage = el.dataset.page || (ui.tab === "setup" ? ui.setupPage : null); $("toast").innerHTML = ""; ui.menu = false; ui.tripId = null; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null;
-      if (M.shouldShowIntro(ledger.settings, tab) && !(tab === "plan" && ledger.settings.try_new_budget)) { ui.introOff = false; ui.sheet = { type: "intro", id: tab }; }   // with the new Budget the pay plan has no screen of its own: its popup comes with the form
+      if (M.shouldShowIntro(ledger.settings, tab)) { ui.introOff = false; ui.sheet = { type: "intro", id: tab }; }   // with the new Budget the pay plan has no screen of its own: its popup comes with the form
       renderAll(); break;
     case "period-step": {
       const p = period(), step = Number(el.dataset.step);
@@ -3127,7 +3128,6 @@ async function onClick(el) {
     }
     case "chart-view": ui.view = el.dataset.view; ui.sel = null; renderScreen(); break;
     case "toggle-entries": ui.entriesAnim = true; try { sessionStorage.setItem("logOpen", logOpen() ? "0" : "1"); } catch { /* private mode: it just stays closed */ } renderScreen(); break;
-    case "budget-view": ui.budgetView = el.dataset.view; renderScreen(); break;
     case "bucket-mode": ui.bucketsAsList = !ui.bucketsAsList; renderScreen(); break;
     case "chart-mode": ui.asList = el.dataset.mode === "list"; renderScreen(); break;
     case "open-month": ui.period = { kind: "month", month: id }; ui.view = "budget"; ui.sel = null; ui.asList = false; renderScreen(); break;
@@ -3142,7 +3142,6 @@ async function onClick(el) {
       showToast((w.changes.length === 1 ? "1 budget" : w.changes.length + " budgets") + " set from " + M.monthLabel(month) + ".");
       break;
     }
-    case "toggle-new-budget": await commit(S(), { ...ledger.settings, try_new_budget: !ledger.settings.try_new_budget }); break;
     case "pick-bucket": await commit(S(), M.withBucket(ledger.settings, id, el.dataset.bucket), { quiet: false }); break;
     case "open-savings": ui.sheet = { type: "goal", savings: true }; ui.form = { name: "", amount: "", deadline: "", account_id: null }; renderSheet(); break;
     case "open-goal-monthly": { const cur = ledger.settings.goal_monthly?.[id], row = M.savedRows({ plan: planOf(), suggestion: runSuggest() }).find((r) => r.goal_id === id); ui.sheet = { type: "goal-monthly", id }; ui.form = { amount: cur !== undefined ? (cur / 100).toFixed(2) : row ? (row.amount / 100).toFixed(2) : "" }; renderSheet(); break; }
@@ -3468,7 +3467,6 @@ async function onClick(el) {
       break;
     }
     case "open-planform": {   // the first times, a small popup says what the screen is for; then the form opens already filled
-      if (ledger.settings.try_new_budget && M.shouldShowIntro(ledger.settings, "plan")) { ui.introOff = false; ui.sheet = { type: "intro", id: "plan", then: "planform" }; renderSheet(); break; }
       openPlanForm(); break;
     }
     case "intro": ui.introOff = false; ui.sheet = { type: "intro", id: el.dataset.id, back: ui.sheet, manual: true }; renderSheet(); break;   // the ? : brought back on purpose, not counted
@@ -3499,7 +3497,7 @@ async function onClick(el) {
       const r = M.parsePlan(t.text);
       if (!r.ok) { showToast(r.error); break; }
       ui.planDraft = null;
-      if (ledger.settings.try_new_budget) {   // the new Budget: the plan row and its budgets are written together, or not at all
+      {   // the plan row and its budgets are written together, or not at all
         const w = M.planWithBudgets(S(), ledger.settings, { plan: r.plan, newId: () => newId("rule") });
         if (!w.ok) { showToast(w.message); break; }
         ui.sheet = null; renderSheet();
@@ -3507,12 +3505,6 @@ async function onClick(el) {
         showToast(w.changes.length ? "Plan loaded. " + (w.changes.length === 1 ? "1 budget" : w.changes.length + " budgets") + " set from " + M.monthLabel(w.month) + "." : "Plan loaded. The budgets already match.");
         break;
       }
-      const added = M.addPlan(plansOf(), r.plan);
-      if (!added.ok) { showToast(added.error); break; }
-      ui.sheet = null; renderSheet();
-      if (!added.unchanged) await commit(S(), { ...ledger.settings, plans: added.plans });
-      showToast(added.unchanged ? "That plan is already saved" : "Plan loaded");
-      break;
     }
     case "open-cal": { const target = el.dataset.target ?? "day"; ui.calMonth = M.monthOf(calSelected(target) ?? today()); ui.sheet = { type: "cal", target }; renderSheet(); break; }
     case "cal-step": { let next = M.addMonths(ui.calMonth, Number(el.dataset.step)); if (next > M.monthOf(today())) next = M.monthOf(today()); ui.calMonth = next; renderSheet(); break; }
@@ -3692,7 +3684,8 @@ async function onClick(el) {
       if (await commit(p.state, { ...ledger.settings, ...(queueId ? { scan_queue: scanQueue().filter((q) => q.id !== queueId) } : {}) })) { if (queueId) deletePhoto(queueId).catch(() => {}); showToast(plan.name + " " + peso(a.centavos) + " is due. Check it in Verify."); }
       break;
     }
-    case "toggle-bud": { const o = new Set(ui.budOpen ?? []); if (o.has(id)) o.delete(id); else o.add(id); ui.budOpen = o; renderScreen(); break; }
+    case "bucket-open": { const o = { ...(ui.bucketOpen ?? {}) }; o[el.dataset.bucket] = !o[el.dataset.bucket]; ui.bucketOpen = o; renderScreen(); break; }
+    case "toggle-pair": await commit(S(), { ...ledger.settings, figure_left: !ledger.settings.figure_left }, { quiet: true }); break;
     case "open-move": ui.sheet = { type: "move" }; ui.form = { amount: "", from_id: ledger.settings.last_account_id ?? null, to_id: null, fee: "" }; renderSheet(); break;
     case "save-move": {
       const f = ui.form, a = M.parsePesos(f.amount), fee = (f.fee ?? "").trim() ? M.parsePesos(f.fee) : { ok: true, centavos: 0 };
@@ -3759,8 +3752,8 @@ async function onClick(el) {
     }
     case "ot-draft": {
       const emerg = M.goalByRole(S(), "emergency");
-      if (!emerg) { showToast("Choose which goal is your emergency fund first (Menu, Budget, Goals)."); break; }
-      if (!emerg.account_id) { showToast("Choose an account for your emergency fund first (Menu, Budget, Goals)."); break; }
+      if (!emerg) { showToast("Choose which goal is your emergency fund first (Menu, Buckets, Goals)."); break; }
+      if (!emerg.account_id) { showToast("Choose an account for your emergency fund first (Menu, Buckets, Goals)."); break; }
       const d = M.overtimeDraft(S(), id, { transaction_id: "ot-" + id, emergency_account_id: emerg.account_id }, new Date());
       if (!d?.ok || !d.transaction) { showToast("Could not make the draft."); break; }
       await commit(M.applyDrafts(S(), [d])); showToast("The Emergency Fund draft is waiting in Verify."); break;

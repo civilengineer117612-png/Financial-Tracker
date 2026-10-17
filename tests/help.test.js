@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { MENU_GROUPS, SCREEN_NAMES } from "../src/model/names.js";
+import { MENU_GROUPS, SCREEN_NAMES, STRIP_NAMES } from "../src/model/names.js";
 import { QUICK_NOTES, FIRST_RUN_NOTICE, TOPICS, checklist } from "../src/model/help.js";
 
 const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
@@ -57,15 +57,15 @@ test("Help words never name an owner-specific goal or category, and the goals to
 });
 
 test("Pay plan words: the label, the empty state, the line under the title and the Help topic, exactly as the owner wrote them", () => {
-  const EMPTY = "Your plan for each payday: how much goes to rent, daily spending and savings. You can skip it. Budget works without it.";
-  const LINE = "This divides each payday. Budget sets your limit per category for the month.";
+  const EMPTY = "Your plan for each payday: how much goes to rent, daily spending and savings. You can skip it. Buckets works without it.";
+  const LINE = "This divides each payday. Buckets sets your limit per category for the month.";
   assert.equal(SCREEN_NAMES.plan, "Pay plan (optional)");
   assert.ok(app.includes(`<p class="note">${EMPTY}</p>`) || app.includes(EMPTY), "the empty state");
   assert.ok(app.includes(`<h1>Pay plan</h1><p class="sub">${LINE}</p>`), "the line sits right under the title when a plan exists");
   const t = TOPICS.find((x) => x.tab === "plan");
   assert.equal(t.label, "Pay plan (optional)");
-  assert.deepEqual(t.lines.slice(0, 3), [EMPTY, LINE, "With the new Budget switched on (Setup), the plan lives in Budget, under By payday."], "the owner's three lines stay first and word for word");
-  assert.ok(t.lines.length > 3 && t.lines.join(" ").includes("Budget or Pay plan?"), "and the Budget or Pay plan comparison follows them");
+  assert.deepEqual(t.lines.slice(0, 3), [EMPTY, LINE, "It sits beside Buckets and Goals, in the strip at the top."], "the owner's three lines stay first and word for word");
+  assert.ok(t.lines.length > 3 && t.lines.join(" ").includes("Buckets or Pay plan?"), "and the Buckets or Pay plan comparison follows them");
   assert.ok(MENU_GROUPS.some(([, ids]) => ids.includes("plan")), "it is still a menu screen, and so still needs (and has) its Help topic");
 });
 
@@ -82,24 +82,17 @@ test("loading and viewing a plan does not change it: an invented plan file parse
   assert.deepEqual(r.plan.paydays.map((p) => p.income), [100000, 240000]);
 });
 
-test("Stage C: the Pay plan menu entry is hidden only when the new Budget is on; the screen, its Help topic and every other entry stay", async () => {
-  const { menuHidden, MENU_GROUPS } = await import("../src/model/index.js");
-  assert.equal(menuHidden({}).size, 0); assert.equal(menuHidden(undefined).size, 0); assert.equal(menuHidden({ try_new_budget: false }).size, 0, "off: nothing is hidden");
-  assert.deepEqual([...menuHidden({ try_new_budget: true })], ["plan"]);
-  assert.ok(MENU_GROUPS.some(([, ids]) => ids.includes("plan")), "the entry is still part of the menu list, so Help keeps its topic");
-  assert.match(app, /items\.filter\(\(\[id\]\) => !hidden\.has\(id\) && M\.menuRows\(\[id\]\)\.length\)/); assert.match(app, /const hidden = M\.menuHidden\(ledger\.settings\)/);
-  assert.match(app, /data-tab="\$\{ledger\.settings\.try_new_budget \? "budget" : "plan"\}"/, "Setup points at Budget when the new Budget is on");
-  assert.ok(app.includes('ui.tab === "plan" ? viewPlan()'), "the old Pay plan screen is still routed for one more release");
+test("Buckets, Goals and Pay plan are three tabs: nothing is hidden from the menu any more, and the Pay plan screen is routed", async () => {
+  const { menuHidden, MENU_GROUPS, HUBS } = await import("../src/model/index.js");
+  assert.equal(menuHidden({}).size, 0); assert.equal(menuHidden(undefined).size, 0); assert.equal(menuHidden({ try_new_budget: true }).size, 0, "even an old ledger that still holds the setting hides nothing");
+  assert.deepEqual(HUBS.budget, ["budget", "goals", "plan"]);
+  assert.ok(MENU_GROUPS.some(([, ids]) => ids.includes("plan")), "the entry is part of the menu list, so Help keeps its topic");
+  assert.equal(SCREEN_NAMES.budget, "Plan & Save", "the menu and Help say Plan & Save"); assert.equal(STRIP_NAMES.budget, "Buckets", "the tab in the strip says Buckets");
+  assert.ok(app.includes('ui.tab === "plan" ? viewPlan()'), "the Pay plan screen is routed");
 });
 
-test("the Pay plan is typed in, only from its own screen: no button on Budget or Setup, and no By payday or Setup section when there is no plan", () => {
-  const view = app.slice(app.indexOf("function byPaydaySection()"), app.indexOf("function viewBudgetOld()"));
-  assert.match(view, /if \(!plan\) return `<p class="note">Paid in parts\? <button class="link" data-action="tab" data-tab="plan">Plan each payday<\/button><\/p>`;/, "without a plan, By payday is only a link to the Pay plan screen");
-  assert.ok(!/data-action="open-plan(form)?"/.test(view), "By payday offers no plan form or file button");
-  assert.match(app, /\$\{planOf\(\) \? `<h2>Pay plan<\/h2>/, "Setup's Pay plan section only appears when a plan exists");
-  assert.match(app, /3 months of your rent, food and essentials, from your budgets/, "the emergency fund hint points at Budget, not at loading a plan");
-  const plan = app.slice(app.indexOf("function viewPlan()"), app.indexOf("function planBody("));
-  assert.equal((plan.match(/data-action="open-planform"/g) ?? []).length, 1, "the Pay plan screen has one way to type a plan in");
-  assert.ok(!/data-action="open-plan"|id="p-file"|id="p-text"|load it from a file/i.test(app), "and no way to load a plan file: it is typed in");
-  assert.match(plan, /How to use it/, "with a how-to note");
+test("the Pay plan is typed in, only from its own screen: no button on Buckets or Setup, and no plan section on either", () => {
+  assert.ok(!app.includes("function byPaydaySection") && !app.includes("By payday"), "the plan is not repeated inside Buckets: it has its own tab");
+  assert.ok(!app.includes("<h2>Pay plan</h2>\n    <p class=\"note\">A plan is in effect."), "Setup has no Pay plan section any more");
+  assert.match(app, /3 months of your rent, food and essentials, from your budgets/, "the emergency fund hint points at the budgets, not at loading a plan");
 });
