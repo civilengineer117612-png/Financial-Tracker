@@ -1140,7 +1140,7 @@ check(ledgerNow.settings.plans.length === 1 && ledgerNow.settings.plans[0].lines
 await menuGo(page, "Goals");
 if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
 check((await text(page, "#screen")).includes("at your plan's ₱2,000.00 a month"), "a goal shows how long the plan takes");
-await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.click('#sheet .chip:has-text("My emergency fund")'); await page.fill("#f-amount", "999"); await page.click("#sheet .chip >> nth=0"); await page.click("#f-save");
+await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.click('#sheet button[data-action="pick-goal-role"]'); await page.fill("#f-amount", "999"); await page.click("#sheet .chip >> nth=0"); await page.click("#f-save");
 await seen(page, "#screen", "Emergency Fund");
 if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
 const efText = await text(page, "#screen");
@@ -1518,7 +1518,7 @@ console.log("Income");
 await addAccount(page, "Wallet", "asset", "1000");
 await addAccount(page, "Savings", "asset", "0");
 await menuGo(page, "Goals");
-await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.click('#sheet .chip:has-text("My emergency fund")'); await page.click('#sheet .chip:has-text("Savings")'); await page.click("#f-save");
+await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.click('#sheet button[data-action="pick-goal-role"]'); await page.click('#sheet .chip:has-text("Savings")'); await page.click("#f-save");
 await seen(page, "#screen", "Emergency Fund");
 const receiptPngForSlip = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = 600; c.height = 300; const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 600, 300); x.fillStyle = "#000"; x.font = "bold 36px sans-serif"; x.fillText("Net Pay   1,000.00", 30, 120); return c.toDataURL("image/png").split(",")[1]; });
 await menuGo(page, "Income");
