@@ -1294,7 +1294,7 @@ await page.click('button:has-text("Delete")'); await page.click('button:has-text
   await l4(a2, "7305"); await page.waitForTimeout(300);
   const led1 = JSON.parse((await stored(page)).local);
   check(led1.state.accounts.find((a) => a.id === a1.id).last4 === "4821" && led1.state.accounts.find((a) => a.id === a2.id).last4 === "7305", "the last 4 digits are saved on each account");
-  check((await text(page, "#screen")).includes("ends in 4821"), "Setup shows them");
+  check((await text(page, "#screen")).includes("***4821"), "Setup shows them");
   await l4(a1, "7305"); check(await seen(page, "#l4-msg", "Another account already has these 4 digits"), "the same four on a second account is refused");
   await page.click('#sheet button:has-text("Cancel")');
 
@@ -3840,10 +3840,11 @@ console.log("\n-- Arrange categories and accounts by holding and dragging --");
   await page.click('.setrow:has-text("Accounts")'); await page.waitForTimeout(300);
   const a0 = await names('.sortlist .row[data-sort="acct"]');
   check(a0.join("|") === "Alpha Debit|Test Card|Test Wallet|Zeta Savings", "accounts show A to Z until you arrange them: " + a0.join(", "));
+  { const t = await text(page, "#screen"); check(!/tap the tile|Bank, wallet or cash|add last 4 digits/.test(t) && /Bank or wallet/.test(t) && /add last 4/.test(t) && !/Cash\s+add last 4/.test(t) && !/ends in/.test(t), "the line under an account name is short: its kind and the last four digits, no picture hint"); }
   const zeta = page.locator('.sortlist .row[data-sort="acct"]').filter({ hasText: "Zeta Savings" });
   const b = await hold(zeta);
   check(await page.locator(".sortlist.arranging").count() === 1, "holding an account starts arranging");
-  await dragBy(b, -2 * b.height - 20, undefined);
+  await dragBy(b, -4 * b.height);
   const a1 = await names('.sortlist .sortrow[data-sort="acct"]');
   check(a1[0] === "Zeta Savings", "dragging Zeta to the top moves it first: " + a1.join(", "));
   await page.click('button[data-action="sort-done"]'); await page.waitForTimeout(250);

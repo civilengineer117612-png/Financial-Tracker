@@ -1305,7 +1305,7 @@ function viewSetup() {
   const reserveExists = S().accounts.some((a) => a.reserve_for);
   const hosts = activeAccounts().filter((a) => a.class === "asset" && !a.reserve_for);
   const arrA = ui.sortArr === "acct";
-  const rows = orderedAccts(S().accounts.filter((a) => !a.archived)).map((a) => arrA ? `<div class="row sortrow" data-sort="acct" data-id="${esc(a.id)}"><div class="who">${iconOf(a, 44)}<div>${esc(a.name)}</div></div></div>` : `<div class="row" data-sort="acct" data-id="${esc(a.id)}"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? (M.isPocket(a) ? "Savings pocket" : "Bank, wallet or cash") : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}${a.icon || a.icon_url ? "" : " · tap the tile to add a picture"} · <button class="link" data-action="edit-last4" data-id="${esc(a.id)}">${a.last4 ? "ends in " + esc(a.last4) : "add last 4 digits"}</button></small></div></div>
+  const rows = orderedAccts(S().accounts.filter((a) => !a.archived)).map((a) => `<div class="row sortrow" data-sort="acct" data-id="${esc(a.id)}"><div class="who"><button class="icobtn" data-action="open-icon" data-id="${esc(a.id)}" aria-label="Choose a picture for ${esc(a.name)}">${iconOf(a, 44)}</button><div>${esc(a.name)}<small>${a.class === "asset" ? (M.isPocket(a) ? "Savings pocket" : isCash(a) ? "Cash" : "Bank or wallet") : "Credit card"}${a.reserve_for ? " · covers " + esc(accountName(a.reserve_for)) : ""}${a.bank && !a.name.toLowerCase().startsWith(M.bankById(a.bank).name.toLowerCase()) ? " · linked to " + esc(M.bankById(a.bank).name) : ""}</small>${isCash(a) && !a.last4 ? "" : `<small><button class="link" data-action="edit-last4" data-id="${esc(a.id)}" aria-label="${a.last4 ? "Last four digits " + esc(a.last4) + ", tap to change" : "Add the last four digits"}">${a.last4 ? "***" + esc(a.last4) : "add last 4"}</button></small>`}</div></div>
       <div class="amt">${peso(M.naturalBalance(a, M.countedEntries(S())))}${(() => { const cv = reserveCovers().find((x) => x.reserve_id === a.id); return cv ? `<div class="coverwrap">${coverBar(cv.share, coverLabel(cv))}</div>` : ""; })()}${!used.has(a.id) ? `<br><button class="link" data-action="remove-account" data-id="${esc(a.id)}">${ui.confirmRemove === a.id ? "Tap again to remove" : "Remove"}</button>`
         : M.naturalBalance(a, M.countedEntries(S())) === 0 ? `<br><button class="link" data-action="hide-account" data-id="${esc(a.id)}">Hide</button>` : ""}</div></div>`).join("");
   const hiddenAccts = S().accounts.filter((a) => a.archived);
@@ -1330,21 +1330,21 @@ function viewSetup() {
   const accountsHtml = `    ${formOpen ? addForm : ""}
     <div class="h2row${arrA ? " sorthead" : ""}"><h2>Your accounts</h2>${arrA ? `<button class="link done" data-action="sort-done">Done</button>` : ""}</div>
     ${arrA ? `<p class="note small sortnote">Drag a row to move it. Done when it is right.</p>` : S().accounts.filter((a) => !a.archived).length > 1 ? `<p class="note small">A to Z. Hold an account to arrange your own order.</p>` : ""}
-    <div class="sortlist${arrA ? " arranging group" : ""}">${rows || `<p class="note">No accounts yet.</p>`}</div>${keepNote}${hiddenHtml}
+    <div class="sortlist group${arrA ? " arranging" : ""}">${rows || `<p class="note">No accounts yet.</p>`}</div>${keepNote}${hiddenHtml}
     ${formOpen ? "" : `<p><button id="add-account-open" data-action="toggle-add-account" style="width:100%">Add an account</button></p>`}`;
   const bucketLine = (c) => esc(M.BUCKET_LABELS[M.bucketOf(c, ledger.settings.bucket_overrides ?? {})]);
   const arrC = ui.sortArr === "cat";
-  const catRow = (c) => arrC ? `<div class="row sortrow" data-sort="cat" data-id="${esc(c.id)}"><div>${esc(c.name)}<small>${bucketLine(c)}</small></div></div>` : ui.catEdit
-    ? `<div class="row catedit" data-sort="cat" data-id="${esc(c.id)}"><button class="rowbtn" data-action="rename-cat" data-id="${esc(c.id)}"><span>${esc(c.name)}<small>${bucketLine(c)}</small></span><span class="chev" aria-hidden="true">\u203A</span></button>${M.removeKind(S(), c.id) === "remove"
+  const catRow = (c) => ui.catEdit
+    ? `<div class="row catedit sortrow" data-sort="cat" data-id="${esc(c.id)}"><button class="rowbtn" data-action="rename-cat" data-id="${esc(c.id)}"><span>${esc(c.name)}<small>${bucketLine(c)}</small></span><span class="chev" aria-hidden="true">\u203A</span></button>${M.removeKind(S(), c.id) === "remove"
         ? `<button class="catx" data-action="remove-cat" data-id="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">${ui.confirmRemoveCat === c.id ? "Tap again to remove" : "\u00D7"}</button>`
         : `<button class="catx" data-action="hide-cat" data-id="${esc(c.id)}" aria-label="Hide ${esc(c.name)}">\u2013</button>`}</div>`
-    : `<div class="row" data-sort="cat" data-id="${esc(c.id)}"><div>${esc(c.name)}<small>${bucketLine(c)}</small></div></div>`;
+    : `<div class="row sortrow" data-sort="cat" data-id="${esc(c.id)}"><div>${esc(c.name)}<small>${bucketLine(c)}</small></div></div>`;
   const pencilSvg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
   const hiddenCats = expenseCategories().filter((c) => M.isHiddenCategory(ledger.settings, c.id));
   const categoriesHtml = `    <div class="h2row${arrC ? " sorthead" : ""}"><h2>Categories</h2>${arrC ? `<button class="link done" data-action="sort-done">Done</button>` : ui.catEdit ? `<button class="link done" data-action="cat-done">Done</button>` : `<button class="iconbtn" data-action="cat-edit" aria-label="Edit categories">${pencilSvg}</button>`}</div>
     ${ui.catEdit ? `<p class="note small">Tap a category to change it. \u00D7 removes one with no entries; \u2013 hides one that has entries (its history stays).</p>` : ""}
     ${arrC ? `<p class="note small sortnote">Drag a row to move it. Done when it is right.</p>` : ""}
-    <div class="sortlist${arrC ? " arranging group" : ""}">${orderedCats(pickCategories()).map(catRow).join("")}</div>
+    <div class="sortlist group${arrC ? " arranging" : ""}">${orderedCats(pickCategories()).map(catRow).join("")}</div>
     <p><button data-action="add-cat" style="width:100%">Add a category</button></p>
     ${hiddenCats.length ? `<h2>Hidden categories</h2><p class="note">Their entries, budgets and history stay. They are left out of the pickers.</p>${hiddenCats.map((c) => `<div class="row"><div>${esc(c.name)}</div><div class="amt"><button class="link" data-action="show-cat" data-id="${esc(c.id)}">Show again</button></div></div>`).join("")}` : ""}`;
   const budgetHtml = `    ${planOf() ? `<h2>Pay plan</h2>
@@ -4325,7 +4325,7 @@ document.addEventListener("pointerdown", (e) => {
     if (ui.sortArr || (key === "cat" && ui.catEdit && e.target.closest(".catx"))) return;
     const at = { x: e.clientX, y: e.clientY }, id = r.dataset.id, pid = e.pointerId;
     // The finger is still down: the same touch goes on to drag the row it is holding.
-    sortHold = { at, t: setTimeout(() => { sortHold = null; suppressClick = true; ui.sortArr = key; ui.catEdit = false; renderScreen(); navigator.vibrate?.(12);
+    sortHold = { at, t: setTimeout(() => { sortHold = null; suppressClick = true; ui.sortArr = key; renderScreen(); navigator.vibrate?.(12);
       const row = [...document.querySelectorAll(".sortlist.arranging .sortrow[data-id]")].find((x) => x.dataset.id === id); if (row) startSdrag(row, key, at.y, pid); }, 450) };
     return;
   }

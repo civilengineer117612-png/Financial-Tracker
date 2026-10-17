@@ -310,7 +310,7 @@
   .sortlist .row[data-sort] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   .sortlist.arranging .sortrow { touch-action: none; cursor: grab; transition: transform .18s ease; position: relative; background: var(--paper); }
   .sortlist.arranging .sortrow.dragging { transition: none; z-index: 5; background: var(--wash); border: 1px solid var(--line); border-radius: 10px; margin: 0 -8px; padding-left: 8px; padding-right: 8px; }   /* the held row lifts out of the card as a rounded tile: no shadow */
-  .sortlist.arranging.group > .sortrow:last-child { border-bottom: 0; }
+  .sortlist.arranging .sortrow button, .sortlist.arranging .sortrow a { pointer-events: none; }   /* while arranging the rows look the same but only drag */
   .sorthead { align-items: baseline; }
   .sorthead button.link.done { margin: 0; padding: 0; min-height: 0; }   /* Done sits on the heading's line and ends where the card ends */
   .sortnote { margin: 6px 2px 8px; font-style: normal; }
