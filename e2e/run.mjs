@@ -3844,7 +3844,7 @@ console.log("\n-- Arrange categories and accounts by holding and dragging --");
   const zeta = page.locator('.sortlist .row[data-sort="acct"]').filter({ hasText: "Zeta Savings" });
   const b = await hold(zeta);
   check(await page.locator(".sortlist.arranging").count() === 1, "holding an account starts arranging");
-  await dragBy(b, -2 * b.height - 20, undefined);
+  await dragBy(b, -4 * b.height);
   const a1 = await names('.sortlist .sortrow[data-sort="acct"]');
   check(a1[0] === "Zeta Savings", "dragging Zeta to the top moves it first: " + a1.join(", "));
   await page.click('button[data-action="sort-done"]'); await page.waitForTimeout(250);
