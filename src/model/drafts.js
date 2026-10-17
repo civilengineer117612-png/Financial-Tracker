@@ -81,6 +81,7 @@ export function verifyDraft(state, id, now = new Date()) {
 // Edit a draft before verifying it. Expense drafts (one category entry, one account entry) can
 // change amount, category, account, date and payee. Other drafts (transfers, sweeps,
 // reconciliations) can change date and payee, and amount only when they have exactly two entries.
+// An income draft can also change its income category.
 // changes: {amount?, category_id?, account_id?, date?, payee?}
 export function editDraftFields(state, id, changes, { reserve_source_id } = {}, now = new Date()) {
   const t = state.transactions.find((x) => x.id === id);
@@ -132,6 +133,13 @@ export function editDraftFields(state, id, changes, { reserve_source_id } = {}, 
     const [a, b] = entries;
     next = entries.map((e) => ({ ...e, amount: Math.sign(e.amount) * changes.amount }));
     if (Math.sign(a.amount) === Math.sign(b.amount)) return { ok: false, violations: fail("NOT_EDITABLE", "unexpected entry signs").violations, state };
+  }
+  // An income draft (one income category line, one account line) may move to another income category: the money in stays where it arrived, only what it was changes.
+  const isIncome = entries.length === 2 && cat && acct && state.categories.find((c) => c.id === cat.category_id)?.kind === "income";
+  if (changes.category_id && changes.category_id !== cat?.category_id && isIncome) {
+    const target = state.categories.find((c) => c.id === changes.category_id);
+    if (target?.kind !== "income") return { ok: false, violations: fail("BAD_CATEGORY", "choose an income category").violations, state };
+    next = next.map((e) => (e.category_id != null ? { ...e, category_id: changes.category_id } : e));
   }
   const updated = { ...t, date: changes.date ?? t.date, payee: changes.payee ?? t.payee, ...(changes.memo !== undefined && t.schedule_id ? { memo: changes.memo } : {}) };   // a scheduled payment's note can be changed on any shape
   if (t.source === "photo" || t.source === "voice") updated.edited_before_verify = t.edited_before_verify === true || updated.date !== t.date || updated.payee !== t.payee || (changes.amount !== undefined && changes.amount !== Math.abs(entries[0]?.amount));
