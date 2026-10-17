@@ -3510,7 +3510,7 @@ console.log("Statements");
   check(row.includes("2 of 3 months proved"), "the Setup row says how many months are proved: " + row.replace(/\n/g, " / "));
   await page.click('.setrow:has-text("Statements")'); await page.waitForTimeout(250);
   let pg = await text(page, "#screen");
-  check(pg.includes("Test GoTyme") && pg.includes("2 of 3 months") && pg.includes("January 2022") && pg.includes("March 2022"), "the page shows the account, the count and a row per month");
+  check(pg.includes("Test GoTyme") && pg.replace(/\s+/g, " ").includes("2 / 3 months") && pg.includes("January 2022") && pg.includes("March 2022"), "the page shows the account, the count and a row per month");
   check(await page.locator(".stbar i").count() === 1 && (await page.locator(".stbar i").getAttribute("style")).includes("67%"), "one thin bar shows the share proved");
   check(/January 2022[\s\S]*Proved/.test(pg) && /March 2022[\s\S]*Not proved/.test(pg), "each month has a word with its shape: Proved or Not proved");
   check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "the page is not wider than the screen");
