@@ -342,10 +342,6 @@
   svg .tlband { fill: var(--accent); fill-opacity: .08; } svg .tlcur { stroke: var(--ink); stroke-width: 1; stroke-opacity: .5; } svg .tldot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
   svg .tlv { font-size: 10px; fill: var(--ink); font-variant-numeric: tabular-nums; } svg .tlx { font-size: 10px; fill: var(--muted); }
   .swcard[data-action], .row.tapcard { cursor: pointer; } .row.tapcard:active, .swcard[data-action]:active { background: var(--track); }
-  .whocard { padding: 2px 16px; } button.whorow { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 10px 0; color: var(--ink); min-height: 44px; }
-  .whocard button.whorow:last-child { border-bottom: 0; } .whotop { display: flex; justify-content: space-between; gap: 10px; } .whotop small { display: block; color: var(--mid); } .whoamt { font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .whobar { display: block; height: 6px; border-radius: 3px; background: var(--track); margin-top: 6px; } .whobar span { display: block; height: 6px; border-radius: 3px; background: var(--accent); }
-  button.whosub { padding-left: 22px; color: var(--mid); }
   .pmonths { display: flex; gap: 4px; align-items: flex-end; margin: 4px 0 12px; } .pmcol { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; } .pmval { font-size: 11px; color: var(--mid); font-variant-numeric: tabular-nums; min-height: 14px; } .pmbar { width: 14px; border-radius: 3px; background: var(--accent); } .pmcol small { color: var(--mid); }
   .netbigrow { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px; } .netbigrow .netbig { margin-bottom: 0; } button.eye { min-height: 44px; min-width: 44px; padding: 0; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
   .netbig { font-size: 34px; font-weight: 600; font-variant-numeric: tabular-nums; margin-bottom: 12px; } .netcard .cover { height: 8px; border-radius: 4px; }
@@ -607,6 +603,8 @@ button.qmark{background:none;border:0;color:var(--muted);font:inherit;font-size:
   .catrow .catbar { position: relative; } .catrow .catbar .flatmark { top: 0; bottom: 0; }
   button.catrow { display: block; width: 100%; min-height: 0; text-align: left; font: inherit; font-weight: 400; color: inherit; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; } button.catrow:last-child { border-bottom: 0; } button.catrow:active { background: var(--wash); }
   .goalact { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 12px; } .goalact .link { font-size: 14px; min-height: 0; } .catrow .gname { display: inline-flex; align-items: center; gap: 10px; } .catrow .gname .ico { margin-right: 0; } .catrow .goaldet { margin-top: 10px; }
+  .chartcard { padding: 14px 14px 10px; margin: 10px 0; } .chartcard .eyebrow { margin: 0 0 6px; } .chartcard .tlbox { margin: 0; }
+  .catrow.whosub { padding-left: 14px; color: var(--mid); }
   .catrow .ct { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; } .catrow .ct .amt { font-weight: 500; }
   .catrow .catbar { display: block; height: 6px; border-radius: 3px; background: var(--track); margin-top: 8px; overflow: hidden; } .catrow .catbar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
   .entrylink { text-align: center; margin: 12px 0; } .entrylink .link { min-height: 44px; color: var(--ink); }

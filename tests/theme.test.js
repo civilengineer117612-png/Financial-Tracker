@@ -88,3 +88,9 @@ test("Buckets and Goals draw their rows through the same barCard, and the old go
   const g = js.slice(js.indexOf("function viewGoals()"), js.indexOf("// ---------- weekly check-in"));
   assert.ok(b.includes("barCard(rows)") && g.includes("barCard(goals.map") && !g.includes("goalcard") && !b.includes('class="choice"'));
 });
+
+test("Trends: the day-by-day line and the month-by-month chart are each a white card, and Who draws its rows through the same barCard", () => {
+  const w = js.slice(js.indexOf("function whoHtml("), js.indexOf("// The spending line on Trends"));
+  assert.ok(w.includes("barCard(shown.flatMap(one))") && !w.includes("whorow") && !w.includes("whobar"));
+  assert.ok(js.includes('<div class="card chartcard"><div id="tlbox"') && js.includes('<div class="card chartcard"><div class="eyebrow">Month by month</div>'));
+});
