@@ -2769,13 +2769,13 @@ function renderSheet() {
     else {
       const firstMonth = M.proveMonths(S(), sh.account_id)[0]?.month === sh.month, st = firstMonth && d.carried !== 0 ? M.startFromStatement(S(), sh.account_id) : null;
       const same = Math.sign(d.explained) === Math.sign(d.difference), pct = d.difference === 0 || !same ? 0 : Math.max(0, Math.min(100, Math.round((100 * Math.abs(d.explained)) / Math.abs(d.difference))));
-      const tail = (m) => (m.action === "move" ? " \u00b7 a move between your own accounts" : m.action === "choose" ? " \u00b7 does not say what it was" : m.action === "in" ? " \u00b7 money in" : "");
+      const tail = (m) => (m.action === "move" ? " \u00b7 a move between your own accounts" : m.action === "choose" ? " \u00b7 does not say what it was \u00b7 added to Unlogged" : m.action === "in" ? " \u00b7 money in \u00b7 added as income" : "");
       body = `<h3 style="margin:0 0 4px">${monthLabel(sh.month)} against your ledger</h3><p class="note" style="margin:0 0 8px">${esc(acct?.name ?? "")}, at ${esc(longDate(d.asOf))}</p>
         <dl style="margin:0"><div class="row"><div>The bank closes at</div><div class="amt">${peso(d.statementClosing)}</div></div><div class="row"><div>Your ledger shows</div><div class="amt">${peso(d.ledgerBalance)}</div></div>
         <div class="row"><div><b>Difference</b><small>${d.difference === 0 ? "they agree" : d.difference > 0 ? "your ledger is higher" : "your ledger is lower"}</small></div><div class="amt"><b>${peso(Math.abs(d.difference))}</b></div></div></dl>
         ${d.difference === 0 ? "" : `<div class="stbar" role="img" aria-label="${pct} percent of the difference is explained by the lines"><i style="width:${pct}%"></i></div><p class="note small" style="margin:0 0 6px">${d.carried === 0 ? "The lines below explain all of it." : d.explained === 0 ? "None of it comes from lines in this month: it is carried from before." : `The lines below explain ${peso(Math.abs(d.explained))} of it. ${peso(Math.abs(d.carried))} is carried from before this month.`}</p>`}
         <p class="note" style="margin:10px 0 2px"><b>In the statement, not in your ledger</b></p>
-        ${d.missing.map((m) => `<div class="row" style="align-items:center"><div>${esc(m.line.payee || m.line.text)}<small>${esc(longDate(m.line.date))}${tail(m)}</small></div><div class="amt">${peso(m.line.amount)}${m.action === "expense" ? `<br><button class="link" data-action="st-adddraft" data-line="${esc(m.line.id)}">Add as draft</button>` : ""}</div></div>`).join("") || `<div class="row"><div>Nothing</div></div>`}
+        ${d.missing.map((m) => `<div class="row" style="align-items:center"><div>${esc(m.line.payee || m.line.text)}<small>${esc(longDate(m.line.date))}${tail(m)}</small></div><div class="amt">${peso(m.line.amount)}${m.action !== "move" ? `<br><button class="link" data-action="st-adddraft" data-line="${esc(m.line.id)}">Add as draft</button>` : ""}</div></div>`).join("") || `<div class="row"><div>Nothing</div></div>`}
         <p class="note" style="margin:10px 0 2px"><b>In your ledger, not in the statement</b></p>
         ${d.extra.map((m) => `<div class="row"><div>${esc(m.payee || "Entry")}<small>${esc(longDate(m.date))}</small></div><div class="amt">${peso(Math.abs(m.amount))}</div></div>`).join("") || `<div class="row"><div>Nothing</div></div>`}
         ${st?.ok ? `<p class="note small" style="margin:10px 0 4px">The rest is the starting balance. This statement opens at ${peso(st.opening)} on ${esc(longDate(st.from))}. ${esc(acct?.name ?? "The account")} started at ${peso(acct?.opening_balance ?? 0)}.</p>
@@ -3846,7 +3846,7 @@ async function onClick(el) {
     case "st-adddraft": {
       const sh = ui.sheet, d = M.statementDifference(S(), sh.account_id, sh.month), m = d.ok ? d.missing.find((x) => x.line.id === el.dataset.line) : null;
       if (!m) break;
-      const r = M.planMissingDraft(S(), m.line, { newId: () => newId("tx") });
+      const r = M.planMissingDraft(S(), m.line, { newId: () => newId("tx"), book: ledger.settings.payee_book });
       if (!r.ok) { showToast(r.message); break; }
       const msg = `Draft added: ${m.line.payee || m.line.text}, ${peso(m.line.amount)}. It waits in Verify.`;
       if (await commit(r.state)) showToast(msg);

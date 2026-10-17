@@ -146,7 +146,7 @@ test("a card, or a month with no closing balance, is not compared (and says why)
   assert.equal(statementDifference(diffBase(), "bk", "2023-09").ok, false);
 });
 
-test("a missing spending line becomes ONE draft expense (source statement), never verified by itself; money in or a move is not made this way", () => {
+test("a missing spending line becomes ONE draft expense (source statement), never verified by itself; a move is not made this way", () => {
   const s = withTx(diffBase(), tx("a", "2023-02-05", "Corner Cafe", 9500, "bk"));
   const m = statementDifference(s, "bk", "2023-02").missing[0];
   const r = planMissingDraft(s, m.line, { newId: seqId(), now: new Date(TS) });
@@ -155,7 +155,37 @@ test("a missing spending line becomes ONE draft expense (source statement), neve
   assert.deepEqual([t.status, t.date, t.payee], ["draft", "2023-02-20", "Bus fare"]);
   assert.deepEqual(selfCheck({ state: r.state }), []); assert.deepEqual(validateState(r.state), []);
   assert.equal(statementDifference(r.state, "bk", "2023-02").difference, 0, "after adding it the ledger agrees with the bank");
-  assert.equal(planMissingDraft(s, { ...m.line, direction: "in", meaning: "in" }, { newId: seqId() }).ok, false);
+  assert.equal(planMissingDraft(s, { ...m.line, direction: "out", meaning: "move" }, { newId: seqId() }).ok, false);
+});
+
+// the bank: spends 9,500, receives 20,000 from a person, sends 3,000 that does not say what it was; the ledger holds only the spending
+const MIXED = () => stmt([line("2023-02-05", "Corner Cafe", 9500, "out", 90500, "spending"), line("2023-02-10", "Sample Person", 20000, "in", 110500, "in"), line("2023-02-12", "Sample Person", 3000, "out", 107500, "unsure")], 100000);
+const mixedBase = () => {
+  const s = withTx(food({ ...keep(base(), "bk", { ...MIXED(), period: { from: "2023-02-01", to: "2023-02-28" } }, 1), accounts: [acct("gc", "Test Wallet", "1111"), { ...acct("bk", "Test Bank", "2222"), opening_balance: 100000 }] }), tx("a", "2023-02-05", "Corner Cafe", 9500, "bk"));
+  return { ...s, categories: [...s.categories, { id: "cat-unlogged", name: "Unlogged", kind: "expense" }, { id: "cat-salary", name: "Salary", kind: "income" }, { id: "cat-other-income", name: "Other income", kind: "income" }, { id: "cat-family", name: "Family", kind: "expense" }] };
+};
+
+test("money in becomes ONE draft of income in the account, in Other income, and unsure money out becomes ONE draft expense in Unlogged (or in the payee's own category)", () => {
+  const s = mixedBase(), d = statementDifference(s, "bk", "2023-02");
+  assert.deepEqual(d.missing.map((m) => m.action), ["in", "choose"]);
+  const ids = seqId(), inc = planMissingDraft(s, d.missing[0].line, { newId: ids, now: new Date(TS) });
+  assert.equal(inc.ok, true, inc.message); assert.equal(inc.kind, "income");
+  const t = inc.state.transactions.find((x) => x.source === "statement");
+  assert.deepEqual([t.status, t.date, t.payee], ["draft", "2023-02-10", "Sample Person"]);
+  const es = inc.state.entries.filter((e) => e.transaction_id === t.id);
+  assert.deepEqual(es.map((e) => [e.account_id ?? e.category_id, e.amount]), [["bk", 20000], ["cat-other-income", -20000]]);
+  assert.deepEqual(selfCheck({ state: inc.state }), []); assert.deepEqual(validateState(inc.state), []);
+  assert.deepEqual(statementDifference(inc.state, "bk", "2023-02").missing.map((m) => m.action), ["choose"], "the line is no longer missing");
+  const unsure = planMissingDraft(inc.state, d.missing[1].line, { newId: ids, now: new Date(TS) });
+  assert.equal(unsure.ok, true, unsure.message); assert.equal(unsure.kind, "expense");
+  const u = unsure.state.transactions.filter((x) => x.source === "statement").find((x) => x.date === "2023-02-12");
+  assert.equal(unsure.state.entries.find((e) => e.transaction_id === u.id && e.category_id).category_id, "cat-unlogged");
+  assert.equal(statementDifference(unsure.state, "bk", "2023-02").difference, 0, "with both drafts the ledger agrees with the bank");
+  assert.deepEqual(validateState(unsure.state), []);
+  const named = planMissingDraft(s, d.missing[1].line, { newId: seqId(), now: new Date(TS), book: { "sample person": { name: "Sample Person", category_id: "cat-family" } } });
+  assert.equal(named.state.entries.find((e) => e.category_id && e.transaction_id !== "a" && e.category_id !== "cat-food").category_id, "cat-family", "a payee you named keeps its category");
+  const none = { ...s, categories: s.categories.filter((c) => c.kind !== "income") };
+  assert.equal(planMissingDraft(none, d.missing[0].line, { newId: seqId() }).ok, false, "no income category, no draft");
 });
 
 test("starting an account from its statement sets its opening balance and date; the first month must be proved; earlier entries are counted as history", () => {
