@@ -2017,9 +2017,34 @@ function viewBudgetList() {
     return { id: c.id, action: "open-budget", name: `${esc(c.name)}${hiddenTag(c.id)}`, sub: change, fig: now === null ? "No budget" : peso(now) + " a month", pct: null };
   });
   return `<h1>Buckets</h1><p class="sub">How much to spend on each kind of thing each month. Tap one to set it.</p>${barCard(rows)}
-    <p class="note">A new budget never rewrites the past. A first budget counts from this month; a change starts next month unless you choose otherwise.</p>`;
+    <p class="center"><button class="link" data-action="open-suggest">Suggest a budget</button></p>`;
 }
 function viewBudget() { return viewBudgetList(); }
+
+const rowWhy = (x) => (x.source === "starter" && !x.pinned ? (/Lowered by .*$/.exec(x.reason)?.[0] ?? "") : x.reason);
+const runSuggest = () => { const set = ledger.settings; return M.suggestBudgets({ state: S(), plan: planOf(), pin: set.income_base_pin ?? null, today: today(), month: M.monthOf(today()), settings: set.suggest_settings, pins: set.budget_pins ?? {}, rent: set.starter_rent ?? undefined, goalPins: set.goal_monthly ?? {}, goalShares: set.goal_shares ?? {}, overrides: set.bucket_overrides ?? {}, targets: set.bucket_targets }); };
+// What the "Yours" box shows: what was typed or taken from the suggestion, else the pinned figure, else the budget in force.
+const yoursOf = (x, f) => (f["y_" + x.category_id] !== undefined ? f["y_" + x.category_id] : ledger.settings.budget_pins?.[x.category_id] !== undefined ? (ledger.settings.budget_pins[x.category_id] / 100).toFixed(2) : x.current != null ? (x.current / 100).toFixed(2) : "");
+// The figures the owner has in the suggestion sheet, as {category_id: centavos}, plus which were TYPED (those become pins).
+function draftOfSuggest() {
+  const f = ui.form, draft = {}, typed = {};
+  for (const x of f.sug.rows) {
+    const raw = yoursOf(x, f);
+    if (raw === "" && f["y_" + x.category_id] === undefined) continue;
+    const a = raw === "" ? { ok: true, centavos: 0 } : M.parsePesos(raw);
+    if (!a.ok) return { error: "Enter amounts like 4000 for " + x.name };
+    draft[x.category_id] = a.centavos;
+    if (f["y_" + x.category_id] !== undefined && !f.used?.[x.category_id]) typed[x.category_id] = a.centavos;
+  }
+  return { draft, typed };
+}
+async function savePinsFromForm() {
+  const f = ui.form; if (!f?.sug?.ok) return;
+  const d = draftOfSuggest(); if (d.error) return;
+  const pins = { ...(ledger.settings.budget_pins ?? {}), ...d.typed };
+  for (const id of Object.keys(f.used ?? {})) delete pins[id];
+  if (JSON.stringify(pins) !== JSON.stringify(ledger.settings.budget_pins ?? {})) await commit(S(), { ...ledger.settings, budget_pins: pins }, { quiet: true });
+}
 
 // The plan and the budgets it implies are written by ONE save (M.planWithBudgets), and this says whether they agree.
 // Says whether the plan and the budgets agree (and offers to make them match). Used by the Pay plan screen.
@@ -2392,6 +2417,61 @@ function renderSheet() {
       <p class="note">${esc(M.SINKING_HELP)}</p>
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-budget" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "budget-income") {
+    body = `<h3>Income (base)</h3><p class="note">The monthly figure every share is measured against. It stays until you tap "Use my payslips again".</p>
+      <label for="f-amount">Per month (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      ${REQNOTE}
+      <p><button class="primary" id="f-save" data-action="save-income-base" style="margin-top:6px" disabled>Use this figure</button></p>`;
+  } else if (sh.type === "goal-monthly") {
+    const g = S().goals.find((x) => x.id === sh.id), typed = ledger.settings.goal_monthly?.[sh.id] !== undefined;
+    body = `<h3>${esc(g.name)}: a month</h3><p class="note">Type how much to set aside for this goal each month. Other goals share what is left.</p>
+      <label for="f-amount">Per month (\u20B1)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
+      ${REQNOTE}
+      <p><button class="primary" id="f-save" data-action="save-goal-monthly" style="margin-top:6px" disabled>Use this amount</button></p>
+      ${typed ? `<p><button data-action="clear-goal-monthly" style="width:100%">Use the suggestion again</button></p>` : ""}`;
+  } else if (sh.type === "shares") {
+    const goals = sh.ids.map((id) => S().goals.find((g) => g.id === id)).filter(Boolean);
+    body = `<h3>Share what is left</h3><p class="note">What is left after typed amounts, finish dates and the emergency fund is shared by these goals. Whole percents adding to 100.</p>
+      ${goals.map((g) => `<label for="s-${esc(g.id)}">${esc(g.name)} (%)</label><input id="s-${esc(g.id)}" data-field="s_${esc(g.id)}" inputmode="numeric" value="${esc(ui.form["s_" + g.id] ?? "")}" autocomplete="off">`).join("")}
+      <p class="note" id="s-msg" role="status"></p>
+      <p><button class="primary" id="f-save" data-action="save-shares" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "targets") {
+    const f = ui.form;
+    body = `<h3>Bucket targets</h3><p class="note">${esc(M.TARGET_SOURCE)} Whole percents that add up to 100.</p>
+      ${[["need", "Needs"], ["want", "Wants"], ["savings", "Savings"]].map(([k, t]) => `<label for="t-${k}">${t} (%)</label><input id="t-${k}" data-field="${k}" inputmode="numeric" value="${esc(f[k] ?? "")}" autocomplete="off">`).join("")}
+      <p class="note" id="t-msg" role="status"></p>
+      <p><button class="primary" id="f-save" data-action="save-targets" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "budget-suggest") {
+    const f = ui.form, r = f.sug, month = M.monthOf(today());
+    if (r?.code === "NEEDS_RENT") body = `<h3>Suggest a budget</h3><p class="note">Not enough history yet, so I start from common shares of your pay. I cannot guess your rent.</p>
+      <label for="s-rent">What is your monthly rent? (\u20B1, 0 if you pay none)</label><input id="s-rent" data-field="rent" inputmode="decimal" value="${esc(f.rent ?? "")}" autocomplete="off">
+      <p><button class="primary" data-action="save-rent" style="margin-top:10px">Continue</button></p>`;
+    else if (!r?.ok) body = `<h3>Suggest a budget</h3><p class="note"><b>${esc(r?.message ?? M.NO_INCOME_PROMPT)}</b></p>`;
+    else if (f.stage === "review") {
+      body = `<h3>Save these budgets?</h3>${f.changes.length ? f.changes.map((c) => `<div class="row"><div>${esc(c.name)}</div><div class="amt">${c.from === null ? "No budget" : peso(c.from)} \u2192 ${c.to === 0 ? "removed" : peso(c.to)}</div></div>`).join("") : `<p class="note">Nothing would change.</p>`}
+        <label>From</label><div class="seg" role="group" aria-label="When it starts">${[[month, "This month"], [M.addMonths(month, 1), "Next month"]].map(([m, t]) => `<button data-action="set-start-sug" data-month="${m}" aria-pressed="${f.start === m}">${t}</button>`).join("")}</div>
+        <p class="note">${esc(M.monthLabel(f.start))}. Old budgets stay in the history.</p>
+        <p><button class="primary" data-action="save-sug"${f.changes.length ? "" : " disabled"}>Save budgets</button></p><p><button data-action="back-sug" style="width:100%">Back</button></p>`;
+    } else {
+      const sugAmt = (x) => { const typed = f["y_" + x.category_id]; const a = typed !== undefined && typed !== "" ? M.parsePesos(typed) : null; return a?.ok ? a.centavos : x.suggested ?? 0; };
+      const budgets = Object.fromEntries(r.rows.map((x) => [x.category_id, sugAmt(x)])), goalsTotal = r.saved.filter((x) => x.kind === "goal").reduce((n, x) => n + x.amount, 0), bufferAmt = r.saved.filter((x) => x.kind === "buffer").reduce((n, x) => n + x.amount, 0);
+      const bk = M.bucketRows({ categories: S().categories, overrides: ledger.settings.bucket_overrides ?? {}, targets: ledger.settings.bucket_targets, budgets, goals: goalsTotal, buffer: bufferAmt, income: r.income.amount });
+      const top = barCard([
+        { name: "Income", sub: esc(r.income.text), fig: `${peso(r.income.amount)} a month`, pct: null, action: "open-income-base", id: "x" },
+        ...bk.rows.map((b) => ({ name: esc(b.label), sub: b.target != null ? `target ${M.showTenths(b.target)}` : "", fig: `${peso(b.amount)} \u00b7 ${b.tenths == null ? "" : M.showTenths(b.tenths)}`, pct: b.tenths == null ? 0 : Math.min(100, b.tenths / 10), label: `${b.label}: ${b.tenths == null ? "" : M.showTenths(b.tenths)} of income` })),
+      ]);
+      const max = Math.max(1, ...r.rows.map((x) => sugAmt(x)));
+      const list = barCard(r.rows.map((x) => { const why = rowWhy(x), cur = sugAmt(x); return { name: esc(x.name), sub: why ? esc(why) : "", fig: `<b>${x.suggested === null ? "none" : peso(x.suggested)}</b>`, pct: Math.round((cur * 100) / max), label: `${x.name}: suggested ${x.suggested === null ? "none" : peso(x.suggested)}`,
+        extra: !f.sugEdit ? "" : `<div class="sugyours"><label for="y_${esc(x.category_id)}">Yours</label><input id="y_${esc(x.category_id)}" data-field="y_${esc(x.category_id)}" inputmode="decimal" value="${esc(yoursOf(x, f))}" placeholder="\u20B1 a month" autocomplete="off">${x.suggested === null ? "" : `<button class="link" data-action="use-sug" data-id="${esc(x.category_id)}">Use</button>`}</div>` }; }));
+      const saved = r.saved.length ? barCard(r.saved.map((x) => ({ name: esc(x.name), sub: x.kind === "buffer" ? "overrun buffer, never savings" : "", fig: peso(x.amount), pct: null, ...(x.goal_id ? { action: "open-goal-monthly", id: x.goal_id } : {}) }))) : "";
+      body = `<h3>Suggest a budget</h3><p class="note">Nothing is saved until you confirm. Suggestions are rounded to the nearest \u20B150; typing a figure pins it as yours.${r.history.used === "starter" && ledger.settings.starter_rent != null ? ` Rent: ${peso(ledger.settings.starter_rent)} <button class="link" data-action="change-rent">Change</button>` : ""}</p>
+        ${top}<p class="center"><button class="link" data-action="open-targets">Change the 50 / 30 / 20 split</button></p>
+        <h4 class="sugh">Spending, each a month</h4>${list}<p class="center"><button class="link" data-action="sug-edit">${f.sugEdit ? "Hide my own figures" : "Type my own figures"}</button></p>
+        ${saved ? `<h4 class="sugh">Saved and set aside</h4>${saved}<p class="center"><button class="link" data-action="open-shares">Share the saving between goals</button></p>` : ""}
+        <p class="note" id="sug-left">${r.short > 0 ? `Your own figures, the rent and the saved lines add up to <b>${peso(r.short)}</b> more than your income.` : `Left unallocated if you use all of them: <b>${peso(r.unallocated)}</b>.`}${r.trimmed.length ? ` Rounding would have gone over your income, so ${esc(r.trimmed.map((t) => `${t.name} was lowered by ${peso(t.by)}`).join(", "))}.` : ""}</p>
+        <p><button data-action="use-all-sug" style="width:100%">Use all suggestions</button></p>
+        <p><button class="primary" data-action="review-sug">Confirm</button></p>`;
+    }
   } else if (sh.type === "otfree") {
     const p = S().payslips.find((x) => x.id === sh.id);
     body = `<h3>Where should the free part go?</h3>
@@ -2758,6 +2838,20 @@ function refreshSave() {
     btn.disabled = !((f.name ?? "").trim() && a.ok && Boolean(f.start) === Boolean(f.end));
   } else if (type === "trip-dates") {
     btn.disabled = !(f.start && f.end);
+  } else if (type === "goal-monthly") {
+    const a = M.parsePesos(f.amount ?? "");
+    btn.disabled = !(a.ok && a.centavos >= 0);
+  } else if (type === "shares") {
+    const r = M.parseShares(ui.sheet.ids, Object.fromEntries(ui.sheet.ids.map((id) => [id, f["s_" + id] ?? ""]))), msg = $("s-msg");
+    if (msg) msg.textContent = r.ok || ui.sheet.ids.some((id) => !(f["s_" + id] ?? "")) ? "" : r.message;
+    btn.disabled = !r.ok;
+  } else if (type === "targets") {
+    const r = M.parseTargets({ need: f.need ?? "", want: f.want ?? "", savings: f.savings ?? "" }), msg = $("t-msg");
+    if (msg) msg.textContent = r.ok ? "" : (f.need && f.want && f.savings ? r.message : "");
+    btn.disabled = !r.ok;
+  } else if (type === "budget-income") {
+    const a = M.parsePesos(f.amount ?? "");
+    btn.disabled = !(a.ok && a.centavos > 0);
   } else if (type === "otfree") {
     btn.disabled = !f.account_id;
   } else if (type === "payslip") {
@@ -2954,6 +3048,52 @@ async function onClick(el) {
       if (!w.ok) { showToast("Could not save: " + w.message); break; }
       await commit(w.state, w.settings);
       showToast((w.changes.length === 1 ? "1 budget" : w.changes.length + " budgets") + " set from " + M.monthLabel(month) + ".");
+      break;
+    }
+    case "open-goal-monthly": { const cur = ledger.settings.goal_monthly?.[id], row = M.savedRows({ plan: planOf(), suggestion: runSuggest() }).find((r) => r.goal_id === id); ui.sheet = { type: "goal-monthly", id }; ui.form = { amount: cur !== undefined ? (cur / 100).toFixed(2) : row ? (row.amount / 100).toFixed(2) : "" }; renderSheet(); break; }
+    case "save-goal-monthly": { const a = M.parsePesos(ui.form.amount ?? ""); if (!a.ok || a.centavos < 0) break; const gid = ui.sheet.id; ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, goal_monthly: { ...(ledger.settings.goal_monthly ?? {}), [gid]: a.centavos } }); break; }
+    case "clear-goal-monthly": { const { [ui.sheet.id]: _gone, ...rest } = ledger.settings.goal_monthly ?? {}; ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, goal_monthly: rest }); break; }
+    case "open-shares": { const ids = M.shareableGoals(S().goals, new Map(S().goals.map((g) => [g.id, M.goalProgress(S(), g)]))).map((g) => g.id), cur = ledger.settings.goal_shares ?? {}, equal = Math.floor(100 / ids.length);
+      ui.sheet = { type: "shares", ids }; ui.form = Object.fromEntries(ids.map((gid, i) => ["s_" + gid, String(cur[gid] !== undefined ? cur[gid] / 100 : i === 0 ? 100 - equal * (ids.length - 1) : equal)])); renderSheet(); break; }
+    case "save-shares": { const r = M.parseShares(ui.sheet.ids, Object.fromEntries(ui.sheet.ids.map((gid) => [gid, ui.form["s_" + gid]]))); if (!r.ok) break; ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, goal_shares: r.shares }); break; }
+    case "clear-shares": { const { goal_shares, ...rest } = ledger.settings; await commit(S(), rest); break; }
+    case "open-targets": { const t = M.resolveTargets(ledger.settings.bucket_targets); ui.sheet = { type: "targets" }; ui.form = { need: String(t.need / 100), want: String(t.want / 100), savings: String(t.savings / 100) }; renderSheet(); break; }
+    case "save-targets": {
+      const r = M.parseTargets({ need: ui.form.need, want: ui.form.want, savings: ui.form.savings }); if (!r.ok) break;
+      ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, bucket_targets: r.targets }); break;
+    }
+    case "clear-targets": { const { bucket_targets, ...rest } = ledger.settings; await commit(S(), rest); break; }
+    case "open-income-base": { const cur = ledger.settings.income_base_pin; ui.sheet = { type: "budget-income" }; ui.form = { amount: cur ? (cur / 100).toFixed(2) : "" }; renderSheet(); break; }
+    case "save-income-base": { const a = M.parsePesos(ui.form.amount); if (!a.ok || a.centavos <= 0) break; ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, income_base_pin: a.centavos }); showToast("Income figure set"); break; }
+    case "clear-income-pin": { const { income_base_pin, ...rest } = ledger.settings; await commit(S(), rest); break; }
+    case "open-suggest": ui.sheet = { type: "budget-suggest" }; ui.form = { sug: runSuggest(), stage: "pick", start: M.addMonths(M.monthOf(today()), 1), used: {}, changes: [] }; renderSheet(); break;
+    case "save-rent": {   // the starter budget asks for the rent first; it is kept in the settings and asked again only if you choose to change it
+      const a = M.parsePesos(ui.form.rent ?? "");
+      if (!a.ok) { showToast("Enter the rent like 8000, or 0 if you pay none"); break; }
+      await commit(S(), { ...ledger.settings, starter_rent: a.centavos });
+      ui.form = { sug: runSuggest(), stage: "pick", start: M.addMonths(M.monthOf(today()), 1), used: {}, changes: [] }; renderSheet(); break;
+    }
+    case "change-rent": ui.form = { sug: { ok: false, code: "NEEDS_RENT", message: "Type your monthly rent first (0 if you pay none)." }, stage: "pick", rent: ledger.settings.starter_rent != null ? (ledger.settings.starter_rent / 100).toFixed(2) : "", used: {}, changes: [] }; renderSheet(); break;
+    case "sug-edit": ui.form.sugEdit = !ui.form.sugEdit; renderSheet(); break;
+    case "use-sug": { const x = ui.form.sug.rows.find((r) => r.category_id === id); if (x && x.suggested !== null) { ui.form["y_" + id] = (x.suggested / 100).toFixed(2); ui.form.used[id] = true; } renderSheet(); break; }
+    case "use-all-sug": { for (const x of ui.form.sug.rows) if (x.suggested !== null) { ui.form["y_" + x.category_id] = (x.suggested / 100).toFixed(2); ui.form.used[x.category_id] = true; } renderSheet(); break; }
+    case "review-sug": {
+      const d = draftOfSuggest(); if (d.error) { showToast(d.error); break; }
+      const r = M.budgetChangesFromDraft(S(), d.draft, { start: ui.form.start, newId: () => newId("rule") });
+      if (!r.ok) { showToast("Could not save: " + r.message); break; }
+      ui.form.stage = "review"; ui.form.changes = r.changes; renderSheet(); break;
+    }
+    case "back-sug": ui.form.stage = "pick"; renderSheet(); break;
+    case "set-start-sug": { ui.form.start = el.dataset.month; const r = M.budgetChangesFromDraft(S(), draftOfSuggest().draft, { start: ui.form.start, newId: () => newId("rule") }); if (r.ok) ui.form.changes = r.changes; renderSheet(); break; }
+    case "save-sug": {
+      const d = draftOfSuggest(); if (d.error) { showToast(d.error); break; }
+      const r = M.budgetChangesFromDraft(S(), d.draft, { start: ui.form.start, newId: () => newId("rule") });
+      if (!r.ok) { showToast("Could not save: " + r.message); break; }
+      const pins = { ...(ledger.settings.budget_pins ?? {}), ...d.typed }; for (const k of Object.keys(ui.form.used ?? {})) delete pins[k];
+      const income = M.baseIncome(S(), { plan: planOf(), pin: ledger.settings.income_base_pin ?? null }).amount;
+      ui.sheet = null; renderSheet();
+      await commit(r.state, { ...ledger.settings, budget_pins: pins, budget_income_seen: income });
+      showToast(r.changes.length === 1 ? "1 budget saved" : r.changes.length + " budgets saved");
       break;
     }
     case "open-budget": {
@@ -3576,7 +3716,7 @@ async function onClick(el) {
     case "plan-cancel": ui.planDraft = null; ui.sheet = null; renderSheet(); break;
     case "close-sheet": { voiceListener?.stop(); if (ui.sheet?.type === "planform") ui.planDraft = ui.form;
       if (ui.sheet?.type === "intro") { const sh = ui.sheet; await commit(S(), M.markIntro(ledger.settings, sh.id, ui.introOff === true, !sh.manual), { quiet: true }); if (sh.back) { ui.sheet = sh.back; renderSheet(); break; } }   // a tap outside the popup counts as seen, too   // a tap outside the plan keeps the work for next time; Cancel throws it away
-      const wasNotice = ui.sheet?.type === "notice"; ui.sheet = null; renderSheet(); if (wasNotice) maybeWelcome(); break; }
+      if (ui.sheet?.type === "budget-suggest") await savePinsFromForm(); const wasNotice = ui.sheet?.type === "notice"; ui.sheet = null; renderSheet(); if (wasNotice) maybeWelcome(); break; }
     case "cat-card-later": ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, cat_card_seen: M.phTimestamp() }, { quiet: true }); break;
     case "cat-card-show": { ui.sheet = null; ui.menu = false; ui.tab = "setup"; ui.setupPage = "categories"; ui.catEdit = true; renderAll(); window.scrollTo(0, 0); await commit(S(), { ...ledger.settings, cat_card_seen: M.phTimestamp() }, { quiet: true }); break; }
     case "welcome-off": ui.form.welcomeOff = !ui.form.welcomeOff; el.setAttribute("aria-checked", String(ui.form.welcomeOff)); break;

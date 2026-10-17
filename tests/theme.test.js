@@ -101,3 +101,10 @@ test("Scheduled draws its rows through the same barCard, and the one progress me
   assert.match(css, /\.meter \{ position: relative; height: 6px;/);
   assert.match(css, /\.meter \.fill \{ display: block; height: 6px;/);
 });
+
+test("Suggest a budget is a window opened from the Buckets list; the list stays simple and nothing is saved before Confirm", () => {
+  const b = js.slice(js.indexOf("function viewBudgetList()"), js.indexOf("function viewBudget()"));
+  assert.ok(b.includes('data-action="open-suggest">Suggest a budget</button>') && !b.includes("never rewrites the past"));
+  assert.ok(js.includes('sh.type === "budget-suggest"') && js.includes('case "review-sug"') && js.includes('case "save-sug"') && js.includes('case "sug-edit"'));
+  assert.ok(js.includes("barCard(r.rows.map") && js.includes("M.bucketRows({ categories: S().categories"), "the window draws through barCard and shows the split against the targets");
+});
