@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-17-bar-rows-3", date: "2026-10-17", text: "Trends: the line and the month-by-month chart each sit in their own card, and Who uses the same rows as the rest of the app." },
   { id: "2026-10-17-bar-rows-2", date: "2026-10-17", text: "Buckets and Goals now use the same card and thin bar as Spending; the goal buttons are quiet links under each goal." },
   { id: "2026-10-17-bar-rows", date: "2026-10-17", text: "Category, Accounts and Budget now share one look: a white card, the figure at the right and one thin bar under each name." },
   { id: "2026-10-17-buckets", date: "2026-10-17", text: "Budget is now Plan & Save in the menu, with the tabs Buckets, Goals and Pay plan; the Setup switch for the new Budget is gone." },
