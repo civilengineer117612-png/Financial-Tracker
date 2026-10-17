@@ -7,7 +7,9 @@ import { categoryFor } from "./importer.js";
 import { phTimestamp } from "./util.js";
 
 const key = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-const signed = (l) => (l.direction === "in" ? l.amount : -l.amount);
+// A card statement prints what is OWED: a purchase raises the figure and a payment lowers it, the other way round from an account that holds money.
+const signed = (l, k = 1) => k * (l.direction === "in" ? l.amount : -l.amount);
+const kindOf = (state, accountId) => (state.accounts?.find((a) => a.id === accountId)?.class === "liability" ? -1 : 1);
 const lastDay = (month) => { const [y, m] = month.split("-").map(Number); return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`; };
 const monthBefore = (month) => { const [y, m] = month.split("-").map(Number); const d = new Date(Date.UTC(y, m - 2, 1)); return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0"); };
 
@@ -63,7 +65,7 @@ function noBalanceReason(records, month) {
 //   "no-balance" the statement has no balances to prove this month with.
 // Each: {month, opening, closing, moneyIn, moneyOut, count, status, reason, accepted}.
 export function proveMonths(state, accountId) {
-  const lines = accountLines(state, accountId), records = (state.statementRecords ?? []).filter((r) => r.account_id === accountId);
+  const k = kindOf(state, accountId), lines = accountLines(state, accountId), records = (state.statementRecords ?? []).filter((r) => r.account_id === accountId);
   const accepted = new Set((state.statementAccepts ?? []).filter((a) => a.account_id === accountId).map((a) => a.month));
   const months = [...new Set(lines.map((l) => l.date.slice(0, 7)))].sort();
   const out = [];
@@ -73,13 +75,13 @@ export function proveMonths(state, accountId) {
     const row = { month, opening: null, closing: null, moneyIn, moneyOut, count: ml.length, status: "no-balance", reason: noBalanceReason(records, month), accepted: accepted.has(month) };
     const whole = records.find((r) => coversWhole(records, r, month) && Number.isSafeInteger(r.opening) && Number.isSafeInteger(r.closing));
     if (ml.every((l) => Number.isSafeInteger(l.balance))) {
-      row.opening = ml[0].balance - signed(ml[0]); row.closing = ml[ml.length - 1].balance;
-      const bad = ml.filter((l, i) => (i === 0 ? row.opening : ml[i - 1].balance) + signed(l) !== l.balance).length;
+      row.opening = ml[0].balance - signed(ml[0], k); row.closing = ml[ml.length - 1].balance;
+      const bad = ml.filter((l, i) => (i === 0 ? row.opening : ml[i - 1].balance) + signed(l, k) !== l.balance).length;
       if (bad) Object.assign(row, { status: "broken", reason: `${bad} ${bad === 1 ? "line does" : "lines do"} not follow from the balance before it.` });
       else if (whole && (whole.opening !== row.opening || whole.closing !== row.closing)) Object.assign(row, { status: "broken", reason: "The balances on the lines do not match the opening and closing balance printed at the top." });
       else row.status = "proved";
     } else if (whole) { row.opening = whole.opening; row.closing = whole.closing; row.status = "proved"; }
-    if (row.status === "proved" && row.opening + moneyIn - moneyOut !== row.closing) Object.assign(row, { status: "broken", reason: "The lines do not add up to the closing balance." });
+    if (row.status === "proved" && row.opening + k * (moneyIn - moneyOut) !== row.closing) Object.assign(row, { status: "broken", reason: "The lines do not add up to the closing balance." });
     out.push(row);
   }
   // The chain: each month opens where the one before closed. A month between with no lines is QUIET (nothing happened) when a statement covers it in full
@@ -136,11 +138,11 @@ export function acceptMonth(state, accountId, month, { newId, now = new Date() }
 // The lines of a month that do not follow from the balance before them, the same test `proveMonths` makes: [{date, name, amount, direction, printed, expected}].
 // `printed` is the balance the bank prints on the line, `expected` what the lines before it lead to. Empty when the month has no balance on each line or all of it follows.
 export function failingLines(state, accountId, month) {
-  const ml = accountLines(state, accountId).filter((l) => l.date.slice(0, 7) === month);
+  const k = kindOf(state, accountId), ml = accountLines(state, accountId).filter((l) => l.date.slice(0, 7) === month);
   if (!ml.length || !ml.every((l) => Number.isSafeInteger(l.balance))) return [];
   const out = [];
   ml.forEach((l, i) => {
-    const expected = (i === 0 ? ml[0].balance - signed(ml[0]) : ml[i - 1].balance) + signed(l);
+    const expected = (i === 0 ? ml[0].balance - signed(ml[0], k) : ml[i - 1].balance) + signed(l, k);
     if (expected !== l.balance) out.push({ date: l.date, name: l.payee || l.text, amount: l.amount, direction: l.direction, printed: l.balance, expected });
   });
   return out;

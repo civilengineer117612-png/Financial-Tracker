@@ -99,7 +99,7 @@ test("a move is also found from the RECEIVING end: money in that names your acco
 });
 
 // ----- phase 3: the ledger against the statement -----
-import { statementDifference, planMissingDraft, startFromStatement } from "../src/model/index.js";
+import { statementDifference, planMissingDraft, startFromStatement, proveMonths } from "../src/model/index.js";
 const food = (s) => ({ ...s, categories: [...s.categories.filter((c) => c.id !== "cat-food"), { id: "cat-food", name: "Food", kind: "expense", role: "food" }] });
 const tx = (id, date, payee, amount, account, status = "verified") => ({ t: { id, date, payee, memo: "", status, source: "manual", created_at: TS, ...(status === "verified" ? { verified_at: TS } : {}) }, es: [{ transaction_id: id, category_id: "cat-food", amount }, { transaction_id: id, account_id: account, amount: -amount }] });
 const withTx = (state, ...list) => ({ ...state, transactions: [...state.transactions, ...list.map((x) => x.t)], entries: [...state.entries, ...list.flatMap((x) => x.es)] });
@@ -140,10 +140,44 @@ test("an opening balance that differs shows as CARRIED, not as missing lines", (
   assert.deepEqual([d.difference, d.missing.length, d.extra.length, d.explained, d.carried], [20000, 0, 0, 0, 20000]);
 });
 
-test("a card, or a month with no closing balance, is not compared (and says why)", () => {
-  const s = diffBase(); s.accounts = s.accounts.map((a) => (a.id === "bk" ? { ...a, class: "liability" } : a));
-  assert.equal(statementDifference(s, "bk", "2023-02").ok, false);
+test("a month with no closing balance is not compared (and says why)", () => {
   assert.equal(statementDifference(diffBase(), "bk", "2023-09").ok, false);
+  const none = diffBase(); none.statementRecords = none.statementRecords.map((r) => ({ ...r, closing: undefined })); none.statementLines = none.statementLines.map((l) => ({ ...l, balance: null }));
+  assert.equal(statementDifference(none, "bk", "2023-02").ok, false);
+});
+
+// a CARD: the statement prints what is OWED (it rises with a purchase, falls with a payment); the ledger keeps a card below zero.
+// Opens owing 100,000, a purchase of 9,500, a purchase of 5,000, a payment of 20,000: closes owing 94,500.
+const CARDM = () => stmt([line("2023-02-05", "Corner Cafe", 9500, "out", 109500, "spending"), line("2023-02-10", "Bus fare", 5000, "out", 114500, "spending"), line("2023-02-25", "Payment, thank you", 20000, "in", 94500, "in")], 100000);
+const cardBase = () => food({ ...keep(base(), "cd", { ...CARDM(), period: { from: "2023-02-01", to: "2023-02-28" } }, 1), accounts: [acct("gc", "Test Wallet", "1111"), { ...acct("cd", "Test Card", "3333"), class: "liability", opening_balance: -100000 }] });
+const pay = (id, date, amount) => ({ t: { id, date, payee: "Card payment", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS }, es: [{ transaction_id: id, account_id: "gc", amount: -amount }, { transaction_id: id, account_id: "cd", amount, card_state: "posted" }] });
+const cardTx = (id, date, payee, amount) => { const x = tx(id, date, payee, amount, "cd"); x.es[1].card_state = "posted"; return x; };
+
+test("a CARD month is proved against the amount owed, and is compared in owed terms: the ledger agrees, owes less, or owes more", () => {
+  const all = withTx(cardBase(), cardTx("a", "2023-02-05", "Corner Cafe", 9500), cardTx("b", "2023-02-10", "Bus fare", 5000), pay("p", "2023-02-25", 20000));
+  assert.equal(proveMonths(all, "cd")[0].status, "proved", proveMonths(all, "cd")[0].reason);
+  const d = statementDifference(all, "cd", "2023-02");
+  assert.equal(d.ok, true, d.reason); assert.equal(d.card, true);
+  assert.deepEqual([d.statementClosing, d.ledgerBalance, d.difference, d.missing.length, d.extra.length], [94500, -94500, 0, 0, 0]);
+  const lacking = withTx(cardBase(), cardTx("a", "2023-02-05", "Corner Cafe", 9500), pay("p", "2023-02-25", 20000));
+  const l = statementDifference(lacking, "cd", "2023-02");
+  assert.deepEqual([l.difference, l.explained, l.carried, l.missing.map((m) => [m.line.text, m.action])], [5000, 5000, 0, [["Bus fare", "expense"]]], "the ledger owes 5,000 LESS than the statement: a purchase is missing");
+  const more = withTx(cardBase(), cardTx("a", "2023-02-05", "Corner Cafe", 9500), cardTx("b", "2023-02-10", "Bus fare", 5000), cardTx("c", "2023-02-12", "Snack", 700), pay("p", "2023-02-25", 20000));
+  assert.deepEqual([statementDifference(more, "cd", "2023-02").difference, statementDifference(more, "cd", "2023-02").extra.length], [-700, 1], "the ledger owes 700 MORE: an entry the statement lacks");
+});
+
+test("on a card a payment line is named, never made into income; a purchase line becomes ONE draft expense on the card", () => {
+  const noPay = withTx(cardBase(), cardTx("a", "2023-02-05", "Corner Cafe", 9500), cardTx("b", "2023-02-10", "Bus fare", 5000));
+  const m = statementDifference(noPay, "cd", "2023-02").missing;
+  assert.deepEqual(m.map((x) => [x.line.text, x.action]), [["Payment, thank you", "payment"]]);
+  const refused = planMissingDraft(noPay, m[0].line, { newId: seqId(), now: new Date(TS) });
+  assert.deepEqual([refused.ok, refused.message], [false, "A payment to a card is not added here."], "a payment is not added here");
+  const one = withTx(cardBase(), cardTx("a", "2023-02-05", "Corner Cafe", 9500), pay("p", "2023-02-25", 20000));
+  const r = planMissingDraft(one, statementDifference(one, "cd", "2023-02").missing[0].line, { newId: seqId(), now: new Date(TS) });
+  assert.equal(r.ok, true, r.message);
+  assert.deepEqual(selfCheck({ state: r.state }), []); assert.deepEqual(validateState(r.state), []);
+  assert.equal(statementDifference(r.state, "cd", "2023-02").difference, 0, "after adding it the ledger owes what the statement says");
+  assert.equal(startFromStatement(one, "cd").ok, false, "a card never starts from its statement");
 });
 
 test("a missing spending line becomes ONE draft expense (source statement), never verified by itself; a move is not made this way", () => {

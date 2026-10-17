@@ -104,7 +104,8 @@ const lastOf = (month) => { const [y, m] = month.split("-").map(Number); return 
 export function statementDifference(state, accountId, month) {
   const account = state.accounts.find((a) => a.id === accountId);
   if (!account) return { ok: false, reason: "There is no such account." };
-  if (account.class !== "asset") return { ok: false, reason: "Only accounts that hold money can be compared with a statement (not cards yet)." };
+  const card = account.class === "liability";
+  if (account.class !== "asset" && !card) return { ok: false, reason: "This account cannot be compared with a statement." };
   const row = proveMonths(state, accountId).find((r) => r.month === month);
   if (!row) return { ok: false, reason: "There is no statement for that month." };
   if (row.closing === null) return { ok: false, reason: "This month has no closing balance to compare with." };
@@ -119,11 +120,13 @@ export function statementDifference(state, accountId, month) {
   for (const l of lines) {
     const signed = l.direction === "in" ? l.amount : -l.amount;
     const hit = moves.filter((m) => !m.used && m.amount === signed && gap(m.date, l.date) <= 2).sort((a, b) => (keyOf(b.payee) === keyOf(l.payee || l.text)) - (keyOf(a.payee) === keyOf(l.payee || l.text)) || gap(a.date, l.date) - gap(b.date, l.date))[0];
-    if (hit) hit.used = true; else missing.push({ line: { ...l, account_id: accountId }, signed, action: l.direction === "out" && (l.meaning === "spending" || l.meaning === "fee") ? "expense" : l.meaning === "unsure" ? "choose" : l.meaning === "move" ? "move" : "in" });
+    if (hit) hit.used = true; else missing.push({ line: { ...l, account_id: accountId }, signed, action: l.direction === "out" && (l.meaning === "spending" || l.meaning === "fee") ? "expense" : l.meaning === "unsure" ? "choose" : l.meaning === "move" ? "move" : card ? "payment" : "in" });
   }
   const extra = moves.filter((m) => !m.used && m.date >= first && m.date <= last);
-  const explained = extra.reduce((n, m) => n + m.amount, 0) - missing.reduce((n, m) => n + m.signed, 0), difference = ledgerBalance - row.closing;
-  return { ok: true, month, asOf: last, status: row.status, statementClosing: row.closing, ledgerBalance, difference, explained, carried: difference - explained, missing, extra };
+  const explained = extra.reduce((n, m) => n + m.amount, 0) - missing.reduce((n, m) => n + m.signed, 0);
+  // A card statement prints what is OWED; the ledger keeps a card below zero, so the bank's side is turned the same way before the two are set against each other.
+  const bank = card ? -row.closing : row.closing, difference = ledgerBalance - bank;
+  return { ok: true, card, month, asOf: last, status: row.status, statementClosing: row.closing, ledgerBalance, difference, explained, carried: difference - explained, missing, extra };
 }
 
 // One DRAFT for a statement line the ledger lacks, source "statement", never verified by itself:
@@ -133,6 +136,7 @@ export function statementDifference(state, accountId, month) {
 // A move between the owner's own accounts is not made here (Phase 2 pairs those). `book` is the owner's payee names.
 export function planMissingDraft(state, line, { newId, now = new Date(), book = null }) {
   const name = line.payee || line.text, id = newId();
+  if (state.accounts.find((x) => x.id === line.account_id)?.class === "liability" && line.direction === "in") return { ok: false, message: "A payment to a card is not added here." };
   if (line.direction === "in" && line.meaning === "in") {
     const income = state.categories.filter((c) => c.kind === "income"), cat = income.find((c) => c.id === "cat-other-income") ?? income[0];
     if (!cat) return { ok: false, message: "There is no income category to put it in." };
