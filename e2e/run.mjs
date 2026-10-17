@@ -1256,7 +1256,7 @@ await page.setInputFiles("input[data-scan]:not([capture])", { name: "receipt.png
 check(await seen(page, "#sheet", "Check what I read", 180000), "the receipt is read again, to split it");
 await page.click('#sheet .chip:has-text("Wallet")');
 check(await page.locator('#sheet .chip[aria-pressed="true"]:has-text("Food")').count() === 1, "Food is the first category");
-await page.click('#sheet button:has-text("Split between two categories")');
+await page.click('#sheet button:has-text("Split receipt")');
 check(await page.locator("#f-save").isDisabled(), "a split cannot be saved until the second category and its amount are given");
 await page.click('#sheet button[data-action="pick-split"]:has-text("Essentials")'); await page.fill("#f-split", "50");
 check((await text(page, "#split-note")).includes("Food gets ₱100.00, Essentials gets ₱50.00"), "it says what each category gets");
