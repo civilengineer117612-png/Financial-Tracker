@@ -94,3 +94,10 @@ test("Trends: the day-by-day line and the month-by-month chart are each a white 
   assert.ok(w.includes("barCard(shown.flatMap(one))") && !w.includes("whorow") && !w.includes("whobar"));
   assert.ok(js.includes('<div class="card chartcard"><div id="tlbox"') && js.includes('<div class="card chartcard"><div class="eyebrow">Month by month</div>'));
 });
+
+test("Scheduled draws its rows through the same barCard, and the one progress meter left (Trips, Today) is the thin bar", () => {
+  const sc = js.slice(js.indexOf("function viewScheduled()"), js.indexOf("const ordinal ="));
+  assert.ok(sc.includes("barCard(list.map") && !sc.includes('class="choice"') && !sc.includes('class="meter goal"'));
+  assert.match(css, /\.meter \{ position: relative; height: 6px;/);
+  assert.match(css, /\.meter \.fill \{ display: block; height: 6px;/);
+});
