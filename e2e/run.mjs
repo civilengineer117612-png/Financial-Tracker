@@ -3372,6 +3372,20 @@ console.log("Welcome card, category editing, required marks");
     await page.click('#nav button:has-text("Verify")');
     check(await seen(page, "#screen .card", "Food") && (await text(page, "#screen .card")).trim().split("\n")[0].trim() === "Food", "with no Item typed, Verify's title is the category name");
     await ctx.close(); }
+  // An income draft in Verify can move to another income category; the amount and the account stay
+  { const acc = (id, name) => ({ id, name, class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-09-01" });
+    const st = { ...OWNER_STYLE.state, accounts: [acc("w", "Test Wallet")],
+      categories: [{ id: "cat-food", name: "Food", kind: "expense" }, { id: "cat-unlogged", name: "Unlogged", kind: "expense" }, { id: "cat-other-income", name: "Other income", kind: "income" }, { id: "cat-gift", name: "Gift", kind: "income" }],
+      transactions: [{ id: "i1", date: "2026-10-02", payee: "Sample Transfer In", memo: "", status: "draft", source: "statement", created_at: TSW }],
+      entries: [{ transaction_id: "i1", category_id: "cat-other-income", amount: -150000 }, { transaction_id: "i1", account_id: "w", amount: 150000 }], attachments: [] };
+    ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: st } }));
+    await page.click('#nav button:has-text("Verify")'); await page.click('button[data-action="verify-edit"]'); await page.waitForSelector("#sheet #f-amount");
+    check(await seen(page, "#sheet", "Other income") && (await page.locator("#sheet label").allInnerTexts()).includes("Category"), "an income draft's Edit has a Category row, showing what it is now");
+    await page.click('#sheet .chip:has-text("Gift")'); await page.click("#f-save");
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.entries.some((e) => e.transaction_id === "i1" && e.category_id === "cat-gift"), null, { timeout: 5000 });
+    { const led = JSON.parse((await stored(page)).local).state, es = led.entries.filter((e) => e.transaction_id === "i1");
+      check(es.some((e) => e.category_id === "cat-gift" && e.amount === -150000) && es.some((e) => e.account_id === "w" && e.amount === 150000) && led.transactions.find((t) => t.id === "i1").status === "draft", "it moved to Gift, the amount and the account unchanged, still a draft"); }
+    await ctx.close(); }
   // Due day: on the due day a draft payment waits in Verify, once, and a thrown-away one does not come back that month
   { const seedD = { ...seedC, state: { ...seedC.state, accounts: seedC.state.accounts.map((a) => (a.id === "c" ? { ...a, due_day: 3, statement_balance: 250000, statement_date: "2026-09-20" } : a)) } };
     ({ ctx, page, errors } = await open({ blockSw: true, seed: seedD }));

@@ -241,3 +241,20 @@ test("parseLedger rejects wrong versions, bad revisions and invalid records", ()
   const bad = ledger(1); bad.state.accounts = [{ id: "x" }];
   assert.equal(parseLedger(text(bad)).ok, false);
 });
+
+// ---------- an income draft can move to another income category ----------
+test("an income draft changes its income category and nothing else; an expense category, a verified entry and a payslip shape are refused", () => {
+  const s0 = makeState(); s0.categories.push({ id: "gift", name: "Gift", kind: "income" });
+  const draft = (src = "statement") => ({ ...s0, transactions: [{ id: "in1", date: "2026-02-03", payee: "Sample Transfer In", memo: "", status: "draft", source: src, created_at: "2026-02-03T09:00:00.000+08:00" }],
+    entries: [{ transaction_id: "in1", category_id: "pay", amount: -150000 }, { transaction_id: "in1", account_id: "chk", amount: 150000 }] });
+  const r = editDraftFields(draft(), "in1", { category_id: "gift" }, {}, new Date("2026-02-03T09:00:00+08:00"));
+  assert.equal(r.ok, true, JSON.stringify(r.violations));
+  assert.deepEqual(r.state.entries.filter((e) => e.transaction_id === "in1").map((e) => [e.category_id ?? e.account_id, e.amount]), [["gift", -150000], ["chk", 150000]], "only the category moved; the money in stays where it arrived");
+  assert.deepEqual(validateState(r.state), []);
+  const both = editDraftFields(draft(), "in1", { category_id: "gift", amount: 200000, payee: "Sample" }, {}, new Date("2026-02-03T09:00:00+08:00"));
+  assert.deepEqual(both.state.entries.filter((e) => e.transaction_id === "in1").map((e) => [e.category_id ?? e.account_id, e.amount]), [["gift", -200000], ["chk", 200000]], "together with a new amount");
+  assert.equal(editDraftFields(draft(), "in1", { category_id: "food" }, {}, new Date("2026-02-03T09:00:00+08:00")).ok, false, "an expense category is refused for money in");
+  assert.equal(editDraftFields({ ...draft(), transactions: draft().transactions.map((t) => ({ ...t, status: "verified", verified_at: t.created_at })) }, "in1", { category_id: "gift" }, {}, new Date("2026-02-03T09:00:00+08:00")).ok, false, "a verified entry is final");
+  const slip = draft(); slip.entries = [{ transaction_id: "in1", category_id: "pay", amount: -150000 }, { transaction_id: "in1", category_id: "gift", amount: -10000 }, { transaction_id: "in1", account_id: "chk", amount: 160000 }];
+  assert.equal(editDraftFields(slip, "in1", { category_id: "gift" }, {}, new Date("2026-02-03T09:00:00+08:00")).state.entries.filter((e) => e.category_id === "pay").length, 1, "an entry with several lines keeps its categories");
+});
