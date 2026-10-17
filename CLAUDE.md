@@ -134,12 +134,18 @@ New ideas are NOT built the moment they are said. Every item has one level, and 
 - When a PR is merged, show the Backlog in at most 5 lines (P1 first) and wait for the owner's number. The owner's own "yes" to a drawing approves the DESIGN, not the order of work.
 - "qq" side questions and Waiting-list notes are not backlog items.
 - The list lives here (owner keeps it short; remove an item when it is merged):
-  - P1: none. The owner said "build all P2" (Oct 17): one PR at a time, in this order: 7 (done with this PR), 6, 5, then the rollout 2 and 3 one screen at a time, each written up and drawn first.
+  - P1: none. The owner said "build all P2" (Oct 17): one PR at a time. Done: 7, 5. Next: 6, then 8 to 12 (the owner's notes), then the rollout 2 and 3 one screen at a time, each written up and drawn first.
   - P2 1: Back up everything and Restore everything (one tap makes the ledger file and the pictures files; screenshot first).
   - P2 2: rollout of the look and popups, PR 2: thin bars in Cash flow, Budget and Goals (write up first, one screen at a time).
   - P2 3: rollout PR 3: Trends and other charts, row alignment.
+  - P2 8: swipe down to close the photo viewer (it closes only by tapping outside now).
+  - P2 9: make the split between two categories clearer, or simpler (the second amount is asked; the first is what is left).
+  - P2 10: drag categories to reorder in Setup (pickers sort "last used first, then A to Z" now: the owner chooses how the two fit).
+  - P2 11: reword the goal's "What it is for" (one button that marks the emergency fund; it looks like a question).
+  - P2 12: the Accounts list in Setup: A to Z, or hold and drag to arrange.
   - P2 6: change the category of an income draft in Verify (only amount, date and name can be edited now).
-  - P2 5: a clearer name for what you spent on Add expense (a "Paid to (optional)" box exists; the owner's answers on whether it is seen are pending).
+
+ITEM BOX (owner, Oct 17; data version unchanged): Add expense has an optional one-word box "Item" right under Amount (what was bought, saved as the entry's name, trimmed); Edit entry calls the name box "Item" for an expense; an empty Item shows the category name in Verify (`describe`). The scan and voice forms keep "Paid to" (the shop read from the photo). Labels stay one word: the owner found "what did you buy" too heavy.
 
 ## One thing at a time (owner's rule)
 One open item at a time: finish the current review round and its PR before starting anything else. A new problem that shows up mid-review

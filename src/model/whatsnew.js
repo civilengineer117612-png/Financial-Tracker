@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-17-item-box", date: "2026-10-17", text: "Add expense has an optional Item box under Amount for what you bought, and Edit entry calls it Item too." },
   { id: "2026-10-17-backup-note", date: "2026-10-17", text: "The backup reminders now say that Back up includes your pictures, which is true since Back up and Restore do both together." },
   { id: "2026-10-17-backup-together", date: "2026-10-17", text: "When you keep pictures, Back up and Restore in Setup now do the ledger and the pictures together, with one passphrase." },
   { id: "2026-10-17-card-compare", date: "2026-10-17", text: "A credit card can now be compared with its statement: what the statement says you owe against your ledger, with purchases and fees you missed ready to add as drafts." },
