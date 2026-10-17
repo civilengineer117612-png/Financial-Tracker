@@ -143,6 +143,7 @@ New ideas are NOT built the moment they are said. Every item has one level, and 
   - P2 10: drag categories to reorder in Setup (pickers sort "last used first, then A to Z" now: the owner chooses how the two fit).
   - P2 11: reword the goal's "What it is for" (one button that marks the emergency fund; it looks like a question).
   - P2 12: the Accounts list in Setup: A to Z, or hold and drag to arrange.
+  - P2 13: import and Accept this month match a statement line to a logged entry like Compare does (same amount within 2 days, any name); today they also need the same name, so a receipt logged as "Lunch" and a statement line named after the shop could show twice.
   - P2 6: change the category of an income draft in Verify (only amount, date and name can be edited now).
 
 ITEM BOX (owner, Oct 17; data version unchanged): Add expense has an optional one-word box "Item" right under Amount (what was bought, saved as the entry's name, trimmed); Edit entry calls the name box "Item" for an expense; an empty Item shows the category name in Verify (`describe`). The scan and voice forms keep "Paid to" (the shop read from the photo). Labels stay one word: the owner found "what did you buy" too heavy.
