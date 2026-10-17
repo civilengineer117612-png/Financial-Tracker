@@ -3975,7 +3975,8 @@ async function onClick(el) {
         showToast("The photo reader is on this phone");
       } catch { showToast("The download did not finish. Check your connection and try again."); if (note) note.textContent = ""; }
       if (btn) btn.disabled = false;
-      refreshAbout();
+      // The saved copies are written by the app's background helper a moment after the last file arrives, so the line is checked again until it agrees (up to 5 seconds).
+      for (let i = 0; i < 20; i++) { await refreshAbout(); const b = $("warm-btn"); if (!b || b.hidden) break; await new Promise((r) => setTimeout(r, 250)); }
       break;
     }
     case "hide-account": {
