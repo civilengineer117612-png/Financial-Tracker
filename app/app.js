@@ -1343,9 +1343,9 @@ function viewSetup() {
     <p><button data-action="open-pic-restore" style="width:100%">Put pictures back from a file</button></p>
     <p><button data-action="open-pic-check" style="width:100%">Check a pictures file</button></p>` : ""}`;
   const backupHtml = `    <h2>Backup</h2>
-    <p class="note">${backupAgeText()}</p>${pics ? `<p class="note">${pics} ${pics === 1 ? "picture is" : "pictures are"} kept on this phone. Back up everything includes ${pics === 1 ? "it" : "them"}.</p>` : ""}
-    ${pics ? `<p><button class="primary" data-action="open-backup" data-all="1" data-howto="backup">Back up everything</button></p>
-    <p><button data-action="open-restore" data-all="1" style="width:100%">Restore everything</button></p>
+    <p class="note">${backupAgeText()}</p>${pics ? `<p class="note">${pics} ${pics === 1 ? "picture is" : "pictures are"} kept on this phone. Back up includes ${pics === 1 ? "it" : "them"}.</p>` : ""}
+    ${pics ? `<p><button class="primary" data-action="open-backup" data-all="1" data-howto="backup">Back up</button></p>
+    <p><button data-action="open-restore" data-all="1" style="width:100%">Restore</button></p>
     <p><button class="link" data-action="more-backup" aria-expanded="${Boolean(ui.moreBackup)}">${ui.moreBackup ? "Fewer options" : "More: only the ledger, or only the pictures"}</button></p>
     ${ui.moreBackup ? `${ledgerBtns(false)}${singles}` : ""}` : `${ledgerBtns(true)}${singles}`}
     ${ledger.settings.last_pictures_backup_at && pics ? `<p class="note">Pictures last backed up ${esc(longDate(ledger.settings.last_pictures_backup_at.slice(0, 10)))}.</p>` : ""}
@@ -2727,7 +2727,7 @@ function renderSheet() {
       ${a.icon || a.icon_url || bankLogo(a.bank ?? M.bankForName(a.name)?.id) ? `<p><button data-action="clear-icon" style="width:100%">Remove the picture</button></p>` : ""}`;
   } else if (sh.type === "backup") {
     const pn = (S().attachments ?? []).length;
-    body = `<h3>${sh.all ? "Back up everything" : sh.pictures ? "Back up pictures" : "Back up now"}</h3>
+    body = `<h3>${sh.all ? "Back up" : sh.pictures ? "Back up pictures" : "Back up now"}</h3>
       ${sh.all ? `<p class="note">One passphrase makes the ledger file and the pictures files (${pn} ${pn === 1 ? "picture" : "pictures"}). Each file opens on its own.</p>` : ""}
       ${sh.pictures ? `<p class="note">The pictures go in a file of their own, so the normal backup stays small. Use the same passphrase as your backup.</p><p class="note">A big collection is cut into parts. Each part opens on its own.</p>` : ""}
       <p class="note">Choose a passphrase of at least ${M.MIN_PASSPHRASE} characters. Without it nobody can open the backup, not even me. Your phone may offer to make a strong one and keep it in Passwords: accept that. Or tap "Make one for me" and save it yourself. This app never keeps your passphrase.</p>
@@ -2840,7 +2840,7 @@ function renderSheet() {
         <p id="f-msg" role="alert" class="note"></p>
         <p><button class="primary" id="f-save" data-action="open-pic-file" disabled>Open pictures file</button></p>`;
   } else if (sh.type === "restore" && !ui.form.restored) {
-    body = `<h3>${sh.check ? "Check a backup file" : sh.all ? "Restore everything" : "Restore from a backup"}</h3>
+    body = `<h3>${sh.check ? "Check a backup file" : sh.all ? "Restore" : "Restore from a backup"}</h3>
       ${sh.check ? `<p class="note">This opens the file to prove the passphrase works. Nothing on this phone changes.</p>` : sh.all ? `<p class="note">Choose the backup file and the pictures files together. The ledger is replaced; missing pictures come back.</p>` : `<p class="note">This replaces everything on this phone with the backup.</p>
       <p class="note">Receipt and payslip pictures are not in a backup. Entries come back without them.</p>`}
       <label for="r-file">${sh.all ? "Backup file and pictures files" : "Backup file"}</label>${sh.all ? `<input id="r-file" data-field="file" type="file" multiple accept=".json,.fpics,application/json,application/octet-stream"><p id="r-count" class="note small"></p>` : `<input id="r-file" data-field="file" type="file" accept=".json,application/json">`}
@@ -4198,7 +4198,7 @@ async function restorePictures() {
 }
 
 const isPicturesFile = (f) => /\.fpics$/i.test(f.name);
-// Restore everything: the pictures files of the backup, counted against the ledger being restored (only pictures its entries name, and that are missing here, come back).
+// Restore: the pictures files of the backup, counted against the ledger being restored (only pictures its entries name, and that are missing here, come back).
 async function scanPictureFiles(files, restored) {
   const want = new Set((restored.state?.attachments ?? []).map((a) => a.id)); let missing = 0, parts = 0, total = 0;
   for (const f of files) {
@@ -4377,7 +4377,7 @@ document.addEventListener("change", (e) => {
   }
   if (e.target.type === "file" && ui.sheet) {
     if (ui.sheet.type === "icon") loadIcon(e.target.files[0]);
-    else if (ui.sheet.all) {   // Restore everything: the ledger file and the pictures files are chosen together
+    else if (ui.sheet.all) {   // Restore: the ledger file and the pictures files are chosen together
       ui.form.files = [...(e.target.files ?? [])]; ui.form.file = ui.form.files[0] ?? null;
       const c = $("r-count"); if (c) c.textContent = ui.form.files.length ? ui.form.files.length + (ui.form.files.length === 1 ? " file chosen" : " files chosen") : "";
       refreshSave();
