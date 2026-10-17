@@ -51,8 +51,6 @@ test("a sinking fund is never savings: it is not a Goal, and the savings split d
   const out = splitSavings({ goals: [], progress: new Map(), month: "2026-07", total: 100000, pins: {}, shares: {} });
   assert.ok(!JSON.stringify(out).includes("ins"), "nothing about the category in the savings split");
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
-  assert.ok(app.includes("const setAsideHtml") && app.includes("M.SINKING_NOTE"), "the Saved view lists them apart, under the note that says so");
   assert.match(app, /M\.setAsideForSpending\(M\.sinkingFunds\(/, "Cards says how much of 'in your accounts' is set aside");
   assert.match(app, /case "toggle-sinking":/);
-  assert.match(app, /const sf = funds\.get\(r\.c\.id\);/, "a saving-up category is judged against what was set aside, not the month alone");
 });

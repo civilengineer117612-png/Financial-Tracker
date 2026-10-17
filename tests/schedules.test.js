@@ -224,7 +224,6 @@ test("the screens: a Scheduled screen, Due soon on Log, the guard, the budget li
   assert.ok(app.includes("function viewScheduled") && app.includes("M.makeDueDrafts("), "the screen and the draft run");
   assert.ok(app.includes("M.dueSoon(") && app.includes("M.daysText("), "Due soon on Log");
   assert.ok(app.includes("M.matchDueDraft(") && app.includes("M.linkToDue(") && app.includes('data-action="link-due"'), "the guard offers to link");
-  assert.ok(app.includes("M.committedIn(") && app.includes("Committed by installments this month"), "the budget row says what installments commit");
   assert.ok(app.includes("M.planInText(") && app.includes("M.markNextDue("), "a scanned payment request marks the next payment due");
   assert.ok(app.includes("M.skipOnDelete("), "a deleted due draft is not made again");
   const sw = readFileSync(new URL("../app/sw.js", import.meta.url), "utf8");
