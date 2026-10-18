@@ -6,9 +6,9 @@ import { makeState } from "./fixtures.js";
 const withGoal = (extra = {}) => ({ ...makeState(), goals: [{ id: "g1", name: "Test Goal", hidden_by_default: false, ...extra }] });
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
 
-test("eight pictures with their own ids and names, each drawn in the ink colour with no colour of its own", () => {
-  assert.equal(GOAL_SYMBOLS.length, 8);
-  assert.equal(new Set(GOAL_SYMBOLS.map((x) => x.id)).size, 8);
+test("sixteen pictures with their own ids and names, each drawn in the ink colour with no colour of its own", () => {
+  assert.equal(GOAL_SYMBOLS.length, 16);
+  assert.equal(new Set(GOAL_SYMBOLS.map((x) => x.id)).size, 16);
   for (const x of GOAL_SYMBOLS) {
     const svg = goalSymbolSvg(x.id, 26);
     assert.ok(x.label && svg.includes('stroke="currentColor"') && svg.includes('width="26"') && !/#[0-9a-f]{3}|rgb\(/i.test(svg), x.id);

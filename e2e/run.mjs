@@ -3924,7 +3924,7 @@ console.log("\n-- Net worth over time --");
   check((await text(page, "#sheet")).includes("\u20b1\u2022\u2022\u2022\u2022\u2022") && await page.locator("#sheet svg path").count() === 0 && await page.locator('#sheet button[data-action="nw-show"]').count() === 1, "with the Cards eye closed it shows dots and no line, and offers Show amounts");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
-// ===== Goal pictures: pick one of the eight line pictures =====
+// ===== Goal pictures: pick one of the sixteen line pictures =====
 console.log("\n-- Goal pictures --");
 { const DTS = "2026-10-01T09:00:00.000+08:00";
   const A = (id, name, cls, ob, d) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: d });
@@ -3932,7 +3932,7 @@ console.log("\n-- Goal pictures --");
   ({ ctx, page, errors } = await open({ blockSw: true, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
   await menuGo(page, "Goals"); await openGoal(page, "New laptop");
   await page.click('#sheet button[data-action="open-icon"]'); await page.waitForSelector("#sheet .symrow");
-  check(await page.locator("#sheet .symtile").count() === 8 && (await text(page, "#sheet")).includes("choose a photo"), "the picture window offers eight line pictures and still the photo");
+  check(await page.locator("#sheet .symtile").count() === 16 && (await text(page, "#sheet")).includes("choose a photo"), "the picture window offers sixteen line pictures and still the photo");
   await page.click('button[data-action="goal-symbol"][data-id="laptop"]'); await page.waitForSelector("#sheet .gview");
   check(JSON.parse((await stored(page)).local).state.goals[0].symbol === "laptop", "choosing one is kept on the goal (symbol: laptop)");
   check(await page.locator("#sheet .gview svg path").count() > 0, "the goal window draws it");

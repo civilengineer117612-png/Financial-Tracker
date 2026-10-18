@@ -1,9 +1,9 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-18-goal-symbols", date: "2026-10-18", text: "A goal can wear one of sixteen line pictures (house, trip, laptop, safety, car, gift, school, family, phone, bike, pet, repairs, health, wallet, dream, camera) instead of a photo." },
   { id: "2026-10-18-signs", date: "2026-10-18", text: "A minus is now always the plain hyphen, and the last four digits of an account always read like ··1234." },
   { id: "2026-10-18-register", date: "2026-10-18", text: "Tap a bank, wallet or cash account on Cards to see its history: each entry with the balance right after it, back to the opening balance." },
-  { id: "2026-10-18-goal-symbols", date: "2026-10-18", text: "A goal can wear one of eight line pictures (house, trip, laptop, safety, car, gift, school, family) instead of a photo." },
   { id: "2026-10-18-networth", date: "2026-10-18", text: "Cards has a Net worth over time link: one line of what you have minus what the cards are owed, month by month, with the list under it." },
   { id: "2026-10-18-csv", date: "2026-10-18", text: "Backup and restore can export your entries as a spreadsheet file (CSV): this month, this year or everything, with or without drafts." },
   { id: "2026-10-18-csp", date: "2026-10-18", text: "The app now tells the browser to run only its own code and never load scripts from anywhere else." },
