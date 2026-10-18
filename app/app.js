@@ -274,6 +274,7 @@ const ICONS = {
   tag: '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01"/>',
   backup: '<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  appearance: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
   cards: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
   money: '<path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3"/>',
   budget: '<path d="M21 12c.55 0 1-.45.95-1a10 10 0 0 0-8.95-8.95c-.55-.05-1 .4-1 .95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>',
@@ -374,6 +375,7 @@ function groupRows(root) {
 
 let lastTabSig = null, lastViewSig = null, swapTimer = null;
 function renderScreen() {
+  applyAppearance();
   if (ui.tab === "cards" && lastTabSig !== "cards") { ui.cardsShown = false; ui.pocketsOpen = {}; }   // Cards opens with every amount hidden and every pocket folded; nothing is remembered
   if (ui.tab !== "log") ui.arrange = false;
   if (ui.tab !== "setup") ui.sortArr = null;
@@ -1363,6 +1365,9 @@ function viewSetup() {
     ${ui.moreBackup ? `${ledgerBtns(false)}${singles}` : ""}` : `${ledgerBtns(true)}${singles}`}
     ${ledger.settings.last_pictures_backup_at && pics ? `<p class="note">Pictures last backed up ${esc(longDate(ledger.settings.last_pictures_backup_at.slice(0, 10)))}.</p>` : ""}
     ${why("The file is encrypted. Keep a second copy off this phone, like iCloud Drive or a computer.", "Where to keep it")}`;
+  const looks = [["auto", "Match my phone"], ["light", "Light"], ["dark", "Dark"]], look = ["light", "dark"].includes(ledger.settings.appearance) ? ledger.settings.appearance : "auto";
+  const appearanceHtml = `    <h2>Appearance</h2><div class="seg" role="group" aria-label="Appearance">${looks.map(([v, t]) => `<button data-action="set-appearance" data-id="${v}" aria-pressed="${look === v}">${t}</button>`).join("")}</div>
+    <p class="note">Match my phone follows your iPhone's Light or Dark setting. Light and Dark stay as chosen.</p>`;
   const aboutHtml = `    <h2>This app</h2>
     <p class="note">${M.isDevBuild() ? "Version: a development copy." : "Version " + esc(M.APP_BUILD) + ", updated " + esc(fullDate(M.APP_BUILT_ON)) + "."} Your data format: ${ledger.v}.</p>
     ${ui.ledgerBytes ? `<p class="note" id="about-size">Your ledger: ${esc(M.formatBytes(ui.ledgerBytes))}. ${ui.mirror === false ? "The spare copy is full. The main copy is safe." : "Saved twice: a main copy and a spare."}</p>` : ""}
@@ -1378,6 +1383,7 @@ function viewSetup() {
     categories: categoriesHtml,
     backup: backupHtml,
     statements: statementsHtml(),
+    appearance: appearanceHtml,
     about: aboutHtml,
   };
   const nAcc = S().accounts.filter((a) => !a.archived).length, nCat = expenseCategories().length;
@@ -1386,6 +1392,7 @@ function viewSetup() {
     ["categories", "tag", "Categories", `${nCat} ${nCat === 1 ? "category" : "categories"}`],
     ["backup", "backup", "Backup and restore", (() => { const d = M.daysSinceBackup(ledger.settings, today()); return d === null ? "No backup yet" : d === 0 ? "Backed up today" : "Last backup " + d + (d === 1 ? " day ago" : " days ago"); })()],
     ["statements", "statements", "Statements", stmSub()],
+    ["appearance", "appearance", "Appearance", look === "auto" ? "Match my phone" : look === "dark" ? "Dark" : "Light"],
     ["about", "info", "About this app", M.isDevBuild() ? "Development copy" : "Version " + M.APP_BUILD],
   ];
   if (flat) return `<h1>Setup</h1><p class="sub">Accounts. The ledger is on this phone only.</p>${blocks.accounts}${blocks.categories}${blocks.budget}${blocks.backup}${blocks.about}`;
@@ -3768,6 +3775,7 @@ async function onClick(el) {
       if (await commit(p.state, { ...ledger.settings, ...(queueId ? { scan_queue: scanQueue().filter((q) => q.id !== queueId) } : {}) })) { if (queueId) deletePhoto(queueId).catch(() => {}); showToast(plan.name + " " + peso(a.centavos) + " is due. Check it in Verify."); }
       break;
     }
+    case "set-appearance": await commit(S(), { ...ledger.settings, appearance: id }, { quiet: true }); applyAppearance(); renderScreen(); break;
     case "toggle-pair": await commit(S(), { ...ledger.settings, figure_left: !ledger.settings.figure_left }, { quiet: true }); break;
     case "open-move": ui.sheet = { type: "move" }; ui.form = { amount: "", from_id: ledger.settings.last_account_id ?? null, to_id: null, fee: "" }; renderSheet(); break;
     case "save-move": {
@@ -4575,6 +4583,12 @@ async function upgradeSaved(original) {
   return { ledger: restored, failed: "The update of your data did not check out, so it was undone and the copy from before was put back. Your data is exactly as it was. Please send me a screenshot of this." };
 }
 
+// Light or Dark chosen in Setup wins; otherwise the page follows the phone (see the night rules in index.html).
+function applyAppearance() {
+  const a = ledger?.settings?.appearance, root = document.documentElement;
+  if (a === "light" || a === "dark") root.dataset.theme = a; else delete root.dataset.theme;
+  if (a === "light" || a === "dark") for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", getComputedStyle(root).getPropertyValue("--ground").trim());   // the phone's status bar follows the page
+}
 async function start() {
   const platform = M.detectPlatform(navigator.userAgent);
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
