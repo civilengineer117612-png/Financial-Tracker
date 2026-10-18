@@ -7,6 +7,8 @@
 //  - A new amount (a rent increase) is a new dated row, never an edit. Every change is a dated row in `scheduleChanges`, which is only ever added to.
 //  - Each installment counts as spent when it is verified, in the plan's category. The plan is recorded once; the purchase is never logged separately.
 //
+//  - A change of the due day, of the name, the paying account or the category (from a date on), a removal, and a link to an entry you already logged are
+//    dated rows too (kinds day, detail, removed, linked): nothing in `schedules` is ever edited.
 // Data: `schedules` (one row per plan) and `scheduleChanges` (dated rows). A draft carries `schedule_id` and `schedule_key` (the month "2026-10" for a
 // repeating payment, the payment number "3" for an installment) and has the id "sch:<schedule>:<key>", so the same payment is never made twice.
 // The due-day rule is the one in templates.js ("monthly:5": the 5th, or the last day of a short month).
@@ -38,6 +40,7 @@ export function monthsAfter(first, k) {
 const rowsOf = (state, id) => (state.scheduleChanges ?? []).filter((c) => c.schedule_id === id);
 
 // What happened to a schedule so far, read from its dated rows.
+const byDate = (a, b) => (a.effective_from < b.effective_from ? -1 : a.effective_from > b.effective_from ? 1 : a.created_at < b.created_at ? -1 : 1);
 export function historyOf(state, s) {
   const rows = rowsOf(state, s.id);
   const stops = rows.filter((c) => c.kind === "end" || c.kind === "paid_off").map((c) => c.effective_from).sort();
@@ -47,6 +50,10 @@ export function historyOf(state, s) {
     skipped: new Set(rows.filter((c) => c.kind === "skip").map((c) => c.key)),
     amounts: rows.filter((c) => c.kind === "amount").sort((a, b) => (a.effective_from < b.effective_from ? -1 : a.effective_from > b.effective_from ? 1 : a.created_at < b.created_at ? -1 : 1)),
     requests: new Map(rows.filter((c) => c.kind === "due").map((c) => [c.key, c.amount])),   // a payment request read from a screen sets one payment's amount
+    days: rows.filter((c) => c.kind === "day").sort(byDate),   // the due day from a date on
+    details: rows.filter((c) => c.kind === "detail").sort(byDate),   // name / account / category from a date on: key "name:Rent", "account:<id>", "category:<id>"
+    removed: rows.some((c) => c.kind === "removed"),
+    linked: new Map(rows.filter((c) => c.kind === "linked").map((c) => [c.key, c.transaction_id])),   // a payment already logged by hand: its key -> that entry
   };
 }
 
@@ -64,9 +71,11 @@ export function paymentsOf(state, s, { through }) {
     }
     return out;
   }
-  const schedule = "monthly:" + s.day;
+  const seen = new Set();
   for (const date of datesBetween(s.start, through)) {
-    if (!isDue(schedule, date)) continue;
+    const dayNow = h.days.filter((d) => d.effective_from <= date).pop()?.key ?? s.day;
+    if (!isDue("monthly:" + dayNow, date) || seen.has(date.slice(0, 7))) continue;   // one payment a month, even in the month the day was changed
+    seen.add(date.slice(0, 7));
     const amount = h.amounts.filter((a) => a.effective_from <= date).pop()?.amount ?? s.amount;
     out.push({ key: date.slice(0, 7), due: date, amount: h.requests.get(date.slice(0, 7)) ?? amount, interest: 0 });
   }
@@ -77,7 +86,18 @@ export function paymentsOf(state, s, { through }) {
 export function paymentState(state, s, key) {
   const t = state.transactions.find((x) => x.schedule_id === s.id && x.schedule_key === key);
   if (t) return t.status;
+  const mine = linkedEntry(state, s, key);
+  if (mine) return mine.status;
   return historyOf(state, s).skipped.has(key) ? "skipped" : "open";
+}
+
+// The entry you logged yourself that stands for this payment (a "linked" row names it), if it is still there.
+export const linkedEntry = (state, s, key) => { const id = historyOf(state, s).linked.get(key); return id ? state.transactions.find((t) => t.id === id) ?? null : null; };
+// What the payment is called, paid from and filed under on a date: the plan's own, or the latest change made on or before that date.
+export function detailsAt(state, s, date) {
+  const out = { name: s.name, account_id: s.account_id, category_id: s.category_id };
+  for (const d of historyOf(state, s).details) { if (d.effective_from > date) continue; const [field, ...rest] = String(d.key).split(":"), v = rest.join(":"); if (field === "name") out.name = v; if (field === "account") out.account_id = v; if (field === "category") out.category_id = v; }
+  return out;
 }
 
 // ---------- drafts ----------
@@ -87,10 +107,14 @@ export function makeDueDrafts(state, today, { reserve_source_id, now = new Date(
   let next = state; const made = [];
   for (const s of state.schedules ?? []) {
     const h = historyOf(state, s);
+    if (h.removed) continue;
     for (const p of paymentsOf(state, s, { through: addDaysIso(today, windowDays) })) {
       if (p.due > addDaysIso(today, windowDays) || p.due < addDaysIso(today, -CATCH_UP_DAYS)) continue;
       if (h.endedOn !== null && p.due > h.endedOn) continue;
       if (paymentState(next, s, p.key) !== "open") continue;
+      // The payment may already be in the ledger: logged by hand, or scanned, a few days either side of its due date. Then it is linked, never doubled.
+      const have = s.kind === "repeating" ? findLogged(next, s, p) : null;
+      if (have) { const l = linkPayment(next, s.id, p.key, have.id, p.due, now); if (l.ok) { next = l.state; made.push("linked:" + draftIdFor(s.id, p.key)); continue; } }
       const r = draftFor(next, s, p, { reserve_source_id, now });
       if (r.ok) { next = r.state; made.push(draftIdFor(s.id, p.key)); }
     }
@@ -101,7 +125,8 @@ export function makeDueDrafts(state, today, { reserve_source_id, now = new Date(
 // One payment as a draft, now (also used by "Pay now"). A plan with an interest part is split in two lines; one in a foreign currency keeps it.
 export function draftFor(state, s, p, { reserve_source_id, now = new Date(), date = p.due } = {}) {
   const id = draftIdFor(s.id, p.key);
-  const input = { transaction_id: id, date, payee: s.name, category_id: s.category_id, amount: p.amount, account_id: s.account_id, source: "template", reserve_source_id };
+  const at = detailsAt(state, s, p.due);   // the name, account and category as they stood on its due date
+  const input = { transaction_id: id, date, payee: at.name, category_id: at.category_id, amount: p.amount, account_id: at.account_id, source: "template", reserve_source_id };
   const planned = planExpense(state, { ...input, reserve_source_id: reserved(state, s) ? undefined : reserve_source_id }, now);   // a card plan with its reserve already set aside needs no more per payment
   if (!planned.ok) return { ok: false, violations: planned.violations, state };
   let drafts = planned.drafts;
@@ -192,6 +217,57 @@ export function setNewAmount(state, scheduleId, amount, effective_from, now = ne
 }
 // Skip one payment: no draft is made for it (an installment payment skipped stays owed).
 export const skipPayment = (state, scheduleId, key, effective_from, now = new Date()) => addChange(state, scheduleId, "skip", { effective_from, key }, now);
+// The due day of a repeating payment from a date on (a rent that moves from the 26th to the 5th). Earlier months keep their day.
+export function setDueDay(state, scheduleId, day, effective_from, now = new Date()) {
+  const s = (state.schedules ?? []).find((x) => x.id === scheduleId);
+  if (!s || s.kind !== "repeating") return fail("NOT_REPEATING", "only a monthly payment has a due day");
+  if (!parseSchedule("monthly:" + day)) return fail("BAD_DAY", "the due day must be 1 to 31");
+  return addChange(state, scheduleId, "day", { effective_from, key: String(Number(day)) }, now);
+}
+// The name, the paying account or the category from a date on. Drafts already made keep what they had (edit those in Verify).
+export function setDetail(state, scheduleId, field, value, effective_from, now = new Date()) {
+  const s = (state.schedules ?? []).find((x) => x.id === scheduleId);
+  if (!s) return fail("UNKNOWN_SCHEDULE", "no schedule " + scheduleId);
+  if (field === "name") { if (!String(value ?? "").trim()) return fail("NO_NAME", "give it a name"); }
+  else if (field === "account") { if (!state.accounts.some((a) => a.id === value)) return fail("NO_ACCOUNT", "choose the paying account"); }
+  else if (field === "category") { if (!state.categories.some((c) => c.id === value && c.kind === "expense")) return fail("NO_CATEGORY", "choose a category"); }
+  else return fail("BAD_FIELD", "name, account or category");
+  return addChange(state, scheduleId, "detail", { effective_from, key: field + ":" + String(value).trim() }, now);
+}
+// Take a scheduled payment away: no more drafts, and the ones still waiting in Verify are discarded. What you verified stays exactly as it was.
+export function removeSchedule(state, scheduleId, today, now = new Date()) {
+  const s = (state.schedules ?? []).find((x) => x.id === scheduleId);
+  if (!s) return fail("UNKNOWN_SCHEDULE", "no schedule " + scheduleId);
+  let next = state;
+  for (const t of state.transactions.filter((x) => x.schedule_id === scheduleId && x.status === "draft")) {
+    const gone = discardDraft(next, t.id); if (!gone.ok) return { ok: false, violations: gone.violations, state: null };
+    next = gone.state;
+  }
+  return addChange(next, scheduleId, "removed", { effective_from: today }, now);
+}
+// The one thing to say about a scheduled payment today, as plain facts for the list and the window:
+//   {state: "paid", due, paidOn} this month's payment is verified (or you logged it yourself and it is linked)
+//   {state: "waiting", due, days} its draft is in Verify, not yet checked
+//   {state: "due", due, days} nothing yet; it falls due in `days` (0 = today)
+//   {state: "late", due, days, drafted} an earlier payment was never verified: `days` overdue, `drafted` says whether it waits in Verify
+//   {state: "skipped", due} this month's was skipped; {state: "stopped"} it has ended; null for a plan paid off or with nothing left
+export function statusOf(state, s, today) {
+  const h = historyOf(state, s), v = viewOf(state, s, today), gap = (d) => daysBetween(today, d);
+  if (h.removed) return null;
+  const stopped = s.kind === "installment" ? h.paidOff : h.endedOn !== null && today > h.endedOn;
+  if (stopped) return { state: "stopped" };
+  const all = paymentsOf(state, s, { through: addDaysIso(today, 62) }).filter((p) => h.endedOn === null || p.due <= h.endedOn);
+  const paidOn = (p) => { const t = state.transactions.find((x) => x.schedule_id === s.id && x.schedule_key === p.key) ?? linkedEntry(state, s, p.key); return t?.date ?? p.due; };
+  const late = all.filter((p) => p.due < today && p.due >= addDaysIso(today, -CATCH_UP_DAYS) && !["verified", "skipped"].includes(paymentState(state, s, p.key)));
+  if (late.length) { const p = late[0]; return { state: "late", due: p.due, days: -gap(p.due), drafted: paymentState(state, s, p.key) === "draft", count: late.length }; }
+  const mine = s.kind === "installment" ? v.next : all.find((p) => p.key === today.slice(0, 7));
+  if (!mine) return v.next ? { state: "due", due: v.next.due, days: gap(v.next.due) } : null;
+  const st = paymentState(state, s, mine.key);
+  if (st === "verified") return { state: "paid", due: mine.due, paidOn: paidOn(mine) };
+  if (st === "skipped") return { state: "skipped", due: mine.due };
+  if (st === "draft") return { state: "waiting", due: mine.due, days: gap(mine.due) };
+  return { state: "due", due: mine.due, days: gap(mine.due) };
+}
 // Stop FUTURE payments after `date`; everything before it stays as it was.
 export const endSchedule = (state, scheduleId, date, now = new Date()) => addChange(state, scheduleId, "end", { effective_from: date }, now);
 // An installment plan paid off early: the same as ending it, and it says so.
@@ -317,12 +393,35 @@ export function committedIn(state, categoryId, month, today) {
 const near = (a, b) => Math.abs(a - b) <= Math.max(100, Math.round(Math.max(a, b) * 0.1));   // about the same amount: within 10%
 const sameName = (a, b) => { const x = String(a ?? "").trim().toLowerCase(), y = String(b ?? "").trim().toLowerCase(); return x.length >= 3 && y.length >= 3 && (x.includes(y) || y.includes(x)); };
 // The due draft this new payment probably is: a scheduled DRAFT of about the same payee and amount, due within 7 days of the payment's date.
-export function matchDueDraft(state, { payee, amount, date }) {
-  const hit = state.transactions.find((t) => t.status === "draft" && t.schedule_id && sameName(t.payee, payee) && Math.abs(daysBetween(t.date, date)) <= 7
+export function matchDueDraft(state, { payee, amount, date, category_id }) {
+  const catOf = (t) => state.entries.find((e) => e.transaction_id === t.id && e.category_id && e.amount > 0)?.category_id;
+  const hit = state.transactions.find((t) => t.status === "draft" && t.schedule_id && (sameName(t.payee, payee) || (category_id && catOf(t) === category_id)) && Math.abs(daysBetween(t.date, date)) <= 7
     && near(state.entries.filter((e) => e.transaction_id === t.id && e.amount > 0).reduce((n, e) => n + e.amount, 0), amount));
   return hit?.id ?? null;
 }
 // Link: the payment you made takes the place of the due draft (it keeps its photo, its note, its date); the due draft goes away. No second entry.
+// The entry already in the ledger that is probably this payment: not part of any plan, not cancelled, an expense in the plan's category (or named like
+// it), about the same amount, within 7 days of the due date, and not already standing for another payment. The closest date wins.
+const claimedIds = (state) => new Set((state.scheduleChanges ?? []).filter((c) => c.kind === "linked").map((c) => c.transaction_id));
+const cancelledIds = (state) => new Set(state.transactions.filter((t) => t.reverses).map((t) => t.reverses));
+export function findLogged(state, s, p) {
+  const at = detailsAt(state, s, p.due), claimed = claimedIds(state), gone = cancelledIds(state);
+  let best = null;
+  for (const t of state.transactions) {
+    if (t.schedule_id || t.reverses || gone.has(t.id) || claimed.has(t.id) || (t.status !== "verified" && t.status !== "draft") || t.source === "reconciliation") continue;
+    const gap = Math.abs(daysBetween(t.date, p.due)); if (gap > 7) continue;
+    const legs = state.entries.filter((e) => e.transaction_id === t.id);
+    const inCat = legs.some((e) => e.category_id === at.category_id && e.amount > 0), named = sameName(t.payee, at.name);
+    const amount = legs.filter((e) => e.category_id && e.amount > 0).reduce((n, e) => n + e.amount, 0);
+    if (!(inCat || named) || !near(amount, p.amount)) continue;
+    if (!best || gap < best.gap) best = { id: t.id, gap };
+  }
+  return best;
+}
+// Record that an entry you logged stands for one payment (a dated row; the entry itself is never edited).
+export function linkPayment(state, scheduleId, key, transactionId, date, now = new Date()) {
+  return addChange(state, scheduleId, "linked", { effective_from: date, key, transaction_id: transactionId }, now);
+}
 export function linkToDue(state, newId, dueId) {
   const due = state.transactions.find((t) => t.id === dueId && t.schedule_id), mine = state.transactions.find((t) => t.id === newId);
   if (!due || !mine) return fail("UNKNOWN_TRANSACTION", "nothing to link");
