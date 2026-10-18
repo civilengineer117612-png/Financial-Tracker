@@ -274,3 +274,12 @@ test("the Log says earlier entries are waiting for you to verify, and the scan c
   assert.ok(!js.includes("from before today ${due"), "the old awkward wording is gone");
   assert.match(scan, /id: "gcash", label: "Payment"/, "the e-wallet kind is shown as Payment (its id and reading rules stay)");
 });
+
+test("Goals hides and shows amounts with the same eye and five dots as Cards, not a Show balances link", () => {
+  const js = read("app/app.js");
+  assert.match(js, /const eyeButton = \(action, shown\) =>/, "one eye for both screens");
+  assert.match(js, /\$\{eyeButton\("cards-eye", shown\)\}/, "Cards uses it");
+  assert.match(js, /eyeButton\("toggle-reveal", !!ui\.reveal\)/, "Goals uses it");
+  assert.doesNotMatch(js, /Show balances|Hide balances|Hidden\. Tap Show balances/, "the old link and line are gone");
+  assert.match(js, /fig: veil\(r\.fig\), pct: r\.pct == null \? null : 0/, "a hidden goal is the same row as a shown one: its figure veiled (the same room, five dots over it), its bar an empty track");
+});
