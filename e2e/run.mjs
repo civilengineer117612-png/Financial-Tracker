@@ -792,7 +792,7 @@ check((await page.locator(".tbl").count()) === 0, "the chart view has no table u
 await page.click('#screen .modebar button');
 const vcolors = await page.locator(".tbl td.vo, .tbl td.vu").evaluateAll((els) => els.map((e) => e.className.includes("vo") ? "over" : "under"));
 check(vcolors.includes("over") && vcolors.includes("under"), "variance cells are marked over and under");
-check(/Shopping[\s\S]*−₱50\.00 over/.test(await text(page, ".tbl")) && /Food[\s\S]*\+₱5\.00 under/.test(await text(page, ".tbl")) && (await text(page, ".tbl")).includes("Total"), "the list twin has budget, actual and a signed variance in words");
+check(/Shopping[\s\S]*-₱50\.00 over/.test(await text(page, ".tbl")) && /Food[\s\S]*\+₱5\.00 under/.test(await text(page, ".tbl")) && (await text(page, ".tbl")).includes("Total"), "the list twin has budget, actual and a signed variance in words");
 await page.click('#screen .modebar button');
 await page.click('button[aria-label="Earlier"]');
 check((await text(page, "#screen")).includes("No budgets for September 2026 yet"), "a budget set this month does not rewrite September");
@@ -1130,7 +1130,7 @@ await page.fill("#f-amount", "5000.50");
 check(await page.locator("#f-save").isDisabled(), "and What it is has to be chosen too (it starts empty)");
 await page.click('#sheet .chip:has-text("Salary")'); await page.click("#f-save"); await seen(page, "#toast", "Pay recorded");
 const inc = await text(page, "#screen");
-check(inc.includes("₱5,000.50") && inc.includes("−₱2,099.50 less"), "pay received is shown against the plan as a signed difference in words");
+check(inc.includes("₱5,000.50") && inc.includes("-₱2,099.50 less"), "pay received is shown against the plan as a signed difference in words");
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.settings.plans[0].paydays[1].income === 710000, "the plan itself is not changed by the real pay");
 check((await page.locator('button:has-text("Load a newer plan")').count()) === 0, "and no Load a newer plan button either");
@@ -1297,7 +1297,7 @@ await page.click('button:has-text("Delete")'); await page.click('button:has-text
   await l4(a2, "7305"); await page.waitForTimeout(300);
   const led1 = JSON.parse((await stored(page)).local);
   check(led1.state.accounts.find((a) => a.id === a1.id).last4 === "4821" && led1.state.accounts.find((a) => a.id === a2.id).last4 === "7305", "the last 4 digits are saved on each account");
-  check((await text(page, "#screen")).includes("***4821"), "Setup shows them");
+  check((await text(page, "#screen")).includes("\u00b7\u00b74821"), "Setup shows them");
   await l4(a1, "7305"); check(await seen(page, "#l4-msg", "Another account already has these 4 digits"), "the same four on a second account is refused");
   await page.click('#sheet button:has-text("Cancel")');
 
@@ -1566,7 +1566,7 @@ check((await text(page, ".hero")).includes("₱0.00") && (await text(page, "#scr
 await page.click('button[aria-label="Earlier"]');
 check((await text(page, ".hero")).includes("₱10,300.00") && (await text(page, "#screen")).includes("earned in September 2026"), "it counts in September, the month of its pay period");
 const incText = await text(page, "#screen");
-check(/Gross\s*₱11,500\.00[\s\S]*Deductions\s*−₱1,200\.00[\s\S]*Net\s*₱10,300\.00/.test(incText) && !incText.includes("Basic salary") && (await page.locator("#screen .bars").count()) === 0, "the Overview is gross, deductions and net, with no bar graph");
+check(/Gross\s*₱11,500\.00[\s\S]*Deductions\s*-₱1,200\.00[\s\S]*Net\s*₱10,300\.00/.test(incText) && !incText.includes("Basic salary") && (await page.locator("#screen .bars").count()) === 0, "the Overview is gross, deductions and net, with no bar graph");
 { const ov = await page.evaluate(() => { const r = (el) => Math.round(el.getBoundingClientRect().right); return { rows: [...document.querySelectorAll("#screen .mlist .mline .mv")].map(r), net: r(document.querySelector("#screen .mtotal .mv")) }; });
   check(ov.rows.length === 2 && ov.rows.every((x) => Math.abs(x - ov.net) <= 1), "on the Overview the gross and deductions amounts line up at the right with the net (" + JSON.stringify(ov) + ")"); }
 { const pt = await page.locator("#screen .ptitle").evaluateAll((els) => els.map((e) => [e.getAttribute("aria-label"), getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight].join("|")));
@@ -1623,7 +1623,7 @@ await page.click('button[data-action="income-view"][data-view="earnings"]');
 check(await page.locator(".mlist details.mrow").count() >= 1 && await page.locator(".mlist .mtotal").count() === 0 && await page.locator("#screen table.tbl th:text-is('Month')").count() === 0, "Earnings is a short list: one month, no repeated total line, not a five-column table");
 { const open = await page.locator(".mlist details.mrow").evaluateAll((els) => els.every((d) => d.open));
   const t = await page.locator(".mlist details.mrow").first().innerText();
-  check(open && /Sep\s*₱10,300\.00[\s\S]*Basic salary[\s\S]*Rice subsidy[\s\S]*Overtime[\s\S]*Gross\s*₱11,500\.00[\s\S]*Deductions\s*−₱1,200\.00/.test(t) && !t.includes("Base pay"), "the month is open at once: net at the top, each kind of earning with rice subsidy and overtime apart, then gross and deductions (" + t.replace(/\n/g, " | ").slice(0, 200) + ")"); }
+  check(open && /Sep\s*₱10,300\.00[\s\S]*Basic salary[\s\S]*Rice subsidy[\s\S]*Overtime[\s\S]*Gross\s*₱11,500\.00[\s\S]*Deductions\s*-₱1,200\.00/.test(t) && !t.includes("Base pay"), "the month is open at once: net at the top, each kind of earning with rice subsidy and overtime apart, then gross and deductions (" + t.replace(/\n/g, " | ").slice(0, 200) + ")"); }
 { const e = (await text(page, "#screen")).toLowerCase();
   check(!e.includes("where it came from") && !e.includes("net, this month"), "no 'where it came from' list and no second gross, deductions and net block under the month");
   const legend = await text(page, ".legend"), th = (await page.locator("#screen table.tbl th").allInnerTexts()).join(",");
@@ -2280,7 +2280,7 @@ console.log("Signs and folded entries");
   await page.click("#entries-toggle");
   check(await page.locator("#entries-list").isVisible() && await page.getAttribute("#entries-toggle", "aria-expanded") === "true", "one tap shows them");
   const t = await text(page, "#entries-list");
-  check(t.includes("\u2212\u20B195.00") && t.includes("+\u20B1200.00"), "money out has a minus, money in a plus");
+  check(t.includes("-\u20B195.00") && t.includes("+\u20B1200.00"), "money out has a minus, money in a plus");
   await page.click("#entries-toggle");
   check(await page.locator("#entries-list").isHidden(), "and a second tap folds them again");
   await menuGo(page, "Budget");

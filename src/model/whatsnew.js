@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-18-signs", date: "2026-10-18", text: "A minus is now always the plain hyphen, and the last four digits of an account always read like ··1234." },
   { id: "2026-10-18-csp", date: "2026-10-18", text: "The app now tells the browser to run only its own code and never load scripts from anywhere else." },
   { id: "2026-10-18-search", date: "2026-10-18", text: "See every entry now has a search box: find an entry by name, category, account, date or amount, this month or in everything you ever logged." },
   { id: "2026-10-18-night", date: "2026-10-18", text: "A dark look for the night. It follows your iPhone's Light or Dark setting, or you can fix it in Setup, Appearance." },
