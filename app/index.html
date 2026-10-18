@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self' data: blob: https:; worker-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>fo/und</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="manifest" href="manifest.json">
@@ -10,7 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="fo/und">
-<meta name="theme-color" content="#F5F3EE">
+<meta name="theme-color" content="#F5F3EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121517" media="(prefers-color-scheme: dark)">
 <style>
 /* ---- Ledger Paper: the tokens. Every colour in the screens comes from these. ---- */
   @font-face { font-family: "IBM Plex Sans"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/ibm-plex-sans-latin-400-normal.woff2") format("woff2"); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
@@ -19,6 +21,11 @@
   @font-face { font-family: "IBM Plex Sans"; font-style: normal; font-weight: 500; font-display: swap; src: url("fonts/ibm-plex-sans-latin-ext-500-normal.woff2") format("woff2"); unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
   @font-face { font-family: "IBM Plex Sans"; font-style: normal; font-weight: 600; font-display: swap; src: url("fonts/ibm-plex-sans-latin-600-normal.woff2") format("woff2"); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
   @font-face { font-family: "IBM Plex Sans"; font-style: normal; font-weight: 600; font-display: swap; src: url("fonts/ibm-plex-sans-latin-ext-600-normal.woff2") format("woff2"); unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+  /* Night: the same tokens in a dark paper. It follows the phone's setting; data-theme="light" or "dark" on the page wins (Setup, Appearance). Written before :root, which it beats by being more specific. */
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; --ground: #121517; --surface: #1B2023; --ink: #ECE9E2; --muted: #A3A9AD; --line: #2C3338; --track: #272D31; --accent: #5DB894; --dashed: #5B635E;
+    --critical: #E57373; --good: #3E8F72; --warn: #5DB894; --serious: #5DB894; --scrim: rgba(2, 4, 6, .62); --shade: rgba(2, 4, 6, .45); --lightbox: #000; --lightbox-ink: #D8D4CA; } }
+  :root[data-theme="dark"] { color-scheme: dark; --ground: #121517; --surface: #1B2023; --ink: #ECE9E2; --muted: #A3A9AD; --line: #2C3338; --track: #272D31; --accent: #5DB894; --dashed: #5B635E;
+    --critical: #E57373; --good: #3E8F72; --warn: #5DB894; --serious: #5DB894; --scrim: rgba(2, 4, 6, .62); --shade: rgba(2, 4, 6, .45); --lightbox: #000; --lightbox-ink: #D8D4CA; }
   :root {
     --ground: #F5F3EE; --surface: #FFFFFF; --ink: #1B1D1F; --muted: #5C6166; --line: #E2DDD3; --track: #ECE8DF; --accent: #1E5B47; --dashed: #A39B8B;
     --critical: #D03B3B; --good: #7FB09E; --warn: #4F8C75; --serious: #1E5B47;   /* the budget grades: green steps, and red only for strictly over */
@@ -277,8 +284,9 @@
   .pickface { display: inline-flex; align-items: center; gap: 10px; min-width: 0; } .pickface .ph { color: var(--muted); } button.pickrow svg { color: var(--muted); flex: none; }
   .picklist { margin-top: 6px; max-height: 330px; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); } .picklist[hidden] { display: none; }
   .regl .row .amt small { display: block; color: var(--muted); font-weight: 400; }
+  input.entrysearch { margin: 4px 0 10px; }
   .picksearchrow { padding: 8px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
-  input.picksearch { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--ground); color: var(--ink); }
+  input.picksearch, input.entrysearch { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--ground); color: var(--ink); }
   .picklist .pickitem[hidden], .picklist .pickh[hidden], .picklist .pickempty[hidden] { display: none; } .pickempty { padding: 12px 14px; margin: 0; }
   .pickh { padding: 8px 14px; font-size: 13px; color: var(--muted); background: var(--ground); border-bottom: 1px solid var(--line); }
   .picklist .chip.pickitem { display: flex; align-items: center; justify-content: space-between; width: 100%; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; color: var(--ink); padding: 12px 14px; font-size: 17px; text-align: left; }

@@ -166,6 +166,8 @@ function bankLogo(bankId) {
   if (l?.icon_url?.startsWith("https://")) return { icon_url: l.icon_url };
   return null;
 }
+// A bank logo from an icon service that cannot load (offline) is taken away, so the letter tile under it stays. (No inline handler: the page's content security policy allows none.)
+document.addEventListener("error", (e) => { if (e.target?.classList?.contains("ov")) e.target.remove(); }, true);
 function iconOf(a, size = 28) {
   // An account's own picture wins; otherwise its bank's logo (linked, or plainly named after the bank); otherwise a letter.
   if (!a.icon && !a.icon_url) { const l = bankLogo(a.bank ?? (a.name ? M.bankForName(a.name)?.id : null)); if (l) a = { ...a, ...l }; }
@@ -173,7 +175,7 @@ function iconOf(a, size = 28) {
   const letter = [...a.name][0]?.toUpperCase() ?? "?";
   const mono = `<span class="ico mono" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.5)}px" aria-hidden="true">${esc(letter)}</span>`;
   // A logo shown from an icon service sits over the letter tile; if it cannot load (offline) the letter stays.
-  return a.icon_url ? `<span class="icowrap" style="width:${size}px;height:${size}px">${mono}<img class="ico ov" src="${esc(a.icon_url)}" alt="" width="${size}" height="${size}" onerror="this.remove()"></span>` : mono;
+  return a.icon_url ? `<span class="icowrap" style="width:${size}px;height:${size}px">${mono}<img class="ico ov" src="${esc(a.icon_url)}" alt="" width="${size}" height="${size}"></span>` : mono;
 }
 const withIcon = (a, size) => iconOf(a, size) + `<span>${esc(a.name)}</span>`;
 
@@ -272,6 +274,7 @@ const ICONS = {
   tag: '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01"/>',
   backup: '<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  appearance: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
   cards: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
   money: '<path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3"/>',
   budget: '<path d="M21 12c.55 0 1-.45.95-1a10 10 0 0 0-8.95-8.95c-.55-.05-1 .4-1 .95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>',
@@ -372,6 +375,7 @@ function groupRows(root) {
 
 let lastTabSig = null, lastViewSig = null, swapTimer = null;
 function renderScreen() {
+  applyAppearance();
   if (ui.tab === "cards" && lastTabSig !== "cards") { ui.cardsShown = false; ui.pocketsOpen = {}; }   // Cards opens with every amount hidden and every pocket folded; nothing is remembered
   if (ui.tab !== "log") ui.arrange = false;
   if (ui.tab !== "setup") ui.sortArr = null;
@@ -485,10 +489,23 @@ function tilesHtml() {
 
 // Money going out is shown with a minus, money coming in with a plus; a move between your own accounts has neither.
 const signed = (d) => (d.kind === "income" ? "+" : d.kind === "expense" || d.kind === "split" ? "\u2212" : "") + peso(d.amount);
-function rowFor(t) {
+// The entries list of the "Every entry" window: this period, or everything, or what a search finds. Rewritten in place while typing, so the keyboard stays open.
+function entriesListHtml() {
+  const p = period(), [from, to] = periodBounds(p), all = (ui.form.scope ?? "period") === "all", q = (ui.form.q ?? "").trim(), gone = cancelledIds();
+  const skip = (t) => isGenerated(t) || (!ui.showCancelled && gone.has(t.id));
+  if (q) {
+    const r = M.searchEntries(S(), q, { ...(all ? {} : { from, to }), limit: 200, skip });
+    return (r.rows.length ? `<p class="note small">${r.total > r.rows.length ? `Showing the newest ${r.rows.length} of ${r.total}. Type more to narrow it.` : r.total === 1 ? "1 entry found." : `${r.total} entries found.`}</p>${r.rows.map((t) => rowFor(t, true)).join("")}` : `<p class="note">Nothing found${all ? "" : " this month. Try Everything"}.</p>`);
+  }
+  if (all) return `<p class="note">Type something to search every entry you have ever logged.</p>`;
+  const list = S().transactions.filter((t) => t.date >= from && t.date <= to && !isGenerated(t)).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.created_at < b.created_at ? 1 : -1));
+  const shown = ui.showCancelled ? list : list.filter((t) => !gone.has(t.id)), nGone = list.length - list.filter((t) => !gone.has(t.id)).length;
+  return `${nGone ? `<p class="note"><button class="link" data-action="toggle-cancelled">${ui.showCancelled ? "Hide" : "Show"} ${nGone} cancelled ${nGone === 1 ? "entry" : "entries"}</button></p>` : ""}${shown.length ? shown.map(rowFor).join("") : `<p class="note">Nothing logged in this period.</p>`}`;
+}
+function rowFor(t, withDate = false) {
   const d = describe(t);
   const acct = d.kind === "expense" ? S().accounts.find((a) => a.id === d.account_id) : null;
-  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${M.correctionTag(S(), t) === "Corrected" ? " · cancelled" : ""}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${signed(d)}</div></button>`;
+  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${withDate ? esc(longDate(t.date)) + " · " : ""}${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${M.correctionTag(S(), t) === "Corrected" ? " · cancelled" : ""}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${signed(d)}</div></button>`;
 }
 
 // Everything waiting, oldest first. Nothing has to wait for tomorrow: verify whenever you have the time.
@@ -1361,6 +1378,9 @@ function viewSetup() {
     ${ui.moreBackup ? `${ledgerBtns(false)}${singles}` : ""}` : `${ledgerBtns(true)}${singles}`}
     ${ledger.settings.last_pictures_backup_at && pics ? `<p class="note">Pictures last backed up ${esc(longDate(ledger.settings.last_pictures_backup_at.slice(0, 10)))}.</p>` : ""}
     ${why("The file is encrypted. Keep a second copy off this phone, like iCloud Drive or a computer.", "Where to keep it")}`;
+  const looks = [["auto", "Match my phone"], ["light", "Light"], ["dark", "Dark"]], look = ["light", "dark"].includes(ledger.settings.appearance) ? ledger.settings.appearance : "auto";
+  const appearanceHtml = `    <h2>Appearance</h2><div class="seg" role="group" aria-label="Appearance">${looks.map(([v, t]) => `<button data-action="set-appearance" data-id="${v}" aria-pressed="${look === v}">${t}</button>`).join("")}</div>
+    <p class="note">Match my phone follows your iPhone's Light or Dark setting. Light and Dark stay as chosen.</p>`;
   const aboutHtml = `    <h2>This app</h2>
     <p class="note">${M.isDevBuild() ? "Version: a development copy." : "Version " + esc(M.APP_BUILD) + ", updated " + esc(fullDate(M.APP_BUILT_ON)) + "."} Your data format: ${ledger.v}.</p>
     ${ui.ledgerBytes ? `<p class="note" id="about-size">Your ledger: ${esc(M.formatBytes(ui.ledgerBytes))}. ${ui.mirror === false ? "The spare copy is full. The main copy is safe." : "Saved twice: a main copy and a spare."}</p>` : ""}
@@ -1376,6 +1396,7 @@ function viewSetup() {
     categories: categoriesHtml,
     backup: backupHtml,
     statements: statementsHtml(),
+    appearance: appearanceHtml,
     about: aboutHtml,
   };
   const nAcc = S().accounts.filter((a) => !a.archived).length, nCat = expenseCategories().length;
@@ -1384,6 +1405,7 @@ function viewSetup() {
     ["categories", "tag", "Categories", `${nCat} ${nCat === 1 ? "category" : "categories"}`],
     ["backup", "backup", "Backup and restore", (() => { const d = M.daysSinceBackup(ledger.settings, today()); return d === null ? "No backup yet" : d === 0 ? "Backed up today" : "Last backup " + d + (d === 1 ? " day ago" : " days ago"); })()],
     ["statements", "statements", "Statements", stmSub()],
+    ["appearance", "appearance", "Appearance", look === "auto" ? "Match my phone" : look === "dark" ? "Dark" : "Light"],
     ["about", "info", "About this app", M.isDevBuild() ? "Development copy" : "Version " + M.APP_BUILD],
   ];
   if (flat) return `<h1>Setup</h1><p class="sub">Accounts. The ledger is on this phone only.</p>${blocks.accounts}${blocks.categories}${blocks.budget}${blocks.backup}${blocks.about}`;
@@ -2799,9 +2821,11 @@ function renderSheet() {
     const h = M.HOWTOS.find((x) => x.id === sh.id);
     body = `<h3>${esc(h.label)}</h3>${clipFor(h.id)}<p class="hwcap">${esc(h.caption)}</p>`;
   } else if (sh.type === "entries") {
-    const p = period(), [from, to] = periodBounds(p), list = S().transactions.filter((t) => t.date >= from && t.date <= to && !isGenerated(t)).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.created_at < b.created_at ? 1 : -1));
-    const gone = cancelledIds(), shown = ui.showCancelled ? list : list.filter((t) => !gone.has(t.id)), nGone = list.length - list.filter((t) => !gone.has(t.id)).length;
-    body = `<h3>Every entry in ${esc(periodLabel(p))}</h3>${nGone ? `<p class="note"><button class="link" data-action="toggle-cancelled">${ui.showCancelled ? "Hide" : "Show"} ${nGone} cancelled ${nGone === 1 ? "entry" : "entries"}</button></p>` : ""}${shown.length ? shown.map(rowFor).join("") : `<p class="note">Nothing logged in this period.</p>`}`;
+    const p = period();
+    body = `<h3>Every entry${(ui.form.scope ?? "period") === "all" ? "" : " in " + esc(periodLabel(p))}</h3>
+      <input id="e-q" class="entrysearch" data-field="q" type="search" inputmode="search" placeholder="Search name, category, account, amount" value="${esc(ui.form.q ?? "")}" autocomplete="off" aria-label="Search entries">
+      <div class="seg" role="group" aria-label="Where to look">${[["period", "This month"], ["all", "Everything"]].map(([v, t]) => `<button data-action="entries-scope" data-id="${v}" aria-pressed="${(ui.form.scope ?? "period") === v}">${t === "This month" ? esc(periodLabel(p)) : t}</button>`).join("")}</div>
+      <div id="entries-list">${entriesListHtml()}</div>`;
   } else if (sh.type === "whatsnew") {
     const moved = sh.changes?.length ? `<p class="note" id="wn-balances"><b>Balances that changed:</b> ${sh.changes.map((x) => `${esc(x.name)} ${x.by > 0 ? "+" : "\u2212"}${peso(Math.abs(x.by))}`).join(", ")}. Spending dated before the day you added these accounts was being taken off twice; it now stays as history only.</p>` : "";
     body = `<h3>What's new</h3><div class="wnlist">${M.whatsNew({}, 3).map((c) => `<div class="wnitem"><small>${esc(longDate(c.date))}</small>${esc(c.text)}</div>`).join("")}</div>${moved}
@@ -3780,6 +3804,7 @@ async function onClick(el) {
       if (await commit(p.state, { ...ledger.settings, ...(queueId ? { scan_queue: scanQueue().filter((q) => q.id !== queueId) } : {}) })) { if (queueId) deletePhoto(queueId).catch(() => {}); showToast(plan.name + " " + peso(a.centavos) + " is due. Check it in Verify."); }
       break;
     }
+    case "set-appearance": await commit(S(), { ...ledger.settings, appearance: id }, { quiet: true }); applyAppearance(); renderScreen(); break;
     case "toggle-pair": await commit(S(), { ...ledger.settings, figure_left: !ledger.settings.figure_left }, { quiet: true }); break;
     case "open-move": ui.sheet = { type: "move" }; ui.form = { amount: "", from_id: ledger.settings.last_account_id ?? null, to_id: null, fee: "" }; renderSheet(); break;
     case "save-move": {
@@ -4009,7 +4034,8 @@ async function onClick(el) {
     case "restore-pics": await restorePictures(); break;
     case "open-backup-file": await openBackupFile(); break;
     case "restore-now": await restoreNow(); break;
-    case "open-entries": ui.sheet = { type: "entries" }; renderSheet(); break;
+    case "open-entries": ui.sheet = { type: "entries" }; ui.form = { q: "", scope: "period" }; renderSheet(); break;
+    case "entries-scope": ui.form.scope = id; renderSheet(); break;
     case "toggle-cancelled": ui.showCancelled = !ui.showCancelled; renderSheet(); break;
     case "wn-all": ui.wnAll = !ui.wnAll; renderScreen(); break;
     case "st-month": ui.sheet = { type: "stmonth", account_id: el.dataset.acct, month: el.dataset.month }; ui.form = {}; renderSheet(); break;
@@ -4534,6 +4560,7 @@ document.addEventListener("input", (e) => {
   if (e.target.type === "file") return;   // handled on change
   if (field === "sub" && !ui.sheet) { ui.accountForm.sub = e.target.value; const p = $("a-preview"); if (p) p.textContent = "Saved as: " + accountPreview(ui.accountForm); return; }
   if (field === "zoom") { zoomTo(Number(e.target.value)); return; }
+  if (ui.sheet?.type === "entries" && field === "q") { ui.form.q = e.target.value; const l = $("entries-list"); if (l) l.innerHTML = entriesListHtml(); return; }
   if (ui.sheet) { ui.form[field] = e.target.value; if (field.startsWith("y_") && ui.form.used) delete ui.form.used[field.slice(2)]; refreshSave(); }
   else ui.accountForm[field] = e.target.value;
 });
@@ -4587,6 +4614,12 @@ async function upgradeSaved(original) {
   return { ledger: restored, failed: "The update of your data did not check out, so it was undone and the copy from before was put back. Your data is exactly as it was. Please send me a screenshot of this." };
 }
 
+// Light or Dark chosen in Setup wins; otherwise the page follows the phone (see the night rules in index.html).
+function applyAppearance() {
+  const a = ledger?.settings?.appearance, root = document.documentElement;
+  if (a === "light" || a === "dark") root.dataset.theme = a; else delete root.dataset.theme;
+  if (a === "light" || a === "dark") for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", getComputedStyle(root).getPropertyValue("--ground").trim());   // the phone's status bar follows the page
+}
 async function start() {
   const platform = M.detectPlatform(navigator.userAgent);
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;

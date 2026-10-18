@@ -66,6 +66,7 @@ async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone 
   };
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => { if (/Content Security Policy|Refused to (load|execute|connect|create)/i.test(m.text())) errors.push("CSP: " + m.text().slice(0, 200)); });   // the content security policy must never refuse something the app needs
   page.on("console", (m) => { if (m.type() === "error" && !/favicon|gstatic|duckduckgo|icon\.horse|apple-touch-icon|wikipedia|wikimedia/.test(m.location().url ?? "")) errors.push(m.text()); });   // blocked icon requests are staged on purpose
   if (!keepIntro) await page.addLocatorHandler(page.locator('#sheet button[data-action="intro-done"]'), async (b) => { await b.click(); });   // a new install has no switched-off popups: any other test just says Got it when one gets in the way
   await page.clock.setFixedTime(T0);
@@ -2327,7 +2328,7 @@ console.log("Setup as pages");
   ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct] } } }));
   await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer")); await page.waitForTimeout(300);
   const rowsText = await page.locator(".setrow").allInnerTexts();
-  check(rowsText.length === 5 && rowsText[0].includes("Accounts") && rowsText[0].includes("1 account") && rowsText[1].includes("Categories") && rowsText[2].includes("Backup and restore") && rowsText[2].includes("No backup yet") && rowsText[3].includes("Statements") && rowsText[4].includes("About this app"), "Setup is five rows, each with a one-line status: " + rowsText.map((x) => x.split("\n")[0]).join(", "));
+  check(rowsText.length === 6 && rowsText[0].includes("Accounts") && rowsText[0].includes("1 account") && rowsText[1].includes("Categories") && rowsText[2].includes("Backup and restore") && rowsText[2].includes("No backup yet") && rowsText[3].includes("Statements") && rowsText[4].includes("Appearance") && rowsText[4].includes("Match my phone") && rowsText[5].includes("About this app"), "Setup is six rows, each with a one-line status: " + rowsText.map((x) => x.split("\n")[0]).join(", "));
   check(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 2), "the whole Setup list fits on one screen: nothing to scroll");
   check(await page.locator("#a-bank").count() === 0 && await page.locator("#add-account-open").count() === 0, "no long form on the list");
   for (const [row, title, mark] of [["Accounts", "Accounts", "#add-account-open"], ["Categories", "Categories", 'button[data-action="add-cat"]'], ["Backup and restore", "Backup and restore", 'button[data-action="open-backup"]'], ["About this app", "About this app", "text=Your data format"]]) {
@@ -2335,11 +2336,11 @@ console.log("Setup as pages");
     check((await text(page, "#top")).includes(title) && await page.locator(mark).count() >= 1 && await page.locator('.back button:has-text("Setup")').count() === 1, `${row} opens its own page, with a way back`);
     if (row === "About this app") check(/Your ledger: \d+ KB\. Saved twice: a main copy and a spare\./.test(await text(page, "#screen")), "About this app shows the ledger's size and that it is saved twice");
     await page.click('.back button:has-text("Setup")'); await page.waitForTimeout(200);
-    check(await page.locator(".setrow").count() === 5, `back from ${row} returns to the list`);
+    check(await page.locator(".setrow").count() === 6, `back from ${row} returns to the list`);
   }
   await page.click(".scrim, #menu .scrim").catch(() => {});
   await page.click('#nav button[data-tab="log"]'); await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
-  check(await page.locator(".setrow").count() === 5, "leaving Setup and coming back opens the list again");
+  check(await page.locator(".setrow").count() === 6, "leaving Setup and coming back opens the list again");
   check(errors.length === 0, "no script errors with the Setup pages");
   await ctx.close();
   ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, styled: false }));
@@ -2439,7 +2440,7 @@ console.log("Correct a verified entry");
   st = await text(page, "#sheet");
   check(st.includes("Cancels: Corner Cafe") && st.includes("cancelled") && st.includes("Hide 2 cancelled entries"), "Show brings both back, marked");
   await page.click('#sheet button[data-action="toggle-cancelled"]');
-  await page.click("#scrim");
+  await page.click('#sheet button[data-action="close-sheet"]');   // the Close button: the window with its search box can now cover the dark around it
   await menuGo(page, "Weekly review"); await page.click('.choice:has-text("Wallet")'); await page.fill("#f-amount", "1"); await page.click("#f-save"); await seen(page, "#toast", "Wallet:");
   check((await text(page, "#screen")).includes("A gap can come from a wrong entry"), "a count that shows a gap points to the entries that can be put right");
   check(errors.length === 0, "no script errors");
@@ -2538,9 +2539,7 @@ console.log("Pictures file");
   const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [tx], entries: [{ transaction_id: "slip", category_id: "cat-food", amount: 5000 }, { transaction_id: "slip", account_id: "w", amount: -5000 }],
     attachments: [{ id: "pic-a", transaction_id: "slip", type: "photo", file: "pic-a", file_timestamp: TS }] } };
   ({ ctx, page, errors } = await open({ blockSw: true, seed }));
-  const idb = (fn, arg) => page.evaluate(async ([src, a]) => {
-    const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; });
-    const out = await (new Function("db", "arg", "return (" + src + ")(db, arg)"))(db, a); db.close(); return out; }, [fn.toString(), arg]);
+  const idb = (fn, arg) => page.evaluate(`(async (a) => { const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; }); const out = await (${fn.toString()})(db, a); db.close(); return out; })(${JSON.stringify(arg ?? null)})`);   // a function source, not new Function: the page's content security policy refuses string eval
   const made = await idb(async (db) => { const c = document.createElement("canvas"); c.width = 300; c.height = 200; const x = c.getContext("2d"); x.fillStyle = "#c33"; x.fillRect(0, 0, 300, 200); x.fillStyle = "#fff"; x.fillText("INVENTED RECEIPT", 20, 100);
     const b = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.9)); await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").put(b, "pic-a"); t.oncomplete = res; }); return b.size; });
   await page.reload(); await page.waitForSelector("#nav button");
@@ -3836,6 +3835,50 @@ console.log("\n-- Pay plan at 320 px --");
   await menuGo(page, "Pay plan"); await page.waitForTimeout(400);
   const over = await page.evaluate(() => [...document.querySelectorAll("#screen .tbl")].filter((t) => { const edge = t.parentElement.getBoundingClientRect().right; return [...t.querySelectorAll("td,th")].some((c) => c.getBoundingClientRect().right > edge + 1); }).length);
   check(over === 0 && await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), "at 320 px wide no plan table sticks out of its card and the page does not scroll sideways");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== Search in "See every entry" =====
+console.log("\n-- Search --");
+{ const DTS = "2026-10-01T09:00:00.000+08:00";
+  const A = (id, name, cls, ob) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: "2026-04-01" });
+  let st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [A("cash", "Cash", "asset", 2500000), A("bank", "Test Bank", "asset", 9000000)] };
+  let n = 0; const spend = (date, payee, cat, amt, acc) => { const id = "t" + ++n; st.transactions.push({ id, date, payee, memo: "", status: "verified", source: "manual", created_at: DTS, verified_at: DTS }); st.entries.push({ transaction_id: id, category_id: cat, amount: amt }, { transaction_id: id, account_id: acc, amount: -amt }); };
+  spend("2026-10-02", "Sample Cafe", "cat-food", 24500, "cash"); spend("2026-10-05", "Landlord", "cat-rent", 800000, "bank"); spend("2026-10-09", "Sample Grocer", "cat-food", 150000, "cash"); spend("2026-09-14", "Sample Cafe", "cat-food", 27000, "cash"); spend("2026-08-20", "Sample Cafe", "cat-food", 124500, "cash");
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
+  await menuGo(page, "Spending"); await page.waitForTimeout(400); await page.click('button[data-action="open-entries"]'); await page.waitForSelector("#e-q");
+  check(await page.locator("#sheet .row").count() === 3, "Every entry starts with this month's list");
+  await page.fill("#e-q", "cafe"); await page.waitForTimeout(200);
+  check(await page.locator("#sheet .row").count() === 1 && (await text(page, "#sheet")).includes("1 entry found"), "typing narrows it, and the keyboard stays (the box keeps its focus)");
+  check(await page.evaluate(() => document.activeElement?.id === "e-q"), "the search box keeps the cursor while the list changes");
+  await page.click('button[data-action="entries-scope"][data-id="all"]'); await page.fill("#e-q", "cafe"); await page.waitForTimeout(200);
+  check(await page.locator("#sheet .row").count() === 3 && (await text(page, "#sheet")).includes("Aug 20") && (await text(page, "#sheet")).includes("3 entries found"), "Everything finds it in older months too, with the dates shown");
+  await page.fill("#e-q", "1,245"); await page.waitForTimeout(200);
+  check(await page.locator("#sheet .row").count() === 1 && (await text(page, "#sheet")).includes("\u20B11,245.00"), "an amount finds exactly that amount");
+  await page.fill("#e-q", "245"); await page.waitForTimeout(200);
+  check(await page.locator("#sheet .row").count() === 1 && (await text(page, "#sheet")).includes("\u20B1245.00"), "245 does not also find 1,245");
+  await page.fill("#e-q", "zzz"); await page.waitForTimeout(200);
+  check((await text(page, "#sheet")).includes("Nothing found"), "nothing found says so");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
+console.log("\n-- Appearance --");
+{ ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false }));
+  const ground = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ground").trim().toUpperCase());
+  const bodyBg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  await page.emulateMedia({ colorScheme: "light" }); await page.waitForTimeout(200);
+  check(await ground() === "#F5F3EE", "a phone in Light mode gets the light paper");
+  await page.emulateMedia({ colorScheme: "dark" }); await page.waitForTimeout(200);
+  check(await ground() === "#121517" && await bodyBg() !== "rgb(255, 255, 255)", "a phone in Dark mode gets the night paper, and the page background follows");
+  await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer")); await page.waitForTimeout(300);
+  await page.click('.setrow:has-text("Appearance")'); await page.waitForTimeout(250);
+  check((await text(page, "#screen")).includes("Match my phone") && await page.locator('button[data-action="set-appearance"][data-id="auto"][aria-pressed="true"]').count() === 1, "Appearance starts on Match my phone");
+  await page.click('button[data-action="set-appearance"][data-id="light"]'); await page.waitForTimeout(300);
+  check(await ground() === "#F5F3EE" && await page.evaluate(() => document.documentElement.dataset.theme) === "light", "Light stays light even on a Dark phone");
+  check(JSON.parse((await stored(page)).local).settings.appearance === "light", "the choice is kept in the settings, not in the ledger data");
+  await page.emulateMedia({ colorScheme: "light" }); await page.click('button[data-action="set-appearance"][data-id="dark"]'); await page.waitForTimeout(300);
+  check(await ground() === "#121517", "Dark stays dark on a Light phone");
+  await page.click('button[data-action="set-appearance"][data-id="auto"]'); await page.waitForTimeout(300);
+  check(await ground() === "#F5F3EE" && await page.evaluate(() => document.documentElement.dataset.theme === undefined), "Match my phone goes back to following the phone");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
 await browser.close();

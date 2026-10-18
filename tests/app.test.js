@@ -54,9 +54,13 @@ test("Ledger Paper: every colour is a token written once; red is only for over b
   const TOKENS = { "--ground": "#F5F3EE", "--surface": "#FFFFFF", "--ink": "#1B1D1F", "--muted": "#5C6166", "--line": "#E2DDD3", "--track": "#ECE8DF", "--accent": "#1E5B47", "--dashed": "#A39B8B", "--critical": "#D03B3B" };
   const used = [...(css.match(/#[0-9a-fA-F]{3,6}\b/g) ?? [])].map((h) => h.toUpperCase());
   for (const [name, hex] of Object.entries(TOKENS)) assert.ok(css.includes(name + ": " + hex + ";"), name + " is declared as " + hex);
-  for (const hex of new Set(used)) assert.ok(Object.values(TOKENS).includes(hex) || ["#7FB09E", "#4F8C75", "#1E5B47", "#000"].includes(hex), hex + " is not a token");
+  // The night paper: the same tokens, written twice (the phone's setting and the Setup choice), only inside the two dark rules.
+  const NIGHT = ["#121517", "#1B2023", "#ECE9E2", "#A3A9AD", "#2C3338", "#272D31", "#5DB894", "#5B635E", "#E57373", "#3E8F72", "#D8D4CA"];
+  for (const hex of new Set(used)) assert.ok(Object.values(TOKENS).includes(hex) || ["#7FB09E", "#4F8C75", "#1E5B47", "#000"].includes(hex) || NIGHT.includes(hex), hex + " is not a token");
+  assert.ok(NIGHT.every((h) => css.toUpperCase().includes(h)), "every night colour is declared");
   for (const hex of Object.values(TOKENS)) assert.ok(used.filter((h) => h === hex).length <= 2, hex + " is written as a token, then used by name");
-  assert.match(html, /<meta name="theme-color" content="#F5F3EE">/, "the phone's status bar matches the page");
+  assert.match(html, /<meta name="theme-color" content="#F5F3EE" media="\(prefers-color-scheme: light\)">/, "the phone's status bar matches the page");
+  assert.match(html, /<meta name="theme-color" content="#121517" media="\(prefers-color-scheme: dark\)">/, "and at night");
   assert.ok(!/#[0-9a-fA-F]{6}\b/.test(read("app/app.js")), "the screens' code writes no colour of its own");
   assert.ok(css.includes("--chart: var(--accent)") && css.includes("--paper: var(--surface)") && css.includes("--mid: var(--muted)"), "the older names point at the tokens");
   assert.ok(!/rgba?\(0, ?0, ?0/.test(css), "no stray black shadows or scrims: they are tokens too");

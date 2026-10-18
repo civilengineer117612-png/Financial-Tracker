@@ -55,6 +55,7 @@ export { KEEP_MONTHS, SHRINK_MAX_SIDE, SHRINK_BATCH, monthsBefore, shrinkDue, sh
 export { MAX_FORM_LINES, KIND_NAMES, newPlanForm, planTextFromForm, planFormStatus, formFromPlan, planFormLines, withListedLines, planFormSuggestion, planFormFill, payslipDayNotes, ordinal, amountText } from "./planform.js";
 export { HISTORY_MONTHS, suggestFromHistory, suggestFromPlan, scheduleHints } from "./schedulehints.js";
 export { accountRegister } from "./register.js";
+export { searchEntries } from "./search.js";
 export { PART_BYTES, planParts, partFileName, sealPictures, openPictures } from "./picturebackup.js";
 export { correctable, planCorrection, applyCorrection, isReversed, correctionTag, CORRECTION_DAYS } from "./corrections.js";
 export { envelopeBalance, planGcashSpend, splitSweep, planMonthEndSweep, planSweep, sweepOrderAccounts, underBudgetedCategories, planEnvelopeSetup, planBufferFunding, bufferSummary } from "./buffer.js";
