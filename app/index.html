@@ -364,6 +364,9 @@
   svg .tlv { font-size: 10px; fill: var(--ink); font-variant-numeric: tabular-nums; } svg .tlx { font-size: 10px; fill: var(--muted); }
   .swcard[data-action], .row.tapcard { cursor: pointer; } .row.tapcard:active, .swcard[data-action]:active { background: var(--track); }
   .pmonths { display: flex; gap: 4px; align-items: flex-end; margin: 4px 0 12px; } .pmcol { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; } .pmval { font-size: 11px; color: var(--mid); font-variant-numeric: tabular-nums; min-height: 14px; } .pmbar { width: 14px; border-radius: 3px; background: var(--accent); } .pmcol small { color: var(--mid); }
+  .ghostline { visibility: hidden; user-select: none; -webkit-user-select: none; }
+  .veil { position: relative; display: inline-block; max-width: 100%; } .veil .ghost { visibility: hidden; user-select: none; -webkit-user-select: none; } .veil .ghost::before { content: attr(data-w); }
+  .veil .dots { position: absolute; top: 0; bottom: 0; left: 0; display: flex; align-items: center; line-height: inherit; font: inherit; white-space: nowrap; } .amt .veil .dots, .netsides span:last-child .veil .dots { left: auto; right: 0; } .netbig .veil .dots { left: 50%; transform: translateX(-50%); }
   .netbigrow.goalsrow { justify-content: flex-start; margin-bottom: 0; } .goalsrow .flatbig { margin: 0; }
   .netbigrow { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px; } .netbigrow .netbig { margin-bottom: 0; } button.eye { min-height: 44px; min-width: 44px; padding: 0; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
   .netbig { font-size: 34px; font-weight: 600; font-variant-numeric: tabular-nums; margin-bottom: 12px; } .netcard .cover { height: 8px; border-radius: 4px; }

@@ -1,7 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
-  { id: "2026-10-18-goals-eye", date: "2026-10-18", text: "Goals use the same eye and dots as Cards to hide and show amounts, and the goal pictures are drawn in the app's green." },
+  { id: "2026-10-18-goals-eye", date: "2026-10-18", text: "Goals use the same eye and dots as Cards, nothing on Cards or Goals jumps when you hide or show amounts (only the eye moves), and goal pictures and letters are drawn in the app's green." },
   { id: "2026-10-18-faster", date: "2026-10-18", text: "Importing a bank statement and opening Setup and Statements are much faster, so the app no longer lags after you add statements." },
   { id: "2026-10-18-goal-symbols", date: "2026-10-18", text: "A goal can wear one of sixteen line pictures (house, trip, laptop, safety, car, gift, school, family, phone, bike, pet, repairs, health, wallet, dream, camera) instead of a photo." },
   { id: "2026-10-18-networth", date: "2026-10-18", text: "Cards has a Net worth over time link: one line of what you have minus what the cards are owed, month by month, with the list under it." },

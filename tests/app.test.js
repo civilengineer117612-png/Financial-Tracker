@@ -281,5 +281,5 @@ test("Goals hides and shows amounts with the same eye and five dots as Cards, no
   assert.match(js, /\$\{eyeButton\("cards-eye", shown\)\}/, "Cards uses it");
   assert.match(js, /eyeButton\("toggle-reveal", !!ui\.reveal\)/, "Goals uses it");
   assert.doesNotMatch(js, /Show balances|Hide balances|Hidden\. Tap Show balances/, "the old link and line are gone");
-  assert.match(js, /if \(hidden\) return \{ name, fig: dots, pct: null \};/, "a hidden goal reads as dots, with no bar");
+  assert.match(js, /fig: veil\(r\.fig\), pct: r\.pct == null \? null : 0/, "a hidden goal is the same row as a shown one: its figure veiled (the same room, five dots over it), its bar an empty track");
 });
