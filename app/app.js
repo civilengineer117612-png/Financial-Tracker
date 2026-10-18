@@ -1987,7 +1987,9 @@ const ord = (n) => (n % 100 >= 11 && n % 100 <= 13 ? "th" : { 1: "st", 2: "nd", 
 
 // ---------- goals ----------
 // A goal's picture: the one the owner chose, else a plain first-letter tile.
-const goalPic = (g, size) => iconOf({ name: g.name, ...(g.icon ? { icon: g.icon } : {}) }, size);
+const goalPic = (g, size) => !g.icon && g.symbol && M.goalSymbolSvg(g.symbol)
+  ? `<span class="ico mono" style="width:${size}px;height:${size}px" aria-hidden="true">${M.goalSymbolSvg(g.symbol, Math.round(size * 0.62))}</span>`
+  : iconOf({ name: g.name, ...(g.icon ? { icon: g.icon } : {}) }, size);
 // Everything the goal window shows about one goal.
 function goalFacts(g) {
   const p0 = M.goalProgress(S(), g); if (!p0) return null;
@@ -2788,13 +2790,14 @@ function renderSheet() {
   } else if (sh.type === "icon" && sh.goal) {
     const g = S().goals.find((x) => x.id === sh.id);
     body = `<h3>Picture for ${esc(g.name)}</h3>
-      <p class="note">Choose a photo or an image, then zoom and drag until it fills the square. It stays on this phone.</p>
+      <div class="symrow" role="group" aria-label="Pick a picture">${M.GOAL_SYMBOLS.map((x) => `<button class="symtile" data-action="goal-symbol" data-id="${x.id}" aria-label="${esc(x.label)}" aria-pressed="${!g.icon && g.symbol === x.id}">${M.goalSymbolSvg(x.id, 26)}</button>`).join("")}</div>
+      <p class="note">Or choose a photo or an image, then zoom and drag until it fills the square. It stays on this phone.</p>
       <input id="i-file" type="file" accept="image/*" data-field="file" aria-label="Choose a picture">
       <div id="i-stage" class="stage"><img id="i-img" alt="" hidden></div>
       <label for="i-zoom">Zoom</label><input id="i-zoom" data-field="zoom" type="range" min="1" max="4" step="0.01" value="1" disabled>
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="save-icon" disabled>Use this picture</button></p>
-      ${g.icon ? `<p><button data-action="clear-icon" style="width:100%">Remove the picture</button></p>` : ""}`;
+      ${g.icon || g.symbol ? `<p><button data-action="clear-icon" style="width:100%">Remove the picture</button></p>` : ""}`;
   } else if (sh.type === "icon") {
     const a = S().accounts.find((x) => x.id === sh.id);
     body = `<h3>Picture for ${esc(a.name)}</h3>
@@ -3654,9 +3657,10 @@ async function onClick(el) {
       if (pk && !pk.ok) { const m = $("l4-msg"); if (m) m.textContent = pk.violations[0].message; break; }
       ui.sheet = null; renderSheet(); await commit(pk ? pk.state : r.state); break;
     }
+    case "goal-symbol": { const gid = ui.sheet.id, r = M.setGoalSymbol(S(), gid, id); ui.sheet = { type: "goal-view", id: gid, tab: "overview" }; renderSheet(); if (r.ok) await commit(r.state); break; }
     case "save-icon": await saveIcon(); break;
     case "clear-icon": {
-      if (ui.sheet.goal) { const gid = ui.sheet.id, r = M.setGoalIcon(S(), gid, null); ui.sheet = { type: "goal-view", id: gid, tab: "overview" }; renderSheet(); if (r.ok) await commit(r.state); break; }
+      if (ui.sheet.goal) { const gid = ui.sheet.id, r0 = M.setGoalIcon(S(), gid, null), r = r0.ok ? M.setGoalSymbol(r0.state, gid, null) : r0; ui.sheet = { type: "goal-view", id: gid, tab: "overview" }; renderSheet(); if (r.ok) await commit(r.state); break; }
       const a = S().accounts.find((x) => x.id === ui.sheet.id);
       const r = M.setAccountIcon(S(), a.id, null);
       ui.sheet = null; renderSheet();
