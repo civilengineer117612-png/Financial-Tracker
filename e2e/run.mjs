@@ -3860,6 +3860,26 @@ console.log("\n-- Search --");
   check((await text(page, "#sheet")).includes("Nothing found"), "nothing found says so");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
+// ===== Account history: tap an account on Cards, see every entry with the balance right after it =====
+console.log("\n-- Account history --");
+{ const DTS = "2026-10-01T09:00:00.000+08:00";
+  const A = (id, name, cls, ob) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: "2026-04-01" });
+  let st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [A("cash", "Cash", "asset", 2500000), A("card", "Test Card", "liability", 0)] };
+  let n = 0; const spend = (date, payee, cat, amt, acc) => { const id = "t" + ++n; st.transactions.push({ id, date, payee, memo: "", status: "verified", source: "manual", created_at: DTS, verified_at: DTS }); st.entries.push({ transaction_id: id, category_id: cat, amount: amt }, { transaction_id: id, account_id: acc, amount: -amt }); };
+  spend("2026-10-02", "Sample Cafe", "cat-food", 24500, "cash"); spend("2026-10-09", "Sample Grocer", "cat-food", 150000, "cash");
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
+  await menuGo(page, "Cards"); await page.waitForTimeout(400);
+  check(await page.locator('[data-action="open-register"][data-id="card"]').count() === 0, "a credit card keeps its own Pay a card window, not the history");
+  await page.locator('[data-action="open-register"][data-id="cash"]').first().click(); await page.waitForSelector("#sheet .regl");
+  const t = await text(page, "#sheet");
+  check(t.includes("Cash") && t.includes("₱23,255.00"), "the history says the balance now (₱23,255.00)");
+  check(t.indexOf("Sample Grocer") > -1 && t.indexOf("Sample Grocer") < t.indexOf("Sample Cafe"), "newest entry first");
+  check(t.includes("₱24,755.00") && t.includes("Opening balance") && t.includes("₱25,000.00"), "each line shows the balance after it, down to the opening balance");
+  check(await page.locator('#sheet button[data-action="close-sheet"]').count() === 1, "it has a Close button");
+  await page.click('#sheet button[data-action="close-sheet"]'); await page.waitForTimeout(300);
+  check(await page.locator("#sheet .regl").count() === 0, "Close puts it away");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
 console.log("\n-- Appearance --");
 { ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false }));
