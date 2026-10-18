@@ -140,5 +140,5 @@ test("the Goals screen uses the plan when there is one and the budgets when ther
   const { readFileSync } = await import("node:fs");
   const app = readFileSync(new URL("../app/app.js", import.meta.url), "utf8");
   assert.match(app, /ef = !isEf \? null : planOf\(\) \? M\.emergencyFundStatus\(S\(\), planOf\(\), g\) : M\.emergencyFundFromBudgets\(S\(\), g, \{ month: M\.monthOf\(today\(\)\) \}\);/);
-  assert.match(app, /from \$\{ef\.source === "budgets" \? "your budgets" : "your plan"\}/);
+  assert.match(app, /from \$\{f\.ef\.source === "budgets" \? "your budgets" : "your plan"\}/);
 });

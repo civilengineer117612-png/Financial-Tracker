@@ -14,7 +14,7 @@ export const HOWTOS = [
   { id: "checkin", label: "Count your accounts", caption: "Tap an account, type its real balance, Save: the difference is recorded." },
   { id: "checks", label: "Check your card reserve", caption: "Card spending goes up; Checks says if the reserve still covers it." },
   { id: "buffer", label: "Cover an overrun", caption: "When a category runs over, the buffer pays the gap and records it." },
-  { id: "goals", label: "Save toward a goal", caption: "Tap Put money in on a goal, type the amount, Save: its bar grows." },
+  { id: "goals", label: "Save toward a goal", caption: "Tap a goal, tap Put money in, type the amount, Save: its bar grows." },
   { id: "import", label: "Import old spending", caption: "Tap the camera, Import old spending, pick a file: every line waits in Verify." },
   { id: "scheduled", label: "Schedule a payment", caption: "A due payment waits in Verify as a draft: check it, then tap Correct." },
   { id: "backup", label: "Back up your data", caption: "Back up now, set a password, save the file off this phone." },

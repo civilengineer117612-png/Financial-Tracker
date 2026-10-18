@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  addSchedule, makeDueDrafts, setNewAmount, skipPayment, endSchedule, markPaidOff, markNextDue, payNext, skipOnDelete, viewOf, dueSoon, daysText, planLine,
+  addSchedule, pastPayments, madeAfterAnswers, markAlreadyPaid, makeDueDrafts, setNewAmount, skipPayment, endSchedule, markPaidOff, markNextDue, payNext, skipOnDelete, viewOf, dueSoon, daysText, planLine,
   committedIn, matchDueDraft, nextOpenPayment, reserveForPlan, reserveIdFor, payKey, skippedOf, linkToDue, planInText, paymentState, paymentsOf, monthsAfter, verifyDraft, discardDraft, editDraftFields, validateShape, validateState,
   encryptLedgerBackup, decryptLedgerBackup, upgradeLedger, parseLedger, selfCheck, LEDGER_VERSION, INTEREST_ROLE, COLLECTION_NAMES,
 } from "../src/model/index.js";
@@ -287,4 +287,37 @@ test("Skip means the next payment that has no draft yet, even when the next one 
   assert.equal(nextOpenPayment(markPaidOff(s, "p1", "2026-10-01", NOW).state, s.schedules[0], "2026-10-01"), null, "nothing left once paid off");
   let r = add(base(), rent()); r = endSchedule(r, "r1", "2026-08-31", NOW).state;
   assert.equal(nextOpenPayment(r, r.schedules[0], "2026-10-01"), null, "nothing after the end");
+});
+
+// A rent that started in the past: the months already paid are asked about, not turned into drafts.
+test("a repeating payment that starts in the past lists the past months to ask about", () => {
+  const s = add(base(), rent({ start: "2026-07-05" }));   // today is 2026-10-05
+  const sc = s.schedules[0];
+  assert.deepEqual(pastPayments(s, sc, "2026-10-05").map((p) => p.key), ["2026-07", "2026-08", "2026-09"]);   // Oct 5 is today, not past
+  assert.deepEqual(pastPayments(s, { ...sc, start: "2026-10-05" }, "2026-10-05"), []);
+  const inst = add(base(), plan({ start: "2026-07-10", count: 6, total: 600000 }));
+  assert.deepEqual(pastPayments(inst, inst.schedules[0], "2026-10-05").map((p) => p.key), ["1", "2", "3"], "an installment asks about its own payments, by number");
+});
+test("months answered 'already paid' make no draft; the others do", () => {
+  let s = add(base(), rent({ start: "2026-07-05" }));
+  const r = markAlreadyPaid(s, "r1", ["2026-07", "2026-08"], "2026-10-05", NOW);
+  assert.equal(r.ok, true);
+  s = r.state;
+  assert.deepEqual(pastPayments(s, s.schedules[0], "2026-10-05").map((p) => p.key), ["2026-09"]);
+  const made = makeDueDrafts(s, "2026-10-05", {}).made;
+  assert.deepEqual(made.sort(), ["sch:r1:2026-09", "sch:r1:2026-10"]);
+  assert.equal(paymentState(s, s.schedules[0], "2026-08"), "skipped");
+});
+test("answering 'already paid' only adds rows: nothing earlier is edited or removed", () => {
+  const s = add(base(), rent({ start: "2026-07-05" }));
+  const r = markAlreadyPaid(s, "r1", ["2026-07"], "2026-10-05", NOW);
+  assert.equal(r.state.scheduleChanges.length, 1);
+  assert.deepEqual(r.state.schedules, s.schedules);
+});
+test("an installment: 'already paid' is the first payments, and the ones older than the window count as paid", () => {
+  const s = add(base(), plan({ start: "2026-05-10", count: 8, total: 800000 }));   // due May 10, Jun 10, Jul 10, Aug 10, Sep 10, ... today Oct 5
+  const sc = s.schedules[0], keys = pastPayments(s, sc, "2026-10-05").map((p) => p.key);
+  assert.deepEqual(keys, ["3", "4", "5"]);                       // May and June are older than the 92-day window: not asked
+  assert.equal(madeAfterAnswers(s, sc, ["3", "4"], "2026-10-05"), 4);   // 2 older + 2 paid
+  assert.equal(madeAfterAnswers(s, sc, [], "2026-10-05"), 2);
 });
