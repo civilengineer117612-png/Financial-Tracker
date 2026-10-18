@@ -166,7 +166,7 @@ test("hubs: screens that belong together share one menu row and a picture strip;
 
 test("signs, folded entries, Budget bars, one date link: money out has a minus, money in a plus; the day's entries are hidden until the heading is tapped", () => {
   const js = read("app/app.js");
-  assert.match(js, /const signed = \(d\) => \(d\.kind === "income" \? "\+" : d\.kind === "expense" \|\| d\.kind === "split" \? "\\u2212" : ""\) \+ peso\(d\.amount\);/, "out is minus, in is plus, a move between your accounts has neither");
+  assert.match(js, /const signed = \(d\) => \(d\.kind === "income" \? "\+" : d\.kind === "expense" \|\| d\.kind === "split" \? "-" : ""\) \+ peso\(d\.amount\);/, "out is minus, in is plus, a move between your accounts has neither");
   assert.match(js, /<div class="amt\$\{d\.kind === "income" \? " in" : ""\}">\$\{signed\(d\)\}<\/div>/, "rows show the sign");
   assert.ok(js.includes('"money in "') && js.includes('"money out "'), "a screen reader hears the direction in words");
   assert.match(js, /<div id="entries-list"\$\{open \? "" : " hidden"\}\$\{anim && open/, "the list is hidden unless opened");
@@ -260,7 +260,7 @@ test("Setup is a short list of pages and Help runs in a clear order with a small
 test("pictures and signs instead of little sentences under figures: Cards", () => {
   const js = read("app/app.js");
   for (const gone of ["<span>in your accounts</span>", "<span>owed on cards</span>", "<small>you owe</small>", "<small>in it</small>", "`spent ${peso(m.spent)}`"]) assert.ok(!js.includes(gone), gone + " is gone");
-  assert.match(js, /\$\{c\.owe > 0 \? "\\u2212" : ""\}\$\{peso\(c\.owe\)\}<span class="sr"> you owe<\/span>/, "a card's debt has a minus, and a screen reader still hears 'you owe'");
+  assert.match(js, /\$\{c\.owe > 0 \? "-" : ""\}\$\{peso\(c\.owe\)\}<span class="sr"> you owe<\/span>/, "a card's debt has a minus, and a screen reader still hears 'you owe'");
   assert.match(js, /const flow = \(up, amt\) => `<span class="flow">\$\{arrow\(up\)\}<span class="sr">\$\{up \? "spent " : "paid "\}<\/span>\$\{peso\(amt\)\}<\/span>`;/, "an arrow up is spent, an arrow down is paid; both are read aloud");
   assert.match(js, /m\.spent > 0 \? flow\(true, m\.spent\) : ""/, "an account that spent nothing shows nothing");
   assert.match(js, /Free \$\{esc\(peso\(net\.free\)\)\}: in your accounts \$\{esc\(peso\(o\.held\)\)\}, owed on cards \$\{esc\(peso\(o\.owe\)\)\}/, "the net on top is read as one sentence: free, what you have, what is owed");
