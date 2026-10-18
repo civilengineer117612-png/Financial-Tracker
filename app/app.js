@@ -2195,6 +2195,16 @@ const cardCountBlock = (a) => {
     ${basis === "posted" && pend.length ? `<p class="note">Tick the purchases your bank already lists. The rest stay pending.</p>
       <div class="card catcard">${pend.map((p) => `<button class="catrow" data-action="count-tick" data-id="${esc(p.transaction_id)}" aria-pressed="${ticked.has(p.transaction_id)}"><div class="ct"><span class="ctn">${esc(p.payee)}<small>${esc(longDate(p.date))}</small></span><span class="amt">${ticked.has(p.transaction_id) ? "\u2713 " : ""}${peso(p.amount)}</span></div></button>`).join("")}</div>` : ""}`;
 };
+// Saves a new scheduled payment: the months answered "already paid" are recorded as skipped, the card reserve is set, and what is due now becomes a draft.
+async function finishSchedule(r, form, paidKeys) {
+  const marked = paidKeys.length ? M.markAlreadyPaid(r.state, r.schedule.id, paidKeys, today(), new Date()) : { ok: true, state: r.state };
+  if (!marked.ok) { showToast("Could not save: " + marked.violations[0].message); return; }
+  ui.sheet = null; renderSheet();
+  const held = M.reserveForPlan(marked.state, r.schedule, { reserve_source_id: ledger.settings.reserve_source_id, today: today() });   // a plan on a credit card: the reserve covers the amount still owed
+  const first = M.makeDueDrafts(held.state, today(), { reserve_source_id: ledger.settings.reserve_source_id });
+  const waiting = first.made.length > 0 || held.id !== null;
+  if (await commit(first.state, { ...ledger.settings, last_account_id: form.account_id })) showToast(r.schedule.name + " is scheduled." + (waiting ? " Its payment is waiting in Verify." : ""));
+}
 function renderSheet() {
   const sh = ui.sheet;
   if (!sh) { $("sheet").innerHTML = ""; lastSheetKey = null; lockPage(false); return; }
@@ -2225,6 +2235,12 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-other" style="margin-top:14px" disabled>Save</button></p>`;
   } else if (sh.type === "schedule-new") {
     body = scheduleSheet(ui.form);
+  } else if (sh.type === "sch-past") {
+    const r = M.addSchedule(S(), scheduleInput(sh.input), new Date()), past = r.ok ? M.pastPayments(r.state, r.schedule, today()) : [], ans = sh.ans;
+    body = `<h3>Already paid?</h3><p class="note">${esc(r.ok ? r.schedule.name : "This payment")} starts in the past. Say which payments you already made, so Verify only shows what is still waiting.</p>
+      <div class="card">${past.map((p) => `<div class="pastrow"><span>${esc(longDate(p.due))}<small>${r.ok && r.schedule.kind === "installment" ? "Payment " + esc(p.key) + " \u00b7 " : ""}${peso(p.amount)}</small></span><span class="seg" role="group" aria-label="${esc(longDate(p.due))}">${[["paid", "Paid"], ["open", "Not yet"]].map(([v, t]) => `<button data-action="sch-past-answer" data-id="${v}" data-key="${esc(p.key)}" aria-pressed="${ans[p.key] === v}">${t}</button>`).join("")}</span></div>`).join("")}</div>
+      <p class="center"><button class="link" data-action="sch-past-all">All already paid</button></p>
+      <p><button class="primary" data-action="save-sch-past"${past.every((p) => ans[p.key]) ? "" : " disabled"}>Save</button></p>`;
   } else if (sh.type === "schedule") {
     body = scheduleDetail(sh.id);
   } else if (sh.type === "schedule-amount") {
@@ -3535,12 +3551,29 @@ async function onClick(el) {
     case "save-schedule": {
       const r = M.addSchedule(S(), scheduleInput(form), new Date());
       if (!r.ok) { showToast("Could not save: " + r.violations[0].message); break; }
-      ui.sheet = null; renderSheet();
-      const held = M.reserveForPlan(r.state, r.schedule, { reserve_source_id: ledger.settings.reserve_source_id, today: today() });   // a plan on a credit card: the reserve covers the amount still owed
-      const first = M.makeDueDrafts(held.state, today(), { reserve_source_id: ledger.settings.reserve_source_id });
-      const waiting = first.made.length > 0 || held.id !== null;
-      if (await commit(first.state, { ...ledger.settings, last_account_id: form.account_id })) showToast(r.schedule.name + " is scheduled." + (waiting ? " Its payment is waiting in Verify." : ""));
-      break;
+      // Starting in the past: ask which of those months were already paid, so Verify is not filled with old drafts.
+      const past = M.pastPayments(r.state, r.schedule, today());
+      if (past.length) { ui.sheet = { type: "sch-past", input: form, ans: {} }; ui.form = {}; renderSheet(); break; }
+      await finishSchedule(r, form, []); break;
+    }
+    case "sch-past-answer": {   // an installment plan is paid in order: "Paid" on one marks the ones before it, "Not yet" on one marks the ones after it
+      const r0 = M.addSchedule(S(), scheduleInput(ui.sheet.input), new Date()), keys = r0.ok ? M.pastPayments(r0.state, r0.schedule, today()).map((p) => p.key) : [], at = keys.indexOf(el.dataset.key);
+      ui.sheet.ans[el.dataset.key] = id;
+      if (r0.ok && r0.schedule.kind === "installment") keys.forEach((k, i) => { if (id === "paid" && i < at) ui.sheet.ans[k] = "paid"; if (id === "open" && i > at) ui.sheet.ans[k] = "open"; });
+      renderSheet(); break;
+    }
+    case "sch-past-all": { const r = M.addSchedule(S(), scheduleInput(ui.sheet.input), new Date()); for (const p of M.pastPayments(r.state, r.schedule, today())) ui.sheet.ans[p.key] = "paid"; renderSheet(); break; }
+    case "save-sch-past": {
+      const form = ui.sheet.input, paid = Object.entries(ui.sheet.ans).filter(([, v]) => v === "paid").map(([k]) => k);
+      let r = M.addSchedule(S(), scheduleInput(form), new Date());
+      if (!r.ok) { showToast("Could not save: " + r.violations[0].message); break; }
+      if (r.schedule.kind === "installment") {   // the plan starts with those payments already made
+        const made = M.madeAfterAnswers(r.state, r.schedule, paid, today());
+        r = M.addSchedule(S(), { ...scheduleInput(form), made }, new Date());
+        if (!r.ok) { showToast("Could not save: " + r.violations[0].message); break; }
+        await finishSchedule(r, form, []); break;
+      }
+      await finishSchedule(r, form, paid); break;
     }
     case "open-schedule": ui.sheet = { type: "schedule", id }; ui.confirmSch = null; renderSheet(); break;
     case "sch-pay": {
