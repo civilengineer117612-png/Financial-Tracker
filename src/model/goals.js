@@ -5,12 +5,39 @@ import { checkTransactionSave } from "./index.js";
 import { phTimestamp } from "./util.js";
 import { validateShape } from "./schema.js";
 
-// A goal's balance is the balance of the account (pocket) it points at.
+// Goals that point at the SAME account share it: a goal with `share_bps` (basis points, 10000 = all) takes that part of the balance,
+// the goals without one split what is left equally, and a goal alone on its account takes all of it. The centavos left by rounding
+// go to the first goal when the whole account is handed out, so the goals always add up to the account.
+export function goalSlices(state, account, alsoGoal) {
+  const have = state.goals ?? [], goals = (alsoGoal && !have.some((g) => g.id === alsoGoal.id) ? [...have, alsoGoal] : have).filter((g) => g.account_id === account.id);
+  const balance = naturalBalance(account, countedEntries(state));
+  if (goals.length <= 1) return new Map(goals.map((g) => [g.id, { balance, bps: 10000, shared: false }]));
+  const set = goals.filter((g) => g.share_bps != null), unset = goals.filter((g) => g.share_bps == null);
+  const rest = Math.max(0, 10000 - set.reduce((n, g) => n + g.share_bps, 0));
+  const bpsOf = new Map(set.map((g) => [g.id, g.share_bps]));
+  unset.forEach((g, i) => bpsOf.set(g.id, Math.floor(rest / unset.length) + (i === 0 ? rest % unset.length : 0)));
+  const out = new Map(goals.map((g) => [g.id, { balance: Math.trunc((balance * bpsOf.get(g.id)) / 10000), bps: bpsOf.get(g.id), shared: true }]));
+  const given = [...out.values()].reduce((n, x) => n + x.balance, 0), all = [...bpsOf.values()].reduce((n, b) => n + b, 0);
+  if (all === 10000) out.get(goals[0].id).balance += balance - given;
+  return out;
+}
+
+// Give a goal that shares its account a part of it (percent as basis points). The parts typed on one account cannot pass 100%.
+export function setGoalShare(state, goalId, bps) {
+  const goal = (state.goals ?? []).find((g) => g.id === goalId);
+  if (!goal) return fail("UNKNOWN_GOAL", "no goal " + goalId);
+  if (!Number.isInteger(bps) || bps < 0 || bps > 10000) return fail("BAD_SHARE", "a share is between 0% and 100%");
+  const others = (state.goals ?? []).filter((g) => g.id !== goalId && g.account_id && g.account_id === goal.account_id && g.share_bps != null).reduce((n, g) => n + g.share_bps, 0);
+  if (others + bps > 10000) return fail("SHARE_TOO_BIG", "the goals on this account would hold more than 100%");
+  return { ok: true, violations: [], state: { ...state, goals: state.goals.map((g) => (g.id === goalId ? { ...g, share_bps: bps } : g)) } };
+}
+
+// A goal's balance is its part of the account (pocket) it points at: all of it unless other goals share the account.
 export function goalProgress(state, goal) {
   // A goal with no account yet holds nothing: its balance is zero. A goal that names an account the ledger does not have is not shown at all.
   const account = goal.account_id ? state.accounts.find((a) => a.id === goal.account_id) : null;
   if (goal.account_id && !account) return null;
-  const balance = account ? naturalBalance(account, countedEntries(state)) : 0;
+  const balance = account ? (goalSlices(state, account, goal).get(goal.id)?.balance ?? 0) : 0;
   const { target } = goal;
   return {
     goal_id: goal.id, balance, target: target ?? null,
@@ -140,4 +167,13 @@ export function setGoalAccount(state, goalId, accountId) {
   const account = state.accounts.find((a) => a.id === accountId);
   if (!account || account.class !== "asset") return fail("UNKNOWN_ACCOUNT", "choose an account you hold money in");
   return { ok: true, violations: [], state: { ...state, goals: state.goals.map((g) => (g.id === goalId ? { ...g, account_id: accountId } : g)) } };
+}
+
+// The picture the owner chose for a goal (a small square kept on the phone, checked like an account's picture). null takes it away.
+export function setGoalIcon(state, goalId, dataUrl) {
+  const goal = (state.goals ?? []).find((g) => g.id === goalId);
+  if (!goal) return fail("UNKNOWN_GOAL", "no goal " + goalId);
+  const { icon, ...rest } = goal, next = dataUrl == null ? rest : { ...rest, icon: dataUrl };
+  if (validateShape("Goal", next).length) return fail("BAD_ICON", "that picture cannot be used");
+  return { ok: true, violations: [], state: { ...state, goals: state.goals.map((g) => (g.id === goalId ? next : g)) } };
 }

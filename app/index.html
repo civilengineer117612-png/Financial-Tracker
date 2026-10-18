@@ -227,6 +227,14 @@
   .glance .gl-sub { color: var(--mid); font-size: 13px; } .glance .meter { margin: 0; height: 6px; border-radius: 3px; } .glance .meter .fill { height: 6px; border-radius: 3px; }
   .seg button { flex: 1; padding: 10px 4px; min-height: 44px; font-size: 14px; }
   button.catrow[aria-pressed="true"] { background: var(--track); }
+  .gview { text-align: center; } .gview h3 { margin: 0 0 6px; }
+  .gring { position: relative; width: 160px; height: 160px; margin: 6px auto 4px; } .gring svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .gtrack { fill: none; stroke: var(--track); stroke-width: 6; } .gon { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; }
+  .gpic { position: absolute; left: 32px; top: 32px; width: 96px; height: 96px; border-radius: 50%; padding: 0; border: 0; background: var(--track); overflow: hidden; } .gpic .ico { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; }
+  .gedit { position: absolute; right: 2px; bottom: 2px; width: 24px; height: 24px; border-radius: 50%; background: var(--surface); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; color: var(--ink); }
+  .gfig { font-size: 30px; font-weight: 600; margin-top: 4px; } .gsub { color: var(--muted); margin-bottom: 10px; }
+  .gv { text-align: left; } .gvrow { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding: 11px 0; border: 0; background: none; width: 100%; font: inherit; color: inherit; text-align: left; } .gvrow + .gvrow { border-top: 1px solid var(--line); }
+  .gvrow small { display: block; color: var(--muted); } .gvrow b { font-weight: 600; } button.gvrow { cursor: pointer; border-radius: 0; min-height: 0; } .gvrow + .gvrow { border-radius: 0; }
   .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   .bars { margin: 12px 0 4px; }
   .brow { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 0; padding: 8px 0; min-height: 52px; }
