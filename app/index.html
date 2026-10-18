@@ -269,7 +269,7 @@
   .tbl th, .tbl td { text-align: left; padding: 9px 4px; border-bottom: 1px solid var(--line); }
   .tbl th { color: var(--mid); font-weight: normal; }
   .tbl .n { text-align: right; font-variant-numeric: tabular-nums; }
-  @media (max-width: 360px) { .tbl th, .tbl td { padding: 9px 3px; font-size: 14px; } }   /* four columns fit a 320 px phone */
+  @media (max-width: 360px) { .tbl th, .tbl td { padding: 9px 1px; font-size: 12px; } .tbl td:first-child { overflow-wrap: anywhere; } }   /* a small iPhone: the plan's three money columns still fit */
   .tbl tr.total td { font-weight: bold; }
   /* the dropdown row that replaces a wall of chips: the row shows the choice, a tap opens a short list that scrolls inside its own box */
   .pick { margin: 6px 0 14px; }
