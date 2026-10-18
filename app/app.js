@@ -1377,6 +1377,9 @@ function viewSetup() {
     <p><button class="link" data-action="more-backup" aria-expanded="${Boolean(ui.moreBackup)}">${ui.moreBackup ? "Fewer options" : "More: only the ledger, or only the pictures"}</button></p>
     ${ui.moreBackup ? `${ledgerBtns(false)}${singles}` : ""}` : `${ledgerBtns(true)}${singles}`}
     ${ledger.settings.last_pictures_backup_at && pics ? `<p class="note">Pictures last backed up ${esc(longDate(ledger.settings.last_pictures_backup_at.slice(0, 10)))}.</p>` : ""}
+    <h2>Spreadsheet</h2>
+    <p class="note">A plain list of your entries, to open in Numbers or Excel.</p>
+    <p><button data-action="open-csv" style="width:100%">Export entries</button></p>
     ${why("The file is encrypted. Keep a second copy off this phone, like iCloud Drive or a computer.", "Where to keep it")}`;
   const looks = [["auto", "Match my phone"], ["light", "Light"], ["dark", "Dark"]], look = ["light", "dark"].includes(ledger.settings.appearance) ? ledger.settings.appearance : "auto";
   const appearanceHtml = `    <h2>Appearance</h2><div class="seg" role="group" aria-label="Appearance">${looks.map(([v, t]) => `<button data-action="set-appearance" data-id="${v}" aria-pressed="${look === v}">${t}</button>`).join("")}</div>
@@ -2803,6 +2806,14 @@ function renderSheet() {
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="save-icon" disabled>Use this picture</button></p>
       ${a.icon || a.icon_url || bankLogo(a.bank ?? M.bankForName(a.name)?.id) ? `<p><button data-action="clear-icon" style="width:100%">Remove the picture</button></p>` : ""}`;
+  } else if (sh.type === "csv") {
+    const f = ui.form, range = f.range ?? "year", { from, to } = csvRange(range), n = M.entriesCsv(S(), { from, to, drafts: f.drafts === true }).rows;
+    body = `<h3>Export entries</h3>
+      <p class="note">A plain list to open in Numbers or Excel: date, who, category, account and amount. It is not encrypted, so keep the file private.</p>
+      <div class="seg" role="group" aria-label="Which entries">${[["month", "This month"], ["year", "This year"], ["all", "Everything"]].map(([v, t]) => `<button data-action="csv-range" data-id="${v}" aria-pressed="${range === v}">${t}</button>`).join("")}</div>
+      <p><button class="wl-check" role="checkbox" aria-checked="${f.drafts === true}" data-action="csv-drafts"><span class="box" aria-hidden="true"></span>Include drafts</button></p>
+      <p class="note" id="csv-count">${n} ${n === 1 ? "entry" : "entries"}</p>
+      <p><button class="primary" id="f-save" data-action="make-csv"${n ? "" : " disabled"}>Export</button></p>`;
   } else if (sh.type === "backup") {
     const pn = (S().attachments ?? []).length;
     body = `<h3>${sh.all ? "Back up" : sh.pictures ? "Back up pictures" : "Back up now"}</h3>
@@ -4035,6 +4046,10 @@ async function onClick(el) {
     case "open-backup-file": await openBackupFile(); break;
     case "restore-now": await restoreNow(); break;
     case "open-entries": ui.sheet = { type: "entries" }; ui.form = { q: "", scope: "period" }; renderSheet(); break;
+    case "open-csv": ui.sheet = { type: "csv" }; ui.form = { range: "year" }; renderSheet(); break;
+    case "csv-range": ui.form.range = id; renderSheet(); break;
+    case "csv-drafts": ui.form.drafts = ui.form.drafts !== true; renderSheet(); break;
+    case "make-csv": await makeCsv(); break;
     case "entries-scope": ui.form.scope = id; renderSheet(); break;
     case "toggle-cancelled": ui.showCancelled = !ui.showCancelled; renderSheet(); break;
     case "wn-all": ui.wnAll = !ui.wnAll; renderScreen(); break;
@@ -4251,6 +4266,16 @@ function working(on, message) {
 
 // Hand files to the phone's share sheet (choose Save to Files); where there is no share sheet they download. When the sheet refuses several files at once,
 // they are offered one at a time. Cancelling the sheet throws AbortError to the caller.
+// The dates a spreadsheet export covers: this month, this year or everything.
+function csvRange(range) { const t = today(); return range === "month" ? { from: t.slice(0, 7) + "-01", to: t.slice(0, 7) + "-31" } : range === "year" ? { from: t.slice(0, 4) + "-01-01", to: t.slice(0, 4) + "-12-31" } : { from: "", to: "9999-12-31" }; }
+
+async function makeCsv() {
+  const { from, to } = csvRange(ui.form.range ?? "year"), r = M.entriesCsv(S(), { from, to, drafts: ui.form.drafts === true });
+  try { await shareFiles([new File([r.csv], "finance-entries-" + today() + ".csv", { type: "text/csv" })], "Finance entries"); }
+  catch (e) { if (e.name === "AbortError") return; showToast("Could not make the file: " + e.message); return; }
+  ui.sheet = null; renderSheet(); showToast("Spreadsheet file created (" + r.rows + (r.rows === 1 ? " entry" : " entries") + "). It is not encrypted: keep it private.");
+}
+
 async function shareFiles(files, title) {
   if (navigator.canShare?.({ files })) {
     try { await navigator.share({ files, title }); return; }
