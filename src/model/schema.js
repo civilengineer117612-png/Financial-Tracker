@@ -31,7 +31,9 @@ export const SCHEMAS = {
     last4: optional({ type: "last4" }),   // ADDED (version 7): the last 4 digits of the account number, only those, so a payment screenshot can tell the owner's own accounts apart. Empty when not given
   },
   Goal: { id, account_id: optional(id), name, target: optional(centavos), deadline: optional(date), hidden_by_default: bool,
-    role: optional(oneOf("emergency")) },   // ADDED: what the goal is FOR, so nothing has to guess from its name (one goal at most holds a role)
+    role: optional(oneOf("emergency")),
+    share_bps: optional(count),
+    icon: optional({ type: "icon" }) },   // ADDED: what the goal is FOR, so nothing has to guess from its name (one goal at most holds a role)
   Envelope: { id, account_id: id, name, purpose: text },
   Transaction: {
     id, date, payee: text, memo: text,

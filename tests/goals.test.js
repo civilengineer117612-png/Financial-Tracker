@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit, setGoalTarget, naturalBalance } from "../src/model/index.js";
+import { goalProgress, requiredPerMonth, visibleGoals, emergencyTarget, splitOvertime, planOvertimeTransfer, planGoal, planGoalDeposit, setGoalTarget, setGoalShare, naturalBalance } from "../src/model/index.js";
 import { makeState, account, commit } from "./fixtures.js";
 
 function s0() {
@@ -143,4 +143,37 @@ test("a goal with no account does not change the home summary or the sweep order
   const s = planGoal(planGoal(base6(), { id: "g1", name: "A" }).state, { id: "g2", name: "B", account_id: "pocket" }).state;
   assert.deepEqual(soa(s, [{ goal_id: "g1" }, { goal_id: "g2", target: 70000 }]), [{ account_id: "pocket", target: 70000 }]);
   assert.doesNotThrow(() => homeSummary(s, { from: "2026-10-01", to: "2026-10-31" }));
+});
+
+// Invented: two goals on one pocket holding 1,000.00.
+function shared(o1 = {}, o2 = {}) {
+  const s = s0(); s.accounts.find((a) => a.id === "goalacct").opening_balance = 100000;
+  s.goals = [goal({ id: "g1", name: "Test One", ...o1 }), goal({ id: "g2", name: "Test Two", ...o2 })];
+  return s;
+}
+test("goals sharing an account split it, so Saved is not counted twice", () => {
+  const s = shared();
+  const [a, b] = s.goals.map((g) => goalProgress(s, g).balance);
+  assert.deepEqual([a, b, a + b], [50000, 50000, 100000]);
+});
+test("a typed share takes its part, the other goal takes the rest", () => {
+  const s = shared({ share_bps: 7000 });
+  assert.deepEqual(s.goals.map((g) => goalProgress(s, g).balance), [70000, 30000]);
+});
+test("a goal alone on its account takes all of it", () => {
+  const s = shared(); s.goals = [s.goals[0]];
+  assert.equal(goalProgress(s, s.goals[0]).balance, 100000);
+});
+test("rounding leftovers stay inside the account: the goals always add up", () => {
+  const s = shared({}, {}); s.accounts.find((a) => a.id === "goalacct").opening_balance = 100001;
+  s.goals.push(goal({ id: "g3", name: "Test Three" }));
+  const sum = s.goals.reduce((n, g) => n + goalProgress(s, g).balance, 0);
+  assert.equal(sum, 100001);
+});
+test("shares on one account cannot pass 100%", () => {
+  const s = shared({ share_bps: 6000 });
+  const bad = setGoalShare(s, "g2", 5000), ok = setGoalShare(s, "g2", 4000);
+  assert.equal(bad.ok, false); assert.equal(bad.violations[0].code, "SHARE_TOO_BIG");
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.state.goals.map((g) => goalProgress(ok.state, g).balance), [60000, 40000]);
 });

@@ -192,6 +192,24 @@ export function setNewAmount(state, scheduleId, amount, effective_from, now = ne
 }
 // Skip one payment: no draft is made for it (an installment payment skipped stays owed).
 export const skipPayment = (state, scheduleId, key, effective_from, now = new Date()) => addChange(state, scheduleId, "skip", { effective_from, key }, now);
+// A new payment that starts in the past would fill Verify with drafts for months that were paid long ago. The payments that WOULD be made
+// (due before today, no later than CATCH_UP_DAYS ago, still open) are listed so the owner can say which were already paid; nothing is decided here.
+export function pastPayments(state, s, today) {
+  const from = addDaysIso(today, -CATCH_UP_DAYS), h = historyOf(state, s);
+  return paymentsOf(state, s, { through: addDaysIso(today, -1) }).filter((p) => p.due >= from && p.due < today && paymentState(state, s, p.key) === "open" && (h.endedOn === null || p.due <= h.endedOn));
+}
+// An installment plan has an order, so "already paid" means its first payments, and the ones older than the window count as paid too. Returns the new
+// `made` for a plan about to be saved (`paidKeys`: the keys answered "paid").
+export function madeAfterAnswers(state, s, paidKeys, today) {
+  const from = addDaysIso(today, -CATCH_UP_DAYS), older = paymentsOf(state, s, { through: addDaysIso(today, -1) }).filter((p) => p.due < from && paymentState(state, s, p.key) === "open").length;
+  return (s.made ?? 0) + older + paidKeys.length;
+}
+// The answer "already paid" for some of those months: each is recorded as a skipped payment (a dated row, nothing edited), so no draft is made for it.
+export function markAlreadyPaid(state, scheduleId, keys, today, now = new Date()) {
+  let next = state;
+  for (const key of keys) { const r = skipPayment(next, scheduleId, key, today, now); if (!r.ok) return r; next = r.state; }
+  return { ok: true, violations: [], state: next };
+}
 // Stop FUTURE payments after `date`; everything before it stays as it was.
 export const endSchedule = (state, scheduleId, date, now = new Date()) => addChange(state, scheduleId, "end", { effective_from: date }, now);
 // An installment plan paid off early: the same as ending it, and it says so.
