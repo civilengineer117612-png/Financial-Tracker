@@ -2327,7 +2327,7 @@ console.log("Setup as pages");
   ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct] } } }));
   await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer")); await page.waitForTimeout(300);
   const rowsText = await page.locator(".setrow").allInnerTexts();
-  check(rowsText.length === 5 && rowsText[0].includes("Accounts") && rowsText[0].includes("1 account") && rowsText[1].includes("Categories") && rowsText[2].includes("Backup and restore") && rowsText[2].includes("No backup yet") && rowsText[3].includes("Statements") && rowsText[4].includes("About this app"), "Setup is five rows, each with a one-line status: " + rowsText.map((x) => x.split("\n")[0]).join(", "));
+  check(rowsText.length === 6 && rowsText[0].includes("Accounts") && rowsText[0].includes("1 account") && rowsText[1].includes("Categories") && rowsText[2].includes("Backup and restore") && rowsText[2].includes("No backup yet") && rowsText[3].includes("Statements") && rowsText[4].includes("Appearance") && rowsText[4].includes("Match my phone") && rowsText[5].includes("About this app"), "Setup is six rows, each with a one-line status: " + rowsText.map((x) => x.split("\n")[0]).join(", "));
   check(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 2), "the whole Setup list fits on one screen: nothing to scroll");
   check(await page.locator("#a-bank").count() === 0 && await page.locator("#add-account-open").count() === 0, "no long form on the list");
   for (const [row, title, mark] of [["Accounts", "Accounts", "#add-account-open"], ["Categories", "Categories", 'button[data-action="add-cat"]'], ["Backup and restore", "Backup and restore", 'button[data-action="open-backup"]'], ["About this app", "About this app", "text=Your data format"]]) {
@@ -2335,11 +2335,11 @@ console.log("Setup as pages");
     check((await text(page, "#top")).includes(title) && await page.locator(mark).count() >= 1 && await page.locator('.back button:has-text("Setup")').count() === 1, `${row} opens its own page, with a way back`);
     if (row === "About this app") check(/Your ledger: \d+ KB\. Saved twice: a main copy and a spare\./.test(await text(page, "#screen")), "About this app shows the ledger's size and that it is saved twice");
     await page.click('.back button:has-text("Setup")'); await page.waitForTimeout(200);
-    check(await page.locator(".setrow").count() === 5, `back from ${row} returns to the list`);
+    check(await page.locator(".setrow").count() === 6, `back from ${row} returns to the list`);
   }
   await page.click(".scrim, #menu .scrim").catch(() => {});
   await page.click('#nav button[data-tab="log"]'); await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
-  check(await page.locator(".setrow").count() === 5, "leaving Setup and coming back opens the list again");
+  check(await page.locator(".setrow").count() === 6, "leaving Setup and coming back opens the list again");
   check(errors.length === 0, "no script errors with the Setup pages");
   await ctx.close();
   ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, styled: false }));
@@ -3859,6 +3859,27 @@ console.log("\n-- Search --");
   check(await page.locator("#sheet .row").count() === 1 && (await text(page, "#sheet")).includes("\u20B1245.00"), "245 does not also find 1,245");
   await page.fill("#e-q", "zzz"); await page.waitForTimeout(200);
   check((await text(page, "#sheet")).includes("Nothing found"), "nothing found says so");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
+console.log("\n-- Appearance --");
+{ ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false }));
+  const ground = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ground").trim().toUpperCase());
+  const bodyBg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  await page.emulateMedia({ colorScheme: "light" }); await page.waitForTimeout(200);
+  check(await ground() === "#F5F3EE", "a phone in Light mode gets the light paper");
+  await page.emulateMedia({ colorScheme: "dark" }); await page.waitForTimeout(200);
+  check(await ground() === "#121517" && await bodyBg() !== "rgb(255, 255, 255)", "a phone in Dark mode gets the night paper, and the page background follows");
+  await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer")); await page.waitForTimeout(300);
+  await page.click('.setrow:has-text("Appearance")'); await page.waitForTimeout(250);
+  check((await text(page, "#screen")).includes("Match my phone") && await page.locator('button[data-action="set-appearance"][data-id="auto"][aria-pressed="true"]').count() === 1, "Appearance starts on Match my phone");
+  await page.click('button[data-action="set-appearance"][data-id="light"]'); await page.waitForTimeout(300);
+  check(await ground() === "#F5F3EE" && await page.evaluate(() => document.documentElement.dataset.theme) === "light", "Light stays light even on a Dark phone");
+  check(JSON.parse((await stored(page)).local).settings.appearance === "light", "the choice is kept in the settings, not in the ledger data");
+  await page.emulateMedia({ colorScheme: "light" }); await page.click('button[data-action="set-appearance"][data-id="dark"]'); await page.waitForTimeout(300);
+  check(await ground() === "#121517", "Dark stays dark on a Light phone");
+  await page.click('button[data-action="set-appearance"][data-id="auto"]'); await page.waitForTimeout(300);
+  check(await ground() === "#F5F3EE" && await page.evaluate(() => document.documentElement.dataset.theme === undefined), "Match my phone goes back to following the phone");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
 await browser.close();
