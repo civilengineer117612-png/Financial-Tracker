@@ -1754,21 +1754,34 @@ async function runSchedules() {
   if (c.changed) { state = c.state; settings = { ...settings, card_due_made: c.made }; changed = true; }
   return changed ? commit(state, settings, { quiet: true }) : false;
 }
+const dueDayNow = (s) => M.historyOf(S(), s).days.filter((d) => d.effective_from <= today()).pop()?.key ?? s.day;
 const schedAmount = (s) => { const v = M.viewOf(S(), s, today()); return s.kind === "installment" ? (v.next?.amount ?? 0) : (v.next?.amount ?? s.amount); };
+// One plain line about a scheduled payment today, with a small shape (a check, a clock, a dash, a mark) so it never depends on colour.
+const schedMark = (kind) => `<svg class="smark" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${{
+  paid: '<path d="M5 12l5 5 9-10"/>', waiting: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', due: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+  late: '<path d="M12 4v10M12 19v.5"/>', skipped: '<path d="M6 12h12"/>', stopped: '<path d="M6 12h12"/>' }[kind] ?? ""}</svg>`;
+function schedStatus(s) {
+  const st = M.statusOf(S(), s, today()); if (!st) return null;
+  const md = (d) => longDate(d).replace(/^\w+, /, "");
+  const text = { paid: () => "Paid " + md(st.paidOn), waiting: () => "Waiting in Verify \u00b7 due " + md(st.due), due: () => "Due " + md(st.due) + " \u00b7 " + M.daysText(st.days).replace(/^due /, ""),
+    late: () => (st.drafted ? "Waiting in Verify \u00b7 " + st.days + (st.days === 1 ? " day" : " days") + " overdue" : "Missed " + md(st.due) + " \u00b7 nothing logged") + (st.count > 1 ? " (+" + (st.count - 1) + " earlier)" : ""),
+    skipped: () => "Skipped this month", stopped: () => "Stopped" }[st.state]();
+  return { state: st.state, mark: schedMark(st.state), text };
+}
 function viewScheduled() {
   const t = today(), list = S().schedules ?? [], md = (d) => longDate(d).replace(/^\w+, /, "");
   const nextText = (v) => v.next ? `${esc(md(v.next.due))} \u00b7 ${esc(M.daysText(Math.round((Date.parse(v.next.due + "T00:00:00Z") - Date.parse(t + "T00:00:00Z")) / 86400000)))}` : "";
-  const rows = barCard(list.map((s) => {
-    const v = M.viewOf(S(), s, t), inst = s.kind === "installment";
-    const left = inst ? `${pairFig(v.paid, v.of, { fmt: (n) => String(n), tail: "paid", left: "to pay", doneWord: "Paid off", label: s.name })}` : `the ${ordinal(s.day)} of each month${v.ended ? " \u00b7 stopped" : ""}`;
+  const rows = barCard(list.filter((s) => !M.historyOf(S(), s).removed).map((s) => {
+    const v = M.viewOf(S(), s, t), inst = s.kind === "installment", ss = schedStatus(s);
+    const left = inst ? `${pairFig(v.paid, v.of, { fmt: (n) => String(n), tail: "paid", left: "to pay", doneWord: "Paid off", label: s.name })}` : `the ${ordinal(dueDayNow(s))} of each month${v.ended ? " \u00b7 stopped" : ""}`;
     const right = inst ? `${peso(v.stillToPay)}<span class="sr"> still to pay</span>` : `${peso(schedAmount(s))}<span class="sr"> a month</span>`;
-    return { id: s.id, action: "open-schedule", name: esc(s.name), sub: `${left}${v.active ? `<br>${nextText(v)}` : ""}`, fig: right, pct: inst ? (v.of ? Math.round((v.paid * 100) / v.of) : 0) : null, label: s.name + ": " + (inst ? v.paid + " of " + v.of + " paid" : "") };
+    return { id: s.id, action: "open-schedule", name: esc(s.name), sub: `${left}${ss ? `<br><span class="sstat ${ss.state}">${ss.mark}${esc(ss.text)}</span>` : v.active ? `<br>${nextText(v)}` : ""}`, fig: right, pct: inst ? (v.of ? Math.round((v.paid * 100) / v.of) : 0) : null, label: s.name + ": " + (inst ? v.paid + " of " + v.of + " paid" : "") };
   }));
   const hints = M.scheduleHints(S(), t, planOf(), { dismissed: ledger.settings.schedule_hints_dismissed ?? [] });
   const hintHtml = hints.length ? `<h2>Maybe add</h2><p class="note">Found in your own history and your Pay plan. Nothing is added until you save it.</p>${hints.map((h) => `<div class="row"><div>${esc(h.name)}<small>${h.approx ? "about " : ""}${peso(h.amount)} around the ${esc(ordinal(h.day))}${h.source === "history" ? " \u00b7 paid in " + h.months + " of the last " + h.of + " months" : " \u00b7 from your Pay plan"}</small></div>
       <div class="amt"><button data-action="hint-add" data-id="${esc(h.key)}">Add</button><br><button class="link" data-action="hint-no" data-id="${esc(h.key)}">Not this</button></div></div>`).join("")}` : "";
   return `<h1>Scheduled</h1><p class="sub">Rent, subscriptions and installment plans. Each payment waits in Verify on its due day.</p>
-    ${hintHtml}${list.length ? rows : `<p class="note">Nothing scheduled yet. Add rent, a subscription or an installment plan.</p>`}
+    ${hintHtml}${list.some((s) => !M.historyOf(S(), s).removed) ? rows : `<p class="note">Nothing scheduled yet. Add rent, a subscription or an installment plan.</p>`}
     <p><button class="primary" data-action="open-schedule-new" style="margin-top:8px">Add a scheduled payment</button></p>`;
 }
 const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th");
@@ -1806,17 +1819,25 @@ function scheduleSheet(f) {
 }
 function scheduleDetail(id) {
   const sc = (S().schedules ?? []).find((x) => x.id === id); if (!sc) return `<h3>Scheduled</h3><p class="note">This one is no longer here.</p>`;
-  const v = M.viewOf(S(), sc, today()), key = (a) => ui.confirmSch === id + a;
+  const v = M.viewOf(S(), sc, today()), key = (a) => ui.confirmSch === id + a, ss = schedStatus(sc), at = M.detailsAt(S(), sc, today());
   const facts = sc.kind === "installment"
     ? `<dt>Paid</dt><dd>${v.paid} of ${v.of}</dd><dt>Still to pay</dt><dd>${peso(v.stillToPay)}</dd>${v.next ? `<dt>Next due</dt><dd>${esc(longDate(v.next.due))} \u00b7 ${peso(v.next.amount)}</dd>` : ""}`
-    : `<dt>Each month</dt><dd>${peso(schedAmount(sc))}, around the ${ordinal(sc.day)}</dd>${v.next ? `<dt>Next due</dt><dd>${esc(longDate(v.next.due))}</dd>` : ""}`;
+    : `<dt>Each month</dt><dd>${peso(schedAmount(sc))}, around the ${ordinal(dueDayNow(sc))}</dd>${v.next ? `<dt>Next due</dt><dd>${esc(longDate(v.next.due))}</dd>` : ""}`;
   const rows = (S().scheduleChanges ?? []).filter((c) => c.schedule_id === id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
-  const words = { amount: (c) => "New amount " + peso(c.amount) + " from " + longDate(c.effective_from), skip: (c) => "Skipped " + c.key, end: (c) => "Stopped after " + longDate(c.effective_from), paid_off: (c) => "Paid off " + longDate(c.effective_from), due: (c) => "Payment " + c.key + " asked for: " + peso(c.amount) };
-  return `<h3>${esc(sc.name)}</h3><dl class="txdl">${facts}<dt>Paid from</dt><dd class="who">${withIcon(S().accounts.find((a) => a.id === sc.account_id), 22)}</dd><dt>Category</dt><dd>${esc(categoryName(sc.category_id))}</dd></dl>
-    ${v.active ? `<p><button data-action="sch-pay" data-id="${esc(id)}" style="width:100%">Make the next payment a draft now</button></p>
-    <p><button data-action="sch-skip" data-id="${esc(id)}" style="width:100%">Skip the next payment</button></p>
-    ${sc.kind === "repeating" ? `<p><button data-action="sch-amount-open" data-id="${esc(id)}" style="width:100%">A new amount from a date</button></p>` : `<p><button data-action="sch-paidoff" data-id="${esc(id)}" style="width:100%">${key("paidoff") ? "Tap again: mark paid off" : "Mark paid off"}</button></p>`}
-    <p><button data-action="sch-end" data-id="${esc(id)}" style="width:100%">${key("end") ? "Tap again: stop future payments" : "Stop future payments"}</button></p>` : `<p class="note">${sc.kind === "installment" ? "All paid." : "Stopped."} Past payments stay as they were.</p>`}
+  const words = { amount: (c) => "New amount " + peso(c.amount) + " from " + longDate(c.effective_from), skip: (c) => "Skipped " + c.key, end: (c) => "Stopped after " + longDate(c.effective_from), paid_off: (c) => "Paid off " + longDate(c.effective_from), due: (c) => "Payment " + c.key + " asked for: " + peso(c.amount),
+    day: (c) => "Due day " + c.key + " from " + longDate(c.effective_from), removed: (c) => "Removed " + longDate(c.effective_from),
+    detail: (c) => { const [f, ...r] = c.key.split(":"), val = r.join(":"); return (f === "account" ? "Paid from " + (S().accounts.find((a) => a.id === val)?.name ?? "") : f === "category" ? "Category " + categoryName(val) : "Named " + val) + " from " + longDate(c.effective_from); },
+    linked: (c) => { const t = S().transactions.find((x) => x.id === c.transaction_id); return "Payment " + c.key + " matched your entry" + (t ? " of " + longDate(t.date) : "") + ", so it was not made twice"; } };
+  return `<h3>${esc(at.name)}</h3>${ss ? `<p class="sstat big ${ss.state}">${ss.mark}${esc(ss.text)}</p>` : ""}
+    <dl class="txdl">${facts}<dt>Paid from</dt><dd class="who">${withIcon(S().accounts.find((a) => a.id === at.account_id), 22)}</dd><dt>Category</dt><dd>${esc(categoryName(at.category_id))}</dd></dl>
+    ${v.active ? `<p><button class="primary" data-action="sch-edit-open" data-id="${esc(id)}">Edit</button></p>
+    <p><button data-action="sch-skip" data-id="${esc(id)}" style="width:100%">Skip the next payment</button></p>` : `<p class="note">${sc.kind === "installment" ? "All paid." : "Stopped."} Past payments stay as they were.</p>`}
+    <details class="goaldet"${ui.confirmSch?.startsWith(id) ? " open" : ""}><summary>More</summary>
+      ${v.active ? `<p><button data-action="sch-pay" data-id="${esc(id)}" style="width:100%">Make the next payment a draft now</button></p>
+      ${sc.kind === "installment" ? `<p><button data-action="sch-paidoff" data-id="${esc(id)}" style="width:100%">${key("paidoff") ? "Tap again: mark paid off" : "Mark paid off"}</button></p>` : ""}
+      <p><button data-action="sch-end" data-id="${esc(id)}" style="width:100%">${key("end") ? "Tap again: stop future payments" : "Stop future payments"}</button></p>` : ""}
+      <p><button data-action="sch-remove" data-id="${esc(id)}" style="width:100%">${key("remove") ? "Tap again: remove it" : "Remove this payment"}</button></p>
+      <p class="note">Removing takes it off this list and discards its drafts that wait in Verify. What you already verified stays.</p></details>
     ${M.skippedOf(S(), sc, today()).length ? `<h2>Skipped</h2>${M.skippedOf(S(), sc, today()).map((p) => `<div class="row"><div>${esc(sc.kind === "installment" ? "Payment " + p.key : p.key)}<small>${peso(p.amount)}</small></div><div class="amt"><button class="link" data-action="sch-unskip" data-id="${esc(id)}" data-key="${esc(p.key)}">Bring it back</button></div></div>`).join("")}` : ""}
     ${rows.length ? `<h2>History</h2>${rows.map((c) => `<p class="note">${esc(words[c.kind](c))}</p>`).join("")}` : ""}`;
 }
@@ -2259,6 +2280,17 @@ function renderSheet() {
       <label for="f-date">From</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date ?? "")}">
       <p class="note">Months before this date keep what they had.</p>
       <p><button class="primary" id="f-save" data-action="save-schedule-amount" style="margin-top:6px" disabled>Save</button></p>`;
+  } else if (sh.type === "schedule-edit") {
+    const sc = S().schedules.find((x) => x.id === sh.id), inst = sc.kind === "installment";
+    body = `<h3>Edit ${esc(sc.name)}</h3>
+      <label for="s-name">Name</label><input id="s-name" data-field="sname" value="${esc(ui.form.sname ?? "")}" autocomplete="off">
+      ${inst ? "" : `<label for="s-amount">Amount each month (\u20B1)</label><input id="s-amount" data-field="samount" inputmode="decimal" value="${esc(ui.form.samount ?? "")}" autocomplete="off">
+      <label for="s-day">Due around day</label><input id="s-day" data-field="sday" inputmode="numeric" value="${esc(ui.form.sday ?? "")}" autocomplete="off">`}
+      <label>Category</label>${categoryPicker(pickCategoriesWith(ui.form.category_id), ui.form.category_id)}
+      <label>Paid from</label>${paidChips(ui.form.account_id)}
+      <label for="s-from">Changes count from</label><input id="s-from" data-field="sfrom" type="date" value="${esc(ui.form.sfrom ?? "")}">
+      <p class="note">Months before this date keep what they had. A payment already waiting in Verify is not changed: edit it there.</p>
+      <p><button class="primary" id="f-save" data-action="save-sch-edit" style="margin-top:6px" disabled>Save</button></p>`;
   } else if (sh.type === "linkdue") {
     const due = S().transactions.find((x) => x.id === sh.dueId), d = due ? describe(due) : null;
     body = due ? `<h3>Is this your scheduled ${esc(due.payee)}?</h3><p class="note">${peso(d.amount)}, due ${esc(longDate(due.date))}. Link them so it is counted once.</p>
@@ -2960,6 +2992,9 @@ function refreshSave() {
       const left = input.count - (input.made || 0);
       line.textContent = r.ok && input.kind === "installment" ? M.planLine({ perMonth: Math.round(input.total / input.count), months: left, categoryName: categoryName(input.category_id), budget: M.budgetFor(S().rules, input.category_id, M.monthOf(today())) }, peso) : "";
     }
+  } else if (type === "schedule-edit") {
+    const a = (f.samount ?? "").trim() === "" ? { ok: true } : M.parsePesos(f.samount), d = (f.sday ?? "").trim() === "" || (Number.isInteger(Number(f.sday)) && Number(f.sday) >= 1 && Number(f.sday) <= 31);
+    btn.disabled = !((f.sname ?? "").trim() && a.ok && d && f.category_id && f.account_id && /^\d{4}-\d{2}-\d{2}$/.test(f.sfrom ?? ""));
   } else if (type === "schedule-amount") {
     const a = M.parsePesos(f.amount ?? ""); btn.disabled = !(a.ok && a.centavos > 0 && M.isPhDate(f.date ?? ""));
   } else if (type === "cardpay") {
@@ -3073,7 +3108,7 @@ async function logExpense(input, label) {
   const ok = await commit(next, settings);
   showToast((ok ? "Saved " : "Not safely stored: ") + label + " \u00b7 " + accountName(input.account_id), drafts[0].transaction.id, note);
   if (ok && !drafts[0].transaction.schedule_id) {   // a due scheduled payment of about the same name and amount: offer to link, so it is counted once
-    const t0 = drafts[0].transaction, due = M.matchDueDraft(S(), { payee: t0.payee || label, amount: input.amount, date: t0.date });
+    const t0 = drafts[0].transaction, due = M.matchDueDraft(S(), { payee: t0.payee || label, amount: input.amount, date: t0.date, category_id: input.category_id });
     if (due) setTimeout(() => { if (!ui.sheet) { ui.sheet = { type: "linkdue", newId: t0.id, dueId: due }; renderSheet(); } }, 60);
   }
   return ok;
@@ -3671,6 +3706,35 @@ async function onClick(el) {
       if (!r?.ok) { showToast("Enter an amount like 5500"); break; }
       ui.sheet = null; renderSheet();
       if (await commit(r.state)) showToast("New amount saved from " + longDate(form.date) + ".");
+      break;
+    }
+    case "sch-edit-open": {
+      const sc = S().schedules.find((x) => x.id === id), at = M.detailsAt(S(), sc, today());
+      ui.sheet = { type: "schedule-edit", id }; ui.form = { sname: at.name, samount: sc.kind === "repeating" ? ((schedAmount(sc) / 100).toFixed(2)) : "", sday: sc.kind === "repeating" ? String(dueDayNow(sc)) : "", category_id: at.category_id, account_id: at.account_id, sfrom: today() }; renderSheet(); break;
+    }
+    case "save-sch-edit": {
+      const sc = S().schedules.find((x) => x.id === ui.sheet.id), at = M.detailsAt(S(), sc, today()), f = form; let st = S(), fail = null;
+      const step = (r) => { if (!r.ok) fail = fail ?? r; else st = r.state; };
+      if ((f.sname ?? "").trim() !== at.name) step(M.setDetail(st, sc.id, "name", f.sname, f.sfrom));
+      if (f.category_id !== at.category_id) step(M.setDetail(st, sc.id, "category", f.category_id, f.sfrom));
+      if (f.account_id !== at.account_id) step(M.setDetail(st, sc.id, "account", f.account_id, f.sfrom));
+      if (sc.kind === "repeating") {
+        const a = M.parsePesos(f.samount ?? ""); if (a.ok && a.centavos !== schedAmount(sc)) step(M.setNewAmount(st, sc.id, a.centavos, f.sfrom));
+        if ((f.sday ?? "").trim() && Number(f.sday) !== Number(dueDayNow(sc))) step(M.setDueDay(st, sc.id, Number(f.sday), f.sfrom));
+      }
+      if (fail) { showToast("Could not save: " + fail.violations[0].message); break; }
+      if (st === S()) { ui.sheet = { type: "schedule", id: sc.id }; renderSheet(); break; }
+      ui.sheet = { type: "schedule", id: sc.id }; renderSheet();
+      if (await commit(st)) showToast("Saved. It counts from " + longDate(f.sfrom) + ".");
+      break;
+    }
+    case "sch-remove": {
+      if (ui.confirmSch !== id + "remove") { ui.confirmSch = id + "remove"; renderSheet(); break; }
+      ui.confirmSch = null;
+      const r = M.removeSchedule(S(), id, today());
+      if (!r.ok) { showToast("Could not: " + r.violations[0].message); break; }
+      ui.sheet = null; renderSheet();
+      if (await commit(r.state)) showToast("Removed. What you verified stays.");
       break;
     }
     case "sch-end": case "sch-paidoff": {

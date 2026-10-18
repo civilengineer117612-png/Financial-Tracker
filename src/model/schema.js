@@ -74,7 +74,7 @@ export const SCHEMAS = {
     foreign_currency: optional(name), foreign_amount: optional(centavos),   // in another currency: the peso amount is an estimate, fixed when it is verified
   },
   // Everything that happens to a schedule afterwards, one dated row each. Only ever added to: a new amount is a new row, never an edit.
-  ScheduleChange: { id, schedule_id: id, kind: oneOf("amount", "skip", "end", "paid_off", "due"), effective_from: date, key: optional(text), amount: optional(centavos), created_at: timestamp },
+  ScheduleChange: { id, schedule_id: id, kind: oneOf("amount", "skip", "end", "paid_off", "due", "day", "detail", "removed", "linked"), effective_from: date, key: optional(text), transaction_id: optional(id), amount: optional(centavos), created_at: timestamp },
   // Statement proof (src/model/proof.js), added in version 10. All three lists are only ever added to: a statement is kept as it was read, a month accepted is a new row.
   StatementRecord: { id, account_id: id, bank: optional(text), style: text, period_from: optional(date), period_to: optional(date), opening: optional(centavos), closing: optional(centavos),
     in_total: optional(centavos), out_total: optional(centavos), line_count: count, checked: bool, added_at: timestamp },   // opening/closing/totals: the figures printed at the top, when it has them; checked: the statement's own check passed

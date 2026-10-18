@@ -114,7 +114,7 @@ const stars = async (page) => page.locator("#sheet label .req").count();   // ho
 
 
 // The app has no way to load a plan file any more (nobody has one yet), so tests that need a plan put one in the phone's settings, as parsed by the model.
-import { parsePlan, planWithBudgets, CHANGES, emptyState, recordFromParse } from "../src/model/index.js";
+import { parsePlan, planWithBudgets, CHANGES, emptyState, recordFromParse, addSchedule, makeDueDrafts } from "../src/model/index.js";
 async function writeLedger(page, led) {
   const text = JSON.stringify(led);
   await page.evaluate(async ([text]) => { localStorage.setItem("financialTracker.ledger", text); await new Promise((res) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => { const tx = r.result.transaction("kv", "readwrite"); tx.objectStore("kv").put(text, "ledger"); tx.oncomplete = () => { r.result.close(); res(); }; }; }); }, [text]);
@@ -1447,7 +1447,7 @@ await page.click('button:has-text("Delete")'); await page.click('button:has-text
 
   // stopping: future only
   await menuGo(page, "Scheduled");
-  await page.click('button[data-action="open-schedule"]:has-text("Test Rent")'); await page.click('#sheet button[data-action="sch-end"]');
+  await page.click('button[data-action="open-schedule"]:has-text("Test Rent")'); await page.click("#sheet details > summary"); await page.click('#sheet button[data-action="sch-end"]');
   check((await text(page, "#sheet")).includes("Tap again"), "stopping asks for a second tap");
   const pastBefore = JSON.stringify(JSON.parse((await stored(page)).local).state.transactions.filter((t) => t.id === rentTx.id));
   await page.click('#sheet button[data-action="sch-end"]'); await page.waitForTimeout(500);
@@ -3773,6 +3773,38 @@ console.log("\n-- Goals sharing an account --");
   await page.click("#sheet .gpic"); await page.click('#sheet button[data-action="clear-icon"]'); await page.waitForTimeout(400);
   check(JSON.parse((await stored(page)).local).state.goals[0].icon === undefined && await page.locator("#sheet .gview").count() === 1, "removing the picture goes back to the goal window with the letter tile");
   check(errors.length === 0, "no script errors in goal sharing: " + errors.join("; ")); await ctx.close(); }
+
+// ===== Scheduled: a status on every row, Edit, Remove, and your own entry linked instead of doubled =====
+console.log("\n-- Scheduled status, edit and remove --");
+{ const T0b = new Date("2026-10-16T03:00:00Z"), TS = "2026-10-01T09:00:00.000+08:00";
+  const A = (id, name, cls, ob) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: "2026-04-01" });
+  let st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [A("bank", "Test Bank", "asset", 6000000), A("bank2", "Test Wallet", "asset", 100000)] };
+  st.transactions.push({ id: "m1", date: "2026-10-04", payee: "Landlord", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS });
+  st.entries.push({ transaction_id: "m1", category_id: "cat-rent", amount: 335000 }, { transaction_id: "m1", account_id: "bank", amount: -335000 });
+  for (const r of [{ id: "s1", kind: "repeating", name: "Rent", category_id: "cat-rent", account_id: "bank", amount: 335000, day: 5, start: "2026-10-05" }, { id: "s2", kind: "repeating", name: "Streaming", category_id: "cat-subscription", account_id: "bank", amount: 54900, day: 11, start: "2026-10-11" },
+    { id: "s3", kind: "repeating", name: "Internet", category_id: "cat-essentials", account_id: "bank", amount: 149900, day: 25, start: "2026-10-25" }]) { const x = addSchedule(st, r, T0b); st = x.state; }
+  st = makeDueDrafts(st, "2026-10-16", {}).state;
+  const seed = { v: 10, rev: 1, saved_at: TS, settings: { ...OWNER_STYLE.settings }, state: st };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed })); await page.clock.setFixedTime(T0b);
+  await menuGo(page, "Scheduled"); await page.waitForTimeout(500);
+  const rowOf = (n) => page.locator("#screen button.catrow", { hasText: n });
+  check((await rowOf("Rent").innerText()).includes("Paid Oct 4"), "rent you logged yourself near its due day shows Paid, and no second draft was made");
+  check(JSON.parse((await stored(page)).local).state.transactions.filter((t) => t.schedule_key === "2026-10" && t.schedule_id === "s1").length === 0, "no duplicate entry was written for it");
+  check((await rowOf("Streaming").innerText()).includes("Waiting in Verify") && (await rowOf("Streaming").innerText()).includes("5 days overdue"), "a draft nobody checked says it waits in Verify and how late it is");
+  check((await rowOf("Internet").innerText()).includes("Due Oct 25") && (await rowOf("Internet").innerText()).includes("in 9 days"), "a payment not yet due says when");
+  await rowOf("Rent").click(); await page.waitForSelector("#sheet .sheet");
+  check((await text(page, "#sheet")).includes("Paid Oct 4") && (await text(page, "#sheet")).includes("matched your entry"), "its window says it is paid and which entry stands for it");
+  await page.click('#sheet button[data-action="sch-edit-open"]'); await page.waitForSelector("#s-day");
+  await page.fill("#s-amount", "3500"); await page.fill("#s-day", "9"); await page.fill("#s-from", "2026-11-01"); await page.click("#f-save"); await page.waitForTimeout(600);
+  { const l = JSON.parse((await stored(page)).local).state; check(l.scheduleChanges.some((c) => c.kind === "day" && c.key === "9" && c.effective_from === "2026-11-01") && l.scheduleChanges.some((c) => c.kind === "amount" && c.amount === 350000) && l.schedules.find((x) => x.id === "s1").day === 5, "Edit adds dated rows (new amount, new due day) and never rewrites the plan"); }
+  check((await text(page, "#sheet")).includes("Nov 9"), "the next payment is now on the 9th");
+  await page.click('#sheet button[data-action="close-sheet"]'); await page.waitForTimeout(500);
+  await rowOf("Internet").click(); await page.waitForSelector("#sheet .sheet"); await page.waitForTimeout(400); await page.click("#sheet details > summary");
+  await page.click('#sheet button[data-action="sch-remove"]'); check((await text(page, "#sheet")).includes("Tap again: remove it"), "removing asks for a second tap");
+  await page.click('#sheet button[data-action="sch-remove"]'); await page.waitForTimeout(600);
+  check(await page.locator("#screen button.catrow", { hasText: "Internet" }).count() === 0 && await rowOf("Rent").count() === 1, "a removed payment leaves the list and the others stay");
+  check(JSON.parse((await stored(page)).local).state.transactions.some((t) => t.id === "m1" && t.status === "verified"), "what was verified is untouched");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
 // ===== A payment that starts in the past: ask which payments were already paid =====
 console.log("\n-- Already paid? --");
