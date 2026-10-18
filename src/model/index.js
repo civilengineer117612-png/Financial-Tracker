@@ -57,6 +57,7 @@ export { HISTORY_MONTHS, suggestFromHistory, suggestFromPlan, scheduleHints } fr
 export { accountRegister } from "./register.js";
 export { searchEntries } from "./search.js";
 export { entriesCsv, CSV_COLUMNS } from "./csvexport.js";
+export { netWorthSeries } from "./networth.js";
 export { PART_BYTES, planParts, partFileName, sealPictures, openPictures } from "./picturebackup.js";
 export { correctable, planCorrection, applyCorrection, isReversed, correctionTag, CORRECTION_DAYS } from "./corrections.js";
 export { envelopeBalance, planGcashSpend, splitSweep, planMonthEndSweep, planSweep, sweepOrderAccounts, underBudgetedCategories, planEnvelopeSetup, planBufferFunding, bufferSummary } from "./buffer.js";
