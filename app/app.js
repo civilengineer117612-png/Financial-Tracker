@@ -166,6 +166,8 @@ function bankLogo(bankId) {
   if (l?.icon_url?.startsWith("https://")) return { icon_url: l.icon_url };
   return null;
 }
+// A bank logo from an icon service that cannot load (offline) is taken away, so the letter tile under it stays. (No inline handler: the page's content security policy allows none.)
+document.addEventListener("error", (e) => { if (e.target?.classList?.contains("ov")) e.target.remove(); }, true);
 function iconOf(a, size = 28) {
   // An account's own picture wins; otherwise its bank's logo (linked, or plainly named after the bank); otherwise a letter.
   if (!a.icon && !a.icon_url) { const l = bankLogo(a.bank ?? (a.name ? M.bankForName(a.name)?.id : null)); if (l) a = { ...a, ...l }; }
@@ -173,7 +175,7 @@ function iconOf(a, size = 28) {
   const letter = [...a.name][0]?.toUpperCase() ?? "?";
   const mono = `<span class="ico mono" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.5)}px" aria-hidden="true">${esc(letter)}</span>`;
   // A logo shown from an icon service sits over the letter tile; if it cannot load (offline) the letter stays.
-  return a.icon_url ? `<span class="icowrap" style="width:${size}px;height:${size}px">${mono}<img class="ico ov" src="${esc(a.icon_url)}" alt="" width="${size}" height="${size}" onerror="this.remove()"></span>` : mono;
+  return a.icon_url ? `<span class="icowrap" style="width:${size}px;height:${size}px">${mono}<img class="ico ov" src="${esc(a.icon_url)}" alt="" width="${size}" height="${size}"></span>` : mono;
 }
 const withIcon = (a, size) => iconOf(a, size) + `<span>${esc(a.name)}</span>`;
 

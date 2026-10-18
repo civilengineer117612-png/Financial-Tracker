@@ -66,6 +66,7 @@ async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone 
   };
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => { if (/Content Security Policy|Refused to (load|execute|connect|create)/i.test(m.text())) errors.push("CSP: " + m.text().slice(0, 200)); });   // the content security policy must never refuse something the app needs
   page.on("console", (m) => { if (m.type() === "error" && !/favicon|gstatic|duckduckgo|icon\.horse|apple-touch-icon|wikipedia|wikimedia/.test(m.location().url ?? "")) errors.push(m.text()); });   // blocked icon requests are staged on purpose
   if (!keepIntro) await page.addLocatorHandler(page.locator('#sheet button[data-action="intro-done"]'), async (b) => { await b.click(); });   // a new install has no switched-off popups: any other test just says Got it when one gets in the way
   await page.clock.setFixedTime(T0);
@@ -2538,9 +2539,7 @@ console.log("Pictures file");
   const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct], transactions: [tx], entries: [{ transaction_id: "slip", category_id: "cat-food", amount: 5000 }, { transaction_id: "slip", account_id: "w", amount: -5000 }],
     attachments: [{ id: "pic-a", transaction_id: "slip", type: "photo", file: "pic-a", file_timestamp: TS }] } };
   ({ ctx, page, errors } = await open({ blockSw: true, seed }));
-  const idb = (fn, arg) => page.evaluate(async ([src, a]) => {
-    const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; });
-    const out = await (new Function("db", "arg", "return (" + src + ")(db, arg)"))(db, a); db.close(); return out; }, [fn.toString(), arg]);
+  const idb = (fn, arg) => page.evaluate(`(async (a) => { const db = await new Promise((res, rej) => { const r = indexedDB.open("financialTracker", 3); r.onsuccess = () => res(r.result); r.onerror = rej; }); const out = await (${fn.toString()})(db, a); db.close(); return out; })(${JSON.stringify(arg ?? null)})`);   // a function source, not new Function: the page's content security policy refuses string eval
   const made = await idb(async (db) => { const c = document.createElement("canvas"); c.width = 300; c.height = 200; const x = c.getContext("2d"); x.fillStyle = "#c33"; x.fillRect(0, 0, 300, 200); x.fillStyle = "#fff"; x.fillText("INVENTED RECEIPT", 20, 100);
     const b = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.9)); await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").put(b, "pic-a"); t.oncomplete = res; }); return b.size; });
   await page.reload(); await page.waitForSelector("#nav button");
