@@ -2439,7 +2439,7 @@ console.log("Correct a verified entry");
   st = await text(page, "#sheet");
   check(st.includes("Cancels: Corner Cafe") && st.includes("cancelled") && st.includes("Hide 2 cancelled entries"), "Show brings both back, marked");
   await page.click('#sheet button[data-action="toggle-cancelled"]');
-  await page.click("#scrim");
+  await page.click('#sheet button[data-action="close-sheet"]');   // the Close button: the window with its search box can now cover the dark around it
   await menuGo(page, "Weekly review"); await page.click('.choice:has-text("Wallet")'); await page.fill("#f-amount", "1"); await page.click("#f-save"); await seen(page, "#toast", "Wallet:");
   check((await text(page, "#screen")).includes("A gap can come from a wrong entry"), "a count that shows a gap points to the entries that can be put right");
   check(errors.length === 0, "no script errors");
