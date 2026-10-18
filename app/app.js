@@ -3177,7 +3177,29 @@ const bufferNote = (violations) => {
 
 // New entries go on today, or on the earlier day picked at the top of the Log screen (to log what was not logged then).
 const logDay = () => (ui.dayPick && ui.dayPick < today() ? ui.dayPick : today());
+// A spend that would take a debit or cash account below zero asks first (the window waits for the answer; nothing blocks: "Save anyway" goes on).
+let warnAnswer = null;
+function askOverdraw(w) {
+  return new Promise((resolve) => {
+    warnAnswer = resolve;
+    $("warn").innerHTML = `<div class="wscrim" data-action="warn-cancel"></div><div class="sheet center enter" role="alertdialog" aria-labelledby="warn-h">
+      <div class="warnsign"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2.5 20h19L12 3z"/><path d="M12 9.5v5"/><path d="M12 17.6v.1"/></svg></div>
+      <h3 class="wl-title" id="warn-h">This takes ${esc(w.name)} below zero</h3>
+      <p class="note">A debit account cannot go below zero, so some money in is missing from your ledger. Log it first, or the balance will be wrong.</p>
+      <dl class="warnfig"><dt class="muted">Balance now</dt><dd>${peso(w.before)}</dd><dt class="muted">This spend</dt><dd>-${peso(w.amount)}</dd><dt><b>It would leave</b></dt><dd><b>-${peso(-w.after)}</b></dd></dl>
+      <p><button class="primary" data-action="warn-income" style="width:100%">Log money received first</button></p>
+      <p><button data-action="warn-save" style="width:100%">Save anyway</button></p></div>`;
+    lockPage(true);
+  });
+}
+function answerOverdraw(save, thenIncome) {
+  const done = warnAnswer; warnAnswer = null; $("warn").innerHTML = ""; if (!ui.sheet) lockPage(false);
+  if (thenIncome) { ui.sheet = { type: "income" }; ui.form = { amount: "", date: today(), account_id: accountsFor(null)[0]?.id ?? null, category_id: null }; renderSheet(); }
+  done?.(save);
+}
 async function logExpense(input, label) {
+  const over = M.overdrawOf(S(), input);
+  if (over && !(await askOverdraw(over))) return false;
   const tag_id = S().tags.some((t) => t.id === ledger.settings.active_tag_id) ? ledger.settings.active_tag_id : undefined;
   const g = gcashOf();
   let drafts, note;
@@ -3213,6 +3235,9 @@ async function onClick(el) {
   const { action, id, tab } = el.dataset;
   const form = ui.form;
   switch (action) {
+    case "warn-save": answerOverdraw(true, false); break;
+    case "warn-cancel": answerOverdraw(false, false); break;
+    case "warn-income": answerOverdraw(false, true); break;
     case "reset-trial": {
       if (!ui.confirmTrial) { ui.confirmTrial = true; renderBanner(); break; }
       await clearTrialStorage(); location.reload(); break;

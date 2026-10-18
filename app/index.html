@@ -416,6 +416,8 @@ button.qmark{background:none;border:0;color:var(--muted);font:inherit;font-size:
 .stmlines { flex-basis: 100%; padding-left: 12px; }
   @keyframes sheetup { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes scrimin { from { opacity: 0; } to { opacity: 1; } }
+  #warn .wscrim { position: fixed; inset: 0; z-index: 20; background: var(--scrim); } #warn .sheet { z-index: 21; } #warn .warnsign { display: flex; justify-content: center; margin-bottom: 8px; }
+  #warn .warnfig { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 14px 0; font-size: 15px; } #warn .warnfig dd { margin: 0; text-align: right; }
   .sheet.enter { animation: sheetup .22s ease-out; } #scrim.enter { animation: scrimin .2s ease-out; }
   @media (prefers-reduced-motion: reduce) { .sheet.enter, #scrim.enter { animation: none; } button { transition: none; } }
   .sheet h3 { margin: 0 0 4px; font-size: 18px; }
@@ -681,6 +683,7 @@ button.qmark{background:none;border:0;color:var(--muted);font:inherit;font-size:
 <div id="banner"></div>
 <main id="screen"></main>
 <div id="sheet"></div>
+<div id="warn"></div>
 <div id="toast"></div>
 <div id="menu"></div>
 <nav id="nav"></nav>

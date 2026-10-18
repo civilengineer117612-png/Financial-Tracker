@@ -11,7 +11,8 @@ import { GOAL_SYMBOLS } from "./goalicons.js";
 // go to the first goal when the whole account is handed out, so the goals always add up to the account.
 export function goalSlices(state, account, alsoGoal) {
   const have = state.goals ?? [], goals = (alsoGoal && !have.some((g) => g.id === alsoGoal.id) ? [...have, alsoGoal] : have).filter((g) => g.account_id === account.id);
-  const balance = naturalBalance(account, countedEntries(state));
+  // An overdrawn account (below zero) holds nothing for a goal: the money set aside is never counted as a minus.
+  const balance = Math.max(0, naturalBalance(account, countedEntries(state)));
   if (goals.length <= 1) return new Map(goals.map((g) => [g.id, { balance, bps: 10000, shared: false }]));
   const set = goals.filter((g) => g.share_bps != null), unset = goals.filter((g) => g.share_bps == null);
   const rest = Math.max(0, 10000 - set.reduce((n, g) => n + g.share_bps, 0));
