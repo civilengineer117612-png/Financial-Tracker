@@ -487,10 +487,23 @@ function tilesHtml() {
 
 // Money going out is shown with a minus, money coming in with a plus; a move between your own accounts has neither.
 const signed = (d) => (d.kind === "income" ? "+" : d.kind === "expense" || d.kind === "split" ? "\u2212" : "") + peso(d.amount);
-function rowFor(t) {
+// The entries list of the "Every entry" window: this period, or everything, or what a search finds. Rewritten in place while typing, so the keyboard stays open.
+function entriesListHtml() {
+  const p = period(), [from, to] = periodBounds(p), all = (ui.form.scope ?? "period") === "all", q = (ui.form.q ?? "").trim(), gone = cancelledIds();
+  const skip = (t) => isGenerated(t) || (!ui.showCancelled && gone.has(t.id));
+  if (q) {
+    const r = M.searchEntries(S(), q, { ...(all ? {} : { from, to }), limit: 200, skip });
+    return (r.rows.length ? `<p class="note small">${r.total > r.rows.length ? `Showing the newest ${r.rows.length} of ${r.total}. Type more to narrow it.` : r.total === 1 ? "1 entry found." : `${r.total} entries found.`}</p>${r.rows.map((t) => rowFor(t, true)).join("")}` : `<p class="note">Nothing found${all ? "" : " this month. Try Everything"}.</p>`);
+  }
+  if (all) return `<p class="note">Type something to search every entry you have ever logged.</p>`;
+  const list = S().transactions.filter((t) => t.date >= from && t.date <= to && !isGenerated(t)).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.created_at < b.created_at ? 1 : -1));
+  const shown = ui.showCancelled ? list : list.filter((t) => !gone.has(t.id)), nGone = list.length - list.filter((t) => !gone.has(t.id)).length;
+  return `${nGone ? `<p class="note"><button class="link" data-action="toggle-cancelled">${ui.showCancelled ? "Hide" : "Show"} ${nGone} cancelled ${nGone === 1 ? "entry" : "entries"}</button></p>` : ""}${shown.length ? shown.map(rowFor).join("") : `<p class="note">Nothing logged in this period.</p>`}`;
+}
+function rowFor(t, withDate = false) {
   const d = describe(t);
   const acct = d.kind === "expense" ? S().accounts.find((a) => a.id === d.account_id) : null;
-  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${M.correctionTag(S(), t) === "Corrected" ? " · cancelled" : ""}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${signed(d)}</div></button>`;
+  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${withDate ? esc(longDate(t.date)) + " · " : ""}${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${M.correctionTag(S(), t) === "Corrected" ? " · cancelled" : ""}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${signed(d)}</div></button>`;
 }
 
 // Everything waiting, oldest first. Nothing has to wait for tomorrow: verify whenever you have the time.
@@ -2794,9 +2807,11 @@ function renderSheet() {
     const h = M.HOWTOS.find((x) => x.id === sh.id);
     body = `<h3>${esc(h.label)}</h3>${clipFor(h.id)}<p class="hwcap">${esc(h.caption)}</p>`;
   } else if (sh.type === "entries") {
-    const p = period(), [from, to] = periodBounds(p), list = S().transactions.filter((t) => t.date >= from && t.date <= to && !isGenerated(t)).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.created_at < b.created_at ? 1 : -1));
-    const gone = cancelledIds(), shown = ui.showCancelled ? list : list.filter((t) => !gone.has(t.id)), nGone = list.length - list.filter((t) => !gone.has(t.id)).length;
-    body = `<h3>Every entry in ${esc(periodLabel(p))}</h3>${nGone ? `<p class="note"><button class="link" data-action="toggle-cancelled">${ui.showCancelled ? "Hide" : "Show"} ${nGone} cancelled ${nGone === 1 ? "entry" : "entries"}</button></p>` : ""}${shown.length ? shown.map(rowFor).join("") : `<p class="note">Nothing logged in this period.</p>`}`;
+    const p = period();
+    body = `<h3>Every entry${(ui.form.scope ?? "period") === "all" ? "" : " in " + esc(periodLabel(p))}</h3>
+      <input id="e-q" class="entrysearch" data-field="q" type="search" inputmode="search" placeholder="Search name, category, account, amount" value="${esc(ui.form.q ?? "")}" autocomplete="off" aria-label="Search entries">
+      <div class="seg" role="group" aria-label="Where to look">${[["period", "This month"], ["all", "Everything"]].map(([v, t]) => `<button data-action="entries-scope" data-id="${v}" aria-pressed="${(ui.form.scope ?? "period") === v}">${t === "This month" ? esc(periodLabel(p)) : t}</button>`).join("")}</div>
+      <div id="entries-list">${entriesListHtml()}</div>`;
   } else if (sh.type === "whatsnew") {
     const moved = sh.changes?.length ? `<p class="note" id="wn-balances"><b>Balances that changed:</b> ${sh.changes.map((x) => `${esc(x.name)} ${x.by > 0 ? "+" : "\u2212"}${peso(Math.abs(x.by))}`).join(", ")}. Spending dated before the day you added these accounts was being taken off twice; it now stays as history only.</p>` : "";
     body = `<h3>What's new</h3><div class="wnlist">${M.whatsNew({}, 3).map((c) => `<div class="wnitem"><small>${esc(longDate(c.date))}</small>${esc(c.text)}</div>`).join("")}</div>${moved}
@@ -4003,7 +4018,8 @@ async function onClick(el) {
     case "restore-pics": await restorePictures(); break;
     case "open-backup-file": await openBackupFile(); break;
     case "restore-now": await restoreNow(); break;
-    case "open-entries": ui.sheet = { type: "entries" }; renderSheet(); break;
+    case "open-entries": ui.sheet = { type: "entries" }; ui.form = { q: "", scope: "period" }; renderSheet(); break;
+    case "entries-scope": ui.form.scope = id; renderSheet(); break;
     case "toggle-cancelled": ui.showCancelled = !ui.showCancelled; renderSheet(); break;
     case "wn-all": ui.wnAll = !ui.wnAll; renderScreen(); break;
     case "st-month": ui.sheet = { type: "stmonth", account_id: el.dataset.acct, month: el.dataset.month }; ui.form = {}; renderSheet(); break;
@@ -4528,6 +4544,7 @@ document.addEventListener("input", (e) => {
   if (e.target.type === "file") return;   // handled on change
   if (field === "sub" && !ui.sheet) { ui.accountForm.sub = e.target.value; const p = $("a-preview"); if (p) p.textContent = "Saved as: " + accountPreview(ui.accountForm); return; }
   if (field === "zoom") { zoomTo(Number(e.target.value)); return; }
+  if (ui.sheet?.type === "entries" && field === "q") { ui.form.q = e.target.value; const l = $("entries-list"); if (l) l.innerHTML = entriesListHtml(); return; }
   if (ui.sheet) { ui.form[field] = e.target.value; if (field.startsWith("y_") && ui.form.used) delete ui.form.used[field.slice(2)]; refreshSave(); }
   else ui.accountForm[field] = e.target.value;
 });

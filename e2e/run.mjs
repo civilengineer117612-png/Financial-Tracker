@@ -2439,7 +2439,7 @@ console.log("Correct a verified entry");
   st = await text(page, "#sheet");
   check(st.includes("Cancels: Corner Cafe") && st.includes("cancelled") && st.includes("Hide 2 cancelled entries"), "Show brings both back, marked");
   await page.click('#sheet button[data-action="toggle-cancelled"]');
-  await page.click("#scrim");
+  await page.click('#sheet button[data-action="close-sheet"]');   // the Close button: the window with its search box can now cover the dark around it
   await menuGo(page, "Weekly review"); await page.click('.choice:has-text("Wallet")'); await page.fill("#f-amount", "1"); await page.click("#f-save"); await seen(page, "#toast", "Wallet:");
   check((await text(page, "#screen")).includes("A gap can come from a wrong entry"), "a count that shows a gap points to the entries that can be put right");
   check(errors.length === 0, "no script errors");
@@ -3836,6 +3836,29 @@ console.log("\n-- Pay plan at 320 px --");
   await menuGo(page, "Pay plan"); await page.waitForTimeout(400);
   const over = await page.evaluate(() => [...document.querySelectorAll("#screen .tbl")].filter((t) => { const edge = t.parentElement.getBoundingClientRect().right; return [...t.querySelectorAll("td,th")].some((c) => c.getBoundingClientRect().right > edge + 1); }).length);
   check(over === 0 && await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), "at 320 px wide no plan table sticks out of its card and the page does not scroll sideways");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== Search in "See every entry" =====
+console.log("\n-- Search --");
+{ const DTS = "2026-10-01T09:00:00.000+08:00";
+  const A = (id, name, cls, ob) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: "2026-04-01" });
+  let st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [A("cash", "Cash", "asset", 2500000), A("bank", "Test Bank", "asset", 9000000)] };
+  let n = 0; const spend = (date, payee, cat, amt, acc) => { const id = "t" + ++n; st.transactions.push({ id, date, payee, memo: "", status: "verified", source: "manual", created_at: DTS, verified_at: DTS }); st.entries.push({ transaction_id: id, category_id: cat, amount: amt }, { transaction_id: id, account_id: acc, amount: -amt }); };
+  spend("2026-10-02", "Sample Cafe", "cat-food", 24500, "cash"); spend("2026-10-05", "Landlord", "cat-rent", 800000, "bank"); spend("2026-10-09", "Sample Grocer", "cat-food", 150000, "cash"); spend("2026-09-14", "Sample Cafe", "cat-food", 27000, "cash"); spend("2026-08-20", "Sample Cafe", "cat-food", 124500, "cash");
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
+  await menuGo(page, "Spending"); await page.waitForTimeout(400); await page.click('button[data-action="open-entries"]'); await page.waitForSelector("#e-q");
+  check(await page.locator("#sheet .row").count() === 3, "Every entry starts with this month's list");
+  await page.fill("#e-q", "cafe"); await page.waitForTimeout(200);
+  check(await page.locator("#sheet .row").count() === 1 && (await text(page, "#sheet")).includes("1 entry found"), "typing narrows it, and the keyboard stays (the box keeps its focus)");
+  check(await page.evaluate(() => document.activeElement?.id === "e-q"), "the search box keeps the cursor while the list changes");
+  await page.click('button[data-action="entries-scope"][data-id="all"]'); await page.fill("#e-q", "cafe"); await page.waitForTimeout(200);
+  check(await page.locator("#sheet .row").count() === 3 && (await text(page, "#sheet")).includes("Aug 20") && (await text(page, "#sheet")).includes("3 entries found"), "Everything finds it in older months too, with the dates shown");
+  await page.fill("#e-q", "1,245"); await page.waitForTimeout(200);
+  check(await page.locator("#sheet .row").count() === 1 && (await text(page, "#sheet")).includes("\u20B11,245.00"), "an amount finds exactly that amount");
+  await page.fill("#e-q", "245"); await page.waitForTimeout(200);
+  check(await page.locator("#sheet .row").count() === 1 && (await text(page, "#sheet")).includes("\u20B1245.00"), "245 does not also find 1,245");
+  await page.fill("#e-q", "zzz"); await page.waitForTimeout(200);
+  check((await text(page, "#sheet")).includes("Nothing found"), "nothing found says so");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
