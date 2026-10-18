@@ -204,3 +204,21 @@ test("a purchase logged under another name and a day or two off is the same purc
   assert.deepEqual([two.made, two.verified], [1, 1], "the second identical line is still a new purchase");
   assert.equal(monthSummary(t, "gt", "2026-08").spend.already, 1, "the month window counts the same way Accept does");
 });
+
+// ----- the same answer is not worked out again for one picture, and never kept past a change -----
+test("proveMonths and accountLines give the same answer again for the same state, and a fresh one as soon as any list is replaced", () => {
+  const rec = { id: "r1", account_id: "a1", bank: "x", style: "credits-debits", period_from: "2026-01-01", period_to: "2026-01-31", opening: 1000, closing: 600, line_count: 1, checked: true, added_at: "2026-02-01T09:00:00.000+08:00" };
+  const line = { id: "l1", record_id: "r1", n: 0, date: "2026-01-05", text: "Shop", payee: "Shop", type: "payment", amount: 400, direction: "out", balance: 600, meaning: "spending" };
+  const s = { accounts: [{ id: "a1", name: "Test", class: "asset", opening_balance: 0, opening_date: "2025-01-01" }], statementRecords: [rec], statementLines: [line], statementAccepts: [] };
+  const first = proveMonths(s, "a1");
+  assert.equal(proveMonths(s, "a1"), first, "the same array comes back");
+  assert.equal(first[0].status, "proved");
+  const accepted = { ...s, statementAccepts: [{ account_id: "a1", month: "2026-01" }] };
+  assert.equal(proveMonths(accepted, "a1")[0].accepted, true, "a new accepts list gives a new answer");
+  assert.equal(proveMonths(s, "a1")[0].accepted, false, "and the old state still answers as it did");
+  const moreLines = { ...s, statementLines: [line, { ...line, id: "l2", n: 1, amount: 100, balance: 500 }] };
+  assert.notEqual(proveMonths(moreLines, "a1")[0].status, "proved", "a new lines list gives a new answer (the second line breaks the closing balance)");
+  assert.equal(accountLines(s, "a1"), accountLines(s, "a1"));
+  assert.equal(accountLines(moreLines, "a1").length, 2);
+  assert.equal(proveMonths({ accounts: s.accounts }, "a1").length, 0, "a state with no statements has none");
+});

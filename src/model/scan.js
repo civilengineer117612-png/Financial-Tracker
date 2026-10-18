@@ -237,18 +237,30 @@ export function readScan(text, today) {
 
 // What the owner used last time for the same payee: the most used expense category among VERIFIED entries with that name
 // (a tie goes to the more recent). The more the app is used, the less it has to guess from words on the paper.
-export function categoryFromHistory(state, payee) {
-  const name = (payee ?? "").trim().toLowerCase();
-  if (!name) return null;
+// One pass over the ledger gives every payee's counts (an import asks about hundreds of names against thousands of entries). The state is never edited in place,
+// so the pass is kept while the three lists are the same ones and dropped when any is replaced.
+const histories = new WeakMap();
+function historyIndex(state) {
+  let hit = histories.get(state.entries);
+  if (hit && hit.tx === state.transactions && hit.cats === state.categories && hit.nt === state.transactions.length && hit.ne === state.entries.length && hit.nc === state.categories.length) return hit.byName;
   const expense = new Set(state.categories.filter((c) => c.kind === "expense").map((c) => c.id));
   const byTx = new Map();
   for (const e of state.entries) if (e.category_id != null && expense.has(e.category_id)) byTx.set(e.transaction_id, e.category_id);
-  const seen = new Map();
+  const byName = new Map();
   for (const t of state.transactions) {
-    if (t.status !== "verified" || (t.payee ?? "").trim().toLowerCase() !== name || !byTx.has(t.id)) continue;
+    if (t.status !== "verified" || !byTx.has(t.id)) continue;
+    const name = (t.payee ?? "").trim().toLowerCase();
+    let seen = byName.get(name); if (!seen) byName.set(name, (seen = new Map()));
     const c = byTx.get(t.id), cur = seen.get(c) ?? { n: 0, last: "" };
     seen.set(c, { n: cur.n + 1, last: t.date > cur.last ? t.date : cur.last });
   }
+  histories.set(state.entries, { tx: state.transactions, cats: state.categories, nt: state.transactions.length, ne: state.entries.length, nc: state.categories.length, byName });
+  return byName;
+}
+export function categoryFromHistory(state, payee) {
+  const name = (payee ?? "").trim().toLowerCase();
+  if (!name) return null;
+  const seen = historyIndex(state).get(name) ?? new Map();
   const best = [...seen].sort((a, b) => b[1].n - a[1].n || (a[1].last < b[1].last ? 1 : -1))[0];
   return best ? best[0] : null;
 }
