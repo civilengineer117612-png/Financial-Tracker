@@ -1094,7 +1094,7 @@ check(await stars(page) === 1 && (await text(page, "#sheet")).includes("needed b
 await page.fill("#g-name", "Apartment"); await page.fill("#f-amount", "20000"); await page.click('#sheet .chip:has-text("Wallet")');
 await page.click("#f-save"); await seen(page, "#toast", "Goal added");
 check((await text(page, "#screen")).includes("Hidden") && !(await text(page, "#screen")).includes("20,000"), "a new goal hides its balance");
-await page.click('button:has-text("Show balances")');
+await page.click('button[data-action="toggle-reveal"][aria-pressed="false"]');
 check((await text(page, "#screen")).includes("/ ₱20,000.00"), "showing balances reveals progress as saved / target");
 await shot(page, "25-goals");
 await openGoal(page, "Apartment"); await page.click('#sheet button[data-action="open-deposit"]');
@@ -1138,13 +1138,13 @@ await shot(page, "26-plan");
 ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.settings.plans.length === 1 && ledgerNow.settings.plans[0].lines[0].first === 300000, "the plan is kept in the phone's settings as a dated list, in centavos");
 await menuGo(page, "Goals");
-if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
+if (await page.locator('button[data-action="toggle-reveal"][aria-pressed="false"]').count()) await page.click('button[data-action="toggle-reveal"][aria-pressed="false"]');
 await openGoal(page, "Apartment");
 check(/At your plan's pace\s*about \d+ months?/.test(await text(page, "#sheet")), "a goal's window shows how long the plan takes");
 await page.click('#sheet button[data-action="close-sheet"]');
 await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.click('#sheet button[data-action="pick-goal-role"]'); await page.fill("#f-amount", "999"); await page.click("#sheet .chip >> nth=0"); await page.click("#f-save");
 await seen(page, "#screen", "Emergency Fund");
-if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
+if (await page.locator('button[data-action="toggle-reveal"][aria-pressed="false"]').count()) await page.click('button[data-action="toggle-reveal"][aria-pressed="false"]');
 await openGoal(page, "Emergency Fund");
 const efText = await text(page, "#sheet");
 check(/Target\s*₱24,000\.00/.test(efText) && efText.includes("3 months of Rent, Food from your plan"), "the Emergency Fund target is worked out from the plan (3 x Rent + Food), not the 999 typed when the goal was made");
@@ -1939,7 +1939,7 @@ console.log("Log date and Cash first");
   await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Savings");
   check(await page.locator("#f-save").isEnabled(), "a goal can be saved without choosing an account");
   await page.click("#f-save"); await seen(page, "#screen", "Savings");
-  if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
+  if (await page.locator('button[data-action="toggle-reveal"][aria-pressed="false"]').count()) await page.click('button[data-action="toggle-reveal"][aria-pressed="false"]');
   await seen(page, "#screen", "No account yet");
   let t = await text(page, "#screen");
   check(t.includes("No account yet"), "it says it has no account yet");
@@ -3942,6 +3942,25 @@ console.log("\n-- Goal pictures --");
   check(await page.locator('button[data-action="goal-symbol"][data-id="laptop"][aria-pressed="true"]').count() === 1 && await page.locator('#sheet button[data-action="clear-icon"]').count() === 1, "the chosen one is marked and can be removed");
   await page.click('#sheet button[data-action="clear-icon"]'); await page.waitForSelector("#sheet .gview");
   check(JSON.parse((await stored(page)).local).state.goals[0].symbol === undefined, "Remove the picture takes it away");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== Goals: the Cards eye and dots instead of Show / Hide balances =====
+console.log("\n-- Goals eye --");
+{ const DTS = "2026-10-01T09:00:00.000+08:00";
+  const A = (id, name, cls, ob, d) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: d });
+  let st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [A("sav", "Test Savings", "asset", 1000000, "2026-01-01")], goals: [{ id: "g1", account_id: "sav", name: "Hidden goal", target: 6000000, hidden_by_default: true, symbol: "laptop" }, { id: "g2", account_id: "sav", name: "Open goal", target: 5000000, hidden_by_default: false }] };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
+  await menuGo(page, "Goals");
+  const DOTS = "\u20b1\u2022\u2022\u2022\u2022\u2022";
+  check(await page.locator('button.eye[data-action="toggle-reveal"][aria-pressed="false"]').count() === 1 && !(await text(page, "#screen")).includes("Show balances"), "Goals has the eye, not a Show balances link");
+  check((await text(page, ".flatbig")).includes(DOTS) && (await text(page, "#screen")).includes(DOTS), "the total and the hidden goal read as dots while hidden");
+  check(!(await text(page, "#screen")).includes("Hidden. Tap Show balances"), "and the old line is gone");
+  check((await text(page, "#screen")).includes("Open goal") && (await page.locator("#screen .flatbar, #screen .meter").count()) <= 1, "a goal not marked hidden still shows its own figure");
+  await page.click('button.eye[data-action="toggle-reveal"]'); await page.waitForTimeout(300);
+  check(await page.locator('button.eye[aria-pressed="true"]').count() === 1 && !(await text(page, ".flatbig")).includes(DOTS) && (await text(page, ".flatbig")).includes("\u20b1"), "tapping the eye shows the total");
+  check(await page.locator("#screen .gname .ico svg").count() >= 1, "a goal picture shows in the list");
+  const same = await page.evaluate(() => { const s = document.querySelector("#screen .gname .ico svg"), probe = document.createElement("i"); probe.style.color = "var(--accent)"; document.body.append(probe); const want = getComputedStyle(probe).color, got = getComputedStyle(s).color; probe.remove(); return [got, want]; });
+  check(same[0] === same[1] && same[0] !== "rgb(0, 0, 0)", "the goal picture is drawn in the accent green (" + same[0] + ")");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====

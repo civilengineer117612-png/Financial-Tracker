@@ -285,7 +285,7 @@
   .picklist { margin-top: 6px; max-height: 330px; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); } .picklist[hidden] { display: none; }
   .regl .row .amt small { display: block; color: var(--muted); font-weight: 400; }
   input.entrysearch { margin: 4px 0 10px; }
-  .symrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 4px; } button.symtile { display: flex; align-items: center; justify-content: center; height: 52px; padding: 0; color: var(--ink); } button.symtile[aria-pressed="true"] { border-color: var(--accent); border-width: 2px; }
+  .symrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 4px; } button.symtile { display: flex; align-items: center; justify-content: center; height: 52px; padding: 0; color: var(--accent); } .ico svg { color: var(--accent); }   /* the goal pictures wear the app's green */ button.symtile[aria-pressed="true"] { border-color: var(--accent); border-width: 2px; }
   .picksearchrow { padding: 8px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
   input.picksearch, input.entrysearch { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--ground); color: var(--ink); }
   .picklist .pickitem[hidden], .picklist .pickh[hidden], .picklist .pickempty[hidden] { display: none; } .pickempty { padding: 12px 14px; margin: 0; }
@@ -364,6 +364,7 @@
   svg .tlv { font-size: 10px; fill: var(--ink); font-variant-numeric: tabular-nums; } svg .tlx { font-size: 10px; fill: var(--muted); }
   .swcard[data-action], .row.tapcard { cursor: pointer; } .row.tapcard:active, .swcard[data-action]:active { background: var(--track); }
   .pmonths { display: flex; gap: 4px; align-items: flex-end; margin: 4px 0 12px; } .pmcol { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; } .pmval { font-size: 11px; color: var(--mid); font-variant-numeric: tabular-nums; min-height: 14px; } .pmbar { width: 14px; border-radius: 3px; background: var(--accent); } .pmcol small { color: var(--mid); }
+  .netbigrow.goalsrow { justify-content: flex-start; margin-bottom: 0; } .goalsrow .flatbig { margin: 0; }
   .netbigrow { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px; } .netbigrow .netbig { margin-bottom: 0; } button.eye { min-height: 44px; min-width: 44px; padding: 0; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
   .netbig { font-size: 34px; font-weight: 600; font-variant-numeric: tabular-nums; margin-bottom: 12px; } .netcard .cover { height: 8px; border-radius: 4px; }
   .netsides { display: flex; justify-content: space-between; margin-top: 14px; color: var(--muted); font-variant-numeric: tabular-nums; } .netsides span { display: flex; align-items: center; gap: 6px; }

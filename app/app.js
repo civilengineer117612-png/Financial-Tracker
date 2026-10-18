@@ -12,6 +12,9 @@ const today = () => M.phTimestamp().slice(0, 10);
 const addDays = (d, n) => new Date(Date.parse(d) + n * 86400000).toISOString().slice(0, 10);
 const longDate = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-PH", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 const yearDate = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-PH", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });   // the import window shows the year (a statement spans years)
+// The eye that shows or hides the amounts on a screen (Cards and Goals): an open eye while they are shown, a crossed one while they are hidden.
+const EYE_ATTRS = 'width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+const eyeButton = (action, shown) => `<button class="link eye" data-action="${action}" aria-pressed="${shown}" aria-label="${shown ? "Hide amounts" : "Show amounts"}">${shown ? `<svg ${EYE_ATTRS}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>` : `<svg ${EYE_ATTRS}><path d="M2 12s3.6-7 10-7c2 0 3.8.6 5.3 1.5M22 12s-3.6 7-10 7c-2 0-3.8-.6-5.3-1.5"/><path d="M3 3l18 18"/></svg>`}</button>`;
 const badLinesHtml = (st, f) => {
   const n = st.check.bad.length, open = f.open?.__bad;
   const rows = !open ? "" : M.badLineDetails(st.parsed.lines, st.parsed.summary, st.check.bad).map((x) => `<div class="row"><div>${esc(yearDate(x.date))}<small>${esc(x.name)}</small><small>Bank prints ${peso(x.printed)} \u00b7 the lines before give ${x.expected < 0 ? "-" + peso(-x.expected) : peso(x.expected)}</small></div><div class="amt">${peso(x.amount)}</div></div>`).join("");
@@ -68,7 +71,7 @@ function clipFor(id) {
   }
   let goal = null;
   if (id === "goals") {   // the first goal with a target that is not hidden by default (hidden goals are never drawn)
-    const shown = (x) => !x.hidden_by_default || ui.reveal;   // a hidden goal is drawn only while "Show balances" is on
+    const shown = (x) => !x.hidden_by_default || ui.reveal;   // a hidden goal is drawn only while the eye is open
     const g = S().goals.find((x) => x.target > 0 && shown(x) && x.role !== "emergency"), p = g ? M.goalProgress(S(), g) : null, ga = g?.account_id ? S().accounts.find((a) => a.id === g.account_id) : null;
     if (g && p) goal = { name: g.name, balance: p.balance, target: g.target, account: ga ? { name: ga.name, picture: iconOf(ga, 20) } : null };
     else {   // no ordinary goal: the emergency fund, whose target is worked out from the plan or the budgets
@@ -1539,7 +1542,7 @@ function viewCards() {
     return `<div class="swcard"${it.c ? ` role="button" tabindex="0" data-action="open-card" data-id="${esc(id)}" aria-label="${esc(a.name)}: pay this card"` : ` role="button" tabindex="0" data-action="open-register" data-id="${esc(id)}" aria-label="${esc(a.name)}: its history"`}><div class="swtop">${iconOf(a, 40)}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${it.c ? ICONS.cards : ICONS.buffer}</svg></div>
       <div class="swname">${esc(a.name)}${a.last4 ? `<span class="l4" aria-label="ends in ${esc(a.last4)}"> \u00b7\u00b7${esc(a.last4)}</span>` : ""}</div><div class="swamt">${amount}</div>${cv && shown ? coverBar(cv.share, coverLabel(cv)) : small ? `<div class="swsmall">${small}</div>` : M.isPocket(a) ? `<div class="swsmall">Savings pocket</div>` : ""}${ptoggle(id)}</div>`;
   };
-  const netCard = `<div class="netcard" role="group" aria-label="${shown ? `Free ${esc(peso(net.free))}: in your accounts ${esc(peso(o.held))}, owed on cards ${esc(peso(o.owe))}` : "Amounts are hidden"}"><div class="netbigrow"><div class="netbig">${amt(`${net.free < 0 ? "-" : ""}${peso(Math.abs(net.free))}`)}</div><button class="link eye" data-action="cards-eye" aria-pressed="${shown}" aria-label="${shown ? "Hide amounts" : "Show amounts"}">${shown ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>` : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7c2 0 3.8.6 5.3 1.5M22 12s-3.6 7-10 7c-2 0-3.8-.6-5.3-1.5"/><path d="M3 3l18 18"/></svg>`}</button></div>${shown ? coverBar(net.share, "Owed on cards is " + Math.round(net.share * 100) + "% of what is in your accounts") : `<span class="cover" role="img" aria-label="Amounts are hidden"><span style="width:0%"></span></span>`}<div class="netsides"><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.buffer}</svg>${amt(peso(o.held))}</span><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.cards}</svg>${amt(peso(o.owe))}</span></div></div>`;
+  const netCard = `<div class="netcard" role="group" aria-label="${shown ? `Free ${esc(peso(net.free))}: in your accounts ${esc(peso(o.held))}, owed on cards ${esc(peso(o.owe))}` : "Amounts are hidden"}"><div class="netbigrow"><div class="netbig">${amt(`${net.free < 0 ? "-" : ""}${peso(Math.abs(net.free))}`)}</div>${eyeButton("cards-eye", shown)}</div>${shown ? coverBar(net.share, "Owed on cards is " + Math.round(net.share * 100) + "% of what is in your accounts") : `<span class="cover" role="img" aria-label="Amounts are hidden"><span style="width:0%"></span></span>`}<div class="netsides"><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.buffer}</svg>${amt(peso(o.held))}</span><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS.cards}</svg>${amt(peso(o.owe))}</span></div></div>`;
   const setAside = (() => { const w = M.setAsideForSpending(M.sinkingFunds(S(), ledger.settings, { month: M.monthOf(today()), asOf: today() })); return w > 0 && shown ? `<p class="note" id="cards-setaside">${peso(w)} of this is set aside for planned spending, not savings.</p>` : ""; })();
   const listView = `<h2>Credit cards</h2>${cards}
     <h2>Debit, savings and cash</h2>${money}`;
@@ -2008,7 +2011,7 @@ const goalRing = (g, percent) => { const r = 70, c = 2 * Math.PI * r, on = Math.
 // A goal points at an account where the money really sits. Balances are hidden until you choose to show them (spec 9).
 function viewGoals() {
   const goals = S().goals;
-  const toggle = goals.some((g) => g.hidden_by_default) ? `<p><button class="link" data-action="toggle-reveal">${ui.reveal ? "Hide balances" : "Show balances"}</button></p>` : "";
+  const canHide = goals.some((g) => g.hidden_by_default), DOTS = "\u20b1\u2022\u2022\u2022\u2022\u2022", dots = `<span aria-label="Amount hidden">${DOTS}</span>`;   // the same eye and five dots as Cards
   const cards = barCard(goals.map((g) => {
     let p = M.goalProgress(S(), g);
     if (!p) return null;
@@ -2020,7 +2023,7 @@ function viewGoals() {
     const name = `<span class="gname">${goalPic(g, 28)}<span>${esc(g.name)}</span></span>`;
     const slice = acct ? M.goalSlices(S(), acct).get(g.id) : null, shareLink = slice?.shared ? `<button class="link" data-action="open-goal-share" data-id="${esc(g.id)}">Share</button>` : "", shareSub = slice?.shared ? `${(slice.bps / 100).toFixed(slice.bps % 100 ? 1 : 0)}% of ${esc(acct.name)}` : "";
     const tap = { action: "view-goal", id: g.id }, subLine = g.account_id ? shareSub : "No account yet";
-    if (hidden) return { name, sub: "Hidden. Tap Show balances above.", fig: "", pct: null };
+    if (hidden) return { name, fig: dots, pct: null };
     if (ef) return { name, fig: pairFig(ef.balance, ef.target, { left: "to go", doneWord: "Target reached", label: g.name }), pct: ef.percent, label: ef.percent + "% of the target", ...tap };
     if (isEf) return { name, sub: "The target is 3 months of your rent, food and essentials, from your budgets. Set those budgets (Menu, Budget) and it appears here.", fig: peso(p.balance), pct: null, ...tap };
     if (p.target == null) return { name, sub: subLine, fig: peso(p.balance), pct: null, ...tap };
@@ -2028,8 +2031,8 @@ function viewGoals() {
   }).filter(Boolean));
   const allShown = goals.length > 0 && goals.every((g) => !g.hidden_by_default || ui.reveal);
   const total = allShown ? goals.reduce((n, g) => n + (M.goalProgress(S(), g)?.balance ?? 0), 0) : null;
-  const hero = total === null ? `<p class="sub">Your savings goals. Balances stay hidden until you show them.</p>` : `<div class="flathero"><div class="eyebrow">Saved toward goals</div><div class="flatbig">${peso(total)}</div><div class="flatsub">across ${goals.length} ${goals.length === 1 ? "goal" : "goals"}</div></div>`;
-  return `<h1>Goals</h1>${hero}${toggle}${goals.length ? cards : `<p class="note">No goals yet.</p>`}
+  const hero = !goals.length ? `<p class="sub">Your savings goals.</p>` : `<div class="flathero"><div class="eyebrow">Saved toward goals</div><div class="netbigrow goalsrow"><div class="flatbig">${total === null ? dots : peso(total)}</div>${canHide ? eyeButton("toggle-reveal", !!ui.reveal) : ""}</div><div class="flatsub">across ${goals.length} ${goals.length === 1 ? "goal" : "goals"}</div></div>`;
+  return `<h1>Goals</h1>${hero}${goals.length ? cards : `<p class="note">No goals yet.</p>`}
     <p><button class="primary" data-action="open-goal" style="margin-top:8px">Add a goal</button></p>`;
 }
 
