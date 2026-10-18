@@ -90,6 +90,7 @@ const addPayslipFlow = async (page) => { await page.click('button:has-text("Add 
 const HUB_OF = { Goals: "Plan & Save", "Pay plan": "Plan & Save", Checks: "Weekly review" };
 const openAddForm = async (page) => { const b = page.locator("#add-account-open"); if (await b.count()) { await b.click(); await page.waitForSelector("#a-bank"); } };   // with accounts, Setup keeps the form behind a button
 const afterAdd = async (page) => { await page.waitForFunction(() => !document.querySelector("#a-bank") || document.querySelector("#a-error"), null, { timeout: 2500 }).catch(() => {}); await openAddForm(page); };   // adding closes the form: open it again for the next one
+const openGoal = async (page, name) => { await page.click(`#screen .gname:has-text("${name}")`); await page.waitForSelector("#sheet .gview"); };   // a goal's row opens its window
 const menuGo = async (page, name, opts = {}) => {   // Spending and Income are one menu item, Cash flow, with a switch inside; Cards opens with its amounts hidden, so the helper taps the eye unless `keepHidden`
   await page.click("#menuBtn");
   const money = name === "Spending" || name === "Income";
@@ -1095,7 +1096,7 @@ check((await text(page, "#screen")).includes("Hidden") && !(await text(page, "#s
 await page.click('button:has-text("Show balances")');
 check((await text(page, "#screen")).includes("/ ₱20,000.00"), "showing balances reveals progress as saved / target");
 await shot(page, "25-goals");
-await page.click('button:has-text("Put money in")');
+await openGoal(page, "Apartment"); await page.click('#sheet button[data-action="open-deposit"]');
 check(!(await text(page, "#sheet")).includes("Wallet"), "you cannot take the money from the goal's own account");
 check(await stars(page) === 2, "putting money in a goal marks the amount and where it comes from with the *");
 await page.fill("#f-amount", "500");
@@ -1137,12 +1138,14 @@ ledgerNow = JSON.parse((await stored(page)).local);
 check(ledgerNow.settings.plans.length === 1 && ledgerNow.settings.plans[0].lines[0].first === 300000, "the plan is kept in the phone's settings as a dated list, in centavos");
 await menuGo(page, "Goals");
 if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
-check((await text(page, "#screen")).includes("at your plan's ₱2,000.00 a month"), "a goal shows how long the plan takes");
+await openGoal(page, "Apartment");
+check(/At your plan's pace\s*about \d+ months?/.test(await text(page, "#sheet")), "a goal's window shows how long the plan takes");
+await page.click('#sheet button[data-action="close-sheet"]');
 await page.click('button:has-text("Add a goal")'); await page.fill("#g-name", "Emergency Fund"); await page.click('#sheet button[data-action="pick-goal-role"]'); await page.fill("#f-amount", "999"); await page.click("#sheet .chip >> nth=0"); await page.click("#f-save");
 await seen(page, "#screen", "Emergency Fund");
 if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
-if (await page.locator("#screen details.goaldet > summary").count()) await page.click("#screen details.goaldet > summary");
-const efText = await text(page, "#screen");
+await openGoal(page, "Emergency Fund");
+const efText = await text(page, "#sheet");
 check(/Target\s*₱24,000\.00/.test(efText) && efText.includes("3 months of Rent, Food from your plan"), "the Emergency Fund target is worked out from the plan (3 x Rent + Food), not the 999 typed when the goal was made");
 check(/Months to target\s*Not known yet/.test(efText) && /Monthly contribution\s*none in your plan/.test(efText), "with no contribution line in the plan, months to target says it is not known");
 check(!efText.includes("Your plan suggests") && !efText.includes("Use it"), "there is no 'use it' button that would freeze the target as a typed number");
@@ -1938,13 +1941,14 @@ console.log("Log date and Cash first");
   if (await page.locator('button:has-text("Show balances")').count()) await page.click('button:has-text("Show balances")');
   await seen(page, "#screen", "No account yet");
   let t = await text(page, "#screen");
-  check(t.includes("No account yet") && !(await page.locator('button[data-action="open-deposit"]').count()), "it says it has no account yet, and offers no deposit");
+  check(t.includes("No account yet"), "it says it has no account yet");
   let led = JSON.parse((await stored(page)).local);
   check(led.state.goals.length === 1 && !("account_id" in led.state.goals[0]), "stored without an account_id");
-  await page.click('button[data-action="open-goal-account"]');
+  await openGoal(page, "Savings"); check(!(await page.locator('#sheet button[data-action="open-deposit"]').count()), "its window offers no deposit yet");
+  await page.click('#sheet button[data-action="open-goal-account"]');
   check(await page.locator("#f-save").isDisabled(), "choosing an account needs a choice");
   await page.click('#sheet .chip:has-text("Wallet")'); await page.click("#f-save"); await seen(page, "#toast", "Account chosen");
-  check(await page.locator('button[data-action="open-deposit"]').count() === 1, "once it has an account, money can be put in");
+  await openGoal(page, "Savings"); check(await page.locator('#sheet button[data-action="open-deposit"]').count() === 1, "once it has an account, money can be put in");
   led = JSON.parse((await stored(page)).local);
   check(led.state.goals[0].account_id === "w", "the account is kept");
   await ctx.close(); }
@@ -2096,13 +2100,16 @@ const FIX = { v: 3, rev: 1, saved_at: "2026-10-01T08:00:00.000+08:00", settings:
   await page.click('#sheet button:has-text("Cancel")').catch(() => {});
   // goals by role: nothing is found by name
   await menuGo(page, "Goals"); await page.click('button[data-action="toggle-reveal"]');
-  check(await page.locator('button[data-action="goal-role"]:has-text("Make this my emergency fund")').count() === 3 && !(await text(page, "#screen")).includes("Load a pay plan"), "no goal is the emergency fund until you choose: a goal that is only NAMED Emergency Fund is not treated as one");
-  await page.locator('button[data-action="goal-role"]').first().click(); await seen(page, "#toast", "is your emergency fund");
-  await page.locator('button[data-action="goal-role"]').nth(1).click(); await seen(page, "#toast", "is your emergency fund");
-  check(await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1 && JSON.parse((await stored(page)).local).state.goals.filter((g) => g.role === "emergency").length === 1, "the role moves: one goal at most is the emergency fund");
-  await page.locator('button[data-action="goal-role"]').nth(2).click(); await seen(page, "#screen", "worked out from your budgets");
-  check((await text(page, "#screen")).includes("from your budgets") && await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').count() === 1, "choosing the goal makes it the emergency fund: its status card appears");
-  await page.locator('button[data-action="goal-role"]:has-text("(tap to undo)")').click(); await seen(page, "#screen", "Make this my emergency fund");
+  const roles = async () => JSON.parse((await stored(page)).local).state.goals.filter((g) => g.role === "emergency").length;
+  const flipRole = async (i) => { await page.locator("#screen .gname").nth(i).click(); await page.waitForSelector("#sheet .gview"); await page.click('#sheet button[data-action="goal-role"]'); await page.waitForTimeout(400); await page.click('#sheet button[data-action="close-sheet"]'); await page.waitForTimeout(300); };
+  check(await page.locator("#screen .gname").count() === 3 && await roles() === 0 && !(await text(page, "#screen")).includes("Load a pay plan"), "no goal is the emergency fund until you choose: a goal that is only NAMED Emergency Fund is not treated as one");
+  await flipRole(0); await seen(page, "#toast", "is your emergency fund");
+  await flipRole(1); await seen(page, "#toast", "is your emergency fund");
+  check(await roles() === 1, "the role moves: one goal at most is the emergency fund");
+  await flipRole(2);
+  check(await roles() === 1 && (await text(page, "#screen")).includes("from your budgets"), "choosing the goal makes it the emergency fund: its status card appears");
+  await flipRole(2);
+  check(await roles() === 0, "the same switch takes the role away again");
   // overtime with no emergency fund chosen: the message says to choose, never a name
   await menuGo(page, "Income"); await addPayslipFlow(page); await page.click('#sheet button:has-text("Type a payslip")');
   await page.fill("#p-emp", "Sample Employer Inc"); await page.fill("#p-from", "2026-09-16"); await page.fill("#p-to", "2026-09-30"); await page.fill("#p-date", "2026-10-02");
@@ -2215,7 +2222,7 @@ console.log("What's new and how-tos");
   await page.click("#menuBtn"); await page.waitForSelector("#menu .item"); await page.waitForTimeout(500);
   await page.click('#menu .item[data-tab="budget"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
   await holdOn('#screen .hub button[data-tab="goals"]');
-  check(await seen(page, "#sheet", "Save toward a goal") && (await text(page, "#sheet")).includes("Put money in") && /example/i.test(await text(page, "#sheet")) && (await text(page, "#sheet")).includes("Tap Put money in on a goal"), "holding Goals in the menu plays the goals how-to (an example while there is no goal with a target)");
+  check(await seen(page, "#sheet", "Save toward a goal") && (await text(page, "#sheet")).includes("Put money in") && /example/i.test(await text(page, "#sheet")) && (await text(page, "#sheet")).includes("Tap a goal, tap Put money in"), "holding Goals in the menu plays the goals how-to (an example while there is no goal with a target)");
   await page.click('#sheet button:has-text("Close")');
   for (const [id, title, phrase] of [["cards", "See what you owe", "Cards shows each account"], ["checkin", "Count your accounts", "Tap an account, type its real balance"], ["buffer", "Cover an overrun", "the buffer pays the gap"]]) {
     await page.click("#menuBtn"); await page.waitForSelector("#menu .item"); await page.waitForTimeout(500);
@@ -3674,9 +3681,10 @@ console.log("\n-- Goals in the flat look --");
     check(t.includes("30,000.00 to go") && t.includes("5,000.00 to go") && !/\d \/ \u20B1/.test(t), "one tap on a figure turns every goal into what is to go");
     await page.click("#screen .pair >> nth=0"); await page.waitForTimeout(300);
     t = await text(page, "#screen");
-    check(!t.includes("Monthly contribution") && await page.locator("#screen details.goaldet").count() === 1 && !(await page.locator("#screen details.goaldet").evaluate((d) => d.open)), "the emergency fund's table is folded under Details");
-    await page.click("#screen details.goaldet > summary"); await page.waitForTimeout(200);
-    check((await text(page, "#screen")).includes("Monthly contribution") && (await text(page, "#screen")).includes("Months to target"), "Details opens the target, balance, contribution and months");
+    check(!t.includes("Monthly contribution") && await page.locator("#screen details.goaldet").count() === 0, "the list keeps one plain row per goal; the emergency fund's table is not folded into it");
+    await openGoal(page, "Emergency Fund"); await page.waitForTimeout(200);
+    check((await text(page, "#sheet")).includes("Monthly contribution") && (await text(page, "#sheet")).includes("Months to target") && (await text(page, "#sheet")).includes("Target"), "tapping a goal opens its window with the target, contribution and months");
+    await page.click('#sheet button[data-action="close-sheet"]');
     check(errors.length === 0, "no script errors on Budget and Goals: " + errors.join("; ")); await ctx.close(); }
   { const hid = { ...seed, state: { ...seed.state, goals: seed.state.goals.map((g) => ({ ...g, hidden_by_default: true })) } };
     const { ctx, page } = await open({ blockSw: true, setupFlat: false, seed: hid }); await menuGo(page, "Budget"); await page.click('button:has-text("Goals")'); await page.waitForTimeout(300);
@@ -3734,6 +3742,37 @@ console.log("\n-- Card count --");
   await page.click('button[data-action="count-basis"][data-id="owed"]'); await page.fill("#f-amount", "2150.00");
   check(!(await text(page, "#sheet")).includes("Tick the purchases") && (await text(page, "#sheet")).includes("The ledger says \u20B12,150.00"), "'All I owe' compares with everything owed, pending included");
   check(errors.length === 0, "no script errors in the card count: " + errors.join("; ")); await ctx.close(); }
+// ===== Two goals on one account share it: each counts only its own part =====
+console.log("\n-- Goals sharing an account --");
+{ const mkA = (id, name, ob) => ({ id, name, class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: "2026-03-01" });
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [mkA("b", "Test Bank", 1000000)], rules: [], transactions: [], entries: [], attachments: [],
+    goals: [{ id: "g1", name: "Test Laptop", account_id: "b", target: 3000000, hidden_by_default: false }, { id: "g2", name: "Test Trip", account_id: "b", target: 1500000, hidden_by_default: false }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Goals"); await page.waitForTimeout(400); if (await page.locator('button[data-action="intro-done"]').count()) await page.click('button[data-action="intro-done"]');
+  let t = (await text(page, "#screen")).replace(/\s+/g, " ");
+  check(t.includes("\u20B110,000.00") && !t.includes("\u20B120,000.00") && t.includes("across 2 goals"), "two goals on one \u20B110,000.00 account show \u20B110,000.00 saved in total, not double");
+  check((t.match(/50% of Test Bank/g) ?? []).length === 2, "each goal says what part of the account is its own");
+  check(await page.locator("#screen button.catrow").count() === 2 && await page.locator("#screen .goalact").count() === 0, "each goal is one plain row, with no links under it");
+  await openGoal(page, "Test Laptop");
+  check((await text(page, "#sheet")).includes("\u20B15,000.00") && (await text(page, "#sheet")).includes("Target \u20B130,000.00") && await page.locator('#sheet button[data-action="open-deposit"]').count() === 1 && await page.locator("#sheet .gring").count() === 1, "tapping a goal opens its window: the figure, the target, Put money in and the picture ring");
+  await page.click('#sheet button[data-action="goal-tab"][data-id="moves"]'); check((await text(page, "#sheet")).includes("Nothing in or out"), "the Moves page says when nothing moved");
+  await page.click('#sheet button[data-action="goal-tab"][data-id="overview"]');
+  await page.click('#sheet button[data-action="open-goal-share"]'); await page.waitForSelector("#sheet .sheet");
+  check((await text(page, "#sheet")).includes("Test Trip also sits in this account"), "the share window names the other goal");
+  await page.fill("#f-pct", "70"); await page.click("#f-save"); await page.waitForTimeout(500);
+  t = (await text(page, "#screen")).replace(/\s+/g, " ");
+  check(t.includes("70% of Test Bank") && t.includes("30% of Test Bank") && t.includes("\u20B17,000.00") && t.includes("\u20B13,000.00"), "70% to the laptop leaves 30% to the trip, and the balances follow");
+  await openGoal(page, "Test Trip"); await page.click('#sheet button[data-action="open-goal-share"]'); await page.waitForSelector("#sheet .sheet"); await page.fill("#f-pct", "50"); await page.click("#f-save"); await page.waitForTimeout(400);
+  check(await seen(page, "#toast", "more than 100%"), "an over-100% share is refused");
+  await page.click('#sheet button[data-action="close-sheet"]').catch(() => {});
+  await openGoal(page, "Test Laptop"); await page.click("#sheet .gpic");
+  check((await text(page, "#sheet")).includes("zoom and drag") && await page.locator("#f-save").isDisabled(), "tapping the goal's picture opens the chooser, and saving waits for a picture");
+  await page.setInputFiles("#i-file", join(dir, "icon.png")); await page.waitForFunction(() => !document.getElementById("i-img").hidden); await page.click("#f-save");
+  check(await seen(page, "#toast", "Picture saved") && /^data:image\//.test(JSON.parse((await stored(page)).local).state.goals[0].icon ?? ""), "the goal's picture is saved with the goal");
+  check(await page.locator("#sheet .gpic img.ico").count() === 1 && await page.locator("#screen .gname img.ico").count() === 1, "the goal window and the list both show it");
+  await page.click("#sheet .gpic"); await page.click('#sheet button[data-action="clear-icon"]'); await page.waitForTimeout(400);
+  check(JSON.parse((await stored(page)).local).state.goals[0].icon === undefined && await page.locator("#sheet .gview").count() === 1, "removing the picture goes back to the goal window with the letter tile");
+  check(errors.length === 0, "no script errors in goal sharing: " + errors.join("; ")); await ctx.close(); }
 
 await browser.close();
 console.log(failures ? "\n" + failures + " check(s) FAILED" : "\nAll checks passed");
