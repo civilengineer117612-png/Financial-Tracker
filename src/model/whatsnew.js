@@ -2,6 +2,8 @@
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
   { id: "2026-10-18-csp", date: "2026-10-18", text: "The app now tells the browser to run only its own code and never load scripts from anywhere else." },
+  { id: "2026-10-18-polish", date: "2026-10-18", text: "Small fixes: a phone number as a payee shows shortened, Suggest a budget no longer talks about paydays, Maybe add skips what is already scheduled under another name, and the error page says fo/und." },
+  { id: "2026-10-18-scheduled-edit", date: "2026-10-18", text: "Scheduled payments show if each is paid, waiting or late, can be edited and removed, and a rent you already logged yourself is linked to its payment instead of being doubled." },
   { id: "2026-10-18-plan-320", date: "2026-10-18", text: "The Pay plan tables fit inside their cards on the smallest iPhone, with no sideways scrolling." },
   { id: "2026-10-18-already-paid", date: "2026-10-18", text: "A scheduled payment that starts in the past asks which payments you already made, so Verify only shows what is still waiting." },
   { id: "2026-10-18-goal-window", date: "2026-10-18", text: "Goals are one clean row each: tap a goal to open it, give it your own picture, and share one account between goals without counting the money twice." },

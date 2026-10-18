@@ -119,9 +119,9 @@ export function suggestBudgets({ state, plan = null, pin = null, today, month, s
   // every spending category gets a row (the engine drops a line that comes to nothing), so a figure can be typed for any of them
   const rows = [...names].map(([category_id, name]) => {
     const l = lines.find((x) => x.category_id === category_id), d = diff.get(category_id), current = budgetFor(state.rules, category_id, month);
-    if (!l) return { category_id, name, suggested: 0, pinned: false, amount: 0, reason: "Nothing to suggest: no spending on it in the months I could learn from.", source: r.history.used, current };
+    if (!l) return { category_id, name, suggested: 0, pinned: false, amount: 0, reason: "Nothing to suggest: no steady monthly spending on it to learn from.", source: r.history.used, current };
     return { category_id, name: l.name, suggested: l.pinned ? (d?.suggested?.first == null ? null : toNearest50(d.suggested.first)) : toNearest50(l.amount), pinned: Boolean(l.pinned), amount: l.pinned ? l.amount : toNearest50(l.amount),
-      reason: l.pinned ? "You pinned this figure, so it is not changed." : l.reason, source: l.source, current };
+      reason: l.pinned ? "You pinned this figure, so it is not changed." : l.reason.replace(/, split by days covered \(\d+ and \d+ days\)\./, "."), source: l.source, current };
   });
   const others = lines.filter((l) => !l.category_id && l.kind === "expense").map((l) => ({ name: l.name, amount: l.amount, reason: l.reason }));
   const saved = lines.filter((l) => l.kind === "goal" || l.kind === "buffer").map((l) => ({ name: l.name, kind: l.kind, amount: l.pinned ? l.amount : toNearest50(l.amount), reason: l.reason, ...(l.goal_id ? { goal_id: l.goal_id } : {}), ...(l.pinned ? { pinned: true } : {}) }));

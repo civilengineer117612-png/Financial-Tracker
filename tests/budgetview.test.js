@@ -98,7 +98,7 @@ test("a once-a-month income works: one payday kind, the median of 3, and a sugge
   const r = sug(s);
   assert.equal(r.ok, true); assert.equal(r.income.amount, 2500000);
   const food = r.rows.find((x) => x.category_id === "food");
-  assert.equal(food.suggested, 600000); assert.match(food.reason, /Median of the last 6 usable months/);
+  assert.equal(food.suggested, 600000); assert.match(food.reason, /Median of the last 6 usable months/); assert.doesNotMatch(food.reason, /days covered/, "no payday wording in a monthly budget");
   assert.equal(r.rows.find((x) => x.category_id === "rent").suggested, 800000);
   assert.equal(r.history.used, "history");
   const total = r.rows.reduce((a, x) => a + x.amount, 0) + r.saved.reduce((a, x) => a + x.amount, 0) + r.unallocated - r.short;

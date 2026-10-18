@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  addSchedule, pastPayments, madeAfterAnswers, markAlreadyPaid, makeDueDrafts, setNewAmount, skipPayment, endSchedule, markPaidOff, markNextDue, payNext, skipOnDelete, viewOf, dueSoon, daysText, planLine,
+  addSchedule, setDueDay, setDetail, removeSchedule, statusOf, detailsAt, pastPayments, madeAfterAnswers, markAlreadyPaid, makeDueDrafts, setNewAmount, skipPayment, endSchedule, markPaidOff, markNextDue, payNext, skipOnDelete, viewOf, dueSoon, daysText, planLine,
   committedIn, matchDueDraft, nextOpenPayment, reserveForPlan, reserveIdFor, payKey, skippedOf, linkToDue, planInText, paymentState, paymentsOf, monthsAfter, verifyDraft, discardDraft, editDraftFields, validateShape, validateState,
   encryptLedgerBackup, decryptLedgerBackup, upgradeLedger, parseLedger, selfCheck, LEDGER_VERSION, INTEREST_ROLE, COLLECTION_NAMES,
 } from "../src/model/index.js";
@@ -287,6 +287,101 @@ test("Skip means the next payment that has no draft yet, even when the next one 
   assert.equal(nextOpenPayment(markPaidOff(s, "p1", "2026-10-01", NOW).state, s.schedules[0], "2026-10-01"), null, "nothing left once paid off");
   let r = add(base(), rent()); r = endSchedule(r, "r1", "2026-08-31", NOW).state;
   assert.equal(nextOpenPayment(r, r.schedules[0], "2026-10-01"), null, "nothing after the end");
+});
+
+// ----- editing, removing, linking and the status line -----
+const rentIn = (s, extra = {}) => add(s, rent({ start: "2026-10-05", ...extra }));
+const cat = "cat-rent";
+const logged = (s, id, date, amount, payee = "Landlord", status = "verified") => {
+  s.transactions.push({ id, date, payee, memo: "", status, source: "manual", created_at: "2026-10-05T01:00:00.000+08:00" });
+  s.entries.push({ transaction_id: id, category_id: cat, amount }, { transaction_id: id, account_id: "bank", amount: -amount });
+  return s;
+};
+test("a rent you logged yourself near its due day is linked, not doubled", () => {
+  const s = logged(rentIn(base()), "mine", "2026-10-04", 500000);
+  const r = makeDueDrafts(s, "2026-10-05", {});
+  assert.deepEqual(r.made, ["linked:sch:r1:2026-10"]);
+  assert.equal(r.state.transactions.filter((t) => t.schedule_id).length, 0, "no second entry was made");
+  assert.equal(paymentState(r.state, r.state.schedules[0], "2026-10"), "verified");
+  assert.equal(statusOf(r.state, r.state.schedules[0], "2026-10-05").state, "paid");
+  assert.equal(statusOf(r.state, r.state.schedules[0], "2026-10-05").paidOn, "2026-10-04");
+  assert.equal(makeDueDrafts(r.state, "2026-10-05", {}).made.length, 0, "and it is not made again");
+});
+test("an entry of a different amount, a different category or far away is not taken for the payment", () => {
+  const far = makeDueDrafts(logged(rentIn(base()), "x", "2026-09-20", 500000), "2026-10-05", {});
+  const odd = makeDueDrafts(logged(rentIn(base()), "y", "2026-10-04", 90000), "2026-10-05", {});
+  assert.deepEqual([far.made, odd.made], [["sch:r1:2026-10"], ["sch:r1:2026-10"]]);
+});
+test("one entry stands for one payment only", () => {
+  let s = logged(rentIn(base(), { start: "2026-09-05" }), "mine", "2026-09-30", 500000);   // between Sep 5 and Oct 5, but nearer Oct 5
+  s = makeDueDrafts(s, "2026-10-05", {}).state;
+  const linked = s.scheduleChanges.filter((c) => c.kind === "linked");
+  assert.equal(linked.length, 1);
+  assert.equal(s.transactions.filter((t) => t.schedule_id).length, 1, "the other month still gets its own draft");
+});
+test("the due day, name, account and category can change from a date, and earlier months keep theirs", () => {
+  let s = rentIn(base(), { start: "2026-09-05" });
+  s = setDueDay(s, "r1", 20, "2026-10-01", NOW).state;
+  s = setDetail(s, "r1", "name", "Room rent", "2026-10-01", NOW).state;
+  s = setDetail(s, "r1", "account", "card", "2026-10-01", NOW).state;
+  const sc = s.schedules[0];
+  assert.deepEqual(paymentsOf(s, sc, { through: "2026-11-30" }).map((p) => p.due), ["2026-09-05", "2026-10-20", "2026-11-20"]);
+  assert.equal(detailsAt(s, sc, "2026-09-05").name, "Rent");
+  assert.equal(detailsAt(s, sc, "2026-10-20").name, "Room rent");
+  const made = makeDueDrafts(s, "2026-10-20", {});
+  const t = made.state.transactions.find((x) => x.schedule_key === "2026-10");
+  assert.equal(t.payee, "Room rent");
+  assert.ok(made.state.entries.some((e) => e.transaction_id === t.id && e.account_id === "card"));
+  assert.equal(sc.day, 5, "the plan's own row is never edited");
+  assert.equal(setDueDay(s, "r1", 40, "2026-10-01", NOW).ok, false);
+});
+test("removing a payment discards its waiting drafts, stops new ones, and keeps what was verified", () => {
+  let s = rentIn(base(), { start: "2026-08-05" });
+  s = makeDueDrafts(s, "2026-10-05", {}).state;
+  s.transactions = s.transactions.map((t) => (t.schedule_key === "2026-08" ? { ...t, status: "verified", verified_at: "2026-08-06T01:00:00.000+08:00" } : t));
+  const r = removeSchedule(s, "r1", "2026-10-06", NOW);
+  assert.equal(r.ok, true);
+  const left = r.state.transactions.filter((t) => t.schedule_id);
+  assert.deepEqual(left.map((t) => t.schedule_key + ":" + t.status), ["2026-08:verified"]);
+  assert.equal(makeDueDrafts(r.state, "2026-11-05", {}).made.length, 0);
+  assert.equal(statusOf(r.state, r.state.schedules[0], "2026-11-05"), null);
+});
+test("the status line: due in N days, waiting in Verify, paid, late", () => {
+  let s = rentIn(base());
+  const sc = () => s.schedules[0];
+  assert.deepEqual(statusOf(s, sc(), "2026-10-01"), { state: "due", due: "2026-10-05", days: 4 });
+  s = makeDueDrafts(s, "2026-10-05", {}).state;
+  assert.equal(statusOf(s, sc(), "2026-10-05").state, "waiting");
+  const late = statusOf(s, sc(), "2026-10-09");
+  assert.deepEqual([late.state, late.days, late.drafted], ["late", 4, true]);
+  s.transactions = s.transactions.map((t) => (t.schedule_id ? { ...t, status: "verified", verified_at: "x" } : t));
+  assert.equal(statusOf(s, sc(), "2026-10-09").state, "paid");
+});
+test("a logged entry that the due draft was made before is offered by category too", () => {
+  const s = makeDueDrafts(rentIn(base()), "2026-10-05", {}).state;
+  assert.ok(matchDueDraft(s, { payee: "", amount: 500000, date: "2026-10-06", category_id: "cat-rent" }), "no payee name needed");
+  assert.equal(matchDueDraft(s, { payee: "", amount: 500000, date: "2026-10-06", category_id: "cat-shop" }), null);
+});
+test("a changed category applies to later drafts", () => {
+  let s = rentIn(base());
+  s.categories.push({ id: "cat-other", name: "Other bills", kind: "expense" });
+  s = setDetail(s, "r1", "category", "cat-other", "2026-10-01", NOW).state;
+  const made = makeDueDrafts(s, "2026-10-05", {}).state;
+  const t = made.transactions.find((x) => x.schedule_key === "2026-10");
+  assert.ok(made.entries.some((e) => e.transaction_id === t.id && e.category_id === "cat-other"));
+});
+test("an entry is claimed by one plan only", () => {
+  let s = logged(rentIn(base()), "mine", "2026-10-04", 500000);
+  s = add(s, { ...rent({ start: "2026-10-05" }), id: "r2", name: "Rent too" });
+  const r = makeDueDrafts(s, "2026-10-05", {});
+  assert.equal(r.state.scheduleChanges.filter((c) => c.kind === "linked").length, 1, "only one plan took it");
+  assert.equal(r.state.transactions.filter((t) => t.schedule_id).length, 1, "the other made its own draft");
+});
+test("moving the due day inside a month still leaves one payment that month", () => {
+  let s = rentIn(base());
+  s = setDueDay(s, "r1", 20, "2026-10-10", NOW).state;
+  const keys = paymentsOf(s, s.schedules[0], { through: "2026-12-31" }).map((p) => p.key);
+  assert.deepEqual(keys, ["2026-10", "2026-11", "2026-12"]);
 });
 
 // A rent that started in the past: the months already paid are asked about, not turned into drafts.

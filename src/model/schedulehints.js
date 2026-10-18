@@ -49,6 +49,8 @@ export function suggestFromHistory(state, today, { dismissed = [] } = {}) {
     const amounts = rows.map((r) => r.amount), lo = Math.min(...amounts), hi = Math.max(...amounts);
     if (hi > lo * (1 + AMOUNT_SPREAD)) continue;                              // a payee whose amount swings widely is not a repeating payment
     if (skip(rows[0].payee, "hist:" + key)) continue;
+    const cat = mode(rows.map((r) => r.category_id));   // the same payment already scheduled under another name (a landlord, "Rent"): the same category and about the same amount
+    if ((state.schedules ?? []).some((s) => s.kind === "repeating" && s.category_id === cat && Math.abs(s.amount - median(amounts)) <= Math.max(100, median(amounts) * AMOUNT_SPREAD))) continue;
     out.push({ key: "hist:" + key, source: "history", name: rows[0].payee, amount: lo === hi ? lo : median(amounts), approx: lo !== hi, day: median(days),
       category_id: mode(rows.map((r) => r.category_id)), account_id: mode(rows.map((r) => r.account_id)), months: months.size, of: HISTORY_MONTHS });
   }
