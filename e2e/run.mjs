@@ -3903,6 +3903,27 @@ console.log("\n-- Spreadsheet export --");
   check(await seen(page, "#toast", "not encrypted"), "the app says again that it is not encrypted");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
+// ===== Net worth over time =====
+console.log("\n-- Net worth over time --");
+{ const DTS = "2026-10-01T09:00:00.000+08:00";
+  const A = (id, name, cls, ob, d) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: d });
+  let st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [A("cash", "Cash", "asset", 1000000, "2026-07-01"), A("card", "Test Card", "liability", 100000, "2026-07-01")] };
+  let n = 0; const spend = (date, payee, amt, acc, extra = {}) => { const id = "t" + ++n; st.transactions.push({ id, date, payee, memo: "", status: "verified", source: "manual", created_at: DTS, verified_at: DTS }); st.entries.push({ transaction_id: id, category_id: "cat-food", amount: amt }, { transaction_id: id, account_id: acc, amount: -amt, ...extra }); };
+  spend("2026-08-10", "Sample Cafe", 50000, "cash"); spend("2026-09-12", "Sample Grocer", 150000, "card", { card_state: "posted" });
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
+  await menuGo(page, "Cards"); await page.waitForTimeout(300);
+  const free = (await text(page, ".netbig")).trim();
+  await page.click('button[data-action="open-networth"]'); await page.waitForSelector("#sheet .tbl");
+  const t = await text(page, "#sheet");
+  check(t.includes("Net worth over time") && (await text(page, "#sheet .flatbig")).trim() === free, "the window opens with today's figure, the same as Cards' big number (" + free + ")");
+  check(await page.locator("#sheet svg path").count() === 1 && await page.locator("#sheet .tbl tbody tr").count() >= 3, "one line, and a list of the same months under it");
+  await page.click('button[data-action="nw-range"][data-id="6"]'); check(await page.locator("#sheet .tbl tbody tr").count() >= 3, "6M still lists the months");
+  await page.click('#sheet button[data-action="close-sheet"]'); await page.waitForTimeout(300);
+  check(await page.locator("#sheet .tbl").count() === 0, "Close puts it away");
+  await page.click('button[data-action="cards-eye"]'); await page.click('button[data-action="open-networth"]'); await page.waitForSelector("#sheet .sheet");
+  check((await text(page, "#sheet")).includes("\u20b1\u2022\u2022\u2022\u2022\u2022") && await page.locator("#sheet svg path").count() === 0 && await page.locator('#sheet button[data-action="nw-show"]').count() === 1, "with the Cards eye closed it shows dots and no line, and offers Show amounts");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
 console.log("\n-- Appearance --");
 { ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false }));

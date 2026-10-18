@@ -1547,6 +1547,7 @@ function viewCards() {
     <div class="dots" aria-hidden="true">${seq.length > 6 ? `<span class="dotcount" data-of="${seq.length}">1 of ${seq.length}</span>` : seq.map((_, i) => `<span${i === 0 ? ' class="on"' : ""}></span>`).join("")}</div>`;   // many cards: a count, not a long row of dots
   return `<h1>Cards</h1>${periodStepper(p)}
     ${netCard}${setAside}
+    <p class="center" style="margin:6px 0 0"><button class="link" data-action="open-networth">Net worth over time</button></p>
     ${ui.cardsList ? listView : cardView}
     <p class="center"><button class="link" data-action="cards-list">${ui.cardsList ? "Show as cards" : "Show as a list"}</button></p>
     ${why(`Paying a card bill is not spending: the purchases were counted when you made them. The amounts spent and paid are for ${esc(periodLabel(p))}.`)}
@@ -2806,6 +2807,31 @@ function renderSheet() {
       <p id="f-msg" role="alert" class="note"></p>
       <p><button class="primary" id="f-save" data-action="save-icon" disabled>Use this picture</button></p>
       ${a.icon || a.icon_url || bankLogo(a.bank ?? M.bankForName(a.name)?.id) ? `<p><button data-action="clear-icon" style="width:100%">Remove the picture</button></p>` : ""}`;
+  } else if (sh.type === "networth") {
+    const range = ui.form.range ?? "12", shown = ui.cardsShown === true, series = M.netWorthSeries(S(), { today: today(), months: range === "all" ? "all" : Number(range) }), pts = series.points, last = pts.at(-1);
+    const dots = "\u20b1\u2022\u2022\u2022\u2022\u2022", fig = (c) => shown ? (c < 0 ? "-" : "") + peso(Math.abs(c)) : dots;
+    const mlabel = (d) => ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(d.slice(5, 7)) - 1] + " " + d.slice(2, 4);
+    const chart = (() => {
+      if (!shown || pts.length < 2) return "";
+      const W = 340, H = 150, padL = 14, padR = 64, lo = Math.min(...pts.map((p) => p.net), 0), hi = Math.max(...pts.map((p) => p.net), 1), span = hi - lo || 1;
+      const x = (i) => padL + (i * (W - padL - padR)) / (pts.length - 1), y = (v) => 24 + (1 - (v - lo) / span) * (H - 48);
+      const path = pts.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p.net).toFixed(1)).join(" ");
+      const zero = lo < 0 ? `<line x1="${padL}" x2="${W - padR}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--line)" stroke-dasharray="3 3"/>` : "";
+      return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Net worth from ${esc(mlabel(pts[0].date))} to ${esc(mlabel(last.date))}, list below" style="display:block;margin:6px 0">
+        <line x1="${padL}" x2="${W - padR}" y1="${H - 24}" y2="${H - 24}" stroke="var(--line)"/>${zero}
+        <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <circle cx="${x(pts.length - 1).toFixed(1)}" cy="${y(last.net).toFixed(1)}" r="4" fill="var(--accent)"/>
+        <text x="${(x(pts.length - 1) + 8).toFixed(1)}" y="${(y(last.net) + 4).toFixed(1)}" font-size="12" fill="currentColor" style="font-variant-numeric:tabular-nums">${esc(peso(last.net).replace(/\.00$/, ""))}</text>
+        <text x="${padL}" y="${H - 6}" font-size="11" fill="var(--muted)">${esc(mlabel(pts[0].date))}</text><text x="${W - padR}" y="${H - 6}" font-size="11" text-anchor="end" fill="var(--muted)">${esc(mlabel(last.date))}</text></svg>`;
+    })();
+    const sign = (c) => (c > 0 ? "+" : c < 0 ? "-" : "") + peso(Math.abs(c));
+    body = `<h3>Net worth over time</h3>
+      <p class="note">What is in your accounts minus what the cards are owed, at the end of each month.</p>
+      ${last ? `<div class="flathero"><div class="eyebrow">Today</div><div class="flatfig"><span class="flatbig">${fig(last.net)}</span></div></div>${series.change != null ? `<p class="note">${shown ? `${sign(series.change)} since ${esc(mlabel(pts[0].date))}` : "Amounts are hidden."}</p>` : ""}` : `<p class="note">No accounts yet.</p>`}
+      ${shown ? "" : `<p class="center"><button class="link" data-action="nw-show">Show amounts</button></p>`}
+      <div class="seg" role="group" aria-label="How far back">${[["6", "6M"], ["12", "1Y"], ["all", "All"]].map(([v, t]) => `<button data-action="nw-range" data-id="${v}" aria-pressed="${range === v}">${t}</button>`).join("")}</div>
+      ${pts.length < 2 ? `<p class="note">Not enough history yet: it fills in as months pass.</p>` : chart}
+      ${pts.length ? `<table class="tbl"><thead><tr><th>Month</th><th>You have</th><th>Cards owed</th><th>Net</th></tr></thead><tbody>${[...pts].reverse().map((p, i) => `<tr><td>${esc(i === 0 ? "Today" : mlabel(p.date))}</td><td>${fig(p.assets)}</td><td>${fig(p.owed)}</td><td>${fig(p.net)}</td></tr>`).join("")}</tbody></table>` : ""}`;
   } else if (sh.type === "csv") {
     const f = ui.form, range = f.range ?? "year", { from, to } = csvRange(range), n = M.entriesCsv(S(), { from, to, drafts: f.drafts === true }).rows;
     body = `<h3>Export entries</h3>
@@ -2952,7 +2978,7 @@ function renderSheet() {
       <p class="note">Anything entered since this backup was made will be gone.${sh.all ? "" : ` Pictures are not in a backup, so those entries will say "picture not on this phone".`}</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "register" || sh.type === "goal-view" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "register" || sh.type === "goal-view" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" || sh.type === "networth" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
   $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || sh.type === "planform" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
@@ -4046,6 +4072,9 @@ async function onClick(el) {
     case "open-backup-file": await openBackupFile(); break;
     case "restore-now": await restoreNow(); break;
     case "open-entries": ui.sheet = { type: "entries" }; ui.form = { q: "", scope: "period" }; renderSheet(); break;
+    case "open-networth": ui.sheet = { type: "networth" }; ui.form = { range: "12" }; renderSheet(); break;
+    case "nw-range": ui.form.range = id; renderSheet(); break;
+    case "nw-show": ui.cardsShown = true; renderScreen(); renderSheet(); break;
     case "open-csv": ui.sheet = { type: "csv" }; ui.form = { range: "year" }; renderSheet(); break;
     case "csv-range": ui.form.range = id; renderSheet(); break;
     case "csv-drafts": ui.form.drafts = ui.form.drafts !== true; renderSheet(); break;
