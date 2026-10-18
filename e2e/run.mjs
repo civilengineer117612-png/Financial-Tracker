@@ -3924,6 +3924,26 @@ console.log("\n-- Net worth over time --");
   check((await text(page, "#sheet")).includes("\u20b1\u2022\u2022\u2022\u2022\u2022") && await page.locator("#sheet svg path").count() === 0 && await page.locator('#sheet button[data-action="nw-show"]').count() === 1, "with the Cards eye closed it shows dots and no line, and offers Show amounts");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
+// ===== Goal pictures: pick one of the sixteen line pictures =====
+console.log("\n-- Goal pictures --");
+{ const DTS = "2026-10-01T09:00:00.000+08:00";
+  const A = (id, name, cls, ob, d) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: d });
+  let st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [A("sav", "Test Savings", "asset", 1000000, "2026-01-01")], goals: [{ id: "g1", account_id: "sav", name: "New laptop", target: 6000000, hidden_by_default: false }] };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
+  await menuGo(page, "Goals"); await openGoal(page, "New laptop");
+  await page.click('#sheet button[data-action="open-icon"]'); await page.waitForSelector("#sheet .symrow");
+  check(await page.locator("#sheet .symtile").count() === 16 && (await text(page, "#sheet")).includes("choose a photo"), "the picture window offers sixteen line pictures and still the photo");
+  await page.click('button[data-action="goal-symbol"][data-id="laptop"]'); await page.waitForSelector("#sheet .gview");
+  check(JSON.parse((await stored(page)).local).state.goals[0].symbol === "laptop", "choosing one is kept on the goal (symbol: laptop)");
+  check(await page.locator("#sheet .gview svg path").count() > 0, "the goal window draws it");
+  await page.click('#sheet button[data-action="close-sheet"]'); await page.waitForTimeout(300);
+  check(await page.locator("#screen .gname .ico svg").count() === 1, "and the Goals list shows it instead of the letter");
+  await openGoal(page, "New laptop"); await page.click('#sheet button[data-action="open-icon"]'); await page.waitForSelector("#sheet .symrow");
+  check(await page.locator('button[data-action="goal-symbol"][data-id="laptop"][aria-pressed="true"]').count() === 1 && await page.locator('#sheet button[data-action="clear-icon"]').count() === 1, "the chosen one is marked and can be removed");
+  await page.click('#sheet button[data-action="clear-icon"]'); await page.waitForSelector("#sheet .gview");
+  check(JSON.parse((await stored(page)).local).state.goals[0].symbol === undefined, "Remove the picture takes it away");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
 console.log("\n-- Appearance --");
 { ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false }));

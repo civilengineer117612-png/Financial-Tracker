@@ -33,6 +33,7 @@ export const SCHEMAS = {
   Goal: { id, account_id: optional(id), name, target: optional(centavos), deadline: optional(date), hidden_by_default: bool,
     role: optional(oneOf("emergency")),
     share_bps: optional(count),
+    symbol: optional(text),   // ADDED (no version change): the id of one of the built-in line pictures (`goalicons.js`); a chosen photo (`icon`) wins over it
     icon: optional({ type: "icon" }) },   // ADDED: what the goal is FOR, so nothing has to guess from its name (one goal at most holds a role)
   Envelope: { id, account_id: id, name, purpose: text },
   Transaction: {

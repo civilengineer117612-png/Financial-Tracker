@@ -4,6 +4,7 @@ import { naturalBalance, countedEntries } from "./balances.js";
 import { checkTransactionSave } from "./index.js";
 import { phTimestamp } from "./util.js";
 import { validateShape } from "./schema.js";
+import { GOAL_SYMBOLS } from "./goalicons.js";
 
 // Goals that point at the SAME account share it: a goal with `share_bps` (basis points, 10000 = all) takes that part of the balance,
 // the goals without one split what is left equally, and a goal alone on its account takes all of it. The centavos left by rounding
@@ -167,6 +168,15 @@ export function setGoalAccount(state, goalId, accountId) {
   const account = state.accounts.find((a) => a.id === accountId);
   if (!account || account.class !== "asset") return fail("UNKNOWN_ACCOUNT", "choose an account you hold money in");
   return { ok: true, violations: [], state: { ...state, goals: state.goals.map((g) => (g.id === goalId ? { ...g, account_id: accountId } : g)) } };
+}
+
+// One of the built-in line pictures for a goal (null takes it away). A photo chosen before is put away: the latest choice is the one shown.
+export function setGoalSymbol(state, goalId, symbolId) {
+  const goal = (state.goals ?? []).find((g) => g.id === goalId);
+  if (!goal) return fail("UNKNOWN_GOAL", "no goal " + goalId);
+  if (symbolId != null && !GOAL_SYMBOLS.some((x) => x.id === symbolId)) return fail("BAD_SYMBOL", "no such picture " + symbolId);
+  const { icon, symbol, ...rest } = goal, next = symbolId == null ? rest : { ...rest, symbol: symbolId };
+  return { ok: true, violations: [], state: { ...state, goals: state.goals.map((g) => (g.id === goalId ? next : g)) } };
 }
 
 // The picture the owner chose for a goal (a small square kept on the phone, checked like an account's picture). null takes it away.
