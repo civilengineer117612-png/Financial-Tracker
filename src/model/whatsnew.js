@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-18-polish", date: "2026-10-18", text: "Small fixes: a phone number as a payee shows shortened, Suggest a budget no longer talks about paydays, Maybe add skips what is already scheduled under another name, and the error page says fo/und." },
   { id: "2026-10-18-scheduled-edit", date: "2026-10-18", text: "Scheduled payments show if each is paid, waiting or late, can be edited and removed, and a rent you already logged yourself is linked to its payment instead of being doubled." },
   { id: "2026-10-18-plan-320", date: "2026-10-18", text: "The Pay plan tables fit inside their cards on the smallest iPhone, with no sideways scrolling." },
   { id: "2026-10-18-already-paid", date: "2026-10-18", text: "A scheduled payment that starts in the past asks which payments you already made, so Verify only shows what is still waiting." },

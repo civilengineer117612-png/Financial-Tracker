@@ -75,3 +75,13 @@ test("both sources together: a payee in both shows once, history first, at most 
   for (const name of ["A One", "B Two", "C Three", "D Four"]) monthly(s, name, [3, 3, 3, 3], [10000]);
   assert.equal(scheduleHints(s, TODAY, plan).length, 3);
 });
+
+test("a payee already covered by a schedule under another name (same category, about the same amount) is not suggested again", () => {
+  const s = monthly(base(), "Mr Landlord", [5, 5, 6, 5], [800000], { category: "c-rent" });
+  assert.equal(suggestFromHistory(s, TODAY).length, 1, "suggested while nothing is scheduled");
+  const r = addSchedule(s, { id: "sch1", kind: "repeating", name: "Rent", category_id: "c-rent", account_id: "bank", amount: 800000, day: 5, start: "2026-11-05" }, new Date("2026-10-10T01:00:00Z"));
+  assert.equal(r.ok, true);
+  assert.equal(suggestFromHistory(r.state, TODAY).length, 0, "not once Rent is scheduled");
+  const other = addSchedule(s, { id: "sch2", kind: "repeating", name: "Rent", category_id: "c-rent", account_id: "bank", amount: 300000, day: 5, start: "2026-11-05" }, new Date("2026-10-10T01:00:00Z"));
+  assert.equal(suggestFromHistory(other.state, TODAY).length, 1, "a very different amount in that category is still suggested");
+});
