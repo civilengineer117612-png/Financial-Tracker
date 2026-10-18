@@ -3880,6 +3880,29 @@ console.log("\n-- Account history --");
   check(await page.locator("#sheet .regl").count() === 0, "Close puts it away");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
+// ===== Export entries as a spreadsheet file =====
+console.log("\n-- Spreadsheet export --");
+{ const DTS = "2026-10-01T09:00:00.000+08:00";
+  const A = (id, name, cls, ob) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: "2026-04-01" });
+  let st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [A("cash", "Cash", "asset", 2500000)] };
+  let n = 0; const spend = (date, payee, cat, amt, status = "verified") => { const id = "t" + ++n; st.transactions.push({ id, date, payee, memo: "", status, source: "manual", created_at: DTS, verified_at: status === "verified" ? DTS : undefined }); st.entries.push({ transaction_id: id, category_id: cat, amount: amt }, { transaction_id: id, account_id: "cash", amount: -amt }); };
+  spend("2026-10-02", "Sample Cafe", "cat-food", 24500); spend("2026-10-09", "=Sample Grocer", "cat-food", 150000); spend("2026-10-10", "Draft Shop", "cat-food", 9900, "draft"); spend("2025-12-30", "Old Shop", "cat-food", 5000);
+  ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
+  await page.click("#menuBtn"); await page.click('#menu .item[data-tab="setup"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer")); await page.click('.setrow:has-text("Backup and restore")'); await page.waitForTimeout(300);
+  check((await text(page, "#screen")).toLowerCase().includes("spreadsheet") && await page.locator('button[data-action="open-csv"]').count() === 1, "Backup and restore has a Spreadsheet block with Export entries");
+  check(await page.locator("#screen button.primary").count() === 1, "and the page still has one filled button");
+  await page.click('button[data-action="open-csv"]'); await page.waitForSelector("#csv-count");
+  check((await text(page, "#sheet")).includes("not encrypted") && (await text(page, "#csv-count")).startsWith("2 entries"), "the window says the file is not encrypted and counts this year's verified entries (2)");
+  await page.click('button[data-action="csv-drafts"]'); check((await text(page, "#csv-count")).startsWith("3 entries"), "Include drafts adds the draft");
+  await page.click('button[data-action="csv-range"][data-id="all"]'); check((await text(page, "#csv-count")).startsWith("4 entries"), "Everything adds the older entry");
+  const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 15000 }), page.click("#f-save")]);
+  const file = join(tmpdir(), "entries-" + Date.now() + ".csv"); await dl.saveAs(file); const csv = readFileSync(file, "utf8");
+  check(/^finance-entries-\d{4}-\d{2}-\d{2}\.csv$/.test(dl.suggestedFilename()), "the file is named finance-entries-<date>.csv (" + dl.suggestedFilename() + ")");
+  check(csv.startsWith("\uFEFFDate,Item or payee,Note,Type,Category,Account,Amount,Status") && csv.includes("2026-10-02,Sample Cafe,,Expense,Food,Cash,-245.00,verified"), "it has the header and a plain row with money out negative");
+  check(csv.includes("'=Sample Grocer") && csv.includes(",draft"), "a name starting with = is kept as text, and the draft is in");
+  check(await seen(page, "#toast", "not encrypted"), "the app says again that it is not encrypted");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
 console.log("\n-- Appearance --");
 { ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false }));
