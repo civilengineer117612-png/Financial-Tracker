@@ -3774,6 +3774,26 @@ console.log("\n-- Goals sharing an account --");
   check(JSON.parse((await stored(page)).local).state.goals[0].icon === undefined && await page.locator("#sheet .gview").count() === 1, "removing the picture goes back to the goal window with the letter tile");
   check(errors.length === 0, "no script errors in goal sharing: " + errors.join("; ")); await ctx.close(); }
 
+// ===== A payment that starts in the past: ask which payments were already paid =====
+console.log("\n-- Already paid? --");
+{ const mkA = (id, name, ob) => ({ id, name, class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: "2026-03-01" });
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [mkA("b", "Test Bank", 1800000)], rules: [], goals: [], transactions: [], entries: [], attachments: [] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Scheduled"); await page.click('button[data-action="open-schedule-new"]');
+  await page.click('#sheet button[data-action="pick-skind"][data-id="installment"]');
+  await page.fill("#s-name", "Test Phone"); await page.fill("#s-total", "3000"); await page.click('#sheet button[data-action="pick-scount"][data-id="6"]'); await page.fill("#s-first", "2026-07-10");
+  await page.click('#sheet [data-action="pick-cat"]:has-text("Shopping")'); await page.click('#sheet [data-action="pick-acct"] >> nth=0');
+  await page.click("#f-save"); await page.waitForSelector("#sheet .pastrow");
+  check((await text(page, "#sheet")).includes("Already paid?") && await page.locator("#sheet .pastrow").count() === 3, "a plan whose first payment is in the past asks about each payment since");
+  check(await page.locator('#sheet button[data-action="save-sch-past"]').isDisabled(), "Save waits until every payment is answered");
+  await page.click('#sheet button[data-action="sch-past-answer"][data-id="paid"][data-key="2"]');
+  check(await page.locator('#sheet button[data-action="sch-past-answer"][data-id="paid"][data-key="1"][aria-pressed="true"]').count() === 1, "paid on payment 2 marks payment 1 paid too (a plan is paid in order)");
+  await page.click('#sheet button[data-action="sch-past-answer"][data-id="open"][data-key="3"]');
+  await page.click('#sheet button[data-action="save-sch-past"]'); await page.waitForTimeout(700);
+  { const l = JSON.parse((await stored(page)).local), keys = l.state.transactions.filter((t) => t.schedule_id).map((t) => t.schedule_key + ":" + t.status).sort();
+    check(l.state.schedules[0].made === 2 && keys.join() === "3:draft", "two payments count as made; only the one still unpaid waits in Verify: " + keys.join()); }
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 await browser.close();
 console.log(failures ? "\n" + failures + " check(s) FAILED" : "\nAll checks passed");
 process.exit(failures ? 1 : 0);
