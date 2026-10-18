@@ -2185,6 +2185,16 @@ function maybeWelcome() {
   if (!ledger.settings.welcome_pending || ledger.settings.welcome_off || S().transactions.length) return;
   ui.sheet = { type: "welcome" }; ui.form = { welcomeOff: false }; renderSheet();
 }
+// The weekly count of a card: what you are comparing with, and which pending purchases the bank already shows.
+const checkInInput = (acct, centavos) => ({ date: today(), account_id: acct.id, counted_balance: centavos, unlogged_category_id: M.UNLOGGED_CATEGORY_ID,
+  ...(acct.class === "liability" ? { basis: ui.form.basis ?? "posted", posted_tx_ids: ui.form.ticked ?? [] } : {}) });
+const cardCountBlock = (a) => {
+  const basis = ui.form.basis ?? "posted", pend = M.pendingPurchases(S(), a), ticked = new Set(ui.form.ticked ?? []);
+  return `<div class="seg" role="group" aria-label="What you are comparing">${[["posted", "What the bank posted"], ["owed", "All I owe"]].map(([v, t]) => `<button data-action="count-basis" data-id="${v}" aria-pressed="${basis === v}">${t}</button>`).join("")}</div>
+    <p class="note">${basis === "owed" ? "Type everything you owe, charges still pending included." : "Type the posted amount your bank shows."}</p>
+    ${basis === "posted" && pend.length ? `<p class="note">Tick the purchases your bank already lists. The rest stay pending.</p>
+      <div class="card catcard">${pend.map((p) => `<button class="catrow" data-action="count-tick" data-id="${esc(p.transaction_id)}" aria-pressed="${ticked.has(p.transaction_id)}"><div class="ct"><span class="ctn">${esc(p.payee)}<small>${esc(longDate(p.date))}</small></span><span class="amt">${ticked.has(p.transaction_id) ? "\u2713 " : ""}${peso(p.amount)}</span></div></button>`).join("")}</div>` : ""}`;
+};
 function renderSheet() {
   const sh = ui.sheet;
   if (!sh) { $("sheet").innerHTML = ""; lastSheetKey = null; lockPage(false); return; }
@@ -2381,7 +2391,7 @@ function renderSheet() {
     const a = S().accounts.find((x) => x.id === sh.id);
     body = `<h3>Count ${esc(a.name)}</h3>
       <label for="f-amount">${a.class === "asset" ? "Balance you see now" : "Amount owed you see now"} (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
-      ${a.class === "liability" ? `<p class="note">Use the posted amount your bank shows. Charges still pending are left alone.</p>` : ""}
+      ${a.class === "liability" ? cardCountBlock(a) : ""}
       <p id="f-diff" class="note" role="status"></p>
       <p><button class="primary" id="f-save" data-action="save-checkin" disabled>Save count</button></p>`;
   } else if (sh.type === "correct") {
@@ -2818,7 +2828,7 @@ function refreshSave() {
     const a = M.parsePesos(f.amount), acct = S().accounts.find((x) => x.id === ui.sheet.id);
     btn.disabled = !a.ok || a.centavos < 0;
     const out = $("f-diff");
-    if (out) out.textContent = a.ok && acct ? "The ledger says " + peso(M.ledgerBalanceFor(acct, S().entries)) + ". " + differenceText(a.centavos - M.ledgerBalanceFor(acct, S().entries)) + "." : "";
+    if (out) { const q = a.ok && acct ? M.planCheckIn(S(), { ...checkInInput(acct, a.centavos), id: "probe", transaction_id: "probe" }) : null; out.textContent = q ? "The ledger says " + peso(q.checkIn.ledger_balance) + ". " + differenceText(q.checkIn.difference) + "." : ""; }
   } else if (type === "survey") {
     const c = (f.q1c ?? "").trim(), a = M.parsePesos(f.q1a ?? "");
     btn.disabled = !(f.ease && /^\d{1,4}$/.test(c) && a.ok);
@@ -3119,15 +3129,18 @@ async function onClick(el) {
     case "save-checkin": {
       const amount = M.parsePesos(ui.form.amount), acct = S().accounts.find((x) => x.id === ui.sheet.id);
       if (!amount.ok) { showToast("Enter the balance like 1250.50"); break; }
-      const plan = M.planCheckIn(S(), { id: newId("chk"), transaction_id: newId("tx"), date: today(), account_id: acct.id, counted_balance: amount.centavos, unlogged_category_id: M.UNLOGGED_CATEGORY_ID }, new Date());
+      const plan = M.planCheckIn(S(), { ...checkInInput(acct, amount.centavos), id: newId("chk"), transaction_id: newId("tx"), posting_transaction_id: newId("tx") }, new Date());
       if (!plan.ok) { showToast("Could not save: " + plan.violations[0].message); break; }
       const next = { ...S(), checkIns: [...S().checkIns, plan.checkIn] };
-      if (plan.transaction) { next.transactions = [...S().transactions, plan.transaction]; next.entries = [...S().entries, ...plan.entries]; }
+      const made = [plan.posting, plan.transaction ? { transaction: plan.transaction, entries: plan.entries } : null].filter(Boolean);   // the posting pair first, then the count's own entry
+      if (made.length) { next.transactions = [...S().transactions, ...made.map((m) => m.transaction)]; next.entries = [...S().entries, ...made.flatMap((m) => m.entries)]; }
       ui.sheet = null; renderSheet();
       await commit(next);
       showToast(acct.name + ": " + differenceText(plan.checkIn.difference));
       break;
     }
+    case "count-basis": ui.form.basis = id; renderSheet(); break;
+    case "count-tick": { const t = new Set(ui.form.ticked ?? []); t.has(id) ? t.delete(id) : t.add(id); ui.form.ticked = [...t]; renderSheet(); break; }
     case "open-correct": ui.sheet = { type: "correct" }; ui.form = {}; renderSheet(); break;
     case "pick-correct": ui.sheet = { type: "correct", id }; renderSheet(); break;
     case "do-correct": {

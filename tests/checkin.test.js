@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planCheckIn, unloggedTotal, naturalBalance, cardOutstanding } from "../src/model/index.js";
+import { planCheckIn, pendingPurchases, unloggedTotal, naturalBalance, cardOutstanding } from "../src/model/index.js";
 import { makeState, account, tx, entry, commit, reserveSetAside, cardPurchase } from "./fixtures.js";
 
 // Invented data: a wallet with a ledger balance of 1,000.00.
@@ -94,4 +94,59 @@ test("bad input is reported, not thrown", () => {
   const frac = planCheckIn(s, input({ counted_balance: 950.5 }));
   assert.equal(frac.ok, false);
   assert.equal(frac.violations[0].code, "SHAPE");
+});
+
+// Invented card: one pending purchase of 1,000.00 that the bank already shows as posted.
+function cardWithPending() {
+  const s = walletState();
+  s.accounts.push(account({ id: "card", name: "Test Card", class: "liability" }));
+  commit(s, cardPurchase("c1", 100000, "pending"));
+  commit(s, cardPurchase("c2", 25000, "pending"));
+  return s;
+}
+const cardInput = (o) => input({ account_id: "card", counted_balance: 100000, ...o });
+
+test("card count: a purchase the bank already shows is moved to posted, not counted twice", () => {
+  const s = cardWithPending();
+  const p = planCheckIn(s, cardInput({ basis: "posted", posted_tx_ids: ["c1"] }));
+  assert.equal(p.ok, true);
+  assert.equal(p.checkIn.difference, 0);          // the 1,000.00 is explained by the ticked purchase
+  assert.equal(p.transaction, null);              // so nothing goes to Unlogged
+  commit(s, p.posting);
+  const card = s.accounts.find((a) => a.id === "card");
+  assert.deepEqual(cardOutstanding(card, s.entries), { posted: 100000, pending: 25000, total: 125000 });   // what you owe did not change
+  assert.deepEqual(p.posting.entries.reduce((a, e) => a + e.amount, 0), 0);
+});
+
+test("card count: the same purchase is not offered twice, and not ticked it still shows as the difference", () => {
+  const s = cardWithPending(), card = s.accounts.find((a) => a.id === "card");
+  assert.deepEqual(pendingPurchases(s, card).map((x) => x.transaction_id).sort(), ["c1", "c2"]);
+  commit(s, planCheckIn(s, cardInput({ basis: "posted", posted_tx_ids: ["c1"] })).posting);
+  assert.deepEqual(pendingPurchases(s, card).map((x) => x.transaction_id), ["c2"]);
+  const p = planCheckIn(s, cardInput({ id: "ci2", transaction_id: "rec2", counted_balance: 130000, basis: "posted" }));
+  assert.equal(p.checkIn.difference, 30000);       // posted 100,000 in the ledger, 130,000 at the bank: 300.00 is unexplained
+});
+
+test("card count on the total owed: pending charges count, no double entry", () => {
+  const s = cardWithPending();
+  const p = planCheckIn(s, cardInput({ basis: "owed", counted_balance: 125000 }));
+  assert.equal(p.checkIn.ledger_balance, 125000);
+  assert.equal(p.checkIn.difference, 0);
+  const q = planCheckIn(s, cardInput({ basis: "owed", counted_balance: 130000 }));
+  assert.equal(q.checkIn.difference, 5000);
+  commit(s, q);
+  assert.equal(cardOutstanding(s.accounts.find((a) => a.id === "card"), s.entries).total, 130000);
+});
+
+test("only a card has pending purchases", () => {
+  const s = cardWithPending();
+  assert.deepEqual(pendingPurchases(s, s.accounts.find((a) => a.id === "cash")), []);
+});
+
+test("the posting entry pair passes the same save-time checks as any transaction", async () => {
+  const { checkTransactionSave } = await import("../src/model/index.js");
+  const s = cardWithPending();
+  const p = planCheckIn(s, cardInput({ basis: "posted", posted_tx_ids: ["c1", "c2"], counted_balance: 125000 }));
+  const r = checkTransactionSave(s, p.posting);
+  assert.deepEqual(r.violations.filter((v) => v.severity === "error"), []);
 });

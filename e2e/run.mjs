@@ -3708,6 +3708,33 @@ console.log("\n-- Suggest a budget --");
   check((await text(page, "#screen")).includes("a month"), "Buckets now shows the new limits");
   check(errors.length === 0, "no script errors in Suggest a budget: " + errors.join("; ")); await ctx.close(); }
 
+// ===== The weekly count of a card: pending purchases the bank already shows are moved to posted, never counted twice =====
+console.log("\n-- Card count --");
+{ const mkA = (id, name, cls, ob) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: "2026-03-01" });
+  const TS = "2026-10-01T09:00:00.000+08:00", buy = (id, date, payee, amt) => [{ id, date, payee, memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS }, [{ transaction_id: id, category_id: "cat-food", amount: amt }, { transaction_id: id, account_id: "k", amount: -amt, card_state: "pending" }]];
+  const bs = [buy("p1", "2026-10-14", "Sample Grocer", 150000), buy("p2", "2026-10-15", "Sample Cafe", 25000), buy("p3", "2026-10-16", "Sample Cinema", 40000)];
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [mkA("b", "Test Bank", "asset", 1800000), mkA("k", "Test Card", "liability", 0)], rules: [], goals: [], transactions: bs.map((x) => x[0]), entries: bs.flatMap((x) => x[1]), attachments: [] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Weekly review"); await page.waitForTimeout(300);
+  await page.click('button[data-action="open-checkin"][data-id="k"]'); await page.waitForSelector("#sheet .sheet");
+  let t = (await text(page, "#sheet")).replace(/\s+/g, " ");
+  check(t.includes("What the bank posted") && t.includes("All I owe") && t.includes("Sample Grocer") && t.includes("Sample Cinema"), "counting a card offers the two ways to compare and lists its pending purchases");
+  await page.fill("#f-amount", "1750.00");
+  check((await text(page, "#sheet")).includes("The ledger says \u20B10.00"), "nothing is posted yet, so the posted part is zero");
+  await page.click('button[data-action="count-tick"][data-id="p1"]'); await page.click('button[data-action="count-tick"][data-id="p2"]');
+  t = (await text(page, "#sheet")).replace(/\s+/g, " ");
+  check(t.includes("The ledger says \u20B11,750.00") && /matches|nothing/i.test(t.split("The ledger says")[1] ?? ""), "ticking the two purchases the bank lists makes the count match: no gap");
+  await page.click("#f-save"); await page.waitForTimeout(700);
+  { const d = JSON.parse((await stored(page)).local).state, card = d.accounts.find((a) => a.id === "k"), mine = d.entries.filter((e) => e.account_id === "k");
+    const posted = -mine.filter((e) => e.card_state === "posted").reduce((a, e) => a + e.amount, 0), pend = -mine.filter((e) => e.card_state === "pending").reduce((a, e) => a + e.amount, 0);
+    check(posted === 175000 && pend === 40000 && posted + pend === 215000, "the two purchases moved to posted (1,750.00), the third stays pending (400.00), and what is owed did not change");
+    check(!d.entries.some((e) => e.category_id === "cat-unlogged"), "nothing went to Unlogged"); }
+  await page.click('button[data-action="open-checkin"][data-id="k"]'); await page.waitForSelector("#sheet .sheet");
+  check(!(await text(page, "#sheet")).includes("Sample Grocer") && (await text(page, "#sheet")).includes("Sample Cinema"), "a purchase that moved to posted is not offered again");
+  await page.click('button[data-action="count-basis"][data-id="owed"]'); await page.fill("#f-amount", "2150.00");
+  check(!(await text(page, "#sheet")).includes("Tick the purchases") && (await text(page, "#sheet")).includes("The ledger says \u20B12,150.00"), "'All I owe' compares with everything owed, pending included");
+  check(errors.length === 0, "no script errors in the card count: " + errors.join("; ")); await ctx.close(); }
+
 await browser.close();
 console.log(failures ? "\n" + failures + " check(s) FAILED" : "\nAll checks passed");
 process.exit(failures ? 1 : 0);
