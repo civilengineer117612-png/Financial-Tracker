@@ -1937,6 +1937,23 @@ function planBody(plan, all) {
 const ord = (n) => (n % 100 >= 11 && n % 100 <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[n % 10] ?? "th");
 
 // ---------- goals ----------
+// A goal's picture: the one the owner chose, else a plain first-letter tile.
+const goalPic = (g, size) => iconOf({ name: g.name, ...(g.icon ? { icon: g.icon } : {}) }, size);
+// Everything the goal window shows about one goal.
+function goalFacts(g) {
+  const p0 = M.goalProgress(S(), g); if (!p0) return null;
+  const isEf = g.role === "emergency", ef = !isEf ? null : planOf() ? M.emergencyFundStatus(S(), planOf(), g) : M.emergencyFundFromBudgets(S(), g, { month: M.monthOf(today()) });
+  const p = isEf ? { ...p0, target: null, remaining: null, percent: null, reached: false } : p0;
+  const line = planOf()?.lines.find((l) => l.kind === "goal" && l.name.toLowerCase() === g.name.toLowerCase());
+  const monthly = line ? line.first + line.second : 0, eta = monthly > 0 && p.remaining ? Math.ceil(p.remaining / monthly) : null;
+  const need = g.deadline && p.remaining ? M.requiredPerMonth(p, g.deadline, today().slice(0, 7)) : null;
+  const target = ef ? ef.target : p.target, balance = ef ? ef.balance : p.balance, percent = ef ? ef.percent : p.percent;
+  return { p, ef, isEf, monthly, eta, need, target, balance, percent };
+}
+// The picture with a thin ring around it showing how far the goal is.
+const goalRing = (g, percent) => { const r = 70, c = 2 * Math.PI * r, on = Math.max(0, Math.min(100, percent ?? 0)) / 100 * c;
+  return `<div class="gring"><svg viewBox="0 0 160 160" aria-hidden="true"><circle cx="80" cy="80" r="${r}" class="gtrack"/>${percent == null ? "" : `<circle cx="80" cy="80" r="${r}" class="gon" stroke-dasharray="${on.toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 80 80)"/>`}</svg>
+    <button class="gpic" data-action="open-icon" data-goal="1" data-id="${esc(g.id)}" aria-label="Change the picture of ${esc(g.name)}">${goalPic(g, 96)}<span class="gedit" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></span></button></div>`; };
 // A goal points at an account where the money really sits. Balances are hidden until you choose to show them (spec 9).
 function viewGoals() {
   const goals = S().goals;
@@ -1948,23 +1965,15 @@ function viewGoals() {
     const isEf = g.role === "emergency", ef = !isEf ? null : planOf() ? M.emergencyFundStatus(S(), planOf(), g) : M.emergencyFundFromBudgets(S(), g, { month: M.monthOf(today()) });
     if (isEf) p = { ...p, target: null, remaining: null, percent: null, reached: false };
     const hidden = g.hidden_by_default && !ui.reveal;
-    const line = planOf()?.lines.find((l) => l.kind === "goal" && l.name.toLowerCase() === g.name.toLowerCase());
-    const monthly = line ? line.first + line.second : 0;
-    const eta = monthly > 0 && p.remaining ? Math.ceil(p.remaining / monthly) : null;
-    const need = g.deadline && p.remaining ? M.requiredPerMonth(p, g.deadline, today().slice(0, 7)) : null;
-    const efDet = !ef ? "" : `<details class="goaldet" data-keep="goal-${esc(g.id)}"${ui.pdet?.["goal-" + g.id] ? " open" : ""}><summary>Details</summary><table class="tbl"><tr><td>Target</td><td class="n">${peso(ef.target)}</td></tr><tr><td>Balance now</td><td class="n">${peso(ef.balance)}</td></tr>
-        <tr><td>Monthly contribution</td><td class="n">${ef.monthly ? peso(ef.monthly) : ef.source === "budgets" ? "not set" : "none in your plan"}</td></tr>
-        <tr><td>Months to target</td><td class="n">${ef.reached ? "Reached" : ef.monthsToTarget === null ? "Not known yet" : "About " + ef.monthsToTarget}</td></tr></table>
-        <p class="note">Target = ${ef.months} months of ${esc(ef.basis.join(", "))} from ${ef.source === "budgets" ? "your budgets" : "your plan"} (${peso(ef.monthlyBasis)} a month). It changes when ${ef.source === "budgets" ? "your budgets do" : "your plan does"}.${ef.missing.length ? " Your plan has no line named " + esc(ef.missing.join(", ")) + "." : ""}</p></details>`;
     const acct = S().accounts.find((x) => x.id === g.account_id);
-    const name = `<span class="gname">${iconOf(acct ?? { name: g.name }, 24)}<span>${esc(g.name)}</span></span>`;
-    const acts = `<div class="goalact">${g.account_id ? `<button class="link" data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button>` : `<span class="note">No account yet.</span><button class="link" data-action="open-goal-account" data-id="${esc(g.id)}">Choose an account</button>`}<button class="link" data-action="goal-role" data-id="${esc(g.id)}">${g.role === "emergency" ? "This is your emergency fund (tap to undo)" : "Make this my emergency fund"}</button></div>`;
-    const when = [eta ? "About " + eta + (eta === 1 ? " month" : " months") + " at your plan's " + peso(monthly) + " a month" : "", need ? peso(need.perMonth) + " a month for " + need.monthsLeft + " " + (need.monthsLeft === 1 ? "month" : "months") : ""].filter(Boolean).join(" \u00b7 ");
-    if (hidden) return { name, sub: "Hidden. Tap Show balances above.", fig: "", pct: null, extra: acts };
-    if (ef) return { name, fig: pairFig(ef.balance, ef.target, { left: "to go", doneWord: "Target reached", label: g.name }), pct: ef.percent, label: ef.percent + "% of the target", extra: efDet + acts };
-    if (isEf) return { name, sub: "The target is 3 months of your rent, food and essentials, from your budgets. Set those budgets (Menu, Budget) and it appears here.", fig: peso(p.balance), pct: null, extra: acts };
-    if (p.target == null) return { name, sub: "No target, just a place to build up.", fig: peso(p.balance), pct: null, extra: acts };
-    return { name, sub: when, fig: pairFig(p.balance, p.target, { left: "to go", doneWord: "Goal reached", label: g.name }), pct: p.percent, label: p.percent + "% of the goal", extra: acts };
+    const name = `<span class="gname">${goalPic(g, 28)}<span>${esc(g.name)}</span></span>`;
+    const slice = acct ? M.goalSlices(S(), acct).get(g.id) : null, shareLink = slice?.shared ? `<button class="link" data-action="open-goal-share" data-id="${esc(g.id)}">Share</button>` : "", shareSub = slice?.shared ? `${(slice.bps / 100).toFixed(slice.bps % 100 ? 1 : 0)}% of ${esc(acct.name)}` : "";
+    const tap = { action: "view-goal", id: g.id }, subLine = g.account_id ? shareSub : "No account yet";
+    if (hidden) return { name, sub: "Hidden. Tap Show balances above.", fig: "", pct: null };
+    if (ef) return { name, fig: pairFig(ef.balance, ef.target, { left: "to go", doneWord: "Target reached", label: g.name }), pct: ef.percent, label: ef.percent + "% of the target", ...tap };
+    if (isEf) return { name, sub: "The target is 3 months of your rent, food and essentials, from your budgets. Set those budgets (Menu, Budget) and it appears here.", fig: peso(p.balance), pct: null, ...tap };
+    if (p.target == null) return { name, sub: subLine, fig: peso(p.balance), pct: null, ...tap };
+    return { name, sub: subLine, fig: pairFig(p.balance, p.target, { left: "to go", doneWord: "Goal reached", label: g.name }), pct: p.percent, label: p.percent + "% of the goal", ...tap };
   }).filter(Boolean));
   const allShown = goals.length > 0 && goals.every((g) => !g.hidden_by_default || ui.reveal);
   const total = allShown ? goals.reduce((n, g) => n + (M.goalProgress(S(), g)?.balance ?? 0), 0) : null;
@@ -2391,6 +2400,39 @@ function renderSheet() {
       <p class="note small">Tick it if this goal is your emergency fund.</p>
       ${REQNOTE}
       <p><button class="primary" id="f-save" data-action="save-goal" style="margin-top:14px" disabled>Save goal</button></p>`;
+  } else if (sh.type === "goal-view") {
+    const g = S().goals.find((x) => x.id === sh.id), f = g && goalFacts(g), acct = g && S().accounts.find((x) => x.id === g.account_id);
+    if (!f) { body = `<p class="note">This goal is gone.</p>`; }
+    else {
+      const tab = sh.tab ?? "overview", slice = acct ? M.goalSlices(S(), acct).get(g.id) : null;
+      const row = (k, v, action) => `<${action ? "button" : "div"} class="gvrow"${action ? ` data-action="${action}" data-id="${esc(g.id)}"` : ""}><span>${k}</span><b>${v}</b></${action ? "button" : "div"}>`;
+      const moves = acct ? S().transactions.filter((t) => S().entries.some((e) => e.transaction_id === t.id && e.account_id === acct.id)).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 12) : [];
+      const amtOn = (t) => S().entries.filter((e) => e.transaction_id === t.id && e.account_id === acct.id).reduce((n, e) => n + e.amount, 0);
+      const overview = [
+        acct ? row("Account", esc(acct.name)) : row("Account", "Choose", "open-goal-account"),
+        slice?.shared ? row("Its share", (slice.bps / 100).toFixed(slice.bps % 100 ? 1 : 0) + "%", "open-goal-share") : "",
+        f.target != null ? row("Target", peso(f.target)) : row("Target", "None"),
+        g.deadline ? row("By", esc(g.deadline)) : "",
+        f.eta ? row("At your plan's pace", "about " + f.eta + (f.eta === 1 ? " month" : " months")) : "",
+        f.need ? row("Needed each month", peso(f.need.perMonth)) : "",
+        f.ef ? row("Monthly contribution", f.ef.monthly ? peso(f.ef.monthly) : f.ef.source === "budgets" ? "not set" : "none in your plan") : "",
+        f.ef ? row("Months to target", f.ef.reached ? "Reached" : f.ef.monthsToTarget === null ? "Not known yet" : "About " + f.ef.monthsToTarget) : "",
+        row("Emergency fund", g.role === "emergency" ? "Yes" : "No", "goal-role"),
+      ].join("");
+      body = `<div class="gview"><h3>${esc(g.name)}</h3>${goalRing(g, f.percent)}
+        <div class="gfig">${peso(f.balance)}</div><div class="gsub">${f.target != null ? "Target " + peso(f.target) : "No target, a place to build up"}</div>
+        ${acct ? `<p><button class="primary" data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button></p>` : `<p><button class="primary" data-action="open-goal-account" data-id="${esc(g.id)}">Choose an account</button></p>`}
+        <div class="seg" role="group" aria-label="Goal pages">${[["overview", "Overview"], ["moves", "Moves"]].map(([v, t]) => `<button data-action="goal-tab" data-id="${v}" aria-pressed="${tab === v}">${t}</button>`).join("")}</div>
+        ${tab === "overview" ? `<div class="card gv">${overview}</div>${f.ef ? `<p class="note">Target = ${f.ef.months} months of ${esc(f.ef.basis.join(", "))} from ${f.ef.source === "budgets" ? "your budgets" : "your plan"} (${peso(f.ef.monthlyBasis)} a month). It changes when ${f.ef.source === "budgets" ? "your budgets do" : "your plan does"}.${f.ef.missing.length ? " Your plan has no line named " + esc(f.ef.missing.join(", ")) + "." : ""}</p>` : ""}` : `<div class="card gv">${moves.length ? moves.map((t) => `<div class="gvrow"><span>${esc(t.payee || "Entry")}<small>${esc(longDate(t.date))}</small></span><b>${amtOn(t) < 0 ? "\u2212" : "+"}${peso(Math.abs(amtOn(t)))}</b></div>`).join("") : `<p class="note">Nothing in or out of this account yet.</p>`}</div>`}
+</div>`;
+    }
+  } else if (sh.type === "goal-share") {
+    const g = S().goals.find((x) => x.id === sh.id), acct = S().accounts.find((x) => x.id === g.account_id), sl = M.goalSlices(S(), acct), others = S().goals.filter((x) => x.id !== g.id && x.account_id === g.account_id);
+    body = `<h3>How much of ${esc(acct.name)} is ${esc(g.name)}?</h3>
+      <p class="note">${others.map((o) => esc(o.name)).join(" and ")} ${others.length === 1 ? "also sits" : "also sit"} in this account. Each goal counts only its own part, so Saved never counts the same money twice.</p>
+      <label for="f-pct">Its share (%)</label><input id="f-pct" data-field="pct" inputmode="decimal" value="${esc(ui.form.pct ?? "")}" autocomplete="off">
+      <p class="note">${others.map((o) => `${esc(o.name)}: ${(sl.get(o.id).bps / 100).toFixed(sl.get(o.id).bps % 100 ? 1 : 0)}%`).join(" \u00b7 ")}. Goals with no share typed split what is left equally.</p>
+      <p><button class="primary" id="f-save" data-action="save-goal-share" style="margin-top:14px" disabled>Save share</button></p>`;
   } else if (sh.type === "goal-account") {
     const g = S().goals.find((x) => x.id === sh.id);
     body = `<h3>Where does ${esc(g.name)} sit?</h3><p class="note">Choose the account that holds this goal's money. Its balance is the goal's balance.</p>${paidChips(ui.form.account_id)}
@@ -2671,6 +2713,16 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-last4" style="margin-top:6px">Save</button></p>`;
   } else if (sh.type === "photo") {
     body = `<h3>Photo</h3><img class="shotfull" data-photo="${esc(sh.id)}" alt="The photo this entry was read from" hidden>`;
+  } else if (sh.type === "icon" && sh.goal) {
+    const g = S().goals.find((x) => x.id === sh.id);
+    body = `<h3>Picture for ${esc(g.name)}</h3>
+      <p class="note">Choose a photo or an image, then zoom and drag until it fills the square. It stays on this phone.</p>
+      <input id="i-file" type="file" accept="image/*" data-field="file" aria-label="Choose a picture">
+      <div id="i-stage" class="stage"><img id="i-img" alt="" hidden></div>
+      <label for="i-zoom">Zoom</label><input id="i-zoom" data-field="zoom" type="range" min="1" max="4" step="0.01" value="1" disabled>
+      <p id="f-msg" role="alert" class="note"></p>
+      <p><button class="primary" id="f-save" data-action="save-icon" disabled>Use this picture</button></p>
+      ${g.icon ? `<p><button data-action="clear-icon" style="width:100%">Remove the picture</button></p>` : ""}`;
   } else if (sh.type === "icon") {
     const a = S().accounts.find((x) => x.id === sh.id);
     body = `<h3>Picture for ${esc(a.name)}</h3>
@@ -2819,7 +2871,7 @@ function renderSheet() {
       <p class="note">Anything entered since this backup was made will be gone.${sh.all ? "" : ` Pictures are not in a backup, so those entries will say "picture not on this phone".`}</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "goal-view" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
   $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || sh.type === "planform" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
@@ -2955,6 +3007,9 @@ function refreshSave() {
     btn.disabled = !((f.name ?? "").trim() && a.ok);
   } else if (type === "goal-account") {
     btn.disabled = !f.account_id;
+  } else if (type === "goal-share") {
+    const n = Number((f.pct ?? "").replace(",", "."));
+    btn.disabled = !((f.pct ?? "").trim() !== "" && Number.isFinite(n) && n >= 0 && n <= 100);
   } else if (type === "deposit") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && f.account_id);
@@ -3205,6 +3260,14 @@ async function onClick(el) {
     }
     case "open-deposit": ui.sheet = { type: "deposit", id }; ui.form = { amount: "", account_id: accountsFor(null).find((a) => a.id !== S().goals.find((g) => g.id === id)?.account_id)?.id ?? null }; renderSheet(); break;
     case "open-goal-account": ui.sheet = { type: "goal-account", id }; ui.form = { account_id: null }; renderSheet(); break;
+    case "view-goal": ui.sheet = { type: "goal-view", id, tab: "overview" }; ui.form = {}; renderSheet(); break;
+    case "goal-tab": ui.sheet = { ...ui.sheet, tab: id }; renderSheet(); break;
+    case "open-goal-share": { const g = S().goals.find((x) => x.id === id), sl = M.goalSlices(S(), S().accounts.find((x) => x.id === g.account_id)).get(id); ui.sheet = { type: "goal-share", id }; ui.form = { pct: String(sl.bps / 100) }; renderSheet(); break; }
+    case "save-goal-share": {
+      const r = M.setGoalShare(S(), ui.sheet.id, Math.round(Number(ui.form.pct.replace(",", ".")) * 100));
+      if (!r.ok) { showToast("Could not save: " + r.violations[0].message); break; }
+      ui.sheet = null; renderSheet(); await commit(r.state); showToast("Share saved"); break;
+    }
     case "save-goal-account": {
       const r = M.setGoalAccount(S(), ui.sheet.id, ui.form.account_id);
       if (!r.ok) { showToast("Could not save: " + r.violations[0].message); break; }
@@ -3470,7 +3533,7 @@ async function onClick(el) {
       if (r.ok) await commit(r.state); else renderSheet();
       break;
     }
-    case "open-icon": ui.sheet = { type: "icon", id }; ui.form = {}; renderSheet(); break;
+    case "open-icon": ui.sheet = { type: "icon", id, goal: el.dataset.goal === "1" }; ui.form = {}; renderSheet(); break;
     case "edit-last4": ui.sheet = { type: "last4", id }; ui.form = { last4: S().accounts.find((a) => a.id === id)?.last4 ?? "", pocket: M.isPocket(S().accounts.find((a) => a.id === id)) }; renderSheet(); break;
     case "save-last4": {
       const r = M.setAccountLast4(S(), ui.sheet.id, ui.form.last4);
@@ -3481,6 +3544,7 @@ async function onClick(el) {
     }
     case "save-icon": await saveIcon(); break;
     case "clear-icon": {
+      if (ui.sheet.goal) { const gid = ui.sheet.id, r = M.setGoalIcon(S(), gid, null); ui.sheet = { type: "goal-view", id: gid, tab: "overview" }; renderSheet(); if (r.ok) await commit(r.state); break; }
       const a = S().accounts.find((x) => x.id === ui.sheet.id);
       const r = M.setAccountIcon(S(), a.id, null);
       ui.sheet = null; renderSheet();
@@ -4062,10 +4126,11 @@ async function saveIcon() {
   ctx.drawImage(c.img, -c.x / scale, -c.y / scale, CROP / scale, CROP / scale, 0, 0, ICON_PX, ICON_PX);
   let url = canvas.toDataURL("image/png");
   if (url.length > 38000) url = canvas.toDataURL("image/jpeg", 0.8);   // a very detailed picture: keep it small
-  const r = M.setAccountIcon(S(), ui.sheet.id, url);
+  const goalId = ui.sheet.goal ? ui.sheet.id : null;
+  const r = goalId ? M.setGoalIcon(S(), goalId, url) : M.setAccountIcon(S(), ui.sheet.id, url);
   if (!r.ok) { $("f-msg").textContent = r.violations[0].message; return; }
   URL.revokeObjectURL(c.url);
-  ui.sheet = null; renderSheet();
+  ui.sheet = goalId ? { type: "goal-view", id: goalId, tab: "overview" } : null; renderSheet();
   await commit(r.state);
   showToast("Picture saved");
 }
