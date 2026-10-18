@@ -243,7 +243,8 @@ test("round 3: the Setup form waits behind a button once there are accounts, goa
 test("Setup is a short list of pages and Help runs in a clear order with a small What's new", async () => {
   const js = read("app/app.js"), css = read("app/index.html");
   for (const id of ["accounts", "categories", "backup", "about"]) assert.ok(js.includes(`["${id}", `), "a Setup row for " + id);
-  assert.match(js, /const page = ui\.setupPage && blocks\[ui\.setupPage\] \? ui\.setupPage : null;/);
+  assert.match(js, /const page = ui\.setupPage && Object\.hasOwn\(blocks, ui\.setupPage\) \? ui\.setupPage : null;/);
+  assert.match(js, /get statements\(\) \{ return statementsHtml\(\); \}/, "the Statements page is built only when it is opened: the Setup list does not prove every month of every statement");
   assert.match(js, /if \(ui\.tab !== "setup"\) ui\.setupPage = null;/, "leaving Setup returns it to the list");
   assert.match(js, /case "setup-page": ui\.setupPage = el\.dataset\.id \|\| null;/);
   assert.match(js, /data-tab="setup" data-page="accounts">Add accounts/, "Add accounts goes straight to its page");

@@ -181,11 +181,31 @@ export function categoryFor(state, item, book = null) {
 // the entry must be on that account. Returns the transaction or null.
 const dayGap = (a, b) => Math.abs(Math.round((Date.parse(a) - Date.parse(b)) / 86400000));
 const loose = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-export function loggedMatch(state, { date, name, amount, accountId = null }, used = new Set(), days = 2) {
+// One pass over the ledger answers every line: which transactions stand for money spent (not a reversal, not cancelled), grouped by that amount, and which accounts each one
+// touches. An import or an accepted month asks about hundreds of lines against thousands of entries, so rescanning the entries once per transaction per line froze the phone.
+// The state is never edited in place (a change makes new arrays), so the index is kept while both lists are the same ones and dropped when either is replaced.
+const indexes = new WeakMap();
+function ledgerIndex(state) {
+  let hit = indexes.get(state.entries);
+  if (hit && hit.tx === state.transactions && hit.nt === state.transactions.length && hit.ne === state.entries.length) return hit;   // a list that grew or shrank in place is never trusted
   const cancelled = new Set(state.transactions.filter((t) => t.reverses).map((t) => t.reverses));
-  const spent = (t) => state.entries.find((e) => e.transaction_id === t.id && e.category_id)?.amount;
-  const hits = state.transactions.filter((t) => !t.reverses && !cancelled.has(t.id) && !used.has(t.id) && spent(t) === amount && dayGap(t.date, date) <= days
-    && (!accountId || state.entries.some((e) => e.transaction_id === t.id && e.account_id === accountId)));
+  const spent = new Map(), accounts = new Map();
+  for (const e of state.entries) {
+    if (e.category_id && !spent.has(e.transaction_id)) spent.set(e.transaction_id, e.amount);   // the first line with a category, as before
+    if (e.account_id) { let set = accounts.get(e.transaction_id); if (!set) accounts.set(e.transaction_id, (set = new Set())); set.add(e.account_id); }
+  }
+  const byAmount = new Map();
+  for (const t of state.transactions) {
+    if (t.reverses || cancelled.has(t.id) || !spent.has(t.id)) continue;
+    const a = spent.get(t.id); let list = byAmount.get(a); if (!list) byAmount.set(a, (list = [])); list.push(t);
+  }
+  hit = { tx: state.transactions, nt: state.transactions.length, ne: state.entries.length, accounts, byAmount };
+  indexes.set(state.entries, hit);
+  return hit;
+}
+export function loggedMatch(state, { date, name, amount, accountId = null }, used = new Set(), days = 2) {
+  const ix = ledgerIndex(state);
+  const hits = (ix.byAmount.get(amount) ?? []).filter((t) => !used.has(t.id) && dayGap(t.date, date) <= days && (!accountId || ix.accounts.get(t.id)?.has(accountId)));
   hits.sort((x, y) => (loose(y.payee) === loose(name)) - (loose(x.payee) === loose(name)) || dayGap(x.date, date) - dayGap(y.date, date));
   return hits[0] ?? null;
 }

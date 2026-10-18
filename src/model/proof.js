@@ -32,7 +32,21 @@ export function recordFromParse(parsed, { account_id, id, now = new Date() }) {
 
 // The lines of one account across all its statements, oldest first. Two statements that overlap show the same line twice: a line already taken
 // from ANOTHER statement is left out (two genuine identical lines inside one statement both stay).
-export function accountLines(state, accountId) {
+// The proof screens ask for the same account's lines and months many times for one picture (the Setup list, the Statements page, each month's window). The state is
+// never edited in place (a change makes new arrays), so one answer is kept per set of arrays and thrown away the moment any of them is replaced. Callers only read it.
+const NONE = [], answers = new WeakMap();
+function remembered(state, name, accountId, build) {
+  const key = state.statementLines ?? NONE;
+  let hit = answers.get(key);
+  const sizes = [key.length, state.statementRecords?.length, state.statementAccepts?.length, state.accounts?.length].join();   // a list that grew or shrank in place is never trusted
+  if (!hit || hit.records !== state.statementRecords || hit.accepts !== state.statementAccepts || hit.accounts !== state.accounts || hit.sizes !== sizes) { hit = { records: state.statementRecords, accepts: state.statementAccepts, accounts: state.accounts, sizes, map: new Map() }; answers.set(key, hit); }
+  const k = name + ":" + accountId;
+  if (!hit.map.has(k)) hit.map.set(k, build());
+  return hit.map.get(k);
+}
+
+export function accountLines(state, accountId) { return remembered(state, "lines", accountId, () => buildAccountLines(state, accountId)); }
+function buildAccountLines(state, accountId) {
   const ids = new Set((state.statementRecords ?? []).filter((r) => r.account_id === accountId).map((r) => r.id));
   const raw = (state.statementLines ?? []).filter((l) => ids.has(l.record_id)).sort((a, b) => a.date.localeCompare(b.date) || a.record_id.localeCompare(b.record_id) || a.n - b.n);
   const owner = new Map(), out = [];
@@ -64,13 +78,16 @@ function noBalanceReason(records, month) {
 //   "gap"        the month before has no statement, so the opening cannot be checked.
 //   "no-balance" the statement has no balances to prove this month with.
 // Each: {month, opening, closing, moneyIn, moneyOut, count, status, reason, accepted}.
-export function proveMonths(state, accountId) {
+export function proveMonths(state, accountId) { return remembered(state, "months", accountId, () => buildProveMonths(state, accountId)); }
+function buildProveMonths(state, accountId) {
   const k = kindOf(state, accountId), lines = accountLines(state, accountId), records = (state.statementRecords ?? []).filter((r) => r.account_id === accountId);
   const accepted = new Set((state.statementAccepts ?? []).filter((a) => a.account_id === accountId).map((a) => a.month));
-  const months = [...new Set(lines.map((l) => l.date.slice(0, 7)))].sort();
+  const grouped = new Map();
+  for (const l of lines) { const m = l.date.slice(0, 7); if (!grouped.has(m)) grouped.set(m, []); grouped.get(m).push(l); }
+  const months = [...grouped.keys()].sort();
   const out = [];
   for (const month of months) {
-    const ml = lines.filter((l) => l.date.slice(0, 7) === month);
+    const ml = grouped.get(month);
     const moneyIn = ml.filter((l) => l.direction === "in").reduce((n, l) => n + l.amount, 0), moneyOut = ml.filter((l) => l.direction === "out").reduce((n, l) => n + l.amount, 0);
     const row = { month, opening: null, closing: null, moneyIn, moneyOut, count: ml.length, status: "no-balance", reason: noBalanceReason(records, month), accepted: accepted.has(month) };
     const whole = records.find((r) => coversWhole(records, r, month) && Number.isSafeInteger(r.opening) && Number.isSafeInteger(r.closing));
