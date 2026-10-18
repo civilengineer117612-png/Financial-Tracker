@@ -1093,7 +1093,7 @@ check(await page.locator("#f-save").isDisabled(), "a goal needs a name first");
 check(await stars(page) === 1 && (await text(page, "#sheet")).includes("needed before you can save"), "a goal marks only its name with the *");
 await page.fill("#g-name", "Apartment"); await page.fill("#f-amount", "20000"); await page.click('#sheet .chip:has-text("Wallet")');
 await page.click("#f-save"); await seen(page, "#toast", "Goal added");
-check((await text(page, "#screen")).includes("Hidden") && !(await text(page, "#screen")).includes("20,000"), "a new goal hides its balance");
+check((await text(page, "#screen")).includes("\u20b1\u2022\u2022\u2022\u2022\u2022") && !(await text(page, "#screen")).includes("20,000"), "a new goal hides its balance behind dots");
 await page.click('button[data-action="toggle-reveal"][aria-pressed="false"]');
 check((await text(page, "#screen")).includes("/ ₱20,000.00"), "showing balances reveals progress as saved / target");
 await shot(page, "25-goals");
@@ -3688,7 +3688,7 @@ console.log("\n-- Goals in the flat look --");
   { const hid = { ...seed, state: { ...seed.state, goals: seed.state.goals.map((g) => ({ ...g, hidden_by_default: true })) } };
     const { ctx, page } = await open({ blockSw: true, setupFlat: false, seed: hid }); await menuGo(page, "Budget"); await page.click('button:has-text("Goals")'); await page.waitForTimeout(300);
     const t = await text(page, "#screen");
-    check(!t.includes("15,000.00") && !t.includes("12,000.00") && !/saved toward goals/i.test(t), "with balances hidden, no goal figure and no total is shown");
+    check(!t.includes("15,000.00") && !t.includes("12,000.00") && t.includes("\u20b1\u2022\u2022\u2022\u2022\u2022"), "with balances hidden, no goal figure and no total is shown, only dots");
     await ctx.close(); }
 }
 
