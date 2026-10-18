@@ -202,24 +202,26 @@ function transferFields(t, d) {
 }
 
 // One line about a transaction, whatever kind it is.
+// A payee that is only a phone or account number shows as its first and last four digits (Who and Trends already do).
+const shortPayee = (p) => /^\d{10,}$/.test(String(p ?? "").trim()) ? M.payeeLabel(p) : p;
 function describe(t) {
   const es = S().entries.filter((e) => e.transaction_id === t.id);
   if (t.reverses) return { kind: "other", editable: false, title: "Cancels: " + (t.payee || "an entry"), amount: es.filter((e) => e.amount > 0).reduce((n, e) => n + e.amount, 0), detail: "cancels an earlier entry" };   // shown without a sign: it only takes back what was entered
   const cat = es.find((e) => e.category_id != null), acct = es.find((e) => e.account_id != null);
   if (cat && acct && es.filter((e) => e.category_id == null).every((e) => e.account_id === acct.account_id) && es.filter((e) => e.category_id != null).length === 1) {
-    if (S().categories.find((c) => c.id === cat.category_id)?.kind === "income") return { kind: "income", editable: false, title: t.payee || categoryName(cat.category_id), category_id: cat.category_id, account_id: acct.account_id, amount: Math.abs(cat.amount), detail: accountName(acct.account_id) };
-    return { kind: "expense", editable: es.length === 2, title: t.payee || categoryName(cat.category_id), category_id: cat.category_id, account_id: acct.account_id, amount: Math.abs(cat.amount), detail: accountName(acct.account_id) };
+    if (S().categories.find((c) => c.id === cat.category_id)?.kind === "income") return { kind: "income", editable: false, title: shortPayee(t.payee) || categoryName(cat.category_id), category_id: cat.category_id, account_id: acct.account_id, amount: Math.abs(cat.amount), detail: accountName(acct.account_id) };
+    return { kind: "expense", editable: es.length === 2, title: shortPayee(t.payee) || categoryName(cat.category_id), category_id: cat.category_id, account_id: acct.account_id, amount: Math.abs(cat.amount), detail: accountName(acct.account_id) };
   }
   const parts = es.filter((e) => e.category_id != null), accts = es.filter((e) => e.category_id == null);
   if (parts.length >= 2 && accts.length === 1 && parts.every((e) => S().categories.find((c) => c.id === e.category_id)?.kind === "expense")) {
-    return { kind: "split", editable: false, title: t.payee || "Split purchase", account_id: accts[0].account_id, amount: parts.reduce((n, e) => n + e.amount, 0), detail: accountName(accts[0].account_id),
+    return { kind: "split", editable: false, title: shortPayee(t.payee) || "Split purchase", account_id: accts[0].account_id, amount: parts.reduce((n, e) => n + e.amount, 0), detail: accountName(accts[0].account_id),
       parts: parts.map((e) => ({ name: categoryName(e.category_id), amount: e.amount })) };
   }
   if (es.length === 2 && es.every((e) => e.account_id != null)) {
     const from = es.find((e) => e.amount < 0), to = es.find((e) => e.amount > 0);
-    return { kind: "transfer", editable: false, title: t.payee || "Transfer", amount: to.amount, from_id: from.account_id, to_id: to.account_id, detail: accountName(from.account_id) + " to " + accountName(to.account_id) };
+    return { kind: "transfer", editable: false, title: shortPayee(t.payee) || "Transfer", amount: to.amount, from_id: from.account_id, to_id: to.account_id, detail: accountName(from.account_id) + " to " + accountName(to.account_id) };
   }
-  return { kind: "other", editable: false, title: t.payee || "Entry", amount: es.filter((e) => e.amount > 0).reduce((n, e) => n + e.amount, 0), detail: "" };
+  return { kind: "other", editable: false, title: shortPayee(t.payee) || "Entry", amount: es.filter((e) => e.amount > 0).reduce((n, e) => n + e.amount, 0), detail: "" };
 }
 
 const isGenerated = (t) => t.id.startsWith("rsv:") || M.isFeeId(t.id);   // the card reserve transfer and a transfer's fee are shown inside the entry they belong to
@@ -375,10 +377,10 @@ function renderScreen() {
   if (ui.tab !== "setup") ui.sortArr = null;
   if (ui.tab !== "setup") ui.setupPage = null;
   // Each view starts with its own <h1>; it is moved up into the bar beside the menu button.
-  const html = !device.allowEntry ? `<h1>Finance</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
+  const html = !device.allowEntry ? `<h1>fo/und</h1><p class="note">Entry is switched off on this device. See the note above.</p>`
     : ui.tab === "verify" ? viewVerify() : ui.tab === "setup" ? viewSetup() : ui.tab === "help" ? viewHelp() : ui.tab === "money" ? viewMoney() : ui.tab === "cards" ? viewCards() : ui.tab === "budget" ? viewBudget() : ui.tab === "checkin" ? viewCheckin() : ui.tab === "goals" ? viewGoals() : ui.tab === "plan" ? viewPlan() : ui.tab === "checks" ? viewChecks() : ui.tab === "trips" ? viewTrips() : ui.tab === "scheduled" ? viewScheduled() : ui.tab === "buffer" ? viewBuffer() : ui.tab === "scan" ? viewScan() : ui.tab === "income" ? viewIncome() : viewLog();
   const m = /^<h1>([^<]*)<\/h1>/.exec(html);
-  renderTop(m ? m[1] : "Finance");
+  renderTop(m ? m[1] : "fo/und");
   const scr0 = $("screen"), sameTab = ui.tab === lastTabSig, oldBar = scr0.querySelector(".modebar, .viewmark"), barWas = oldBar?.getBoundingClientRect().top, bodyWas = scr0.querySelector(".viewbody")?.offsetHeight ?? 0;
   $("screen").innerHTML = hubStrip() + (m ? html.slice(m[0].length) : html);
   // Changing screen fades the whole screen in; changing the view (category, budget...) or chart/list fades in ONLY what is under the view
@@ -2729,7 +2731,7 @@ function renderSheet() {
       const facts = [st ? `Last statement ${shown ? peso(st.balance) : DOTS}` : "", due ? dueWords(due) : ""].filter(Boolean).join(" · ");
       body = `<h3 style="margin:0 0 2px">${esc(card?.name ?? "")}</h3><p class="note" style="margin:0 0 10px">You owe now</p><div class="hero" style="margin:0 0 4px">${shown ? peso(owe) : `<span aria-label="Amount hidden">${DOTS}</span>`}</div>
         <p class="note small" style="margin:0 0 12px">${facts ? `${esc(facts)} · ` : ""}<button class="link small" data-action="card-details">${facts ? "Change" : "Add the due day and last statement"}</button></p>
-        <label>Paid from${REQ}${ui.form.from_id && ui.form.from_id === M.payerFor(S(), sh.id) ? ` <span class="labelnote">backs this card</span>` : ""}</label>${accountPicker(accountsFor(null).filter((a) => a.class === "asset"), ui.form.from_id, "pick-from", "from", "Choose an account")}
+        <label>Paid from${REQ}</label>${accountPicker(accountsFor(null).filter((a) => a.class === "asset"), ui.form.from_id, "pick-from", "from", "Choose an account")}${ui.form.from_id && ui.form.from_id === M.payerFor(S(), sh.id) ? `<p class="note small" style="margin:4px 0 8px">This account backs this card.</p>` : ""}
         <label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" autocomplete="off" value="${esc(ui.form.amount ?? "")}" placeholder="How much you paid" style="margin-bottom:10px">
         ${REQNOTE}<p class="note small" style="margin:0 0 6px">This is a payment to your card, not spending. It waits in Verify.</p>
         <p style="margin:6px 0 8px"><button class="primary" id="f-save" data-action="card-pay" style="width:100%" disabled>Pay this card</button></p>
