@@ -3735,6 +3735,18 @@ console.log("\n-- Card count --");
   check(!(await text(page, "#sheet")).includes("Tick the purchases") && (await text(page, "#sheet")).includes("The ledger says \u20B12,150.00"), "'All I owe' compares with everything owed, pending included");
   check(errors.length === 0, "no script errors in the card count: " + errors.join("; ")); await ctx.close(); }
 
+// ===== Pay plan on the smallest iPhone: the tables stay inside their cards =====
+console.log("\n-- Pay plan at 320 px --");
+{ const plan = parsePlan(JSON.stringify({ schema_version: 1, unit: "PHP_whole_pesos", effective_from: "2026-10-01", paydays: [{ id: "first", day: 15, expected_income: 12500 }, { id: "second", day: "last", expected_income: 12500 }],
+    lines: [{ name: "Food", first: 3000, second: 6000 }, { name: "Rent", first: 8000, second: 0 }, { name: "Essentials", first: 1000, second: 1000 }, { name: "Shopping", first: 500, second: 500 }, { name: "New Laptop", kind: "goal", first: 0, second: 5000 }], ef_target_basis: ["Rent", "Food"], ef_target_months: 3 }));
+  const seed = { ...OWNER_STYLE, settings: { ...OWNER_STYLE.settings, plans: [plan.plan] } };
+  check(plan.ok, "the invented plan is valid");
+  ({ ctx, page, errors } = await open({ blockSw: true, seed })); await page.setViewportSize({ width: 320, height: 844 });
+  await menuGo(page, "Pay plan"); await page.waitForTimeout(400);
+  const over = await page.evaluate(() => [...document.querySelectorAll("#screen .tbl")].filter((t) => { const edge = t.parentElement.getBoundingClientRect().right; return [...t.querySelectorAll("td,th")].some((c) => c.getBoundingClientRect().right > edge + 1); }).length);
+  check(over === 0 && await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), "at 320 px wide no plan table sticks out of its card and the page does not scroll sideways");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 await browser.close();
 console.log(failures ? "\n" + failures + " check(s) FAILED" : "\nAll checks passed");
 process.exit(failures ? 1 : 0);

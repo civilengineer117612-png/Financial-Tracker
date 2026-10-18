@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-18-plan-320", date: "2026-10-18", text: "The Pay plan tables fit inside their cards on the smallest iPhone, with no sideways scrolling." },
   { id: "2026-10-18-card-count", date: "2026-10-18", text: "Counting a credit card: tick the purchases your bank already shows, or compare with everything you owe. A card purchase is no longer counted twice." },
   { id: "2026-10-17-suggest-back", date: "2026-10-17", text: "Buckets has a Suggest a budget link again: your income, the needs, wants and savings split, a suggested limit for each category and how savings are shared between goals." },
   { id: "2026-10-17-bar-rows-4", date: "2026-10-17", text: "Scheduled and Trips use the same card and thin bar as the rest of the app; the Trips card now has room around its text." },
