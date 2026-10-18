@@ -10,8 +10,12 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const today = () => M.phTimestamp().slice(0, 10);
 const addDays = (d, n) => new Date(Date.parse(d) + n * 86400000).toISOString().slice(0, 10);
-const longDate = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-PH", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
-const yearDate = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-PH", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });   // the import window shows the year (a statement spans years)
+// toLocaleDateString builds a new formatter on every call, which is slow on a phone when a list shows hundreds of dates. One formatter per look, and one answer per date.
+const dateWriter = (locale, options) => { const f = new Intl.DateTimeFormat(locale, { ...options, timeZone: "UTC" }), seen = new Map(); return (key, make) => { let v = seen.get(key); if (v === undefined) { v = f.format(new Date(make(key))); seen.set(key, v); } return v; }; };
+const longDateOf = dateWriter("en-PH", { weekday: "short", day: "numeric", month: "short" });
+const yearDateOf = dateWriter("en-PH", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+const longDate = (d) => longDateOf(d, (x) => x + "T00:00:00Z");
+const yearDate = (d) => yearDateOf(d, (x) => x + "T00:00:00Z");   // the import window shows the year (a statement spans years)
 // The eye that shows or hides the amounts on a screen (Cards and Goals): an open eye while they are shown, a crossed one while they are hidden.
 const EYE_ATTRS = 'width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
 const eyeButton = (action, shown) => `<button class="link eye" data-action="${action}" aria-pressed="${shown}" aria-label="${shown ? "Hide amounts" : "Show amounts"}">${shown ? `<svg ${EYE_ATTRS}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>` : `<svg ${EYE_ATTRS}><path d="M2 12s3.6-7 10-7c2 0 3.8.6 5.3 1.5M22 12s-3.6 7-10 7c-2 0-3.8-.6-5.3-1.5"/><path d="M3 3l18 18"/></svg>`}</button>`;
@@ -1275,7 +1279,8 @@ function viewHelp() {
 }
 
 // ---------- Statements (Setup): bank statements kept as read, each month proved ----------
-const monthLabel = (m) => new Date(m + "-01T00:00:00Z").toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+const monthLabelOf = dateWriter("en-US", { month: "long", year: "numeric" });
+const monthLabel = (m) => monthLabelOf(m, (x) => x + "-01T00:00:00Z");
 const stmAccounts = () => S().accounts.filter((a) => (S().statementRecords ?? []).some((r) => r.account_id === a.id));
 const stmMonths = () => stmAccounts().flatMap((a) => M.proveMonths(S(), a.id));
 const stmGood = (r) => r.accepted || r.status === "proved";
@@ -1297,7 +1302,9 @@ function statementsHtml() {
 function keptHtml(a) {
   const recs = (S().statementRecords ?? []).filter((r) => r.account_id === a.id);
   if (!recs.length) return "";
-  const months = (id) => new Set((S().statementLines ?? []).filter((l) => l.record_id === id).map((l) => l.date.slice(0, 7)));
+  const monthsOf = new Map();
+  for (const l of S().statementLines ?? []) { if (!monthsOf.has(l.record_id)) monthsOf.set(l.record_id, new Set()); monthsOf.get(l.record_id).add(l.date.slice(0, 7)); }
+  const months = (id) => monthsOf.get(id) ?? new Set();
   const frozen = (r) => (S().statementAccepts ?? []).some((x) => x.account_id === a.id && months(r.id).has(x.month));
   return `<details class="why"${ui.confirmStm && recs.some((r) => r.id === ui.confirmStm) ? " open" : ""}><summary>Statements kept (${recs.length})</summary><div class="card" style="padding:4px 16px">${recs.map((r) => `<div class="row" style="align-items:center"><div>${esc(r.bank ?? "Statement")}<small>${r.period_from && r.period_to ? `${esc(longDate(r.period_from))} to ${esc(longDate(r.period_to))}` : `${r.line_count} lines`}</small></div><div class="amt">${frozen(r) ? `<small>${STM_OK} Accepted</small>` : `<button class="link" data-action="st-remove" data-id="${esc(r.id)}">${ui.confirmStm === r.id ? "Tap again to remove" : "Remove"}</button>`}</div></div>`).join("")}</div><p class="note small">Removing a statement changes no entry and no draft. A statement with an accepted month stays.</p></details>`;
 }
@@ -1401,7 +1408,7 @@ function viewSetup() {
     accounts: accountsHtml + reserveHtml,
     categories: categoriesHtml,
     backup: backupHtml,
-    statements: statementsHtml(),
+    get statements() { return statementsHtml(); },   // built only when its page is open: it proves every month of every statement, and the Setup list needs none of that
     appearance: appearanceHtml,
     about: aboutHtml,
   };
@@ -1415,7 +1422,7 @@ function viewSetup() {
     ["about", "info", "About this app", M.isDevBuild() ? "Development copy" : "Version " + M.APP_BUILD],
   ];
   if (flat) return `<h1>Setup</h1><p class="sub">Accounts. The ledger is on this phone only.</p>${blocks.accounts}${blocks.categories}${blocks.budget}${blocks.backup}${blocks.about}`;
-  const page = ui.setupPage && blocks[ui.setupPage] ? ui.setupPage : null;
+  const page = ui.setupPage && Object.hasOwn(blocks, ui.setupPage) ? ui.setupPage : null;   // hasOwn does not build the block
   if (page) return `<h1>${esc(rowsHome.find((r) => r[0] === page)[2])}</h1><p class="back"><button class="link" data-action="setup-page" data-id="">\u2039 Setup</button></p>${blocks[page]}`;
   return `<h1>Setup</h1><p class="sub">The ledger is on this phone only.</p><div class="setlist">${rowsHome.map(([id, icon, title, sub]) => `<button class="setrow" data-action="setup-page" data-id="${id}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[icon]}</svg><span class="st"><b>${title}</b><small>${esc(sub)}</small></span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>`).join("")}</div>`;
 }
@@ -1454,7 +1461,8 @@ function listTable(heads, rows, totalLabel, total) {
 // The title at the top ("October 2026") is a button: it opens a small picker for a month, a whole year or any date range.
 // Every view below follows that period. The arrows step one month or one year.
 const period = () => ui.period ?? { kind: "month", month: M.monthOf(today()) };
-const fullDate = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-PH", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const fullDateOf = dateWriter("en-PH", { day: "numeric", month: "short", year: "numeric" });
+const fullDate = (d) => fullDateOf(d, (x) => x + "T00:00:00Z");
 function periodBounds(p) {
   if (p.kind === "year") return [p.year + "-01-01", p.year + "-12-31"];
   if (p.kind === "range") return [p.from, p.to];
