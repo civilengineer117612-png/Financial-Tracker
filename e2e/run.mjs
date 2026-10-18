@@ -3961,6 +3961,8 @@ console.log("\n-- Goals eye --");
   check(await page.locator("#screen .gname .ico svg").count() >= 1, "a goal picture shows in the list");
   const same = await page.evaluate(() => { const s = document.querySelector("#screen .gname .ico svg"), probe = document.createElement("i"); probe.style.color = "var(--accent)"; document.body.append(probe); const want = getComputedStyle(probe).color, got = getComputedStyle(s).color; probe.remove(); return [got, want]; });
   check(same[0] === same[1] && same[0] !== "rgb(0, 0, 0)", "the goal picture is drawn in the accent green (" + same[0] + ")");
+  const letter = await page.evaluate(() => { const l = document.querySelector("#screen .gname .mono"), probe = document.createElement("i"); probe.style.color = "var(--accent)"; document.body.append(probe); const want = getComputedStyle(probe).color; probe.remove(); return [l ? getComputedStyle(l).color : "none", want]; });
+  check(letter[0] === letter[1], "and a goal's first letter is green too (" + letter[0] + ")");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
