@@ -22,6 +22,16 @@ test("the text contrast of the token pairs is at least 4.5:1", () => {
   for (const [fg, bg] of [["#1B1D1F", "#F5F3EE"], ["#1B1D1F", "#FFFFFF"], ["#5C6166", "#F5F3EE"], ["#5C6166", "#FFFFFF"], ["#5C6166", "#ECE8DF"], ["#FFFFFF", "#1E5B47"], ["#1E5B47", "#FFFFFF"]]) assert.ok(ratio(fg, bg) >= 4.5, fg + " on " + bg + " is " + ratio(fg, bg).toFixed(2));
 });
 
+test("the night paper keeps the text contrast of the token pairs at 4.5:1 or better", () => {
+  const lum = (hex) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const dark = css.match(/:root\[data-theme="dark"\] \{([^}]*)\}/)[1], tok = (n) => dark.match(new RegExp("--" + n + ": (#[0-9A-Fa-f]{6})"))[1];
+  for (const [fg, bg] of [["ink", "ground"], ["ink", "surface"], ["muted", "ground"], ["muted", "surface"], ["muted", "track"], ["accent", "surface"], ["accent", "ground"], ["surface", "accent"], ["critical", "surface"]]) assert.ok(ratio(tok(fg), tok(bg)) >= 4.5, fg + " on " + bg + " is " + ratio(tok(fg), tok(bg)).toFixed(2));
+  assert.ok(css.includes('@media (prefers-color-scheme: dark) { :root:not([data-theme="light"])') && css.indexOf("prefers-color-scheme: dark") < css.indexOf("  :root {"), "it follows the phone, a fixed Light wins, and it is written before :root so it can only win by being more specific");
+  const media = css.match(/@media \(prefers-color-scheme: dark\) \{ :root:not\(\[data-theme="light"\]\) \{([^}]*)\}/)[1];
+  assert.equal(media.replace(/\s+/g, " ").trim().replace("color-scheme: dark; ", ""), dark.replace(/\s+/g, " ").trim().replace("color-scheme: dark; ", ""), "the phone rule and the Setup rule hold the same night colours");
+});
+
 test("fonts: IBM Plex Sans is bundled with its licence and listed for offline use; nothing is fetched from a font service", () => {
   const dir = new URL("../app/fonts/", import.meta.url), files = readdirSync(dir);
   for (const w of [400, 500, 600]) { assert.ok(files.includes(`ibm-plex-sans-latin-${w}-normal.woff2`) && files.includes(`ibm-plex-sans-latin-ext-${w}-normal.woff2`), "weight " + w + " (the extended file carries the peso sign)"); assert.ok(sw.includes(`"fonts/ibm-plex-sans-latin-${w}-normal.woff2"`), "listed in sw.js"); }
