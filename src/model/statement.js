@@ -8,6 +8,8 @@ import { BANKS } from "./banks.js";
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const pad = (n) => String(n).padStart(2, "0");
 const AMOUNT = /^(?:₱|php\s*)?\d{1,3}(?:,\d{3})*\.\d{2}$|^(?:₱|php\s*)?\d+\.\d{2}$/i;
+const SIGNED = /^[+\-\u2212\u2013]\s*(?:₱|php\s*)?\d{1,3}(?:,\d{3})*\.\d{2}$|^[+\-\u2212\u2013]\s*(?:₱|php\s*)?\d+\.\d{2}$/i;   // a card statement signs its amounts: -834.67 a purchase, +82.26 a credit
+const signedCentavos = (s) => (/^[\-\u2212\u2013]/.test(String(s).trim()) ? -1 : 1) * centavos(String(s).replace(/^[+\-\u2212\u2013]\s*/, ""));
 const centavos = (s) => Math.round(parseFloat(String(s).replace(/[₱,\s]|php/gi, "")) * 100);
 const FULL_DATE = /^\d{1,2}\s+[A-Za-z]{3,9}\.?\s+\d{4}$/, DAY_MONTH = /^\d{1,2}\s+[A-Za-z]{3,9}\.?$/, MONTH_ONLY = /^[A-Za-z]{3,9}\.?$/;
 const monthIndex = (w) => MONTHS.indexOf(String(w).slice(0, 3).toLowerCase()) + 1;
@@ -34,6 +36,11 @@ function headerOf(row) {
     const at = (re) => row.items.find((i) => re.test(i.str.trim()));
     const debit = at(/^debit$/i), credit = at(/^credit$/i), balance = at(/^balance$/i), desc = at(/^description$/i), ref = at(/^reference\b/i);
     if (debit && credit && balance) return { style: "gcash", cols: [{ key: "debits", right: right(debit) }, { key: "credits", right: right(credit) }, { key: "balance", right: right(balance) }], textX: desc ? desc.x : null, refX: ref ? ref.x : null, y: row.y };
+  }
+  // A card statement (MariCard): POSTED DATE / TRANSACTION DATE / DESCRIPTION / AMOUNT (PHP). Two dates, the merchant above the row and what kind below, one signed amount column.
+  if (/posted date/i.test(textOf(row)) && /transaction date/i.test(textOf(row)) && /amount/i.test(textOf(row))) {
+    const amt = row.items.find((i) => /^amount\b/i.test(i.str.trim())), desc = row.items.find((i) => /^description$/i.test(i.str.trim()));
+    if (amt) return { style: "card", cols: [{ key: "amount", right: Math.max(...row.items.slice(row.items.indexOf(amt)).map(right)) }], textX: desc ? desc.x : null, y: row.y };
   }
   const found = [];
   for (const [i, it] of row.items.entries()) { const k = KEYS.find(([, re]) => re.test(it.str.trim())); if (k) found.push({ key: k[0], at: i }); }
@@ -62,6 +69,11 @@ function readSummary(rows) {
     const t = textOf(r), amts = r.items.filter((i) => AMOUNT.test(i.str.trim())).map((i) => centavos(i.str));
     const one = (re, key) => { if (re.test(t) && amts.length && out[key] === undefined) out[key] = amts[amts.length - 1]; };
     one(/opening balance/i, "opening"); one(/total credit/i, "credits"); one(/total debit/i, "debits"); one(/closing balance/i, "closing");
+    // A card statement's STATEMENT SUMMARY: eight figures in one row (previous balance, payments, credits, purchases, bank charges, cashback, others, current balance), the titles above it.
+    if (amts.length === 8 && rows.slice(Math.max(0, n - 6), n).some((x) => /previous/i.test(textOf(x))) && rows.slice(Math.max(0, n - 6), n).some((x) => /current/i.test(textOf(x))) && out.card === undefined) {
+      const [a, b, c, d, e, f, g, h] = amts;
+      out.card = true; out.opening = a; out.closing = h; out.incoming = b + c + f; out.outgoing = d + e + g;   // what came off what is owed, and what was added to it
+    }
     // titles in a row (or wrapped over two rows: "STARTING SAVINGS" above "BALANCE (PHP)"), the amounts in a row below, in the same order
     const both = n + 1 < rows.length ? t + " " + textOf(rows[n + 1]) : t;
     if (/starting\b.*\bbalance/i.test(both) && /ending\b.*\bbalance/i.test(both) && /outgoing/i.test(both) && /incoming/i.test(both) && out.outgoing === undefined) {
@@ -96,7 +108,8 @@ export function classifyLine({ text, type = "", direction }) {
   // marked `reward` so an import can offer them as income drafts. A loan paid out and a transfer are not rewards.
   if (direction === "in" && (/^(reward|interest)$/i.test(ty) || /\b(cashback|campaign reward)\b/i.test(t))) return { meaning: "in", payee: t, reward: true };
   if (direction === "in") return { meaning: "in", payee: t };
-  if (/\bfees?\b/i.test(t) || /\bfees?\b/i.test(ty)) return { meaning: "fee", payee: t };
+  if (/^credit card transaction$/i.test(ty)) return { meaning: "spending", payee: t };   // a purchase on a credit card statement
+  if (/\b(fees?|charges?)\b/i.test(t) || /\b(fees?|charges?)\b/i.test(ty)) return { meaning: "fee", payee: t };
   const card = /^card payment at\s+(.+?)(?:,\s*card\b.*)?$/i.exec(t);
   if (card) return { meaning: "spending", payee: card[1].trim() };
   if (/^(card )?payment$/i.test(ty)) return { meaning: "spending", payee: t };
@@ -139,6 +152,20 @@ export function parseStatement(pages, { ownLast4 = [] } = {}) {
     if (header.style === "gcash") { gcash.page(rows.slice(startAt), header, lines, gcash); continue; }
     let pendingText = null, awaitType = null;
     for (const row of rows.slice(startAt)) {
+      if (header.style === "card") {
+        const dates = row.items.filter((i) => DAY_MONTH.test(i.str.trim()) || FULL_DATE.test(i.str.trim())), amt = row.items.find((i) => SIGNED.test(i.str.trim()) || AMOUNT.test(i.str.trim()));
+        if (dates.length && amt) {
+          const iso = isoOf(dates[dates.length - 1].str.trim(), period);   // the TRANSACTION date (the second), not the day the bank posted it
+          const cents = SIGNED.test(amt.str.trim()) ? signedCentavos(amt.str) : centavos(amt.str);
+          if (iso && cents) { const line = { date: iso, text: pendingText ?? "", type: "", amount: Math.abs(cents), direction: cents < 0 ? "out" : "in", balance: null }; lines.push(line); awaitType = line; }
+          pendingText = null;
+        } else if (!dates.length && !amt && row.items.length) {
+          const tx = row.items.map((w) => w.str.trim()).join(" ");
+          if (/^(all figures|page\b|document id|request date)/i.test(tx) || /\bpage\s*\d+\s*of\s*\d+/i.test(tx)) { pendingText = null; continue; }
+          if (awaitType) { awaitType.type = tx; awaitType = null; } else pendingText = tx;
+        }
+        continue;
+      }
       const date = row.items.find((i) => FULL_DATE.test(i.str.trim()) || DAY_MONTH.test(i.str.trim()) || (header.style === "out-in" && MONTH_ONLY.test(i.str.trim()) && i.x < (header.textX ?? 1e9) - 5));
       const amts = row.items.filter((i) => AMOUNT.test(i.str.trim()) && (!date || i.x > date.x));
       const words = row.items.filter((i) => i !== date && !amts.includes(i));
@@ -241,7 +268,7 @@ export function checkStatement(style, lines, summary) {
   const sum = (dir) => lines.filter((l) => l.direction === dir).reduce((n, l) => n + l.amount, 0);
   const wantIn = summary.credits ?? summary.incoming, wantOut = summary.debits ?? summary.outgoing;
   const totalsOk = (wantIn === undefined || wantIn === sum("in")) && (wantOut === undefined || wantOut === sum("out"));
-  const closeOk = summary.opening === undefined || summary.closing === undefined || summary.opening + sum("in") - sum("out") === summary.closing;
+  const closeOk = summary.opening === undefined || summary.closing === undefined || (style === "card" ? summary.opening - sum("in") + sum("out") : summary.opening + sum("in") - sum("out")) === summary.closing;   // a card statement counts what is OWED: a purchase raises it
   const known = wantIn !== undefined || wantOut !== undefined || (summary.opening !== undefined && summary.closing !== undefined) || kind === "lines";
   const ok = bad.length === 0 && totalsOk && closeOk && known;
   if (!known) message = "This statement has no totals to check against.";

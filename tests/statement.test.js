@@ -170,7 +170,7 @@ test("statement follow-ups: unsure lines wait for your choice, a failed check ho
   assert.match(app, /\(p\.lines\.length \|\| \(f\.statement && f\.keep !== false\)\) && acct && !held \? "" : " disabled"/, "Add stays off while held (and with nothing to add and nothing to keep)");
   assert.match(app, /if \(form\.statement && !form\.statement\.check\.ok && !form\.looked\) break;/, "and saving is refused too, not just greyed");
   assert.match(app, /data-action="stm-looked" aria-pressed="\$\{!!f\.looked\}">I looked at the amounts</);
-  assert.match(app, /activeAccounts\(\)\.filter\(\(a\) => a\.class === "asset" && !M\.isPocket\(a\) && a\.bank === statement\.bankId\)/, "the ordinary accounts linked to the statement's bank (pockets of that bank do not count)");
+  assert.match(app, /activeAccounts\(\)\.filter\(\(a\) => a\.class === \(statement\.style === "card" \? "liability" : "asset"\) && !M\.isPocket\(a\) && a\.bank === statement\.bankId\)/, "the ordinary accounts linked to the statement's bank (pockets of that bank do not count); a card statement looks among the bank's cards");
   assert.match(app, /activeAccounts\(\)\.filter\(\(a\) => M\.isPocket\(a\) && a\.last4 === statement\.pocket\.last4\)/, "a pocket statement goes to the pocket whose last four digits it names");
   assert.match(app, /auto = newPocket \? NEW_POCKET : linked\.length === 1 \? linked\[0\]\.id : null/, "chosen for you only when exactly one account fits");
   assert.match(app, /account_id: auto \?\? \(statement \? null : cashFirst\(activeAccounts\(\)\)\[0\]\?\.id \?\? null\)/, "a statement is never filed under Cash by default: the owner chooses");
@@ -339,4 +339,27 @@ test("cashback, a campaign reward and interest are marked as rewards; a loan or 
   const lines = [{ date: "2026-08-08", text: "Debit Card Cashback", payee: "Debit Card Cashback", amount: 138, direction: "in", meaning: "in", reward: true }, { date: "2026-08-09", text: "Loan Disbursement", payee: "Loan Disbursement", amount: 499055, direction: "in", meaning: "in" }];
   assert.deepEqual(statementRewards(lines), [{ date: "2026-08-08", name: "Debit Card Cashback", amount: 138 }]);
   assert.deepEqual(statementLeftOut(lines), { moves: 0, own: 0, moneyIn: 1, rewards: 1 }, "rewards are counted apart from other money in");
+});
+
+test("a card statement (posted date, transaction date, merchant above, kind below, signed amounts) reads, adds up and keeps its dates", () => {
+  const page = [
+    t(40, 700, "Statement Period"), t(200, 700, ": 30 SEP 2026 to 15 OCT 2026"),
+    t(40, 650, "PREVIOUS"), t(300, 650, "CURRENT"), t(40, 640, "BALANCE (PHP)"), t(300, 640, "BALANCE (PHP)"),
+    t(40, 620, "0.00"), t(90, 620, "0.00"), t(140, 620, "0.00"), t(190, 620, "650.00"), t(240, 620, "0.00"), t(290, 620, "5.00"), t(340, 620, "0.00"), t(390, 620, "645.00"),
+    t(40, 560, "POSTED DATE"), t(140, 560, "TRANSACTION DATE"), t(300, 560, "DESCRIPTION"), rightAt(700, 560, "AMOUNT (PHP)"),
+    t(300, 540, "SAMPLE CAFE"), t(40, 530, "04 OCT"), t(140, 530, "02 OCT"), rightAt(700, 530, "-150.00"), t(300, 520, "Credit Card Transaction"),
+    t(300, 490, "SAMPLE MART"), t(40, 480, "03 OCT"), t(140, 480, "01 OCT"), rightAt(700, 480, "-500.00"), t(300, 470, "Credit Card Transaction"),
+    t(300, 440, "Cashback Applied"),
+    t(300, 420, "Cashback Credit"), t(40, 410, "15 OCT"), t(140, 410, "15 OCT"), rightAt(700, 410, "+5.00"), t(300, 400, "Cashback"),
+  ];
+  const r = parseStatement([page]);
+  assert.equal(r.ok, true); assert.equal(r.style, "card");
+  assert.deepEqual(r.lines.map((l) => [l.date, l.payee, l.amount, l.direction, l.meaning]), [
+    ["2026-10-02", "SAMPLE CAFE", 15000, "out", "spending"], ["2026-10-01", "SAMPLE MART", 50000, "out", "spending"], ["2026-10-15", "Cashback Credit", 500, "in", "in"]], "dated by the transaction date, not the day the bank posted it");
+  assert.equal(r.lines[2].reward, true, "a cashback credit is a reward line");
+  assert.equal(r.check.ok, true, r.check.message);
+  assert.deepEqual([r.summary.opening, r.summary.closing, r.summary.incoming, r.summary.outgoing], [0, 64500, 500, 65000]);
+  assert.deepEqual(statementItems(r.lines).map((i) => i.amount), [15000, 50000], "the purchases are offered; the cashback credit is not an expense");
+  const wrong = parseStatement([page.map((p) => (p.str === "645.00" ? { ...p, str: "700.00" } : p))]);
+  assert.equal(wrong.check.ok, false, "a current balance that does not follow from the lines is caught");
 });
