@@ -3159,7 +3159,7 @@ console.log("Welcome card, category editing, required marks");
   check((await text(page, "#cd-msg")).includes("statement day") && (await text(page, "#cd-msg")).includes("1 to 31"), "a statement day outside 1 to 31 is refused in plain words");
   await page.fill("#cd-sday", "15"); await page.click("#f-save");
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.accounts.find((a) => a.id === "c").statement_day === 15, null, { timeout: 5000 });
-  check((await text(page, "#sheet")).includes("Statement Sep 15 \u20B12,500.00"), "saved: the window says when the last statement closed (the 15th, so Sep 15 on Oct 3) with its balance");
+  check(await seen(page, "#sheet", "Statement Sep 15 \u20B12,500.00"), "saved: the window says when the last statement closed (the 15th, so Sep 15 on Oct 3) with its balance");
   await page.click('#sheet button[data-action="close-sheet"]');
   // Move money into a card used to be refused ("entry on card account needs card_state"); it saves now
   await page.click('button[data-action="open-move"]'); await page.waitForSelector("#sheet #f-amount");
