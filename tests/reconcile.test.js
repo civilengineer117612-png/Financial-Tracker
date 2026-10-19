@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { emptyState, validateState, selfCheck, recordFromParse, isPocket, setAccountPocket, planAccount, classifyLine, pairMoves, moveLogged, planPairedMove, matchPayslips } from "../src/model/index.js";
+import { emptyState, validateState, selfCheck, recordFromParse, isPocket, setAccountPocket, planAccount, classifyLine, pairMoves, moveLogged, planPairedMove, matchPayslips, planRewards } from "../src/model/index.js";
 
 // Invented accounts, statements and amounts. GCash "gc" (last four 1111) and a bank "bk" (last four 2222).
 const TS = "2026-10-14T09:00:00.000+08:00";
@@ -275,4 +275,20 @@ test("two pockets that could both fit are NEVER guessed: nothing pairs", () => {
 test("without a pocket on either side (two ordinary accounts of one bank) the words alone pair nothing", () => {
   const plain = { ...pbase(), accounts: [gt("gm", "GoTyme"), gt("gx", "GoTyme · Other")] };
   assert.equal(pairMoves(keep(keep(plain, "gm", MAIN(), 1), "gx", POCKET(), 2)).pairs.length, 0);
+});
+
+test("planRewards: cashback and interest become income drafts in the account; adding them twice never doubles; a card is skipped", () => {
+  const s0 = { ...base(), categories: [...base().categories, { id: "cat-other-income", name: "Other income", kind: "income" }] };
+  const rewards = [{ date: "2026-08-08", name: "Debit Card Cashback", amount: 138 }, { date: "2026-08-12", name: "Debit Card Cashback", amount: 275 }];
+  const r = planRewards(s0, rewards, { account_id: "bk", newId: seqId(), now: new Date(TS) });
+  assert.equal(r.ok, true); assert.equal(r.count, 2);
+  const made = r.state.transactions.filter((x) => x.source === "statement" && x.status === "draft");
+  assert.equal(made.length, 2, "two drafts that wait in Verify, source statement");
+  assert.deepEqual(r.state.entries.filter((e) => e.account_id === "bk").map((e) => e.amount).sort((a, b) => a - b), [138, 275], "money in, on the statement's account");
+  assert.equal(validateState(r.state).filter((v) => v.severity === "error").length, 0);
+  const again = planRewards(r.state, rewards, { account_id: "bk", newId: seqId(), now: new Date(TS) });
+  assert.equal(again.count, 0); assert.equal(again.skipped, 2); assert.equal(again.state, r.state, "the same lines again add nothing");
+  const card = { ...s0, accounts: [...s0.accounts, { ...acct("cc", "Test Card"), class: "liability" }] };
+  const onCard = planRewards(card, rewards, { account_id: "cc", newId: seqId(), now: new Date(TS) });
+  assert.equal(onCard.count, 0); assert.equal(onCard.skipped, 2);
 });

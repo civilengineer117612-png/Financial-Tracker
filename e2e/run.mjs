@@ -3333,7 +3333,7 @@ console.log("Welcome card, category editing, required marks");
   check(st.includes("Everything in and out matches the totals at the top") && st.includes("Lines found") && /6\b/.test(st), "it says the statement adds up, and how many lines it found");
   check(/Period\s*\w{3}, [A-Z][a-z]{2} \d+, 20\d\d to \w{3}, [A-Z][a-z]{2} \d+, 20\d\d/.test(st), "the import window shows the year on the statement period");
   check(st.includes("2 lines") && st.includes("1 line needs your choice"), "spending is offered; the unsure line waits for your choice, left out until then");
-  check((await text(page, "#stm-left")).includes("3 money in left out"), "money in is counted and left out");
+  check((await text(page, "#stm-left")).includes("1 money in left out") && (await text(page, "#stm-rewards")).includes("2 cashback, interest or reward lines (\u20b10.81) will be added as income drafts"), "the transfer in is counted and left out; the two interest lines are offered as income drafts");
   check(await page.locator("#sheet label .req").count() >= 1 && (await text(page, "#sheet")).includes("needed before you can save"), "the import window marks Paid from with the * and says what it means");
   check(st.includes("Which is it?") && st.includes("Sample Person") && /Sample Person\s+1 line/.test(st), "the money out that does not say what it was is asked about, one row per person with its count");
   await page.click('#sheet button[data-action="stm-choose"][data-pick="spending"]');
@@ -3432,19 +3432,19 @@ console.log("Welcome card, category editing, required marks");
     await page.click('button[data-action="st-month"]'); await page.waitForTimeout(250);
     await page.click('button[data-action="st-compare"]'); await page.waitForTimeout(250);
     const cmpText = await text(page, "#sheet");
-    check((cmpText.match(/money in \u00b7 added as income/g) ?? []).length === 3 && (cmpText.match(/does not say what it was \u00b7 added to Unlogged/g) ?? []).length === 1, "money in says it is added as income, and the line that does not say what it was says it is added to Unlogged");
-    check(await page.locator('#sheet button[data-action="st-adddraft"]').count() === 4, "each of those four lines has Add as draft");
-    const before = JSON.parse((await stored(page)).local).state.transactions.length;
+    check((cmpText.match(/money in \u00b7 added as income/g) ?? []).length === 1 && (cmpText.match(/does not say what it was \u00b7 added to Unlogged/g) ?? []).length === 1, "money in says it is added as income, and the line that does not say what it was says it is added to Unlogged");
+    check(await page.locator('#sheet button[data-action="st-adddraft"]').count() === 2, "the two interest lines are already in the ledger from the import, so only the transfer in and the line that does not say what it was are offered");
+    const before = JSON.parse((await stored(page)).local).state.transactions.length, idsBefore = new Set(JSON.parse((await stored(page)).local).state.transactions.map((t) => t.id));
     await page.locator('#sheet .row:has-text("money in") button[data-action="st-adddraft"]').first().click();
     await page.waitForFunction((n) => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.length === n + 1, before, { timeout: 5000 });
     let led2 = JSON.parse((await stored(page)).local).state;
-    const inc = led2.transactions.find((t) => t.source === "statement"), incEntries = led2.entries.filter((e) => e.transaction_id === inc.id);
+    const inc = led2.transactions.find((t) => t.source === "statement" && !idsBefore.has(t.id)), incEntries = led2.entries.filter((e) => e.transaction_id === inc.id);
     check(inc.status === "draft" && incEntries.some((e) => e.account_id === "w" && e.amount > 0) && incEntries.some((e) => e.category_id === "cat-other-income" && e.amount < 0), "money in became ONE draft of income in the account, in Other income, not verified");
-    check(await page.locator('#sheet button[data-action="st-adddraft"]').count() === 3, "the line drops off the list once it has a draft");
+    check(await page.locator('#sheet button[data-action="st-adddraft"]').count() === 1, "the line drops off the list once it has a draft");
     await page.locator('#sheet .row:has-text("does not say what it was") button[data-action="st-adddraft"]').click();
     await page.waitForFunction((n) => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.length === n + 2, before, { timeout: 5000 });
     led2 = JSON.parse((await stored(page)).local).state;
-    const unsureTx = led2.transactions.filter((t) => t.source === "statement" && t.id !== inc.id)[0];
+    const unsureTx = led2.transactions.filter((t) => t.source === "statement" && !idsBefore.has(t.id) && t.id !== inc.id)[0];
     check(unsureTx.status === "draft" && led2.entries.some((e) => e.transaction_id === unsureTx.id && e.category_id === "cat-unlogged" && e.amount > 0), "the line that does not say what it was became ONE draft expense in Unlogged");
     await page.click('#sheet button[data-action="close-sheet"]'); await page.click('#nav button:has-text("Verify")');
     check(await page.locator('button[data-action="verify-ok"]').count() >= 1 && (await text(page, "#screen")).includes("Sample Person"), "the drafts wait in Verify: " + (await text(page, "#screen")).slice(0, 200).replace(/\n/g, " | "));
@@ -4040,6 +4040,49 @@ console.log("\n-- Overdraw warning, Move money --");
   await page.click('#warn button[data-action="warn-save"]'); await page.waitForTimeout(500);
   led = JSON.parse((await stored(page)).local);
   check(led.state.entries.some((e) => e.account_id === "main" && e.amount === -500000) && await page.locator("#warn .sheet").count() === 0, "Save anyway saves the move as usual");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== A hand entry that repeats one an import already brought in asks first =====
+console.log("\n-- Already logged --");
+{ const DTS = "2026-10-01T09:00:00.000+08:00";
+  const st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [{ id: "sav", name: "Test Bank", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 5000000, opening_date: "2023-01-01" }],
+    transactions: [{ id: "imp1", date: "2026-10-02", payee: "Test Shop", memo: "", status: "draft", source: "import", created_at: DTS }, { id: "old1", date: "2024-01-05", payee: "Old Shop", memo: "", status: "verified", source: "manual", created_at: DTS, verified_at: DTS }],
+    entries: [{ transaction_id: "imp1", category_id: "cat-food", amount: 15000 }, { transaction_id: "imp1", account_id: "sav", amount: -15000 }, { transaction_id: "old1", category_id: "cat-food", amount: 7000 }, { transaction_id: "old1", account_id: "sav", amount: -7000 }] };
+  ({ ctx, page, errors } = await open({ blockSw: true, keepWarn: true, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
+  const spend = async (amount) => { await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", amount); await page.click('#sheet .chip:has-text("Shopping")'); await page.click('#sheet .chip:has-text("Test Bank")'); await page.click("#f-save"); await page.waitForTimeout(300); };
+  const count = async () => JSON.parse((await stored(page)).local).state.transactions.length;
+  await menuGo(page, "Cards"); await page.click('[data-action="cards-list"]').catch(() => {}); await page.click('[data-action="open-register"][data-id="sav"]'); await page.waitForSelector("#sheet .regl");
+  const reg = await text(page, "#sheet .regl");
+  check(/Oct 2, 2026/.test(reg) === false && /Oct 2/.test(reg) && /Jan 5, 2024/.test(reg), "an account's history shows the year on an entry from another year and leaves it off this year's");
+  await page.click('#sheet button:has-text("Close")'); await page.click('#nav button:has-text("Log")');
+  await spend("80"); await spend("80");
+  check(await page.locator("#warn .sheet").count() === 0 && await count() === 4, "a hand entry repeating another hand entry is never asked about (a tile tapped every day)");
+  await spend("150");
+  const w = await text(page, "#warn");
+  check(w.includes("Already logged?") && w.includes("Test Shop") && w.includes("\u20b1150.00") && w.includes("Same one: add nothing") && w.includes("Different: save it"), "a hand entry repeating an imported one asks, in few words: the name, the day and the amount");
+  check(await count() === 4, "nothing is saved while it waits");
+  await page.click('#warn button[data-action="warn-cancel"]'); await page.waitForTimeout(300);
+  check(await count() === 4 && await page.locator("#warn .sheet").count() === 0, "Same one: add nothing adds nothing");
+  await spend("150"); await page.click('#warn button[data-action="warn-save"]'); await page.waitForTimeout(500);
+  check(await count() === 5, "Different: save it saves it as usual");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== Cashback, rewards and interest on a statement become income drafts =====
+console.log("\n-- Statement rewards --");
+{ const FXR = (n) => new URL("./fixtures/" + n, import.meta.url).pathname;
+  const acc = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-04-01" };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc] } } }));
+  await page.click('button[data-action="open-scan-pick"]'); await page.setInputFiles("input[data-import]", FXR("sample-rewards.pdf"));
+  check(await seen(page, "#sheet", "Balance check"), "a statement with cashback and a reward is read");
+  check((await text(page, "#stm-rewards")).includes("2 cashback, interest or reward lines (\u20b16.38) will be added as income drafts"), "the window says how many reward lines will be added as income drafts, and their total");
+  check(!(await text(page, "#sheet")).includes("money in left out") || !(await text(page, "#stm-left")).includes("2 money in"), "the reward lines are not also counted as other money left out");
+  await page.click('#sheet .chip:has-text("Test Wallet")'); await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.length >= 3, null, { timeout: 5000 });
+  const rw = JSON.parse((await stored(page)).local).state;
+  const inc = rw.transactions.filter((t) => t.source === "statement" && t.status === "draft");
+  check(inc.length === 2 && inc.map((t) => t.date).sort().join() === "2026-05-08,2026-05-14" && inc.every((t) => rw.entries.some((e) => e.transaction_id === t.id && e.account_id === "w" && e.amount > 0)), "two income drafts, on the statement's dates, in the account, waiting in Verify");
+  check(rw.transactions.filter((t) => t.source === "import" && t.status === "draft").length === 1, "the shop payment is still an expense draft; the rewards are not expenses");
+  check(rw.statementRecords?.length === 1, "the statement is kept as before");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====

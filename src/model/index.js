@@ -88,7 +88,7 @@ export { homeSummary } from "./summary.js";
 export { parseSpoken } from "./speech.js";
 export { BUCKETS, CHOICES, BUCKET_LABELS, INVESTED_LABEL, DEFAULT_TARGETS, TARGET_SOURCE, resolveTargets, parseTargets, bucketOf, bucketMap, unclear, renameConflict, withBucket, starterFromTargets, bucketRows } from "./buckets.js";
 export { categoryInUse, removeKind, removeCategory, restoreCategory, hiddenCategoryIds, isHiddenCategory, hideCategory, showCategory, pickable } from "./catedit.js";
-export { groupRows, parseStatement, classifyLine, checkStatement, badLineDetails, statementItems, statementLeftOut, unsureByPerson, nameKey, holderNames, isOwnName } from "./statement.js";
+export { groupRows, parseStatement, classifyLine, checkStatement, badLineDetails, statementItems, statementRewards, statementLeftOut, unsureByPerson, nameKey, holderNames, isOwnName } from "./statement.js";
 export { BUCKET_WORDS, readBucket } from "./bucketwords.js";
 export { splitSavings, parseShares, shareableGoals, UNPLACED_NAME } from "./savings.js";
 export { guessType, typeOf, kindOf } from "./types.js";
@@ -100,7 +100,7 @@ export { SINKING_LABEL, SINKING_NOTE, SINKING_HELP, sinkingStart, sinkingBalance
 export { MAX_INTRO_SHOWS, INTROS, introFor, shouldShowIntro, markIntro, introDrawing } from "./intros.js";
 
 export { recordFromParse, accountLines, proveMonths, acceptMonth, monthSummary, failingLines, alreadyKept, removeStatement } from "./proof.js";
-export { pairMoves, moveLogged, planPairedMove, matchPayslips, statementDifference, planMissingDraft, startFromStatement, planPocketFromStatement } from "./reconcile.js";
+export { pairMoves, moveLogged, planPairedMove, matchPayslips, statementDifference, planMissingDraft, planRewards, startFromStatement, planPocketFromStatement } from "./reconcile.js";
 export { payeeKey, payeeLabel, withPayeeBook, spendingByPayee, payeeMonths, payeeCount, namePayee, categoryFromBook } from "./payees.js";
 export { RANGES, dailySpending, firstSpendingDate, rangeFor, stepFor, seriesFor, measureSpan, zoomWindow, addDays, daysBetween } from "./spendline.js";
 export { payerFor, nextDue, cardStatement, setCardDetails, planCardPayment, makeCardDueDrafts, DUE_CATCH_UP_DAYS } from "./cardpay.js";

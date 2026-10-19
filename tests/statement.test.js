@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupRows, parseStatement, classifyLine, checkStatement, badLineDetails, statementItems, statementLeftOut } from "../src/model/index.js";
+import { groupRows, parseStatement, classifyLine, checkStatement, badLineDetails, statementItems, statementLeftOut, statementRewards } from "../src/model/index.js";
 
 // Invented statements only (names, amounts, dates). A piece of text is {x (from the left), y (from the bottom), w (width), str}.
 const t = (x, y, str, w = str.length * 5) => ({ x, y, w, str });
@@ -129,7 +129,7 @@ test("what the importer takes: spending, fees and the unsure (turned off one by 
   const items = statementItems(r.lines);
   assert.deepEqual(items.map((i) => [i.name, i.amount, i.meaning]), [["SAMPLE STORE", 56800, "spending"], ["Interbank transfer fee", 800, "fee"], ["Outbound interbank transfer", 10000, "unsure"]]);
   assert.ok(items.every((i) => /^s\d+$/.test(i.id) && /^\d{4}-\d{2}-\d{2}$/.test(i.dateRaw)));
-  assert.deepEqual(statementLeftOut(r.lines), { moves: 1, own: 0, moneyIn: 1 });
+  assert.deepEqual(statementLeftOut(r.lines), { moves: 1, own: 0, moneyIn: 1, rewards: 0 });
 });
 
 test("a PDF with no table of transactions says so plainly", () => {
@@ -205,7 +205,7 @@ test("a transfer to or from your own name is a move between your accounts: never
   const r = parseStatement([[t(40, 723, "SAMPLE PEDRO DELA CRUZ JR"), ...page]]);
   assert.deepEqual(r.lines.map((l) => l.meaning), ["move", "move", "unsure", "spending"]);
   assert.ok(r.lines[0].own && r.lines[1].own);
-  assert.deepEqual(statementLeftOut(r.lines), { moves: 0, own: 2, moneyIn: 0 }, "said as transfers to your own name");
+  assert.deepEqual(statementLeftOut(r.lines), { moves: 0, own: 2, moneyIn: 0, rewards: 0 }, "said as transfers to your own name");
   assert.equal(statementItems(r.lines).filter((i) => i.meaning === "unsure").length, 1, "only the friend is asked about");
   const noName = parseStatement([page]);
   assert.deepEqual(noName.lines.map((l) => l.meaning), ["in", "unsure", "unsure", "spending"], "with no name at the top, nothing is guessed");
@@ -325,4 +325,18 @@ test("a statement headed with the bank's OLD name (SeaBank, now MariBank) is sti
   const r = parseStatement([[t(40, 790, "SeaBank A Rural Bank"), ...items]]);
   assert.deepEqual([r.bank, r.bankId], ["MariBank", "maribank"]);
   assert.equal(parseStatement([[t(40, 790, "Sea Bank"), ...items]]).bankId, "maribank");
+});
+
+test("cashback, a campaign reward and interest are marked as rewards; a loan or a transfer in is not", () => {
+  const c = (text, type, direction = "in") => classifyLine({ text, type, direction });
+  assert.deepEqual(c("Debit Card Cashback", "Reward"), { meaning: "in", payee: "Debit Card Cashback", reward: true });
+  assert.equal(c("Campaign Reward", "Reward").reward, true);
+  assert.equal(c("Cashback Credit", "Cashback").reward, true, "a card's cashback credit reads the same way");
+  assert.equal(c("Interest", "Interest").reward, true);
+  assert.equal(c("Loan Disbursement", "Loan").reward, undefined, "a loan paid out is money in, not a reward");
+  assert.equal(c("Sample Person", "Transfer").reward, undefined, "a transfer in is not a reward");
+  assert.equal(c("Debit Card Cashback", "Reward", "out").reward, undefined, "money out is never a reward");
+  const lines = [{ date: "2026-08-08", text: "Debit Card Cashback", payee: "Debit Card Cashback", amount: 138, direction: "in", meaning: "in", reward: true }, { date: "2026-08-09", text: "Loan Disbursement", payee: "Loan Disbursement", amount: 499055, direction: "in", meaning: "in" }];
+  assert.deepEqual(statementRewards(lines), [{ date: "2026-08-08", name: "Debit Card Cashback", amount: 138 }]);
+  assert.deepEqual(statementLeftOut(lines), { moves: 0, own: 0, moneyIn: 1, rewards: 1 }, "rewards are counted apart from other money in");
 });

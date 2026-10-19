@@ -8,7 +8,7 @@ import { accountLines, proveMonths } from "./proof.js";
 import { accountByLast4, planTransfer, setAccountLast4 } from "./transfers.js";
 import { isPocket, planAccount } from "./banks.js";
 import { countedEntries } from "./balances.js";
-import { categoryFor } from "./importer.js";
+import { categoryFor, loggedMatch } from "./importer.js";
 import { applyDrafts, planExpense } from "./drafts.js";
 import { planPayReceived } from "./plan.js";
 import { categoryFromBook } from "./payees.js";
@@ -148,6 +148,26 @@ export function planMissingDraft(state, line, { newId, now = new Date(), book = 
   const category_id = spend ? categoryFor(state, { name }, book).category_id : categoryFromBook(state, book, name) ?? UNLOGGED_CATEGORY_ID;
   const r = planExpense(state, { transaction_id: id, date: line.date, payee: name, category_id, amount: line.amount, account_id: line.account_id, source: "statement" }, now);
   return r.ok ? { ok: true, state: applyDrafts(state, r.drafts), kind: "expense" } : { ok: false, message: r.violations[0].message };
+}
+
+// Cashback, rewards and interest read from a statement become income drafts in the account the statement belongs to (source "statement": drafts that wait in Verify). A line
+// whose amount is already there as income on that account within 2 days is left out, so adding the same lines twice never doubles them; a card is skipped (money cannot be
+// received into one). Returns {ok, state, count, skipped}.
+export function planRewards(state, rewards, { account_id, newId, now = new Date() }) {
+  const account = state.accounts.find((a) => a.id === account_id);
+  if (!account || account.class !== "asset") return { ok: true, state, count: 0, skipped: rewards.length };
+  const income = state.categories.filter((c) => c.kind === "income"), cat = income.find((c) => c.id === "cat-other-income") ?? income[0];
+  if (!cat) return { ok: true, state, count: 0, skipped: rewards.length };
+  let next = state, count = 0, skipped = 0;
+  const used = new Set();
+  for (const r of rewards) {
+    const there = loggedMatch(next, { date: r.date, name: r.name, amount: -r.amount, accountId: account_id }, used);
+    if (there) { used.add(there.id); skipped++; continue; }
+    const p = planPayReceived(next, { transaction_id: newId(), date: r.date, amount: r.amount, account_id, category_id: cat.id, payee: r.name, source: "statement" }, now);
+    if (!p.ok) return { ok: false, message: `${r.name} (${r.date}): ${p.violations[0].message}` };
+    next = p.state; count++;
+  }
+  return { ok: true, state: next, count, skipped };
 }
 
 // Start an account from its statement: the account's opening balance and date become the FIRST statement month's opening balance and the day its statement starts,

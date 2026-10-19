@@ -203,9 +203,9 @@ function ledgerIndex(state) {
   indexes.set(state.entries, hit);
   return hit;
 }
-export function loggedMatch(state, { date, name, amount, accountId = null }, used = new Set(), days = 2) {
+export function loggedMatch(state, { date, name, amount, accountId = null, sources = null }, used = new Set(), days = 2) {
   const ix = ledgerIndex(state);
-  const hits = (ix.byAmount.get(amount) ?? []).filter((t) => !used.has(t.id) && dayGap(t.date, date) <= days && (!accountId || ix.accounts.get(t.id)?.has(accountId)));
+  const hits = (ix.byAmount.get(amount) ?? []).filter((t) => !used.has(t.id) && dayGap(t.date, date) <= days && (!accountId || ix.accounts.get(t.id)?.has(accountId)) && (!sources || sources.includes(t.source)));
   hits.sort((x, y) => (loose(y.payee) === loose(name)) - (loose(x.payee) === loose(name)) || dayGap(x.date, date) - dayGap(y.date, date));
   return hits[0] ?? null;
 }
