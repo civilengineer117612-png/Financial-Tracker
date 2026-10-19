@@ -29,6 +29,15 @@ export function naturalBalance(account, entries) {
   return account.class === "asset" ? account.opening_balance + sum : account.opening_balance - sum;
 }
 
+// A spend from a debit or cash account (never a credit card) that would leave it below zero. The real bank would refuse it, so money in must be
+// missing from the ledger. Null when it fits. Drafts count, like every balance. Only a warning: nothing here blocks.
+export function overdrawOf(state, { account_id, amount }) {
+  const account = (state.accounts ?? []).find((a) => a.id === account_id);
+  if (!account || account.class !== "asset" || !(amount > 0)) return null;
+  const before = naturalBalance(account, countedEntries(state)), after = before - amount;
+  return after < 0 ? { account_id, name: account.name, before, amount, after } : null;
+}
+
 // Card liability split into posted and pending (spec 7.1: the bank shows posted only,
 // the reserve must cover both). The opening balance is treated as already posted.
 export function cardOutstanding(card, entries) {

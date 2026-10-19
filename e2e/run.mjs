@@ -35,7 +35,7 @@ let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
 const dismissNotice = async (page) => { try { await page.waitForSelector('#sheet button:has-text("I understand")', { timeout: 2500 }); await page.click('#sheet button:has-text("I understand")'); } catch { /* an old ledger shows no notice */ }
   try { await page.waitForSelector('#sheet button:has-text("Skip for now")', { timeout: 700 }); await page.click('#sheet button:has-text("Skip for now")'); } catch { /* the welcome card only shows on a new install */ } };
-async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false, keepCatCard = false, keepIntro = false } = {}) {
+async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false, keepCatCard = false, keepIntro = false, keepWarn = false } = {}) {
   if (seed === undefined) seed = styled ? OWNER_STYLE : null;
   if (seed && !whatsNew) seed = { ...seed, settings: { ...(seed.settings ?? {}), whatsnew_seen: seed.settings?.whatsnew_seen ?? CHANGES[0].id, start_rule_seen: seed.settings?.start_rule_seen ?? "2026-10-01T08:00:00.000+08:00" } };   // the What's new pop-up is tested on its own
   if (seed && !keepIntro) seed = { ...seed, settings: { ...(seed.settings ?? {}), intro_off: { ...Object.fromEntries(["plan", "money", "income", "cards", "budget", "goals", "scheduled", "checkin", "scan", "trips", "buffer", "setup"].map((id) => [id, true])), ...(seed.settings?.intro_off ?? {}) } } };   // the small "what is this screen" popup is tested on its own
@@ -62,7 +62,10 @@ async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone 
       const item = page.locator(selector).first();
       if (await item.count() && !(await item.isVisible())) await item.locator("xpath=ancestor::div[@class='pick'][1]").locator(".pickrow").click();
     }
-    return rawClick(selector, options);
+    const out = await rawClick(selector, options);
+    // A test that spends from an account with no money in it meets the overdraw warning; it taps Save anyway, unless the test is about the warning.
+    if (!keepWarn && !String(selector).includes("data-action=\"warn-")) { const save = page.locator('#warn button[data-action="warn-save"]'); if (await save.count()) { await rawClick('#warn button[data-action="warn-save"]'); await page.waitForTimeout(150); } }
+    return out;
   };
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -3970,6 +3973,38 @@ console.log("\n-- Goals eye --");
   check(same[0] === same[1] && same[0] !== "rgb(0, 0, 0)", "the goal picture is drawn in the accent green (" + same[0] + ")");
   const letter = await page.evaluate(() => { const l = document.querySelector("#screen .gname .mono"), probe = document.createElement("i"); probe.style.color = "var(--accent)"; document.body.append(probe); const want = getComputedStyle(probe).color; probe.remove(); return [l ? getComputedStyle(l).color : "none", want]; });
   check(letter[0] === letter[1], "and a goal's first letter is green too (" + letter[0] + ")");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== A spend that would take a debit account below zero asks first; nothing blocks =====
+console.log("\n-- Overdraw warning --");
+{ const DTS = "2026-10-01T09:00:00.000+08:00";
+  const st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [{ id: "sav", name: "Test Bank", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 217830, opening_date: "2026-01-01" }, { id: "crd", name: "Test Card", class: "liability", role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-01-01" }],
+    goals: [{ id: "g1", account_id: "sav", name: "Test Goal", target: 100000, hidden_by_default: false }] };
+  ({ ctx, page, errors } = await open({ blockSw: true, keepWarn: true, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
+  const spend = async (amount, acct) => { await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", amount); await page.click('#sheet .chip:has-text("Shopping")'); await page.click('#sheet .chip:has-text("' + acct + '")'); await page.click("#f-save"); await page.waitForTimeout(300); };
+  await spend("50", "Test Bank");
+  check(await page.locator("#warn .sheet").count() === 0, "a spend that fits is saved with no warning");
+  await spend("3350", "Test Card");
+  check(await page.locator("#warn .sheet").count() === 0, "a credit card may go up without a warning");
+  await spend("3350", "Test Bank");
+  const w = await text(page, "#warn");
+  check(w.includes("This takes Test Bank below zero") && w.includes("\u20b12,128.30") && w.includes("-\u20b13,350.00") && w.includes("-\u20b11,221.70"), "a spend that would overdraw says so with the balance now, the spend and what it would leave");
+  check(await page.locator('#warn button.primary[data-action="warn-income"]').count() === 1 && await page.locator('#warn button[data-action="warn-save"]').count() === 1, "one filled button to log money received first, and Save anyway");
+  let led = JSON.parse((await stored(page)).local);
+  check(!led.state.entries.some((e) => e.account_id === "sav" && e.amount === -335000), "nothing is saved while the warning waits");
+  await page.click('#warn button[data-action="warn-income"]'); await page.waitForTimeout(300);
+  check(await page.locator("#warn .sheet").count() === 0 && (await text(page, "#sheet")).includes("Money received") , "Log money received first closes the warning and opens the money received form");
+  led = JSON.parse((await stored(page)).local);
+  check(!led.state.entries.some((e) => e.account_id === "sav" && e.amount === -335000), "and the spend was not saved");
+  await page.click('#sheet button:has-text("Close")').catch(() => {}); await page.waitForTimeout(200);
+  if (await page.locator("#scrim").count()) await page.mouse.click(5, 5);
+  await spend("3350", "Test Bank");
+  await page.click('#warn button[data-action="warn-save"]'); await page.waitForTimeout(500);
+  led = JSON.parse((await stored(page)).local);
+  check(led.state.entries.some((e) => e.account_id === "sav" && e.amount === -335000), "Save anyway saves the spend as usual");
+  check(await page.locator("#warn .sheet").count() === 0, "and the warning is gone");
+  await menuGo(page, "Goals");
+  check(!(await text(page, "#screen")).includes("-\u20b1"), "a goal on the overdrawn account never shows a minus");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
