@@ -4085,6 +4085,24 @@ console.log("\n-- Statement rewards --");
   check(rw.statementRecords?.length === 1, "the statement is kept as before");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
+// ===== A credit card statement (MariCard layout) is read, and goes to the bank's card =====
+console.log("\n-- Card statement --");
+{ const FXC = (n) => new URL("./fixtures/" + n, import.meta.url).pathname;
+  const A = (id, name, cls, extra = {}) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-04-01", bank: "maribank", ...extra });
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [A("sv", "Test Savings", "asset", { opening_balance: 500000 }), A("cc", "Test Card", "liability")] } } }));
+  await page.click('button[data-action="open-scan-pick"]'); await page.setInputFiles("input[data-import]", FXC("sample-card.pdf"));
+  check(await seen(page, "#sheet", "Balance check"), "a card statement is read");
+  const ct = await text(page, "#sheet");
+  check(ct.includes("Everything in and out matches the totals at the top") && ct.includes("Lines found") && /3\b/.test(ct), "it adds up (previous balance, purchases, cashback and the current balance) and finds its three lines");
+  check(ct.includes("chosen for you") && ct.includes("Test Card"), "the bank's CARD is chosen for it, not the savings account");
+  check((await text(page, "#stm-rewards")).includes("left out: a card cannot receive money"), "its cashback credit is said to be left out, with the reason");
+  check(await page.locator("#f-save").isEnabled(), "Add is on");
+  await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.length === 2, null, { timeout: 5000 });
+  const cs = JSON.parse((await stored(page)).local).state;
+  check(cs.transactions.map((x) => x.date).sort().join() === "2026-10-01,2026-10-02" && cs.transactions.every((x) => x.status === "draft" && cs.entries.some((e) => e.transaction_id === x.id && e.account_id === "cc")), "two purchase drafts dated by the transaction day, on the card; nothing for the cashback");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
 console.log("\n-- Appearance --");
 { ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false }));
