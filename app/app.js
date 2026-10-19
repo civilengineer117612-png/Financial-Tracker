@@ -1116,7 +1116,7 @@ async function saveScan() {
       if (dup) { f.dupOf = dup; renderSheet(); return; }
     }
     const second = f.split ? M.parsePesos(f.split_amt).centavos : 0, lines = f.split ? [{ category_id: f.category_id, amount: amount - second }, { category_id: f.split_cat, amount: second }] : undefined;
-    ok = await logExpense({ transaction_id: id, date: f.date, payee: f.payee.trim(), category_id: f.category_id, amount, account_id: f.account_id, source, ...(voice ? { memo: f.text } : { photo_id: photoId, drop_scan: queueId }), ...(lines ? { lines } : {}), ...(f.ref ? { reference_no: f.ref } : {}), ...(f.time ? { shot_time: f.time } : {}), ...(f.askNo ? { own_recipients: M.rememberRecipient(ledger.settings.own_recipients, f.askNo, "") } : {}) }, (f.payee.trim() || categoryName(f.category_id)) + " " + peso(amount));
+    ok = await logExpense({ transaction_id: id, date: f.date, payee: f.payee.trim(), category_id: f.category_id, amount, account_id: f.account_id, source, dup_checked: true, ...(voice ? { memo: f.text } : { photo_id: photoId, drop_scan: queueId }), ...(lines ? { lines } : {}), ...(f.ref ? { reference_no: f.ref } : {}), ...(f.time ? { shot_time: f.time } : {}), ...(f.askNo ? { own_recipients: M.rememberRecipient(ledger.settings.own_recipients, f.askNo, "") } : {}) }, (f.payee.trim() || categoryName(f.category_id)) + " " + peso(amount));
   }
   if (!ok) { if (!queueId && !voice) deletePhoto(photoId).catch(() => {}); return; }   // the window stays open so nothing typed is lost
   if (pendingPhoto) { URL.revokeObjectURL(pendingPhoto.url); pendingPhoto = null; }
@@ -3199,7 +3199,27 @@ function answerOverdraw(save, thenIncome) {
   if (thenIncome) { ui.sheet = { type: "income" }; ui.form = { amount: "", date: today(), account_id: accountsFor(null)[0]?.id ?? null, category_id: null }; renderSheet(); }
   done?.(save);
 }
+// An entry typed or tapped by hand (Add expense, a tile, a whole spoken sentence) that repeats one a statement import, a photo or a scan already brought in: asked first,
+// in the same small window. A hand entry that repeats another hand entry (a tile tapped every day) is never asked about.
+const DUP_SOURCES = ["import", "statement", "photo"];
+function askDuplicate(t) {
+  const d = describe(t);
+  return new Promise((resolve) => {
+    warnAnswer = resolve;
+    $("warn").innerHTML = `<div class="wscrim" data-action="warn-cancel"></div><div class="sheet center enter" role="alertdialog" aria-labelledby="warn-h">
+      <div class="warnsign"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="12" height="15" rx="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9"/></svg></div>
+      <h3 class="wl-title" id="warn-h">Already logged?</h3>
+      <p class="note">${esc(d.title)} \u00b7 ${esc(longDate(t.date))} \u00b7 ${peso(d.amount)}</p>
+      <p><button class="primary" data-action="warn-cancel" style="width:100%">Same one: add nothing</button></p>
+      <p><button data-action="warn-save" style="width:100%">Different: save it</button></p></div>`;
+    lockPage(true);
+  });
+}
 async function logExpense(input, label) {
+  if (!input.dup_checked && input.source !== "photo") {
+    const t = M.loggedMatch(S(), { date: input.date ?? logDay(), name: input.payee ?? "", amount: input.amount, accountId: input.account_id, sources: DUP_SOURCES });
+    if (t && !(await askDuplicate(t))) return false;
+  }
   const over = M.overdrawOf(S(), input);
   if (over && !(await askOverdraw(over))) return false;
   const tag_id = S().tags.some((t) => t.id === ledger.settings.active_tag_id) ? ledger.settings.active_tag_id : undefined;

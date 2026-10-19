@@ -4033,6 +4033,27 @@ console.log("\n-- Overdraw warning, Move money --");
   check(led.state.entries.some((e) => e.account_id === "main" && e.amount === -500000) && await page.locator("#warn .sheet").count() === 0, "Save anyway saves the move as usual");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
+// ===== A hand entry that repeats one an import already brought in asks first =====
+console.log("\n-- Already logged --");
+{ const DTS = "2026-10-01T09:00:00.000+08:00";
+  const st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [{ id: "sav", name: "Test Bank", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 5000000, opening_date: "2026-01-01" }],
+    transactions: [{ id: "imp1", date: "2026-10-02", payee: "Test Shop", memo: "", status: "draft", source: "import", created_at: DTS }],
+    entries: [{ transaction_id: "imp1", category_id: "cat-food", amount: 15000 }, { transaction_id: "imp1", account_id: "sav", amount: -15000 }] };
+  ({ ctx, page, errors } = await open({ blockSw: true, keepWarn: true, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
+  const spend = async (amount) => { await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", amount); await page.click('#sheet .chip:has-text("Shopping")'); await page.click('#sheet .chip:has-text("Test Bank")'); await page.click("#f-save"); await page.waitForTimeout(300); };
+  const count = async () => JSON.parse((await stored(page)).local).state.transactions.length;
+  await spend("80"); await spend("80");
+  check(await page.locator("#warn .sheet").count() === 0 && await count() === 3, "a hand entry repeating another hand entry is never asked about (a tile tapped every day)");
+  await spend("150");
+  const w = await text(page, "#warn");
+  check(w.includes("Already logged?") && w.includes("Test Shop") && w.includes("\u20b1150.00") && w.includes("Same one: add nothing") && w.includes("Different: save it"), "a hand entry repeating an imported one asks, in few words: the name, the day and the amount");
+  check(await count() === 3, "nothing is saved while it waits");
+  await page.click('#warn button[data-action="warn-cancel"]'); await page.waitForTimeout(300);
+  check(await count() === 3 && await page.locator("#warn .sheet").count() === 0, "Same one: add nothing adds nothing");
+  await spend("150"); await page.click('#warn button[data-action="warn-save"]'); await page.waitForTimeout(500);
+  check(await count() === 4, "Different: save it saves it as usual");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
 console.log("\n-- Appearance --");
 { ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false }));

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
-import { linesByRow, readDate, dateOrder, readAmount, parseNotes, parseTable, parseCsv, readXlsx, categoryFor, previewImport, planImport, validateState, pendingDrafts } from "../src/model/index.js";
+import { linesByRow, readDate, dateOrder, readAmount, parseNotes, parseTable, parseCsv, readXlsx, categoryFor, previewImport, planImport, loggedMatch, validateState, pendingDrafts } from "../src/model/index.js";
 import { makeState, account } from "./fixtures.js";
 
 // Invented names and numbers only.
@@ -147,4 +147,16 @@ test("an import line is already logged when the same amount was spent within two
   assert.deepEqual(p.lines.map((l) => l.date), ["2026-10-03", "2026-10-06"], "the logged entry was used once; Oct 6 is three days away");
   const cancelled = { ...s, transactions: [...s.transactions, { id: "r1", date: "2026-10-03", payee: "Lunch", memo: "", status: "verified", source: "correction", reverses: "t1", created_at: "2026-10-03T09:00:00.000+08:00" }] };
   assert.equal(previewImport(cancelled, [{ dateRaw: "2026-10-02", name: "Corner Cafe", amount: 9500 }], "dmy").duplicates.length, 0, "a cancelled entry does not count");
+});
+
+test("loggedMatch with sources: only an entry that came in by import, statement or photo answers a hand entry", () => {
+  const s = makeState();
+  const tx = (id, source) => { s.transactions.push({ id, date: "2026-10-08", payee: "Test Shop", memo: "", status: "draft", source, created_at: "2026-10-08T09:00:00.000+08:00" }); s.entries.push({ transaction_id: id, category_id: "food", amount: 15000 }, { transaction_id: id, account_id: "chk", amount: -15000 }); };
+  tx("a", "manual");
+  const ask = { date: "2026-10-08", name: "Test Shop", amount: 15000, accountId: "chk", sources: ["import", "statement", "photo"] };
+  assert.equal(loggedMatch(s, ask), null, "a hand entry repeating another hand entry (a tile tapped each day) is not a duplicate");
+  tx("b", "import");
+  assert.equal(loggedMatch(s, ask)?.id, "b", "the imported one is found even though a hand entry matches too");
+  assert.equal(loggedMatch(s, { ...ask, accountId: "res" }), null, "another account is not a match");
+  assert.equal(loggedMatch(s, { ...ask, date: "2026-10-12" }), null, "more than 2 days away is not a match");
 });
