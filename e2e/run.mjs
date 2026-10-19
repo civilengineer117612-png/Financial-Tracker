@@ -3760,7 +3760,7 @@ console.log("\n-- Goals sharing an account --");
   check(await page.locator("#screen button.catrow").count() === 2 && await page.locator("#screen .goalact").count() === 0, "each goal is one plain row, with no links under it");
   await openGoal(page, "Test Laptop");
   check((await text(page, "#sheet")).includes("\u20B15,000.00") && (await text(page, "#sheet")).includes("Target \u20B130,000.00") && await page.locator('#sheet button[data-action="open-deposit"]').count() === 1 && await page.locator("#sheet .gring").count() === 1, "tapping a goal opens its window: the figure, the target, Put money in and the picture ring");
-  await page.click('#sheet button[data-action="goal-tab"][data-id="moves"]'); check((await text(page, "#sheet")).includes("Nothing in or out"), "the Moves page says when nothing moved");
+  await page.click('#sheet button[data-action="goal-tab"][data-id="moves"]'); check((await text(page, "#sheet")).includes("Nothing in or out"), "the History page says when nothing moved");
   await page.click('#sheet button[data-action="goal-tab"][data-id="overview"]');
   check(await page.locator('#sheet button[data-action="goal-takeout"]').count() === 1 && await page.locator('#sheet button.primary[data-action="goal-takeout"]').count() === 0, "the goal window has a plain Take money out under the one filled Put money in");
   await page.click('#sheet button[data-action="goal-takeout"]'); await page.waitForSelector("#sheet #f-amount");

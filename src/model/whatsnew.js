@@ -1,7 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
-  { id: "2026-10-19-take-out", date: "2026-10-19", text: "A goal's window has Take money out: it opens Move money with the goal's account already chosen, so you can move savings to the account you spend from." },
+  { id: "2026-10-19-take-out", date: "2026-10-19", text: "A goal's window has Take money out: it opens Move money with the goal's account already chosen, so you can move savings to the account you spend from. Its Moves page is now called History." },
   { id: "2026-10-18-overdraw", date: "2026-10-18", text: "A spend that would take a debit or cash account below zero now asks first (log the money received, or save anyway), and a goal never shows a minus when its account is overdrawn." },
   { id: "2026-10-18-goals-eye", date: "2026-10-18", text: "Goals use the same eye and dots as Cards, nothing on Cards or Goals jumps when you hide or show amounts (only the eye moves), and goal pictures and letters are drawn in the app's green." },
   { id: "2026-10-18-faster", date: "2026-10-18", text: "Importing a bank statement and opening Setup and Statements are much faster, so the app no longer lags after you add statements." },
