@@ -3153,6 +3153,13 @@ console.log("Welcome card, category editing, required marks");
   { const cardText = await text(page, "#sheet");
     check(cardText.includes("Last statement \u20B12,500.00") && /due (today|tomorrow|in \d+ days)/.test(cardText) && await page.inputValue("#f-amount") === "2500.00", "saved: the window shows the last statement and the due day, and the amount starts as the statement balance: " + cardText.replace(/\n+/g, " | ").slice(0, 160)); }
   check(JSON.parse((await stored(page)).local).state.accounts.find((a) => a.id === "c").statement_balance === 250000, "the typed balance is kept on the card");
+  await page.click('#sheet button[data-action="card-details"]');
+  check((await text(page, "#sheet")).includes("Statement and due day") && await page.locator("#cd-sday").count() === 1, "the details window asks for the statement day too");
+  await page.fill("#cd-sday", "45"); await page.click("#f-save");
+  check((await text(page, "#cd-msg")).includes("statement day") && (await text(page, "#cd-msg")).includes("1 to 31"), "a statement day outside 1 to 31 is refused in plain words");
+  await page.fill("#cd-sday", "15"); await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.accounts.find((a) => a.id === "c").statement_day === 15, null, { timeout: 5000 });
+  check((await text(page, "#sheet")).includes("Statement Sep 15 \u20B12,500.00"), "saved: the window says when the last statement closed (the 15th, so Sep 15 on Oct 3) with its balance");
   await page.click('#sheet button[data-action="close-sheet"]');
   // Move money into a card used to be refused ("entry on card account needs card_state"); it saves now
   await page.click('button[data-action="open-move"]'); await page.waitForSelector("#sheet #f-amount");

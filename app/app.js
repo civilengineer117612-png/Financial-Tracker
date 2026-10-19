@@ -2780,7 +2780,8 @@ function renderSheet() {
     const [pf, pt] = periodBounds(period()), owe = M.accountsOverview(S(), { from: pf, to: pt }).cards.find((c) => c.account_id === sh.id)?.owe ?? 0;
     const dueWords = (d) => `${M.daysText(d.days)} (${MONTH3[Number(d.date.slice(5, 7)) - 1]} ${Number(d.date.slice(8, 10))})`;
     if (sh.view === "details") {
-      body = `<h3 style="margin:0 0 2px">Due day and last statement</h3><p class="note" style="margin:0 0 10px">${esc(card?.name ?? "")}</p>
+      body = `<h3 style="margin:0 0 2px">Statement and due day</h3><p class="note" style="margin:0 0 10px">${esc(card?.name ?? "")}</p>
+        <label for="cd-sday">Statement day of the month</label><input id="cd-sday" data-field="sday" inputmode="numeric" maxlength="2" autocomplete="off" value="${esc(ui.form.sday ?? "")}" style="margin-bottom:10px">
         <label for="cd-due">Due day of the month</label><input id="cd-due" data-field="due" inputmode="numeric" maxlength="2" autocomplete="off" value="${esc(ui.form.due ?? "")}" style="margin-bottom:10px">
         <label for="cd-stmt">Last statement balance (₱)</label><input id="cd-stmt" data-field="stmt" inputmode="decimal" autocomplete="off" value="${esc(ui.form.stmt ?? "")}" style="margin-bottom:6px">
         <p class="note small" style="margin:0 0 12px">${st?.from === "statement" ? `A statement you kept shows ${shown ? peso(st.balance) : DOTS}; it is used instead of what you type.` : "A statement you keep fills this by itself and wins over what you type."}</p>
@@ -2788,9 +2789,10 @@ function renderSheet() {
         <p style="margin:6px 0 8px"><button class="primary" id="f-save" data-action="card-details-save" style="width:100%">Save</button></p>
         <p style="text-align:center;margin:0"><button class="link" data-action="card-back">Back</button></p>`;
     } else {
-      const facts = [st ? `Last statement ${shown ? peso(st.balance) : DOTS}` : "", due ? dueWords(due) : ""].filter(Boolean).join(" · ");
+      const sdate = M.lastStatementDate(card?.statement_day, today()), sword = sdate ? `Statement ${MONTH3[Number(sdate.slice(5, 7)) - 1]} ${Number(sdate.slice(8, 10))}` : "";
+      const facts = [st ? (sword ? `${sword} ${shown ? peso(st.balance) : DOTS}` : `Last statement ${shown ? peso(st.balance) : DOTS}`) : sword, due ? dueWords(due) : ""].filter(Boolean).join(" · ");
       body = `<h3 style="margin:0 0 2px">${esc(card?.name ?? "")}</h3><p class="note" style="margin:0 0 10px">You owe now</p><div class="hero" style="margin:0 0 4px">${shown ? peso(owe) : `<span aria-label="Amount hidden">${DOTS}</span>`}</div>
-        <p class="note small" style="margin:0 0 12px">${facts ? `${esc(facts)} · ` : ""}<button class="link small" data-action="card-details">${facts ? "Change" : "Add the due day and last statement"}</button> · <button class="link small" data-action="open-register" data-id="${esc(sh.id)}">History</button></p>
+        <p class="note small" style="margin:0 0 12px">${facts ? `${esc(facts)} · ` : ""}<button class="link small" data-action="card-details">${facts ? "Change" : "Add the statement and due days"}</button> · <button class="link small" data-action="open-register" data-id="${esc(sh.id)}">History</button></p>
         <label>Paid from${REQ}</label>${accountPicker(accountsFor(null).filter((a) => a.class === "asset"), ui.form.from_id, "pick-from", "from", "Choose an account")}${ui.form.from_id && ui.form.from_id === M.payerFor(S(), sh.id) ? `<p class="note small" style="margin:4px 0 8px">This account backs this card.</p>` : ""}
         <label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" autocomplete="off" value="${esc(ui.form.amount ?? "")}" placeholder="How much you paid" style="margin-bottom:10px">
         ${REQNOTE}<p class="note small" style="margin:0 0 6px">This is a payment to your card, not spending. It waits in Verify.</p>
@@ -3513,13 +3515,13 @@ async function onClick(el) {
       const st = M.cardStatement(S(), id);
       ui.sheet = { type: "cardpay", id, view: "main" }; ui.form = { from_id: M.payerFor(S(), id), amount: ui.cardsShown && st ? (st.balance / 100).toFixed(2) : "" }; renderSheet(); refreshSave(); break;
     }
-    case "card-details": { const c = S().accounts.find((x) => x.id === ui.sheet.id), st = M.cardStatement(S(), ui.sheet.id); ui.sheet.view = "details"; ui.form = { ...ui.form, due: c?.due_day ? String(c.due_day) : "", stmt: c?.statement_balance ? (c.statement_balance / 100).toFixed(2) : st?.from === "typed" ? (st.balance / 100).toFixed(2) : "" }; renderSheet(); break; }
+    case "card-details": { const c = S().accounts.find((x) => x.id === ui.sheet.id), st = M.cardStatement(S(), ui.sheet.id); ui.sheet.view = "details"; ui.form = { ...ui.form, due: c?.due_day ? String(c.due_day) : "", sday: c?.statement_day ? String(c.statement_day) : "", stmt: c?.statement_balance ? (c.statement_balance / 100).toFixed(2) : st?.from === "typed" ? (st.balance / 100).toFixed(2) : "" }; renderSheet(); break; }
     case "card-back": ui.sheet.view = "main"; renderSheet(); refreshSave(); break;
     case "card-details-save": {
       const stmt = (ui.form.stmt ?? "").trim() ? M.parsePesos(ui.form.stmt) : { ok: true, centavos: null };
       const msg = $("cd-msg"), say = (t) => { if (msg) msg.textContent = t; };
       if (!stmt.ok) { say("Type the statement balance like 10974.06, or leave it empty."); break; }
-      const r = M.setCardDetails(S(), ui.sheet.id, { due_day: (ui.form.due ?? "").trim(), statement_balance: stmt.centavos, date: today() });
+      const r = M.setCardDetails(S(), ui.sheet.id, { due_day: (ui.form.due ?? "").trim(), statement_day: (ui.form.sday ?? "").trim(), statement_balance: stmt.centavos, date: today() });
       if (!r.ok) { say(r.message); break; }
       ui.sheet.view = "main"; const st = M.cardStatement(r.state, ui.sheet.id); ui.form = { from_id: ui.form.from_id, amount: ui.cardsShown && st ? (st.balance / 100).toFixed(2) : ui.form.amount ?? "" };
       await commit(r.state); renderSheet(); refreshSave(); break;

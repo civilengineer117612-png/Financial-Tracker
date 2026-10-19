@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { emptyState, validateState, selfCheck, payerFor, nextDue, cardStatement, setCardDetails, planCardPayment, makeCardDueDrafts, planTransfer, verifyDraft, naturalBalance, countedEntries } from "../src/model/index.js";
+import { emptyState, validateState, selfCheck, payerFor, nextDue, lastStatementDate, cardStatement, setCardDetails, planCardPayment, makeCardDueDrafts, planTransfer, verifyDraft, naturalBalance, countedEntries } from "../src/model/index.js";
 
 // Invented accounts and amounts only.
 const acct = (id, name, cls, extra = {}) => ({ id, name, class: cls, role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-09-01", ...extra });
@@ -123,4 +123,20 @@ test("what was already paid into the card since the statement is taken off; a ca
   assert.equal(none.drafts.length, 0); assert.deepEqual(none.made, { c: "2026-10" }, "marked, so it is not looked at again this month");
   const before = planCardPayment(withCard(), { card_id: "c", from_id: "d", amount: 1097406, date: "2026-09-20", newId: () => "p3" }).state;
   assert.equal(dues(before, {}, "2026-10-28").drafts[0].amount, 1097406, "a payment before the statement does not count");
+});
+
+test("the statement day: the last close on or before today, a short month uses its last day, and it is kept and cleared like the due day", () => {
+  assert.equal(lastStatementDate(15, "2026-10-19"), "2026-10-15"); assert.equal(lastStatementDate(15, "2026-10-15"), "2026-10-15", "today counts");
+  assert.equal(lastStatementDate(15, "2026-10-03"), "2026-09-15", "not closed yet this month: last month's");
+  assert.equal(lastStatementDate(31, "2026-03-05"), "2026-02-28", "a short month uses its last day");
+  assert.equal(lastStatementDate(15, "2026-01-05"), "2025-12-15", "across New Year");
+  assert.equal(lastStatementDate(0, "2026-10-19"), null); assert.equal(lastStatementDate(undefined, "2026-10-19"), null);
+  const r = setCardDetails(base(), "c", { due_day: "28", statement_day: "15", date: "2026-10-17" });
+  assert.equal(r.ok, true); const c = r.state.accounts.find((a) => a.id === "c");
+  assert.deepEqual([c.due_day, c.statement_day], [28, 15]);
+  assert.equal(validateState(r.state).filter((v) => v.severity === "error").length, 0);
+  assert.equal(setCardDetails(base(), "c", { statement_day: "32", date: "2026-10-17" }).ok, false, "a statement day is 1 to 31");
+  assert.equal(setCardDetails(base(), "c", { statement_day: "x", date: "2026-10-17" }).ok, false);
+  const cleared = setCardDetails(r.state, "c", { due_day: "28", statement_day: "", date: "2026-10-17" }).state.accounts.find((a) => a.id === "c");
+  assert.equal(cleared.statement_day, undefined, "an empty box clears it");
 });
