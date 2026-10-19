@@ -2543,7 +2543,7 @@ function renderSheet() {
         <p><button class="primary" data-action="do-correct" data-id="${esc(pick.id)}" style="margin-top:14px">Cancel it${pc.redo ? " and enter it again" : ""}</button></p>
         <p class="center"><button class="link" data-action="back-correct">Back to the list</button></p>`
       : `<h3>Which entry was wrong?</h3><p class="note">Verified in the last two weeks.</p>
-        ${list.length ? M.groupByDay(list).map((g) => `<div class="daycard"><h4 class="dayhead">${esc(yearDate(g[0].date))}</h4>${g.map((t) => { const d = describe(t); return `<button class="choice dayrow" data-action="pick-correct" data-id="${esc(t.id)}"><span>${esc(d.title)}</span><span class="bval">${signed(d)}</span></button>`; }).join("")}</div>`).join("") : `<p class="note">Nothing verified in the last two weeks.</p>`}`;   // one card per day: the date is its heading, the entries its body
+        ${list.length ? M.groupByDay(list).map((g) => `<h4 class="dayhead">${esc(yearDate(g[0].date))}</h4>${g.map((t) => { const d = describe(t); return `<button class="choice dayrow" data-action="pick-correct" data-id="${esc(t.id)}"><span>${esc(d.title)}</span><span class="bval">${signed(d)}</span></button>`; }).join("")}`).join("") : `<p class="note">Nothing verified in the last two weeks.</p>`}`;   // one heading per day, its entries indented under it
   } else if (sh.type === "survey") {
     const w = thisWeek(), auto = M.autoFillSurvey(S(), { unlogged_category_id: M.UNLOGGED_CATEGORY_ID, week_start: w.week_start, week_end: w.week_end });
     body = `<h3>This week</h3>
