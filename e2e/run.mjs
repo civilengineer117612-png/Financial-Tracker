@@ -2265,8 +2265,8 @@ console.log("What's new and how-tos");
   check(/spent today/i.test(await text(page, "#screen")), "the big number on Log says what it is (SPENT TODAY, small, above it)");
   check((await text(page, "#glance")).includes("This month") && !(await text(page, "#glance")).includes("left of") && (await page.getAttribute("#glance", "aria-label")).includes("left of") && await page.locator("#glance .bar span").count() === 1, "Log shows this month as an amount and a bar; the words are only read aloud");
   await page.click("#glance"); await page.waitForTimeout(400);
-  check((await text(page, "#top")).includes("Buckets") && (await page.locator("#screen .hub button").allInnerTexts()).join() === "Buckets,Goals,Pay plan", "tapping it opens Buckets, with Goals and Pay plan in the strip on top");
-  await page.click('#screen .hub button[data-tab="goals"]'); await page.waitForTimeout(400);
+  check(await page.locator('#screen button[data-view="category"][aria-pressed="true"]').count() === 1 && await page.locator("#screen .hub").count() === 0, "tapping it opens what was spent this month, by category (not the budget)");
+  await menuGo(page, "Goals"); await page.waitForTimeout(400);
   check((await text(page, "#top")).includes("Goals") && await page.getAttribute('#screen .hub button[data-tab="goals"]', "aria-current") === "page", "one tap on the strip moves to Goals");
   await page.click("#menuBtn"); await page.waitForSelector("#menu .item"); await page.waitForTimeout(500);
   check((await page.locator("#menu .glabel").allInnerTexts()).join("|") === "Your money|Tools", "the menu has two groups");
@@ -4109,6 +4109,20 @@ console.log("\n-- Card statement --");
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.length === 2, null, { timeout: 5000 });
   const cs = JSON.parse((await stored(page)).local).state;
   check(cs.transactions.map((x) => x.date).sort().join() === "2026-10-01,2026-10-02" && cs.transactions.every((x) => x.status === "draft" && cs.entries.some((e) => e.transaction_id === x.id && e.account_id === "cc")), "two purchase drafts dated by the transaction day, on the card; nothing for the cashback");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== The This month card on Log opens what was spent, by category =====
+console.log("\n-- This month card --");
+{ const acc = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-09-01" };
+  const TS = "2026-10-02T09:00:00.000+08:00";
+  const lunch = { id: "lunch", date: "2026-10-02", payee: "Lunch", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc], transactions: [lunch], entries: [{ transaction_id: "lunch", category_id: "cat-food", amount: 50000 }, { transaction_id: "lunch", account_id: "w", amount: -50000 }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await page.click('#nav button[data-tab="log"]'); await page.waitForSelector("#glance");
+  await page.click("#glance"); await page.waitForTimeout(400);
+  const t = await text(page, "#screen");
+  check(t.includes("spent in October") && t.includes("Food") && t.includes("\u20B1500.00") && await page.locator('#screen button[data-view="category"][aria-pressed="true"]').count() === 1, "tapping This month opens what was spent in October by category, with Food");
+  check(await page.locator("#screen .hub").count() === 0 && !t.includes("Buckets"), "it does not open the budget");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
 // ===== A line repeated inside one picture or file is left out until asked for =====

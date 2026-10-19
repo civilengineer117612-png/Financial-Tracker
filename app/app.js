@@ -429,14 +429,14 @@ function dayCard() {
     : `<p class="changedate"><button class="link datelink" data-action="open-cal">Select date</button></p>`}`;
 }
 
-// This month at a glance on Log: verified spending against the month's budgets, one bar, the figure at its tip. Tap it for Budget.
+// This month at a glance on Log: verified spending against the month's budgets, one bar, the figure at its tip. Tap it for what you spent this month, by category (owner, Oct 20).
 function monthGlance() {
   const month = M.monthOf(today()), spent = Math.max(0, M.spendingByCategory(S(), { month }).total);
   const budget = expenseCategories().filter((c) => c.id !== M.UNLOGGED_CATEGORY_ID).reduce((n, c) => n + (M.budgetFor(S().rules, c.id, month) ?? 0), 0);
   const t = budget > 0 ? M.tenths(spent, budget) : null, w = t === null ? 0 : Math.min(100, t / 10);
   const words = budget > 0 ? (spent > budget ? `Over the month's budget by ${peso(spent - budget)}` : `${peso(budget - spent)} left of ${peso(budget)}, ${M.showTenths(t)} used`) : "No budget set yet";
   // The bar is the message; the only words under it are for the one case that needs them (over, with its shape).
-  return `<button class="monthcard" id="glance" data-action="tab" data-tab="budget" aria-label="This month: ${esc(peso(spent))} spent. ${esc(words)}. Tap for Budget.">
+  return `<button class="monthcard" id="glance" data-action="tab" data-tab="money" aria-label="This month: ${esc(peso(spent))} spent. ${esc(words)}. Tap to see where it went.">
     <span class="mc-top"><span>This month</span><b>${peso(spent)}</b></span>
     ${budget > 0 ? `<span class="bar" aria-hidden="true"><span style="width:${w}%"></span></span>` : ""}
     ${budget > 0 && spent > budget ? `<span class="mc-sub">${glyph("critical")} ${esc(words)}</span>` : ""}</button>`;
@@ -3272,7 +3272,8 @@ async function onClick(el) {
     }
     case "open-menu": ui.menu = true; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "true"); break;
     case "close-menu": ui.menu = false; renderMenu(); $("menuBtn")?.setAttribute("aria-expanded", "false"); break;
-    case "tab": if (tab === "setup") ui.setupPage = el.dataset.page || (ui.tab === "setup" ? ui.setupPage : null); $("toast").innerHTML = ""; ui.menu = false; ui.tripId = null; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null;
+    case "tab": if (el.id === "glance") { ui.view = "category"; ui.period = null; ui.sel = null; }   // the month card opens what was spent this month, by category
+      if (tab === "setup") ui.setupPage = el.dataset.page || (ui.tab === "setup" ? ui.setupPage : null); $("toast").innerHTML = ""; ui.menu = false; ui.tripId = null; ui.tab = tab; ui.sheet = null; ui.confirmDelete = null; ui.confirmRemove = null; ui.sel = null;
       if (M.shouldShowIntro(ledger.settings, tab)) { ui.introOff = false; ui.sheet = { type: "intro", id: tab }; }   // with the new Budget the pay plan has no screen of its own: its popup comes with the form
       renderAll(); break;
     case "period-step": {
