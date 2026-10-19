@@ -2431,6 +2431,7 @@ console.log("Correct a verified entry");
   check(!(await page.locator('button[data-action="open-correct"]').isDisabled()) && (await text(page, "#screen")).includes("1 can be put right"), "and offers the one entry that can still be put right");
   await page.click('button[data-action="open-correct"]');
   check((await text(page, "#sheet")).includes("Corner Cafe") && (await text(page, "#sheet")).includes("\u20B11,200.00") && /20\d\d/.test(await text(page, "#sheet")), "the list shows the entry, the date with its year and the amount");
+  check(await page.locator("#sheet .daycard h4.dayhead").count() === 1, "the entries sit in a card for their day, headed by the date");
   await page.click('#sheet button[data-action="pick-correct"]');
   check((await text(page, "#sheet")).includes("Nothing is erased or edited") && (await text(page, "#sheet")).includes("A new draft"), "it says nothing is erased, and that a new draft waits in Verify");
   await page.click('#sheet button[data-action="do-correct"]');

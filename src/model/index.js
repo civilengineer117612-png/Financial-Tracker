@@ -60,7 +60,7 @@ export { entriesCsv, CSV_COLUMNS } from "./csvexport.js";
 export { netWorthSeries } from "./networth.js";
 export { GOAL_SYMBOLS, goalSymbolSvg } from "./goalicons.js";
 export { PART_BYTES, planParts, partFileName, sealPictures, openPictures } from "./picturebackup.js";
-export { correctable, planCorrection, applyCorrection, isReversed, correctionTag, CORRECTION_DAYS } from "./corrections.js";
+export { correctable, groupByDay, planCorrection, applyCorrection, isReversed, correctionTag, CORRECTION_DAYS } from "./corrections.js";
 export { envelopeBalance, planGcashSpend, splitSweep, planMonthEndSweep, planSweep, sweepOrderAccounts, underBudgetedCategories, planEnvelopeSetup, planBufferFunding, bufferSummary } from "./buffer.js";
 export { parseSchedule, isDue, datesBetween, categoryForPayee, draftId, draftFromTemplate, draftsForRange, planReserveTransfer, updatePreset, addPreset, removePreset, reorderPresets, MAX_PRESETS } from "./templates.js";
 export { budgetStatus, budgetTrend, budgetGrade, GRADE_AT, monthElapsedPercent, suggestedBudgetStart, budgetFor, planBudgetChange } from "./budget.js";

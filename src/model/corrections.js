@@ -24,6 +24,9 @@ export function correctable(state, today) {
     .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : a.verified_at < b.verified_at ? 1 : a.verified_at > b.verified_at ? -1 : 0));
 }
 
+// The same list cut into days, in the same order: [[entries of the newest day], [the day before], ...].
+export const groupByDay = (list) => list.reduce((out, t) => { const g = out[out.length - 1]; g && g[0].date === t.date ? g.push(t) : out.push([t]); return out; }, []);
+
 // "Corrected" for an entry that has been cancelled, "Correction" for the cancelling entry itself, else null.
 export const correctionTag = (state, t) => (t.reverses ? "Correction" : isReversed(state, t.id) ? "Corrected" : null);
 
