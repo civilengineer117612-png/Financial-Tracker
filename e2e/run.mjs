@@ -4111,6 +4111,27 @@ console.log("\n-- Card statement --");
   check(cs.transactions.map((x) => x.date).sort().join() === "2026-10-01,2026-10-02" && cs.transactions.every((x) => x.status === "draft" && cs.entries.some((e) => e.transaction_id === x.id && e.account_id === "cc")), "two purchase drafts dated by the transaction day, on the card; nothing for the cashback");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
+// ===== A spending draft that was really a move to your own account =====
+console.log("\n-- Spending draft to a move --");
+{ const bank = { id: "b", name: "Test Bank", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 2000000, opening_date: "2026-09-01" };
+  const cash = { id: "cash", name: "Cash", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-09-01" };
+  const atm = { id: "atm", date: "2026-10-02", payee: "ATM withdrawal", memo: "", status: "draft", source: "manual", created_at: "2026-10-02T09:00:00.000+08:00" };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [cash, bank], transactions: [atm], entries: [{ transaction_id: "atm", category_id: "cat-essentials", amount: 395012 }, { transaction_id: "atm", account_id: "b", amount: -395012 }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await page.click('#nav button:has-text("Verify")');
+  await page.click('#screen button[data-action="verify-edit"]');
+  check(await seen(page, "#sheet", "Move to my own account") && (await text(page, "#sheet")).includes("Category"), "Edit offers Move to my own account, Off, with the spending form");
+  await page.click('#sheet button[data-action="edit-kind"]');
+  const st = await text(page, "#sheet");
+  check(st.includes("From") && st.includes("To") && !st.includes("Paid from") && st.includes("Save as a move") && await page.locator("#f-save").isDisabled(), "On swaps in From and To, and Save as a move waits for To");
+  await page.click('#sheet .chip[data-action="pick-to"]:has-text("Cash")');
+  check(!(await page.locator("#f-save").isDisabled()), "choosing To turns Save on");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "Saved as a move"), "it says it was saved as a move");
+  const l = JSON.parse((await stored(page)).local).state, es = l.entries.filter((e) => e.transaction_id === "atm");
+  check(l.transactions.find((t) => t.id === "atm").status === "draft" && es.length === 2 && es.every((e) => e.category_id == null) && es.some((e) => e.account_id === "cash" && e.amount === 395012) && es.some((e) => e.account_id === "b" && e.amount === -395012), "the draft is now a move from the bank to Cash, still a draft, with no spending");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 // ===== A line repeated inside one picture or file is left out until asked for =====
 console.log("\n-- Repeated lines --");
 { const acc = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-04-01" };

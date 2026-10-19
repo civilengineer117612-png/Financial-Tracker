@@ -2357,16 +2357,19 @@ function renderSheet() {
       <p class="note">For money you move between your own accounts, like cash out or a top-up. It is not spending. Verify it to count it.</p>`;
   } else if (sh.type === "edit") {
     const t = S().transactions.find((x) => x.id === sh.id), d = describe(t);
+    const canMove = d.editable && !t.schedule_id, asMove = canMove && ui.form.kind === "move";   // a spending draft that was really a move to your own account (owner, Oct 20)
     body = `<h3>Edit entry</h3>
+      ${canMove ? `<div class="row pocketrow"><div><b>Move to my own account</b><small>Not spending</small></div><div><button class="chip" data-action="edit-kind" data-id="${asMove ? "spend" : "move"}" aria-pressed="${asMove}">${asMove ? "On" : "Off"}</button></div></div>` : ""}
       ${d.editable || d.kind === "transfer" || d.kind === "income" || (t.schedule_id && d.kind === "split") ? `<label for="f-amount">Amount (₱)${REQ}</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">` : ""}
       <label for="f-date">Date</label><input id="f-date" data-field="date" type="date" value="${esc(ui.form.date)}">
       <label for="f-payee">${d.kind === "expense" ? "Item" : "Name (optional)"}</label><input id="f-payee" data-field="payee" value="${esc(ui.form.payee ?? "")}" autocomplete="off">
       ${t.schedule_id ? `<label for="f-memo">Note (optional, like "covers Sept to Oct")</label><input id="f-memo" data-field="memo" value="${esc(ui.form.memo ?? "")}" autocomplete="off">` : ""}
-      ${d.editable ? `<label>Category${REQ}</label>${categoryPicker(pickCategoriesWith(ui.form.category_id), ui.form.category_id)}<label>Paid from${REQ}</label>${paidChips(ui.form.account_id)}` : ""}
+      ${d.editable && !asMove ? `<label>Category${REQ}</label>${categoryPicker(pickCategoriesWith(ui.form.category_id), ui.form.category_id)}<label>Paid from${REQ}</label>${paidChips(ui.form.account_id)}` : ""}
+      ${asMove ? `<label>From${REQ}</label>${accountPicker(accountsFor(null, true), ui.form.from_id ?? ui.form.account_id, "pick-from", "from", "Choose an account")}<label>To${REQ}</label>${accountPicker(accountsFor(null, true), ui.form.to_id, "pick-to", "to", "Choose an account")}` : ""}
       ${d.kind === "income" && S().entries.filter((e) => e.transaction_id === t.id).length === 2 ? `<label>Category</label>${categoryPicker(incomeCategories(), ui.form.category_id, "cat", "pick-cat", "Choose what it is")}` : ""}
       ${d.kind === "transfer" && (t.source === "photo" || t.source === "manual") ? `<label>From</label>${accountPicker(accountsFor(null, true), ui.form.from_id, "pick-from", "from", "Choose an account")}<label>To</label>${accountPicker(accountsFor(null, true), ui.form.to_id, "pick-to", "to", "Choose an account")}<label for="f-fee">Fee (\u20B1, optional)</label><input id="f-fee" data-field="fee" inputmode="decimal" value="${esc(ui.form.fee ?? "")}" autocomplete="off">` : ""}
       ${REQNOTE}
-      <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">Save</button></p>`;
+      <p><button class="primary" id="f-save" data-action="save-edit" style="margin-top:14px">${asMove ? "Save as a move" : "Save"}</button></p>`;
   }
   if (sh.type === "banks") {
     const forAdd = sh.for === "add", acct = forAdd ? null : S().accounts.find((x) => x.id === sh.for);
@@ -3016,6 +3019,7 @@ function refreshSave() {
   const btn = $("f-save");
   if (!btn) return;
   const type = ui.sheet?.type, f = ui.form;
+  if (type === "edit" && f.kind === "move") { btn.disabled = !(f.to_id && (f.from_id ?? f.account_id) && (f.from_id ?? f.account_id) !== f.to_id); return; }
   if (type === "other") {
     const a = M.parsePesos(f.amount);
     btn.disabled = !(a.ok && a.centavos > 0 && f.category_id && f.account_id);
@@ -4018,6 +4022,7 @@ async function onClick(el) {
     case "link-dup": await linkDuplicate(); break;
     case "dup-new": form.dup = "new"; form.dupOf = null; await saveScan(); break;
     case "pick-from": if (ui.sheet) ui.sheet.pick = null; form.from_id = id; renderSheet(); break;
+    case "edit-kind": ui.form.kind = id; renderSheet(); break;
     case "pick-to": if (ui.sheet) ui.sheet.pick = null; form.to_id = id; renderSheet(); break;
     case "pdf-open": { const typed = $("pdf-pw")?.value ?? ""; const go = pdfPasswordResolve; pdfPasswordResolve = null; ui.form = { busy: "Opening the PDF..." }; renderSheet(); go?.(typed); break; }
     case "pdf-cancel": { const go = pdfPasswordResolve; pdfPasswordResolve = null; go?.(null); ui.sheet = null; renderSheet(); break; }
@@ -4109,6 +4114,11 @@ async function onClick(el) {
       if (form.category_id) changes.category_id = form.category_id;
       if (form.account_id) changes.account_id = form.account_id;
       if (form.memo !== undefined) changes.memo = form.memo;
+      if (form.kind === "move") {   // a spending draft turned into a move between your own accounts
+        const r = M.draftToMove(S(), ui.sheet.id, { from_account_id: form.from_id ?? form.account_id, to_account_id: form.to_id, amount: changes.amount, date: changes.date, payee: changes.payee });
+        if (!r.ok) { showToast("Could not save: " + r.violations[0].message); return; }
+        ui.sheet = null; await commit(r.state); showToast("Saved as a move"); break;
+      }
       const isMove = S().transactions.some((x) => x.id === ui.sheet.id) && describe(S().transactions.find((x) => x.id === ui.sheet.id)).kind === "transfer" && form.from_id;
       if (isMove) {
         const fee = (form.fee ?? "").trim() ? M.parsePesos(form.fee) : { ok: true, centavos: 0 };

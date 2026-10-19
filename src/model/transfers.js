@@ -11,6 +11,7 @@
 import { amountsIn } from "./scan.js";
 import { checkTransactionSave } from "./index.js";
 import { phTimestamp } from "./util.js";
+import { discardDraft } from "./drafts.js";
 
 export const FEE_PREFIX = "fee:";
 export const BANK_FEES_ROLE = "bank_fees";
@@ -209,6 +210,25 @@ export const foreignOf = (state, id) => (state.foreignAmounts ?? []).find((f) =>
 // Edit a transfer draft before it is verified: both accounts, the amount, the fee, the date, the name. The peso amount of a foreign one is
 // corrected here, and its rate follows. The photo stays with the transfer.
 // changes: {from_account_id?, to_account_id?, amount?, fee?, date?, payee?}
+// A spending DRAFT that was really money moved to one of the owner's own accounts (a bank withdrawal to Cash, a top-up of a wallet) becomes a
+// move draft in its place (owner, Oct 20): same id, date, name, note, photo and "replaces a cancelled entry" link; never a verified entry, a
+// scheduled payment or a split. input: {from_account_id, to_account_id, amount?, date?, payee?}.
+export function draftToMove(state, id, input, now = new Date()) {
+  const t = state.transactions.find((x) => x.id === id);
+  if (!t) return fail("UNKNOWN_TRANSACTION", "no transaction " + id);
+  if (t.status !== "draft") return fail("NOT_A_DRAFT", id + " is already verified");
+  const es = state.entries.filter((e) => e.transaction_id === id), cat = es.find((e) => e.category_id != null);
+  const plain = es.length === 2 && cat && es.some((e) => e.account_id != null) && state.categories.find((c) => c.id === cat.category_id)?.kind === "expense";
+  if (!plain || t.schedule_id || t.reverses) return fail("NOT_PLAIN_SPENDING", "only a plain spending draft can become a move");
+  const kept = (state.attachments ?? []).filter((a) => a.transaction_id === id);
+  const base = discardDraft(state, id).state;
+  const r = planTransfer(base, { transaction_id: id, date: input.date ?? t.date, payee: input.payee ?? t.payee, amount: input.amount ?? cat.amount,
+    from_account_id: input.from_account_id, to_account_id: input.to_account_id, source: ["photo", "manual", "statement"].includes(t.source) ? t.source : "manual" }, now);
+  if (!r.ok) return { ok: false, violations: r.violations, state };
+  const keep = { created_at: t.created_at, ...(t.memo ? { memo: t.memo } : {}), ...(t.corrects ? { corrects: t.corrects } : {}), ...(t.reference_no ? { reference_no: t.reference_no } : {}), ...(t.shot_time ? { shot_time: t.shot_time } : {}) };
+  return { ok: true, violations: r.violations, state: { ...r.state, attachments: [...(r.state.attachments ?? []), ...kept], transactions: r.state.transactions.map((x) => (x.id === id ? { ...x, ...keep } : x)) } };
+}
+
 export function editTransfer(state, id, changes, now = new Date()) {
   const t = state.transactions.find((x) => x.id === id);
   if (!t) return fail("UNKNOWN_TRANSACTION", "no transaction " + id);
