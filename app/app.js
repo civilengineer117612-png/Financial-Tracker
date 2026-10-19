@@ -1691,7 +1691,9 @@ function viewMoney() {
     return { id: r.category_id, name: r.name, label: esc(r.name), amount: r.amount, percent: r.percent, grade: null };
   });
   const top = Math.max(...rows.map((r) => r.amount), 1);   // each bar is scaled to the largest category, so the list is its own twin
-  return hero + barCard(rows.filter((r) => r.amount > 0).map((r) => ({ name: r.label, fig: peso(r.amount), pct: Math.max(2, Math.round((r.amount * 100) / top)), label: `${r.name}: ${Math.round((r.amount * 100) / top)}% of the largest` }))) + `
+  // A row below zero (a count that found money) is shown last with its minus and no bar, so the rows add up to the total.
+  return hero + barCard([...rows.filter((r) => r.amount > 0).map((r) => ({ name: r.label, fig: peso(r.amount), pct: Math.max(2, Math.round((r.amount * 100) / top)), label: `${r.name}: ${Math.round((r.amount * 100) / top)}% of the largest` })),
+    ...rows.filter((r) => r.amount < 0).map((r) => ({ name: r.label, sub: "brings the total down", fig: "\u2212" + peso(-r.amount) }))]) + `
     <p class="entrylink"><button class="link" data-action="open-entries">See every entry</button></p>`;
 }
 

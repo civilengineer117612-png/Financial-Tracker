@@ -77,6 +77,8 @@ A verified entry is FINAL: never edited, never deleted. A mistake in one is put 
 
 The correction list (owner, Oct 19; data version unchanged) is newest ENTRY date first and cut into days (`groupByDay`; a small grey heading with the date and year, its entries indented under it, no boxes); after a cancel it stays on the list at the same place (`ui.correctAt`).
 
+A category BELOW ZERO in Cash flow, Category (owner, Oct 20: a card count after an unlogged card payment made Unlogged -10,443.37, hidden, so the rows did not add up) is listed last with its minus, "brings the total down" and no bar.
+
 ## CATEGORY EDITING, REQUIRED MARKS, WELCOME CARD (owner's rules, Oct 13, data version unchanged)
 Setup, Categories: ONE pencil edits the whole list; in edit mode a row opens the change window (name and bucket) and each row has a quick × (removes a category NOTHING refers to, after a second tap; `src/model/catedit.js`) or – (hides one that has entries or settings: setting `hidden_categories`, left out of the pickers only, still counted in budgets and totals, shown again under "Hidden categories"). The bucket is a small quiet line under the name, never after a dot. A category with history is never deleted.
 Required fields (amount, category, paid from) carry a `*` in the ink colour (class `req`, NEVER red: red stays for over-budget charts) with one line "* needed before you can save".
