@@ -210,17 +210,23 @@ export function loggedMatch(state, { date, name, amount, accountId = null, sourc
   return hits[0] ?? null;
 }
 
-// The plan for a list of read lines: dated, categorised, already-logged ones left out. order: "dmy" | "mdy". Returns {lines, duplicates, undated}.
-export function previewImport(state, items, order, book = null) {
-  const used = new Set(), lines = [], duplicates = [], undated = [];
+// The plan for a list of read lines: dated, categorised, already-logged ones left out, and a line repeated inside the same list left out unless `includeRepeats`.
+// order: "dmy" | "mdy". Returns {lines, duplicates, undated, repeats}.
+export function previewImport(state, items, order, book = null, { includeRepeats = false } = {}) {
+  const used = new Set(), lines = [], duplicates = [], undated = [], repeats = [], seen = new Set();
   for (const it of items) {
     const p = readDate(it.dateRaw), date = p ? isoOf(p, order) : null;
     if (!date) { undated.push(it); continue; }
     const line = { date, name: it.name, amount: it.amount, ...categoryFor(state, it, book) };
+    // The same date, name and amount again in ONE picture, notes list or file is most likely a line shown twice (two screenshots that overlap). It is left out until the
+    // owner says it is a real second one. A bank statement is never treated this way: it prints a line twice only when it happened twice (two rides of the same fare).
+    const key = date + "|" + loose(it.name) + "|" + it.amount, isRepeat = it.meaning === undefined && seen.has(key);
+    seen.add(key);
+    if (isRepeat) { repeats.push(line); if (!includeRepeats) continue; }
     const logged = loggedMatch(state, { date, name: it.name, amount: it.amount }, used);
     if (logged) { used.add(logged.id); duplicates.push(line); } else lines.push(line);
   }
-  return { lines, duplicates, undated };
+  return { lines, duplicates, undated, repeats };
 }
 
 // Makes one draft per line (source "import"), all on one account, all at once: if any line is refused nothing is saved.

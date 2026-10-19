@@ -160,7 +160,7 @@ test("the PDF import: the reader is our own copy, a locked file asks for its pas
   assert.ok(!/pdf_password|pdfPassword\s*=|settings[^\n]*pdf-pw/.test(app), "the password is never stored");
   assert.match(app, /const importKept = \(f\) => f\.items\.filter\(\(x\) => x\.meaning !== "unsure" \|\| f\.choice\?\.\[x\.id\] === "spending"\);/, "an unsure line counts only once you choose Spending");
   assert.match(app, /const kept = importKept\(f\)/, "the preview counts what will be added");
-  assert.match(app, /M\.previewImport\(base, importKept\(form\), form\.order, ledger\.settings\.payee_book\), r = M\.planImport/, "and only that is saved");
+  assert.match(app, /M\.previewImport\(base, importKept\(form\), form\.order, ledger\.settings\.payee_book, \{ includeRepeats: form\.repeatsIn === true \}\), r = M\.planImport/, "and only that is saved");
 });
 
 test("statement follow-ups: unsure lines wait for your choice, a failed check holds Add until you say you looked, the account is chosen by the statement's bank, and many cards show a count", () => {

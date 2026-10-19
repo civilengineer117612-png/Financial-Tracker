@@ -2675,7 +2675,7 @@ function renderSheet() {
     else if (f.error) body = `<h3>Import old spending</h3><p class="note" role="alert"><b>${esc(f.error)}</b></p>`;
     else {
       const kept = importKept(f), waiting = f.items.filter((x) => x.meaning === "unsure" && !f.choice?.[x.id]).length, held = !!f.statement && !f.statement.check.ok && !f.looked;
-      const p = f.order ? M.previewImport(S(), kept, f.order, ledger.settings.payee_book) : null, acct = S().accounts.find((a) => a.id === f.account_id) ?? (f.account_id === NEW_POCKET && f.newPocket ? newPocketAccount(f.newPocket) : undefined);
+      const p = f.order ? M.previewImport(S(), kept, f.order, ledger.settings.payee_book, { includeRepeats: f.repeatsIn === true }) : null, acct = S().accounts.find((a) => a.id === f.account_id) ?? (f.account_id === NEW_POCKET && f.newPocket ? newPocketAccount(f.newPocket) : undefined);
       const sample = f.items.find((x) => M.readDate(x.dateRaw) && !M.readDate(x.dateRaw).iso)?.dateRaw;
       const orderLine = sample ? `<p class="note" id="imp-order">${f.order ? `Dates read as <b>${f.order === "dmy" ? "day/month" : "month/day"}</b>: ${esc(sample)} is <b>${esc(longDate(M.previewImport(S(), [{ dateRaw: sample, name: "x", amount: 1 }], f.order).lines[0]?.date ?? today()))}</b>.` : `<b>Which comes first in ${esc(sample)}?</b>`}</p>
         <div class="seg" role="group" aria-label="Date order">${[["dmy", "Day / month"], ["mdy", "Month / day"]].map(([o, t]) => `<button data-action="import-order" data-id="${o}" aria-pressed="${f.order === o}">${t}</button>`).join("")}</div>` : "";
@@ -2689,6 +2689,7 @@ function renderSheet() {
       body = `<h3>Import old spending</h3>${stBlock}${st ? `<p><button class="chip wide" data-action="stm-keep" aria-pressed="${f.keep !== false}">Keep this statement to prove your months</button></p><p class="note small">It stays on this phone, in Setup, Statements.</p>` : ""}${orderLine}
         ${f.statement?.pocket ? `<p class="note" id="stm-pocket"><b>This is a Go Save pocket, not your main ${esc(f.statement.bank ?? "bank")} account.</b> ${f.newPocket ? `A pocket called \u201C${esc(newPocketAccount(f.newPocket).name.replace(" (new)", ""))}\u201D is made for it when you tap Add. Rename it in Setup once you know which pocket it is.` : "Choose the savings pocket it is from."}</p>` : ""}<label>${f.statement ? "Which account is this statement from?" : "Paid from"}${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}${REQ}</label>${paidChips(f.account_id, !!f.statement, f.newPocket ? [newPocketAccount(f.newPocket)] : [])}${REQNOTE}${f.statement && f.linkedCount > 1 && !f.account_id ? `<p class="note small">More than one of your accounts is linked to ${esc(f.statement.bank ?? "this bank")}. Choose the one this statement is from.</p>` : ""}
         ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${waiting ? `. <b>${waiting} ${waiting === 1 ? "line needs" : "lines need"} your choice</b>: left out until you choose` : ""}${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
+          ${p.repeats.length ? `<p class="note small" id="imp-repeats">${p.repeats.length} repeated ${p.repeats.length === 1 ? "line" : "lines"} ${f.repeatsIn ? "added" : "left out"} \u00b7 <button class="link small" data-action="imp-repeats">${f.repeatsIn ? "Leave out" : p.repeats.length === 1 ? "Add it" : "Add them"}</button></p>` : ""}
           <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline mimp"><span class="mn">${esc(listDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline mimp"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
           ${f.notRead.length ? `<details><summary>Not read (${f.notRead.length})</summary>${f.notRead.slice(0, 20).map((l) => `<p class="note">${esc(l)}</p>`).join("")}</details>` : ""}
           ${acct && acct.id !== NEW_POCKET ? `<p class="note">Lines dated before you added ${esc(acct.name)} are history only: they do not change its balance.</p>` : ""}
@@ -4023,6 +4024,7 @@ async function onClick(el) {
     case "stm-looked": ui.form.looked = !ui.form.looked; renderSheet(); break;
     case "stm-keep": ui.form.keep = ui.form.keep === false; renderSheet(); break;
     case "import-order": form.order = id; renderSheet(); break;
+    case "imp-repeats": form.repeatsIn = form.repeatsIn !== true; renderSheet(); break;
     case "save-import": {
       if (form.statement && !form.statement.check.ok && !form.looked) break;   // held until "I looked at the amounts"
       let base = S(), accountId = form.account_id, pocketNote = "";
@@ -4031,7 +4033,7 @@ async function onClick(el) {
         if (!pk.ok) { showToast(pk.violations[0].message); break; }
         base = pk.state; accountId = pk.account.id; pocketNote = "Pocket created: " + pk.account.name + ".";
       }
-      const p = M.previewImport(base, importKept(form), form.order, ledger.settings.payee_book), r = M.planImport(base, p.lines, { account_id: accountId, newId: () => newId("tx") });
+      const p = M.previewImport(base, importKept(form), form.order, ledger.settings.payee_book, { includeRepeats: form.repeatsIn === true }), r = M.planImport(base, p.lines, { account_id: accountId, newId: () => newId("tx") });
       if (!r.ok) { showToast(r.message); break; }
       let next = r.state, kept = "", rewardNote = "";
       if (form.statement?.rewards?.length) {   // cashback, interest and rewards: income drafts in the same account; already-there ones are left out

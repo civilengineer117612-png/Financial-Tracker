@@ -4110,6 +4110,23 @@ console.log("\n-- Card statement --");
   check(cs.transactions.map((x) => x.date).sort().join() === "2026-10-01,2026-10-02" && cs.transactions.every((x) => x.status === "draft" && cs.entries.some((e) => e.transaction_id === x.id && e.account_id === "cc")), "two purchase drafts dated by the transaction day, on the card; nothing for the cashback");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
+// ===== A line repeated inside one picture or file is left out until asked for =====
+console.log("\n-- Repeated lines --");
+{ const acc = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-04-01" };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc] } } }));
+  await page.click('button[data-action="open-scan-pick"]');
+  await page.setInputFiles("input[data-import]", { name: "dups.csv", mimeType: "text/csv", buffer: Buffer.from("Date,Expense,Amount\n2026-10-02,Sample Cafe,150\n2026-10-02,Sample Cafe,150\n2026-10-03,Sample Mart,500\n") });
+  await seen(page, "#sheet", "Import old spending"); await page.click('#sheet .chip:has-text("Test Wallet")');
+  check((await text(page, "#imp-repeats")).includes("1 repeated line left out") && (await text(page, "#imp-count")).includes("2 lines"), "a line shown twice in one file is left out and said once: 2 lines to add");
+  await page.click('#sheet button[data-action="imp-repeats"]');
+  check((await text(page, "#imp-repeats")).includes("1 repeated line added") && (await text(page, "#imp-count")).includes("3 lines") && (await text(page, "#f-save")).includes("Add 3 drafts"), "Add it puts it in: 3 lines, the button says 3");
+  await page.click('#sheet button[data-action="imp-repeats"]');
+  check((await text(page, "#imp-repeats")).includes("1 repeated line left out") && (await text(page, "#f-save")).includes("Add 2 drafts"), "Leave out takes it out again");
+  await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.length === 2, null, { timeout: 5000 });
+  check(JSON.parse((await stored(page)).local).state.transactions.every((t) => t.source === "import" && t.status === "draft"), "two drafts were added, both waiting in Verify");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
 console.log("\n-- Appearance --");
 { ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false }));

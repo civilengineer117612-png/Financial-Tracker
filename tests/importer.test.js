@@ -160,3 +160,16 @@ test("loggedMatch with sources: only an entry that came in by import, statement 
   assert.equal(loggedMatch(s, { ...ask, accountId: "res" }), null, "another account is not a match");
   assert.equal(loggedMatch(s, { ...ask, date: "2026-10-12" }), null, "more than 2 days away is not a match");
 });
+
+test("a line repeated inside ONE list is left out until it is asked for; a statement line is never a repeat", () => {
+  const s = makeState();
+  const items = [{ dateRaw: "2026-10-02", name: "Sample Cafe", amount: 15000 }, { dateRaw: "2026-10-02", name: "SAMPLE  cafe", amount: 15000 }, { dateRaw: "2026-10-03", name: "Sample Mart", amount: 50000 }, { dateRaw: "2026-10-03", name: "Sample Mart", amount: 50100 }];
+  const p = previewImport(s, items, "dmy");
+  assert.deepEqual(p.lines.map((l) => [l.date, l.amount]), [["2026-10-02", 15000], ["2026-10-03", 50000], ["2026-10-03", 50100]], "the second same-day, same-name, same-amount line is left out; a different amount is a different line");
+  assert.equal(p.repeats.length, 1);
+  const all = previewImport(s, items, "dmy", null, { includeRepeats: true });
+  assert.equal(all.lines.length, 4, "asked for, it is added"); assert.equal(all.repeats.length, 1);
+  const stmt = items.slice(0, 2).map((x, i) => ({ ...x, id: "s" + i, meaning: "spending" }));
+  const sp = previewImport(s, stmt, "dmy");
+  assert.equal(sp.lines.length, 2, "a bank statement printing a line twice means it happened twice"); assert.equal(sp.repeats.length, 0);
+});

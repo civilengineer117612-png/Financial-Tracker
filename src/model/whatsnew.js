@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-19-repeats", date: "2026-10-19", text: "When a picture, notes list or file shows the same line twice, the second copy is left out until you tap Add it (a bank statement keeps both)." },
   { id: "2026-10-19-statement-day", date: "2026-10-19", text: "A credit card can now have a statement day as well as a due day, and its window says when the last statement closed." },
   { id: "2026-10-19-card-pdf", date: "2026-10-19", text: "The app now reads a credit card statement PDF (MariCard layout): its purchases become drafts on the bank's card, dated by the day you bought, and it checks the statement adds up." },
   { id: "2026-10-19-rewards-years", date: "2026-10-19", text: "Importing a bank statement now adds its cashback, campaign rewards and interest as income drafts in Verify, and entry lists show the year when an entry is not from this year." },
