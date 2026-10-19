@@ -4007,6 +4007,26 @@ console.log("\n-- Overdraw warning --");
   check(!(await text(page, "#screen")).includes("-\u20b1"), "a goal on the overdrawn account never shows a minus");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
+// ===== Move money warns when the account it leaves would go below zero; nothing blocks =====
+console.log("\n-- Overdraw warning, Move money --");
+{ const DTS = "2026-10-01T09:00:00.000+08:00";
+  const A = (id, name, ob, extra = {}) => ({ id, name, class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: ob, opening_date: "2026-01-01", ...extra });
+  const st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [A("main", "Test Main", 200000), A("pk", "Test Pocket", 500000, { role: "pocket" })] };
+  ({ ctx, page, errors } = await open({ blockSw: true, keepWarn: true, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
+  await menuGo(page, "Cards");
+  const move = async (from, to, amount) => { await page.click('button[data-action="open-move"]'); await page.waitForSelector("#sheet #f-amount"); await page.fill("#f-amount", amount); await page.click('#sheet [data-action="pick-from"][data-id="' + from + '"]'); await page.click('#sheet [data-action="pick-to"][data-id="' + to + '"]'); await page.click("#f-save"); await page.waitForTimeout(300); };
+  await move("pk", "main", "1000");
+  check(await page.locator("#warn .sheet").count() === 0 && await seen(page, "#toast", "set as a transfer"), "moving savings out of a pocket that holds enough saves with no warning (spending your savings is allowed)");
+  await move("main", "pk", "5000");
+  const w = await text(page, "#warn");
+  check(w.includes("This move takes Test Main below zero") && w.includes("\u20b13,000.00") && w.includes("-\u20b15,000.00") && w.includes("-\u20b12,000.00"), "a move that would overdraw says so: balance now, this move, what it would leave");
+  let led = JSON.parse((await stored(page)).local);
+  check(!led.state.entries.some((e) => e.account_id === "main" && e.amount === -500000), "nothing is saved while the warning waits");
+  await page.click('#warn button[data-action="warn-save"]'); await page.waitForTimeout(500);
+  led = JSON.parse((await stored(page)).local);
+  check(led.state.entries.some((e) => e.account_id === "main" && e.amount === -500000) && await page.locator("#warn .sheet").count() === 0, "Save anyway saves the move as usual");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
 console.log("\n-- Appearance --");
 { ({ ctx, page, errors } = await open({ blockSw: true, setupFlat: false }));

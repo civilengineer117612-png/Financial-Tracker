@@ -3179,14 +3179,16 @@ const bufferNote = (violations) => {
 const logDay = () => (ui.dayPick && ui.dayPick < today() ? ui.dayPick : today());
 // A spend that would take a debit or cash account below zero asks first (the window waits for the answer; nothing blocks: "Save anyway" goes on).
 let warnAnswer = null;
-function askOverdraw(w) {
+const OVERDRAW_WORDS = { spend: ["This spend", "This takes"], move: ["This move", "This move takes"], payment: ["This payment", "This payment takes"] };
+function askOverdraw(w, kind = "spend") {
+  const [label, head] = OVERDRAW_WORDS[kind] ?? OVERDRAW_WORDS.spend;
   return new Promise((resolve) => {
     warnAnswer = resolve;
     $("warn").innerHTML = `<div class="wscrim" data-action="warn-cancel"></div><div class="sheet center enter" role="alertdialog" aria-labelledby="warn-h">
       <div class="warnsign"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2.5 20h19L12 3z"/><path d="M12 9.5v5"/><path d="M12 17.6v.1"/></svg></div>
-      <h3 class="wl-title" id="warn-h">This takes ${esc(w.name)} below zero</h3>
+      <h3 class="wl-title" id="warn-h">${head} ${esc(w.name)} below zero</h3>
       <p class="note">A debit account cannot go below zero, so some money in is missing from your ledger. Log it first, or the balance will be wrong.</p>
-      <dl class="warnfig"><dt class="muted">Balance now</dt><dd>${peso(w.before)}</dd><dt class="muted">This spend</dt><dd>-${peso(w.amount)}</dd><dt><b>It would leave</b></dt><dd><b>-${peso(-w.after)}</b></dd></dl>
+      <dl class="warnfig"><dt class="muted">Balance now</dt><dd>${peso(w.before)}</dd><dt class="muted">${label}</dt><dd>-${peso(w.amount)}</dd><dt><b>It would leave</b></dt><dd><b>-${peso(-w.after)}</b></dd></dl>
       <p><button class="primary" data-action="warn-income" style="width:100%">Log money received first</button></p>
       <p><button data-action="warn-save" style="width:100%">Save anyway</button></p></div>`;
     lockPage(true);
@@ -3502,6 +3504,8 @@ async function onClick(el) {
       const a = M.parsePesos(ui.form.amount), card = S().accounts.find((x) => x.id === ui.sheet.id);
       const r = M.planCardPayment(S(), { card_id: ui.sheet.id, from_id: ui.form.from_id, amount: a.centavos, date: logDay(), newId: () => newId("tx") });
       if (!r.ok) { showToast("Could not save: " + r.message); break; }
+      const over = M.overdrawOf(S(), { account_id: ui.form.from_id, amount: a.centavos });
+      if (over && !(await askOverdraw(over, "payment"))) break;
       const from = ui.form.from_id; ui.sheet = null; renderSheet();
       if (await commit(r.state, { ...ledger.settings, last_account_id: from })) showToast(peso(a.centavos) + " paid to " + card.name + ". Verify it to count it.");
       break;
@@ -3894,6 +3898,8 @@ async function onClick(el) {
       const f = ui.form, a = M.parsePesos(f.amount), fee = (f.fee ?? "").trim() ? M.parsePesos(f.fee) : { ok: true, centavos: 0 };
       const p = M.planTransfer(S(), { transaction_id: newId("tx"), date: logDay(), from_account_id: f.from_id, to_account_id: f.to_id, amount: a.centavos, fee: fee.centavos, payee: "Transfer", source: "manual" }, new Date());
       if (!p.ok) { showToast("Could not save: " + p.violations[0].message); break; }
+      const over = M.overdrawOf(S(), { account_id: f.from_id, amount: a.centavos + fee.centavos });
+      if (over && !(await askOverdraw(over, "move"))) break;   // the move window stays open
       ui.sheet = null; renderSheet();
       if (await commit(p.state, { ...ledger.settings, last_account_id: f.from_id })) showToast(peso(a.centavos) + " set as a transfer. Verify it to count it.");
       break;
