@@ -26,6 +26,15 @@ test("a verified entry from the last two weeks can be corrected; drafts, count g
   }
 });
 
+test("the list is newest ENTRY date first, whatever the order they were verified in", () => {
+  let s = ledger();   // lunch, dated the 8th, verified first
+  for (const [id, date] of [["old", "2025-03-02"], ["new", "2026-10-09"]]) {
+    s = applyDrafts(s, planExpense(s, { transaction_id: id, date, payee: id, category_id: "food", amount: 100, account_id: "chk" }, NOW).drafts);
+    s = verifyDraft(s, id, NOW).state;   // the oldest-dated one is verified last
+  }
+  assert.deepEqual(correctable(s, TODAY).map((t) => t.id), ["new", "lunch", "old"]);
+});
+
 test("a correction cancels the old entry with a new one and leaves the old rows exactly as they were", () => {
   const s = ledger(), before = JSON.stringify({ t: s.transactions, e: s.entries });
   assert.equal(chk(s), 100000 - 12000);

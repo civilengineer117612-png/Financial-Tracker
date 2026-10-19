@@ -2535,13 +2535,13 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-checkin" disabled>Save count</button></p>`;
   } else if (sh.type === "correct") {
     const list = M.correctable(S(), today()), pick = list.find((t) => t.id === sh.id), pc = pick ? M.planCorrection(S(), { id: pick.id, redo_id: "probe", today: today() }) : null;
-    const line = (t) => { const d = describe(t); return `${esc(d.title)} \u00b7 ${esc(listDate(t.date))} \u00b7 ${signed(d)}`; };
+    const line = (t) => { const d = describe(t); return `${esc(d.title)} \u00b7 ${esc(yearDate(t.date))} \u00b7 ${signed(d)}`; };   // always with the year: an old statement can be verified this week
     body = pick
       ? `<h3>Put right this entry</h3><p>${line(pick)}</p>
         <p class="note">It stays in your list, marked corrected, and a second entry cancels it. Nothing is erased or edited.</p>
         <p class="note">${pc.redo ? "A new draft with the same details waits in Verify. Fix the amount there and verify it." : "This kind of entry is cancelled only. Log the right one again by hand."}</p>
         <p><button class="primary" data-action="do-correct" data-id="${esc(pick.id)}" style="margin-top:14px">Cancel it${pc.redo ? " and enter it again" : ""}</button></p>
-        <p class="center"><button class="link" data-action="open-correct">Back to the list</button></p>`
+        <p class="center"><button class="link" data-action="back-correct">Back to the list</button></p>`
       : `<h3>Which entry was wrong?</h3><p class="note">Verified in the last two weeks.</p>
         ${list.length ? list.map((t) => `<button class="choice" data-action="pick-correct" data-id="${esc(t.id)}"><span>${line(t)}</span></button>`).join("") : `<p class="note">Nothing verified in the last two weeks.</p>`}`;
   } else if (sh.type === "survey") {
@@ -3395,13 +3395,15 @@ async function onClick(el) {
     }
     case "count-basis": ui.form.basis = id; renderSheet(); break;
     case "count-tick": { const t = new Set(ui.form.ticked ?? []); t.has(id) ? t.delete(id) : t.add(id); ui.form.ticked = [...t]; renderSheet(); break; }
-    case "open-correct": ui.sheet = { type: "correct" }; ui.form = {}; renderSheet(); break;
-    case "pick-correct": ui.sheet = { type: "correct", id }; renderSheet(); break;
+    case "open-correct": ui.correctAt = 0; ui.sheet = { type: "correct" }; ui.form = {}; renderSheet(); break;
+    case "pick-correct": ui.correctAt = document.querySelector("#sheet .sheet")?.scrollTop ?? 0; ui.sheet = { type: "correct", id }; renderSheet(); break;   // remember the place in the list
+    case "back-correct": ui.sheet = { type: "correct" }; ui.form = {}; renderSheet(); { const box = document.querySelector("#sheet .sheet"); if (box) box.scrollTop = ui.correctAt ?? 0; } break;
     case "do-correct": {
       const plan = M.planCorrection(S(), { id, redo_id: newId("fix"), reserve_source_id: ledger.settings.reserve_source_id, today: today() }, new Date());
       if (!plan.ok) { showToast("Could not correct: " + plan.violations[0].message); break; }
       ui.sheet = null; renderSheet();
       await commit(M.applyCorrection(S(), plan));
+      if (M.correctable(S(), today()).length) { ui.sheet = { type: "correct" }; ui.form = {}; renderSheet(); const box = document.querySelector("#sheet .sheet"); if (box) box.scrollTop = ui.correctAt ?? 0; }   // more to put right: stay in the list, at the same place
       showToast(plan.redo ? "Cancelled. Fix the new draft in Verify." : "Cancelled. Log the right entry again.");
       break;
     }

@@ -16,12 +16,12 @@ const addDays = (iso, n) => new Date(Date.parse(iso + "T00:00:00Z") + n * 864000
 
 export const isReversed = (state, id) => state.transactions.some((t) => t.reverses === id);
 
-// The verified entries that can still be corrected, newest first.
+// The verified entries that can still be corrected, newest entry date first (then the one verified last).
 export function correctable(state, today) {
   const from = addDays(today, 1 - CORRECTION_DAYS);
   return state.transactions
     .filter((t) => t.status === "verified" && !isGenerated(t) && !NOT_CORRECTABLE.includes(t.source) && !isReversed(state, t.id) && dayOf(t.verified_at) >= from)
-    .sort((a, b) => (a.verified_at < b.verified_at ? 1 : -1));
+    .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : a.verified_at < b.verified_at ? 1 : a.verified_at > b.verified_at ? -1 : 0));
 }
 
 // "Corrected" for an entry that has been cancelled, "Correction" for the cancelling entry itself, else null.
