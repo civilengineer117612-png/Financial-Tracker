@@ -1110,9 +1110,10 @@ async function saveScan() {
       ok = a.ok && await commit(a.state, { ...ledger.settings, last_account_id: f.account_id, ...(queueId ? { scan_queue: scanQueue().filter((q) => q.id !== queueId) } : {}) });
     } else showToast("Could not save: " + p.violations[0].message);
   } else {
-    if (!f.split && f.dup !== "new" && (f.ref || f.time)) {   // the same payment shown twice: offer to link instead of adding a second
+    if (!f.split && f.dup !== "new") {   // the same payment shown twice: offer to link instead of adding a second
       const cand = { id, date: f.date, reference_no: f.ref ?? "", shot_time: f.time ?? "" }, es = [{ transaction_id: id, category_id: f.category_id, amount }, { transaction_id: id, account_id: f.account_id, amount: -amount }];
-      const dup = M.findDuplicate(S(), cand, es);
+      // by its reference or screenshot time; else the same amount from the same account within 2 days (a receipt for a purchase a statement import already added)
+      const dup = (f.ref || f.time ? M.findDuplicate(S(), cand, es) : null) ?? M.loggedMatch(S(), { date: f.date, name: f.payee, amount, accountId: f.account_id })?.id ?? null;
       if (dup) { f.dupOf = dup; renderSheet(); return; }
     }
     const second = f.split ? M.parsePesos(f.split_amt).centavos : 0, lines = f.split ? [{ category_id: f.category_id, amount: amount - second }, { category_id: f.split_cat, amount: second }] : undefined;
@@ -2205,11 +2206,11 @@ function rateHint(fx) {
   return `<p class="note">At your last rate (${peso(Math.round(r * 100))} per ${esc(fx.currency)}) that is about ${peso(Math.round(r * fx.amount))}.</p>`;
 }
 // The same payment shown twice: offer to link the photo to the entry already there. Never refused, never a second entry by default.
-function dupBlock(otherId) {
+function dupBlock(otherId, voice = false) {
   const t = S().transactions.find((x) => x.id === otherId); if (!t) return "";
   const d = describe(t);
   return `<div class="card"><p class="note flag">\u25B2 This looks like one you already have: ${esc(d.title)}, ${peso(d.amount)}, ${esc(longDate(t.date))}.</p>
-    <p><button data-action="link-dup" style="width:100%">Link this photo to it</button></p>
+    ${voice ? `<p><button data-action="close-sheet" style="width:100%">It is that one: add nothing</button></p>` : `<p><button data-action="link-dup" style="width:100%">Link this photo to it</button></p>`}
     <p><button data-action="dup-new" style="width:100%">It is a different payment: add it</button></p></div>`;
 }
 // A dropdown row instead of a wall of chips (owner, Oct 14): the row shows what is chosen (or "Choose ..."), a tap opens the list inside the window.
@@ -2725,7 +2726,7 @@ function renderSheet() {
         <label for="f-split">Its amount (\u20B1)</label><input id="f-split" data-field="split_amt" inputmode="decimal" value="${esc(f.split_amt ?? "")}" autocomplete="off">
         <p class="note" id="split-note" role="status"></p>` : ""}`}
       ${move ? "" : `<label>${into ? "Arrived in" : "Paid from"}${REQ}</label>${paidChips(f.account_id)}`}
-      ${f.dupOf ? dupBlock(f.dupOf) : ""}
+      ${f.dupOf ? dupBlock(f.dupOf, ui.sheet.voice === true) : ""}
       <details${sh.voice ? " hidden" : ""}><summary>What the reader saw</summary><pre class="rawtext">${esc(f.text || "(nothing)")}</pre></details>
       <p class="note" id="scan-why" role="status"></p>
       <p><button class="primary" id="f-save" data-action="save-scan" style="margin-top:14px" disabled>Save to Verify</button></p>
