@@ -22,6 +22,15 @@ export function nextDue(dueDay, today) {
   return { date, days: days(today, date) };
 }
 
+// The date a statement closed most recently (today included) for a statement day: "YYYY-MM-DD", or null when there is no statement day. A short month uses its last day.
+export function lastStatementDate(statementDay, today) {
+  if (!Number.isInteger(statementDay) || statementDay < 1 || statementDay > 31) return null;
+  const [y, m] = today.split("-").map(Number);
+  const inMonth = (yy, mm) => `${yy}-${pad(mm)}-${pad(Math.min(statementDay, lastDay(yy, mm)))}`;
+  const here = inMonth(y, m);
+  return here <= today ? here : m === 1 ? inMonth(y - 1, 12) : inMonth(y, m - 1);
+}
+
 // The last statement balance of a card: a statement the owner kept (the newest one's closing figure) wins over a balance typed once.
 // {balance, date, from: "statement" | "typed"} or null. A statement shows what was owed, so the figure is read as a positive amount.
 export function cardStatement(state, cardId) {
@@ -32,15 +41,17 @@ export function cardStatement(state, cardId) {
   return null;
 }
 
-// Save a card's due day and typed statement balance. `due_day`: 1 to 31, or "" to clear. `statement_balance`: centavos (more than 0), or null to clear.
-export function setCardDetails(state, cardId, { due_day = "", statement_balance = null, date }) {
+// Save a card's due day, statement day and typed statement balance. `due_day`: 1 to 31, or "" to clear. `statement_balance`: centavos (more than 0), or null to clear.
+export function setCardDetails(state, cardId, { due_day = "", statement_day = "", statement_balance = null, date }) {
   const card = state.accounts.find((a) => a.id === cardId);
   if (!card || card.class !== "liability") return fail("Only a credit card has a due day.");
   const day = due_day === "" || due_day === null ? null : Number(due_day);
   if (day !== null && (!Number.isInteger(day) || day < 1 || day > 31)) return fail("The due day is a day of the month, from 1 to 31.");
+  const sday = statement_day === "" || statement_day === null ? null : Number(statement_day);
+  if (sday !== null && (!Number.isInteger(sday) || sday < 1 || sday > 31)) return fail("The statement day is a day of the month, from 1 to 31.");
   if (statement_balance !== null && (!Number.isSafeInteger(statement_balance) || statement_balance <= 0)) return fail("The statement balance must be more than zero.");
-  const { due_day: _d, statement_balance: _b, statement_date: _s, ...rest } = card;
-  const next = { ...rest, ...(day !== null ? { due_day: day } : {}), ...(statement_balance !== null ? { statement_balance, statement_date: date } : {}) };
+  const { due_day: _d, statement_day: _sd, statement_balance: _b, statement_date: _s, ...rest } = card;
+  const next = { ...rest, ...(day !== null ? { due_day: day } : {}), ...(sday !== null ? { statement_day: sday } : {}), ...(statement_balance !== null ? { statement_balance, statement_date: date } : {}) };
   return { ok: true, state: { ...state, accounts: state.accounts.map((a) => (a.id === cardId ? next : a)) } };
 }
 

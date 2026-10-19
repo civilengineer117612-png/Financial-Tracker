@@ -3153,6 +3153,13 @@ console.log("Welcome card, category editing, required marks");
   { const cardText = await text(page, "#sheet");
     check(cardText.includes("Last statement \u20B12,500.00") && /due (today|tomorrow|in \d+ days)/.test(cardText) && await page.inputValue("#f-amount") === "2500.00", "saved: the window shows the last statement and the due day, and the amount starts as the statement balance: " + cardText.replace(/\n+/g, " | ").slice(0, 160)); }
   check(JSON.parse((await stored(page)).local).state.accounts.find((a) => a.id === "c").statement_balance === 250000, "the typed balance is kept on the card");
+  await page.click('#sheet button[data-action="card-details"]');
+  check((await text(page, "#sheet")).includes("Statement and due day") && await page.locator("#cd-sday").count() === 1, "the details window asks for the statement day too");
+  await page.fill("#cd-sday", "45"); await page.click("#f-save");
+  check((await text(page, "#cd-msg")).includes("statement day") && (await text(page, "#cd-msg")).includes("1 to 31"), "a statement day outside 1 to 31 is refused in plain words");
+  await page.fill("#cd-sday", "15"); await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.accounts.find((a) => a.id === "c").statement_day === 15, null, { timeout: 5000 });
+  check(await seen(page, "#sheet", "Statement Sep 15 \u20B12,500.00"), "saved: the window says when the last statement closed (the 15th, so Sep 15 on Oct 3) with its balance");
   await page.click('#sheet button[data-action="close-sheet"]');
   // Move money into a card used to be refused ("entry on card account needs card_state"); it saves now
   await page.click('button[data-action="open-move"]'); await page.waitForSelector("#sheet #f-amount");
@@ -4101,6 +4108,23 @@ console.log("\n-- Card statement --");
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.length === 2, null, { timeout: 5000 });
   const cs = JSON.parse((await stored(page)).local).state;
   check(cs.transactions.map((x) => x.date).sort().join() === "2026-10-01,2026-10-02" && cs.transactions.every((x) => x.status === "draft" && cs.entries.some((e) => e.transaction_id === x.id && e.account_id === "cc")), "two purchase drafts dated by the transaction day, on the card; nothing for the cashback");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== A line repeated inside one picture or file is left out until asked for =====
+console.log("\n-- Repeated lines --");
+{ const acc = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-04-01" };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc] } } }));
+  await page.click('button[data-action="open-scan-pick"]');
+  await page.setInputFiles("input[data-import]", { name: "dups.csv", mimeType: "text/csv", buffer: Buffer.from("Date,Expense,Amount\n2026-10-02,Sample Cafe,150\n2026-10-02,Sample Cafe,150\n2026-10-03,Sample Mart,500\n") });
+  await seen(page, "#sheet", "Import old spending"); await page.click('#sheet .chip:has-text("Test Wallet")');
+  check((await text(page, "#imp-repeats")).includes("1 repeated line left out") && (await text(page, "#imp-count")).includes("2 lines"), "a line shown twice in one file is left out and said once: 2 lines to add");
+  await page.click('#sheet button[data-action="imp-repeats"]');
+  check((await text(page, "#imp-repeats")).includes("1 repeated line added") && (await text(page, "#imp-count")).includes("3 lines") && (await text(page, "#f-save")).includes("Add 3 drafts"), "Add it puts it in: 3 lines, the button says 3");
+  await page.click('#sheet button[data-action="imp-repeats"]');
+  check((await text(page, "#imp-repeats")).includes("1 repeated line left out") && (await text(page, "#f-save")).includes("Add 2 drafts"), "Leave out takes it out again");
+  await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.length === 2, null, { timeout: 5000 });
+  check(JSON.parse((await stored(page)).local).state.transactions.every((t) => t.source === "import" && t.status === "draft"), "two drafts were added, both waiting in Verify");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====
