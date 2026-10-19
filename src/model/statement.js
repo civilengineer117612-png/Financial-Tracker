@@ -92,6 +92,9 @@ export function classifyLine({ text, type = "", direction }) {
   if (got) return { meaning: "in", payee: "Cash in from " + got[1].trim() + (got[2] ? ` ending ${got[2]}` : ""), ...(got[2] ? { last4: got[2] } : {}) };
   const tr = /^transfer from\s+(\d{6,})\s+to\s+(\d{6,})/i.exec(t);
   if (tr) return direction === "in" ? { meaning: "in", payee: tr[1] } : { meaning: "unsure", payee: tr[2] };
+  // Cashback, a campaign reward and interest are small amounts the bank adds to the account: still money in (so everything that counts money in is unchanged),
+  // marked `reward` so an import can offer them as income drafts. A loan paid out and a transfer are not rewards.
+  if (direction === "in" && (/^(reward|interest)$/i.test(ty) || /\b(cashback|campaign reward)\b/i.test(t))) return { meaning: "in", payee: t, reward: true };
   if (direction === "in") return { meaning: "in", payee: t };
   if (/\bfees?\b/i.test(t) || /\bfees?\b/i.test(ty)) return { meaning: "fee", payee: t };
   const card = /^card payment at\s+(.+?)(?:,\s*card\b.*)?$/i.exec(t);
@@ -261,7 +264,9 @@ export function statementItems(lines) {
   return lines.map((l, i) => ({ l, i })).filter(({ l }) => l.direction === "out" && (l.meaning === "spending" || l.meaning === "fee" || l.meaning === "unsure"))
     .map(({ l, i }) => ({ id: "s" + i, dateRaw: l.date, name: l.payee || l.text, amount: l.amount, meaning: l.meaning, label: l.meaning === "fee" ? null : undefined }));
 }
-export const statementLeftOut = (lines) => ({ moves: lines.filter((l) => l.meaning === "move" && !l.own).length, own: lines.filter((l) => l.own).length, moneyIn: lines.filter((l) => l.meaning === "in").length });
+// Cashback, rewards and interest lines (money in, marked `reward`): offered as income drafts by an import. [{date, name, amount}]
+export const statementRewards = (lines) => lines.filter((l) => l.direction === "in" && l.meaning === "in" && l.reward).map((l) => ({ date: l.date, name: l.payee || l.text, amount: l.amount }));
+export const statementLeftOut = (lines) => ({ moves: lines.filter((l) => l.meaning === "move" && !l.own).length, own: lines.filter((l) => l.own).length, moneyIn: lines.filter((l) => l.meaning === "in" && !l.reward).length, rewards: lines.filter((l) => l.meaning === "in" && l.reward).length });
 
 // The unsure lines, one group per person (the same name, ignoring case, spaces and punctuation), the biggest total first: one choice answers all of a person's lines.
 export function unsureByPerson(items) {

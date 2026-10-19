@@ -4036,22 +4036,44 @@ console.log("\n-- Overdraw warning, Move money --");
 // ===== A hand entry that repeats one an import already brought in asks first =====
 console.log("\n-- Already logged --");
 { const DTS = "2026-10-01T09:00:00.000+08:00";
-  const st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [{ id: "sav", name: "Test Bank", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 5000000, opening_date: "2026-01-01" }],
-    transactions: [{ id: "imp1", date: "2026-10-02", payee: "Test Shop", memo: "", status: "draft", source: "import", created_at: DTS }],
-    entries: [{ transaction_id: "imp1", category_id: "cat-food", amount: 15000 }, { transaction_id: "imp1", account_id: "sav", amount: -15000 }] };
+  const st = { ...emptyState(), categories: OWNER_STYLE.state.categories, presets: [], accounts: [{ id: "sav", name: "Test Bank", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 5000000, opening_date: "2023-01-01" }],
+    transactions: [{ id: "imp1", date: "2026-10-02", payee: "Test Shop", memo: "", status: "draft", source: "import", created_at: DTS }, { id: "old1", date: "2024-01-05", payee: "Old Shop", memo: "", status: "verified", source: "manual", created_at: DTS, verified_at: DTS }],
+    entries: [{ transaction_id: "imp1", category_id: "cat-food", amount: 15000 }, { transaction_id: "imp1", account_id: "sav", amount: -15000 }, { transaction_id: "old1", category_id: "cat-food", amount: 7000 }, { transaction_id: "old1", account_id: "sav", amount: -7000 }] };
   ({ ctx, page, errors } = await open({ blockSw: true, keepWarn: true, seed: { v: 10, rev: 1, saved_at: DTS, settings: { ...OWNER_STYLE.settings }, state: st } }));
   const spend = async (amount) => { await page.click('button:has-text("Add expense")'); await page.fill("#f-amount", amount); await page.click('#sheet .chip:has-text("Shopping")'); await page.click('#sheet .chip:has-text("Test Bank")'); await page.click("#f-save"); await page.waitForTimeout(300); };
   const count = async () => JSON.parse((await stored(page)).local).state.transactions.length;
+  await menuGo(page, "Cards"); await page.click('[data-action="cards-list"]').catch(() => {}); await page.click('[data-action="open-register"][data-id="sav"]'); await page.waitForSelector("#sheet .regl");
+  const reg = await text(page, "#sheet .regl");
+  check(/Oct 2, 2026/.test(reg) === false && /Oct 2/.test(reg) && /Jan 5, 2024/.test(reg), "an account's history shows the year on an entry from another year and leaves it off this year's");
+  await page.click('#sheet button:has-text("Close")'); await page.click('#nav button:has-text("Log")');
   await spend("80"); await spend("80");
-  check(await page.locator("#warn .sheet").count() === 0 && await count() === 3, "a hand entry repeating another hand entry is never asked about (a tile tapped every day)");
+  check(await page.locator("#warn .sheet").count() === 0 && await count() === 4, "a hand entry repeating another hand entry is never asked about (a tile tapped every day)");
   await spend("150");
   const w = await text(page, "#warn");
   check(w.includes("Already logged?") && w.includes("Test Shop") && w.includes("\u20b1150.00") && w.includes("Same one: add nothing") && w.includes("Different: save it"), "a hand entry repeating an imported one asks, in few words: the name, the day and the amount");
-  check(await count() === 3, "nothing is saved while it waits");
+  check(await count() === 4, "nothing is saved while it waits");
   await page.click('#warn button[data-action="warn-cancel"]'); await page.waitForTimeout(300);
-  check(await count() === 3 && await page.locator("#warn .sheet").count() === 0, "Same one: add nothing adds nothing");
+  check(await count() === 4 && await page.locator("#warn .sheet").count() === 0, "Same one: add nothing adds nothing");
   await spend("150"); await page.click('#warn button[data-action="warn-save"]'); await page.waitForTimeout(500);
-  check(await count() === 4, "Different: save it saves it as usual");
+  check(await count() === 5, "Different: save it saves it as usual");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== Cashback, rewards and interest on a statement become income drafts =====
+console.log("\n-- Statement rewards --");
+{ const FXR = (n) => new URL("./fixtures/" + n, import.meta.url).pathname;
+  const acc = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-04-01" };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc] } } }));
+  await page.click('button[data-action="open-scan-pick"]'); await page.setInputFiles("input[data-import]", FXR("sample-rewards.pdf"));
+  check(await seen(page, "#sheet", "Balance check"), "a statement with cashback and a reward is read");
+  check((await text(page, "#stm-rewards")).includes("2 cashback, interest or reward lines (\u20b16.38) will be added as income drafts"), "the window says how many reward lines will be added as income drafts, and their total");
+  check(!(await text(page, "#sheet")).includes("money in left out") || !(await text(page, "#stm-left")).includes("2 money in"), "the reward lines are not also counted as other money left out");
+  await page.click('#sheet .chip:has-text("Test Wallet")'); await page.click("#f-save");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.length >= 3, null, { timeout: 5000 });
+  const rw = JSON.parse((await stored(page)).local).state;
+  const inc = rw.transactions.filter((t) => t.source === "statement" && t.status === "draft");
+  check(inc.length === 2 && inc.map((t) => t.date).sort().join() === "2026-05-08,2026-05-14" && inc.every((t) => rw.entries.some((e) => e.transaction_id === t.id && e.account_id === "w" && e.amount > 0)), "two income drafts, on the statement's dates, in the account, waiting in Verify");
+  check(rw.transactions.filter((t) => t.source === "import" && t.status === "draft").length === 1, "the shop payment is still an expense draft; the rewards are not expenses");
+  check(rw.statementRecords?.length === 1, "the statement is kept as before");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
 // ===== Night: the page follows the phone, and Setup can fix Light or Dark =====

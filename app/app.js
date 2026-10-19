@@ -14,6 +14,7 @@ const addDays = (d, n) => new Date(Date.parse(d) + n * 86400000).toISOString().s
 const dateWriter = (locale, options) => { const f = new Intl.DateTimeFormat(locale, { ...options, timeZone: "UTC" }), seen = new Map(); return (key, make) => { let v = seen.get(key); if (v === undefined) { v = f.format(new Date(make(key))); seen.set(key, v); } return v; }; };
 const longDateOf = dateWriter("en-PH", { weekday: "short", day: "numeric", month: "short" });
 const yearDateOf = dateWriter("en-PH", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+const listDate = (d) => (String(d).slice(0, 4) === today().slice(0, 4) ? longDate(d) : yearDate(d));   // an entry list shows the year when it is not this year (old statements were set up in earlier years)
 const longDate = (d) => longDateOf(d, (x) => x + "T00:00:00Z");
 const yearDate = (d) => yearDateOf(d, (x) => x + "T00:00:00Z");   // the import window shows the year (a statement spans years)
 // The eye that shows or hides the amounts on a screen (Cards and Goals): an open eye while they are shown, a crossed one while they are hidden.
@@ -512,7 +513,7 @@ function entriesListHtml() {
 function rowFor(t, withDate = false) {
   const d = describe(t);
   const acct = d.kind === "expense" ? S().accounts.find((a) => a.id === d.account_id) : null;
-  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${withDate ? esc(longDate(t.date)) + " · " : ""}${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${M.correctionTag(S(), t) === "Corrected" ? " · cancelled" : ""}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${signed(d)}</div></button>`;
+  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${withDate ? esc(listDate(t.date)) + " · " : ""}${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${M.correctionTag(S(), t) === "Corrected" ? " · cancelled" : ""}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${signed(d)}</div></button>`;
 }
 
 // Everything waiting, oldest first. Nothing has to wait for tomorrow: verify whenever you have the time.
@@ -545,7 +546,7 @@ function viewVerify() {
     : t.source === "voice" ? `<p class="note">Made from what you said${t.memo ? ": \u201C" + esc(t.memo) + "\u201D" : ""}. Check each line before you tap Correct.</p>` : "");
   return `${head}
     <div class="card">${shot ? `<button class="shotbtn" data-action="open-photo" data-id="${esc(shot.id)}" aria-label="Open the photo full size"><img class="shot" data-photo="${esc(shot.id)}" alt="The photo this entry was read from" hidden></button>` : ""}${fromPhoto}<div class="what">${esc(d.title)}</div><div class="big">${peso(d.amount)}</div>
-      <dl><dt>Date</dt><dd>${esc(longDate(t.date))}</dd>${t.schedule_id && t.memo ? `<dt>Note</dt><dd>${esc(t.memo)}</dd>` : ""}${fields}${reserve}</dl>
+      <dl><dt>Date</dt><dd>${esc(listDate(t.date))}</dd>${t.schedule_id && t.memo ? `<dt>Note</dt><dd>${esc(t.memo)}</dd>` : ""}${fields}${reserve}</dl>
       <div class="actions">
         <button class="primary wide" data-action="verify-ok" data-id="${esc(t.id)}">Correct</button>
         <button data-action="verify-edit" data-id="${esc(t.id)}">Edit</button>
@@ -800,7 +801,7 @@ async function importFile(file) {
       const pages = await readPdfPages(file, askPdfPassword);
       const r = M.parseStatement(pages, { ownLast4: activeAccounts().map((a) => a.last4).filter(Boolean) });
       if (!r.ok) throw new Error(r.message);
-      statement = { bank: r.bank, bankId: r.bankId, pocket: r.pocket, period: r.period, check: r.check, lines: r.lines.length, leftOut: M.statementLeftOut(r.lines), parsed: r };
+      statement = { bank: r.bank, bankId: r.bankId, pocket: r.pocket, period: r.period, check: r.check, lines: r.lines.length, leftOut: M.statementLeftOut(r.lines), rewards: M.statementRewards(r.lines), parsed: r };
       items = M.statementItems(r.lines); notRead = [];
     } else if (/\.xlsx$/i.test(file.name) || /spreadsheetml/.test(file.type)) ({ items, notRead } = tableOrThrow(await M.readXlsx(await file.arrayBuffer())));
     else if (/\.csv$/i.test(file.name) || /csv/.test(file.type)) ({ items, notRead } = tableOrThrow(M.parseCsv(await file.text())));
@@ -2208,7 +2209,7 @@ function rateHint(fx) {
 function dupBlock(otherId) {
   const t = S().transactions.find((x) => x.id === otherId); if (!t) return "";
   const d = describe(t);
-  return `<div class="card"><p class="note flag">\u25B2 This looks like one you already have: ${esc(d.title)}, ${peso(d.amount)}, ${esc(longDate(t.date))}.</p>
+  return `<div class="card"><p class="note flag">\u25B2 This looks like one you already have: ${esc(d.title)}, ${peso(d.amount)}, ${esc(listDate(t.date))}.</p>
     <p><button data-action="link-dup" style="width:100%">Link this photo to it</button></p>
     <p><button data-action="dup-new" style="width:100%">It is a different payment: add it</button></p></div>`;
 }
@@ -2451,7 +2452,7 @@ function renderSheet() {
     const cands = S().transactions.filter((t) => member.get(t.id)?.tag_id !== sh.id).sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id)).slice(0, 40);
     const rowOf = (t) => { const es = S().entries.filter((e) => e.transaction_id === t.id), spend = es.filter((e) => e.category_id && S().categories.find((c) => c.id === e.category_id)?.kind === "expense"), amt = spend.length ? spend.reduce((n, e) => n + e.amount, 0) : es.filter((e) => e.amount > 0).reduce((n, e) => n + e.amount, 0);
       const other = tripName(member.get(t.id)?.tag_id);
-      return `<div class="row"><div>${esc(t.payee || (spend[0] ? categoryName(spend[0].category_id) : "Entry"))}<small>${esc(longDate(t.date))}${spend.length ? "" : " \u00b7 a move or bill payment"}${other ? " \u00b7 now on " + esc(other) : ""}</small></div><div class="amt">${peso(amt)}<br><button class="link" data-action="trip-add" data-id="${esc(t.id)}">Add</button></div></div>`; };
+      return `<div class="row"><div>${esc(t.payee || (spend[0] ? categoryName(spend[0].category_id) : "Entry"))}<small>${esc(listDate(t.date))}${spend.length ? "" : " \u00b7 a move or bill payment"}${other ? " \u00b7 now on " + esc(other) : ""}</small></div><div class="amt">${peso(amt)}<br><button class="link" data-action="trip-add" data-id="${esc(t.id)}">Add</button></div></div>`; };
     body = `<h3>Add an entry to this trip</h3><p class="note">The latest 40 entries that are not on it. Adding one works on any date.</p>${cands.map(rowOf).join("") || `<p class="note">Every entry is already on this trip.</p>`}<p><button data-action="close-sheet">Done</button></p>`;
   } else if (sh.type === "income") {
     body = `<h3>Money received</h3>
@@ -2533,7 +2534,7 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-checkin" disabled>Save count</button></p>`;
   } else if (sh.type === "correct") {
     const list = M.correctable(S(), today()), pick = list.find((t) => t.id === sh.id), pc = pick ? M.planCorrection(S(), { id: pick.id, redo_id: "probe", today: today() }) : null;
-    const line = (t) => { const d = describe(t); return `${esc(d.title)} \u00b7 ${esc(longDate(t.date))} \u00b7 ${signed(d)}`; };
+    const line = (t) => { const d = describe(t); return `${esc(d.title)} \u00b7 ${esc(listDate(t.date))} \u00b7 ${signed(d)}`; };
     body = pick
       ? `<h3>Put right this entry</h3><p>${line(pick)}</p>
         <p class="note">It stays in your list, marked corrected, and a second entry cancels it. Nothing is erased or edited.</p>
@@ -2679,6 +2680,7 @@ function renderSheet() {
         <div class="seg" role="group" aria-label="Date order">${[["dmy", "Day / month"], ["mdy", "Month / day"]].map(([o, t]) => `<button data-action="import-order" data-id="${o}" aria-pressed="${f.order === o}">${t}</button>`).join("")}</div>` : "";
       const st = f.statement, unsure = st ? f.items.filter((x) => x.meaning === "unsure") : [];
       const stBlock = st ? `<div class="card" style="border:0;padding:0"><dl><dt>Statement</dt><dd>${esc(st.bank ?? "Bank statement")}${st.pocket ? esc(" \u00b7 Go Save pocket ending " + st.pocket.last4) : ""}</dd>${st.period ? `<dt>Period</dt><dd>${esc(yearDate(st.period.from))} to ${esc(yearDate(st.period.to))}</dd>` : ""}<dt>Lines found</dt><dd>${st.lines}</dd><dt>Balance check</dt><dd id="stm-check">${st.check.ok ? "\u2713 " : ""}${esc(st.check.message)}${st.check.ok ? "" : " Look at each amount before you verify it."}</dd></dl>${st.check.bad?.length ? badLinesHtml(st, f) : ""}</div>
+        ${st.rewards?.length ? `<p class="note small" id="stm-rewards">${st.rewards.length} cashback, interest or reward ${st.rewards.length === 1 ? "line" : "lines"} (${peso(st.rewards.reduce((n, x) => n + x.amount, 0))}) will be added as income drafts.</p>` : ""}
         ${st.leftOut.moves + st.leftOut.own + st.leftOut.moneyIn ? `<p class="note small" id="stm-left">${[st.leftOut.moves ? `${st.leftOut.moves} ${st.leftOut.moves === 1 ? "move" : "moves"} between your own accounts` : "", st.leftOut.own ? `${st.leftOut.own} ${st.leftOut.own === 1 ? "transfer" : "transfers"} to your own name` : "", st.leftOut.moneyIn ? `${st.leftOut.moneyIn} money in` : ""].filter(Boolean).join(" and ")} left out: not spending.</p>` : ""}
         ${unsure.length ? `<label>Which is it?</label><p class="note small">Money out that does not say what it was, one row per person. Each waits until you choose.</p>${M.unsureByPerson(unsure).map((g) => { const all = (v) => g.ids.every((i) => f.choice?.[i] === v), n = g.ids.length;
           return `<div class="mrow mimp ask"><span class="mn">${esc(g.name)}<small>${n} ${n === 1 ? "line" : "lines"} \u00b7 ${peso(g.total)}</small></span><span class="chips"><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="spending" aria-pressed="${all("spending")}">Spending</button><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="not" aria-pressed="${all("not")}">Not spending</button></span>
@@ -2686,7 +2688,7 @@ function renderSheet() {
       body = `<h3>Import old spending</h3>${stBlock}${st ? `<p><button class="chip wide" data-action="stm-keep" aria-pressed="${f.keep !== false}">Keep this statement to prove your months</button></p><p class="note small">It stays on this phone, in Setup, Statements.</p>` : ""}${orderLine}
         ${f.statement?.pocket ? `<p class="note" id="stm-pocket"><b>This is a Go Save pocket, not your main ${esc(f.statement.bank ?? "bank")} account.</b> ${f.newPocket ? `A pocket called \u201C${esc(newPocketAccount(f.newPocket).name.replace(" (new)", ""))}\u201D is made for it when you tap Add. Rename it in Setup once you know which pocket it is.` : "Choose the savings pocket it is from."}</p>` : ""}<label>${f.statement ? "Which account is this statement from?" : "Paid from"}${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}${REQ}</label>${paidChips(f.account_id, !!f.statement, f.newPocket ? [newPocketAccount(f.newPocket)] : [])}${REQNOTE}${f.statement && f.linkedCount > 1 && !f.account_id ? `<p class="note small">More than one of your accounts is linked to ${esc(f.statement.bank ?? "this bank")}. Choose the one this statement is from.</p>` : ""}
         ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${waiting ? `. <b>${waiting} ${waiting === 1 ? "line needs" : "lines need"} your choice</b>: left out until you choose` : ""}${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
-          <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline mimp"><span class="mn">${esc(longDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline mimp"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
+          <div class="mlist" id="imp-lines">${p.lines.slice(0, 12).map((l) => `<div class="mrow mline mimp"><span class="mn">${esc(listDate(l.date))} \u00b7 ${esc(l.name)}<small>${esc(categoryName(l.category_id))} (${esc(l.how)})</small></span><span class="mv">${peso(l.amount)}</span></div>`).join("")}${p.lines.length > 12 ? `<div class="mrow mline mimp"><span class="mn">and ${p.lines.length - 12} more</span></div>` : ""}</div>
           ${f.notRead.length ? `<details><summary>Not read (${f.notRead.length})</summary>${f.notRead.slice(0, 20).map((l) => `<p class="note">${esc(l)}</p>`).join("")}</details>` : ""}
           ${acct && acct.id !== NEW_POCKET ? `<p class="note">Lines dated before you added ${esc(acct.name)} are history only: they do not change its balance.</p>` : ""}
           ${f.statement && !f.statement.check.ok ? `<p><button class="chip wide" data-action="stm-looked" aria-pressed="${!!f.looked}">I looked at the amounts</button></p>` : ""}
@@ -2768,8 +2770,8 @@ function renderSheet() {
       body = `<h3 style="margin:0">${esc(a.name)}</h3><p class="note" style="margin:2px 0 0">${card ? "You owe now" : "Balance now"}</p>
         <div class="hero" style="margin:0 0 6px">${shown ? peso(r.closing) : `<span aria-label="Amount hidden">${DOTS}</span>`}</div>
         ${shown ? "" : `<p class="center"><button class="link" data-action="cards-eye">Show amounts</button></p>`}
-        <div class="regl">${list.length ? list.map((x) => { const d = describe(x.transaction); return `<div class="row"><div>${esc(d.title)}<small>${esc(longDate(x.transaction.date))}${x.transaction.status === "draft" ? " · draft" : ""}${x.pending ? " · pending" : ""}</small></div><div class="amt">${x.change < 0 ? "-" : "+"}${shown ? peso(Math.abs(x.change)) : DOTS}<small>${m(x.balance)}</small></div></div>`; }).join("") : `<p class="note">Nothing on this account yet.</p>`}
-        ${more ? `<p class="center"><button class="link" data-action="register-more">Show older entries</button></p>` : `<div class="row"><div>Opening balance<small>${esc(longDate(r.opening_date))}</small></div><div class="amt">${m(r.opening)}</div></div>`}</div>
+        <div class="regl">${list.length ? list.map((x) => { const d = describe(x.transaction); return `<div class="row"><div>${esc(d.title)}<small>${esc(listDate(x.transaction.date))}${x.transaction.status === "draft" ? " · draft" : ""}${x.pending ? " · pending" : ""}</small></div><div class="amt">${x.change < 0 ? "-" : "+"}${shown ? peso(Math.abs(x.change)) : DOTS}<small>${m(x.balance)}</small></div></div>`; }).join("") : `<p class="note">Nothing on this account yet.</p>`}
+        ${more ? `<p class="center"><button class="link" data-action="register-more">Show older entries</button></p>` : `<div class="row"><div>Opening balance<small>${esc(listDate(r.opening_date))}</small></div><div class="amt">${m(r.opening)}</div></div>`}</div>
         <p class="note small">${card ? "A purchase raises what you owe; a payment lowers it." : "Each line shows how the balance moved and what it was right after."}</p>`;
     }
   } else if (sh.type === "cardpay") {
@@ -2945,9 +2947,9 @@ function renderSheet() {
         <div class="row"><div><b>Difference</b><small>${d.difference === 0 ? "they agree" : d.card ? (d.difference < 0 ? "your ledger owes more" : "your ledger owes less") : d.difference > 0 ? "your ledger is higher" : "your ledger is lower"}</small></div><div class="amt"><b>${peso(Math.abs(d.difference))}</b></div></div></dl>
         ${d.difference === 0 ? "" : `<div class="stbar" role="img" aria-label="${pct} percent of the difference is explained by the lines"><i style="width:${pct}%"></i></div><p class="note small" style="margin:0 0 6px">${d.carried === 0 ? "The lines below explain all of it." : d.explained === 0 ? "None of it comes from lines in this month: it is carried from before." : `The lines below explain ${peso(Math.abs(d.explained))} of it. ${peso(Math.abs(d.carried))} is carried from before this month.`}</p>`}
         <p class="note" style="margin:10px 0 2px"><b>In the statement, not in your ledger</b></p>
-        ${d.missing.map((m) => `<div class="row" style="align-items:center"><div>${esc(m.line.payee || m.line.text)}<small>${esc(longDate(m.line.date))}${tail(m)}</small></div><div class="amt">${peso(m.line.amount)}${m.action !== "move" && m.action !== "payment" ? `<br><button class="link" data-action="st-adddraft" data-line="${esc(m.line.id)}">Add as draft</button>` : ""}</div></div>`).join("") || `<div class="row"><div>Nothing</div></div>`}
+        ${d.missing.map((m) => `<div class="row" style="align-items:center"><div>${esc(m.line.payee || m.line.text)}<small>${esc(listDate(m.line.date))}${tail(m)}</small></div><div class="amt">${peso(m.line.amount)}${m.action !== "move" && m.action !== "payment" ? `<br><button class="link" data-action="st-adddraft" data-line="${esc(m.line.id)}">Add as draft</button>` : ""}</div></div>`).join("") || `<div class="row"><div>Nothing</div></div>`}
         <p class="note" style="margin:10px 0 2px"><b>In your ledger, not in the statement</b></p>
-        ${d.extra.map((m) => `<div class="row"><div>${esc(m.payee || "Entry")}<small>${esc(longDate(m.date))}</small></div><div class="amt">${peso(Math.abs(m.amount))}</div></div>`).join("") || `<div class="row"><div>Nothing</div></div>`}
+        ${d.extra.map((m) => `<div class="row"><div>${esc(m.payee || "Entry")}<small>${esc(listDate(m.date))}</small></div><div class="amt">${peso(Math.abs(m.amount))}</div></div>`).join("") || `<div class="row"><div>Nothing</div></div>`}
         ${st?.ok ? `<p class="note small" style="margin:10px 0 4px">The rest is the starting balance. This statement opens at ${peso(st.opening)} on ${esc(longDate(st.from))}. ${esc(acct?.name ?? "The account")} started at ${peso(acct?.opening_balance ?? 0)}.</p>
           <p style="margin:12px 0 8px"><button class="primary" id="f-save" data-action="st-start" style="width:100%">${ui.confirmStart ? `Tap again: ${esc(acct?.name ?? "it")} will start at ${peso(st.opening)}` : "Start this account from its statement"}</button></p>
           ${st.ignored ? `<p class="note small" style="margin:0 0 6px">${st.ignored} ${st.ignored === 1 ? "entry" : "entries"} dated before ${esc(longDate(st.from))} become history only: they stop counting in the balance.</p>` : ""}` : ""}
@@ -3209,7 +3211,7 @@ function askDuplicate(t) {
     $("warn").innerHTML = `<div class="wscrim" data-action="warn-cancel"></div><div class="sheet center enter" role="alertdialog" aria-labelledby="warn-h">
       <div class="warnsign"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="12" height="15" rx="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9"/></svg></div>
       <h3 class="wl-title" id="warn-h">Already logged?</h3>
-      <p class="note">${esc(d.title)} \u00b7 ${esc(longDate(t.date))} \u00b7 ${peso(d.amount)}</p>
+      <p class="note">${esc(d.title)} \u00b7 ${esc(listDate(t.date))} \u00b7 ${peso(d.amount)}</p>
       <p><button class="primary" data-action="warn-cancel" style="width:100%">Same one: add nothing</button></p>
       <p><button data-action="warn-save" style="width:100%">Different: save it</button></p></div>`;
     lockPage(true);
@@ -4028,14 +4030,19 @@ async function onClick(el) {
       }
       const p = M.previewImport(base, importKept(form), form.order, ledger.settings.payee_book), r = M.planImport(base, p.lines, { account_id: accountId, newId: () => newId("tx") });
       if (!r.ok) { showToast(r.message); break; }
-      let next = r.state, kept = "";
+      let next = r.state, kept = "", rewardNote = "";
+      if (form.statement?.rewards?.length) {   // cashback, interest and rewards: income drafts in the same account; already-there ones are left out
+        const rw = M.planRewards(next, form.statement.rewards, { account_id: accountId, newId: () => newId("tx") });
+        if (!rw.ok) { showToast(rw.message); break; }
+        next = rw.state; if (rw.count) rewardNote = `${rw.count} cashback, interest or reward ${rw.count === 1 ? "line" : "lines"} added as income drafts.`;
+      }
       if (form.statement && form.keep !== false && form.statement.parsed) {   // keep the statement as read, to prove the months with (Setup, Statements)
         const { record, lines } = M.recordFromParse(form.statement.parsed, { account_id: accountId, id: newId("stm") });
         if (M.alreadyKept(next, record, lines)) kept = "That statement was already kept.";
         else { next = { ...next, statementRecords: [...(next.statementRecords ?? []), record], statementLines: [...(next.statementLines ?? []), ...lines] }; kept = "Statement kept: see Setup, Statements."; }
       }
       ui.sheet = null; renderSheet();
-      if (await commit(next)) showToast([pocketNote, r.count ? `${r.count} ${r.count === 1 ? "draft is" : "drafts are"} waiting in Verify.` : "", kept].filter(Boolean).join(" "));
+      if (await commit(next)) showToast([pocketNote, r.count ? `${r.count} ${r.count === 1 ? "draft is" : "drafts are"} waiting in Verify.` : "", rewardNote, kept].filter(Boolean).join(" "));
       break;
     }
     case "plan-cancel": ui.planDraft = null; ui.sheet = null; renderSheet(); break;
