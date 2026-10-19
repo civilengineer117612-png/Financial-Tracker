@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planExpense, verifyDraft, applyDrafts, correctable, groupByDay, planCorrection, applyCorrection, isReversed, correctionTag, naturalBalance, countedEntries, cardOutstanding, editDraftFields, planTransfer, editTransfer } from "../src/model/index.js";
+import { planExpense, verifyDraft, applyDrafts, correctable, groupByDay, planCorrection, applyCorrection, isReversed, correctionTag, naturalBalance, countedEntries, cardOutstanding, editDraftFields, planTransfer, editTransfer, planCheckIn, spendingByCategory } from "../src/model/index.js";
 import { makeState } from "./fixtures.js";
 
 // Invented data. A checking account of 1,000.00 and one verified lunch of 120.00 on the 8th.
@@ -128,4 +128,27 @@ test("an income entry and a split purchase are cancelled with no draft", () => {
   const q = planCorrection(split, { id: "sp", redo_id: "fix7", today: TODAY }, NOW);
   assert.equal(q.ok, true, JSON.stringify(q.violations)); assert.equal(q.redo, null);
   assert.equal(chk(applyCorrection(split, q)), chk(split) + 5000);
+});
+
+test("a Weekly review count's gap can be cancelled (cancel only, no new draft); the count's 'Posted by the bank' pair cannot", () => {
+  let s = ledger();
+  s = { ...s, categories: [...s.categories, { id: "unl", name: "Unlogged", kind: "expense" }] };
+  // the checking account holds 880.00 by the ledger; the count says 1,000.00: 120.00 "found", which lowers the month's spending
+  const c = planCheckIn(s, { id: "c1", transaction_id: "cnt", date: "2026-10-09", account_id: "chk", counted_balance: 100000, unlogged_category_id: "unl" }, NOW);
+  assert.ok(c.ok, JSON.stringify(c.violations));
+  s = { ...s, checkIns: [...(s.checkIns ?? []), c.checkIn], transactions: [...s.transactions, c.transaction], entries: [...s.entries, ...c.entries] };
+  assert.equal(spendingByCategory(s, { month: "2026-10" }).total, 0, "the count brought the month down by what it found");
+  assert.ok(correctable(s, TODAY).some((t) => t.id === "cnt"), "the count's entry is in the list");
+  const p = planCorrection(s, { id: "cnt", redo_id: "r1", today: TODAY }, NOW);
+  assert.ok(p.ok); assert.equal(p.redo, null, "cancelled only: no draft is made again");
+  const next = applyCorrection(s, p);
+  assert.equal(spendingByCategory(next, { month: "2026-10" }).total, 12000, "cancelled, the month counts the lunch again");
+  assert.equal(chk(next), 88000, "and the account is back to what the entries say");
+  const posted = { ...s, transactions: s.transactions.map((t) => (t.id === "cnt" ? { ...t, memo: "Posted by the bank: x" } : t)) };
+  assert.ok(!correctable(posted, TODAY).some((t) => t.id === "cnt"), "the posted pair is not offered");
+  // a count that found money MISSING is cancelled only too: no Unlogged draft is made again
+  let m = { ...ledger(), categories: [...ledger().categories, { id: "unl", name: "Unlogged", kind: "expense" }] };
+  const c2 = planCheckIn(m, { id: "c2", transaction_id: "cnt2", date: "2026-10-09", account_id: "chk", counted_balance: 50000, unlogged_category_id: "unl" }, NOW);
+  m = { ...m, transactions: [...m.transactions, c2.transaction], entries: [...m.entries, ...c2.entries] };
+  assert.equal(planCorrection(m, { id: "cnt2", redo_id: "r2", today: TODAY }, NOW).redo, null);
 });

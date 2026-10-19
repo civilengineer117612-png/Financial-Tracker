@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-20-count-paid", date: "2026-10-20", text: "Counting a card that owes less than the app says now offers I paid the card, and a count saved by mistake can be cancelled under Put right." },
   { id: "2026-10-19-correct-list", date: "2026-10-19", text: "Put right a verified entry now lists entries by day, newest first, with the year on each date, and after you cancel one it stays in the list at the same place." },
   { id: "2026-10-19-repeats", date: "2026-10-19", text: "When a picture, notes list or file shows the same line twice, the second copy is left out until you tap Add it (a bank statement keeps both)." },
   { id: "2026-10-19-statement-day", date: "2026-10-19", text: "A credit card can now have a statement day as well as a due day, and its window says when the last statement closed." },

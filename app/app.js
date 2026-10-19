@@ -2060,7 +2060,7 @@ const countedThisWeek = (accountId) => {
   return S().checkIns.filter((c) => c.account_id === accountId && c.date >= w.week_start && c.date <= w.week_end).sort((a, b) => (a.date < b.date ? 1 : -1))[0] ?? null;
 };
 const surveyThisWeek = () => S().surveyResponses.find((r) => r.id === "survey:" + thisWeek().week_start) ?? null;
-const differenceText = (d) => d === 0 ? "Matches the ledger" : d < 0 ? peso(-d) + " missing" : peso(d) + " more than logged";
+const differenceText = (d, card = false) => d === 0 ? "Matches the ledger" : card ? "owes " + peso(Math.abs(d)) + (d < 0 ? " less" : " more") + " than logged" : d < 0 ? peso(-d) + " missing" : peso(d) + " more than logged";   // a card counts what is owed: less owed is not money missing
 
 function viewCheckin() {
   const accts = activeAccounts();
@@ -2068,7 +2068,7 @@ function viewCheckin() {
   const w = thisWeek();
   const rows = accts.map((a) => {
     const c = countedThisWeek(a.id);
-    const state = c ? `<span class="bval">${c.difference === 0 ? "\u2713 " : "\u25B2 "}${esc(differenceText(c.difference))}</span>` : `<span class="bval">Not counted</span>`;
+    const state = c ? `<span class="bval">${c.difference === 0 ? "\u2713 " : "\u25B2 "}${esc(differenceText(c.difference, a.class === "liability"))}</span>` : `<span class="bval">Not counted</span>`;
     return `<button class="choice" data-action="open-checkin" data-id="${esc(a.id)}"><span class="who">${withIcon(a, 28)}</span>${state}</button>`;
   }).join("");
   const done = accts.filter((a) => countedThisWeek(a.id)).length;
@@ -2270,7 +2270,6 @@ const checkInInput = (acct, centavos) => ({ date: today(), account_id: acct.id, 
 const cardCountBlock = (a) => {
   const basis = ui.form.basis ?? "posted", pend = M.pendingPurchases(S(), a), ticked = new Set(ui.form.ticked ?? []);
   return `<div class="seg" role="group" aria-label="What you are comparing">${[["posted", "What the bank posted"], ["owed", "All I owe"]].map(([v, t]) => `<button data-action="count-basis" data-id="${v}" aria-pressed="${basis === v}">${t}</button>`).join("")}</div>
-    <p class="note">${basis === "owed" ? "Type everything you owe, charges still pending included." : "Type the posted amount your bank shows."}</p>
     ${basis === "posted" && pend.length ? `<p class="note">Tick the purchases your bank already lists. The rest stay pending.</p>
       <div class="card catcard">${pend.map((p) => `<button class="catrow" data-action="count-tick" data-id="${esc(p.transaction_id)}" aria-pressed="${ticked.has(p.transaction_id)}"><div class="ct"><span class="ctn">${esc(p.payee)}<small>${esc(longDate(p.date))}</small></span><span class="amt">${ticked.has(p.transaction_id) ? "\u2713 " : ""}${peso(p.amount)}</span></div></button>`).join("")}</div>` : ""}`;
 };
@@ -2531,7 +2530,7 @@ function renderSheet() {
     body = `<h3>Count ${esc(a.name)}</h3>
       <label for="f-amount">${a.class === "asset" ? "Balance you see now" : "Amount owed you see now"} (\u20B1)</label><input id="f-amount" data-field="amount" inputmode="decimal" value="${esc(ui.form.amount ?? "")}" autocomplete="off">
       ${a.class === "liability" ? cardCountBlock(a) : ""}
-      <p id="f-diff" class="note" role="status"></p>
+      <p id="f-diff" class="note" role="status"></p><div id="f-paid" hidden></div>
       <p><button class="primary" id="f-save" data-action="save-checkin" disabled>Save count</button></p>`;
   } else if (sh.type === "correct") {
     const list = M.correctable(S(), today()), pick = list.find((t) => t.id === sh.id), pc = pick ? M.planCorrection(S(), { id: pick.id, redo_id: "probe", today: today() }) : null;
@@ -2539,7 +2538,7 @@ function renderSheet() {
     body = pick
       ? `<h3>Put right this entry</h3><p>${line(pick)}</p>
         <p class="note">It stays in your list, marked corrected, and a second entry cancels it. Nothing is erased or edited.</p>
-        <p class="note">${pc.redo ? "A new draft with the same details waits in Verify. Fix the amount there and verify it." : "This kind of entry is cancelled only. Log the right one again by hand."}</p>
+        <p class="note">${pc.redo ? "A new draft with the same details waits in Verify. Fix the amount there and verify it." : pick.source === "reconciliation" ? "A count is cancelled only. Log what explains it, like a card payment, then count again." : "This kind of entry is cancelled only. Log the right one again by hand."}</p>
         <p><button class="primary" data-action="do-correct" data-id="${esc(pick.id)}" style="margin-top:14px">Cancel it${pc.redo ? " and enter it again" : ""}</button></p>
         <p class="center"><button class="link" data-action="back-correct">Back to the list</button></p>`
       : `<h3>Which entry was wrong?</h3><p class="note">Verified in the last two weeks.</p>
@@ -3029,7 +3028,9 @@ function refreshSave() {
     const a = M.parsePesos(f.amount), acct = S().accounts.find((x) => x.id === ui.sheet.id);
     btn.disabled = !a.ok || a.centavos < 0;
     const out = $("f-diff");
-    if (out) { const q = a.ok && acct ? M.planCheckIn(S(), { ...checkInInput(acct, a.centavos), id: "probe", transaction_id: "probe" }) : null; out.textContent = q ? "The ledger says " + peso(q.checkIn.ledger_balance) + ". " + differenceText(q.checkIn.difference) + "." : ""; }
+    if (out) { const q = a.ok && acct ? M.planCheckIn(S(), { ...checkInInput(acct, a.centavos), id: "probe", transaction_id: "probe" }) : null; out.textContent = !q ? "" : acct.class === "liability" ? "Ledger: " + peso(q.checkIn.ledger_balance) + (q.checkIn.difference === 0 ? " \u00b7 matches" : " \u00b7 " + peso(Math.abs(q.checkIn.difference)) + (q.checkIn.difference > 0 ? " more" : " less")) : "The ledger says " + peso(q.checkIn.ledger_balance) + ". " + differenceText(q.checkIn.difference) + ".";
+      // a card that owes LESS than the ledger says was usually paid and the payment is not logged yet: one button logs it (owner, Oct 20), so it is not counted as money found
+      const pay = $("f-paid"); if (pay) { const less = q && acct.class === "liability" && q.checkIn.difference < 0 ? -q.checkIn.difference : 0; pay.hidden = !less; pay.innerHTML = less ? `<button data-action="count-paid" style="width:100%">I paid the card: log ${peso(less)}</button>` : ""; } }
   } else if (type === "survey") {
     const c = (f.q1c ?? "").trim(), a = M.parsePesos(f.q1a ?? "");
     btn.disabled = !(f.ease && /^\d{1,4}$/.test(c) && a.ok);
@@ -3390,10 +3391,25 @@ async function onClick(el) {
       if (made.length) { next.transactions = [...S().transactions, ...made.map((m) => m.transaction)]; next.entries = [...S().entries, ...made.flatMap((m) => m.entries)]; }
       ui.sheet = null; renderSheet();
       await commit(next);
-      showToast(acct.name + ": " + differenceText(plan.checkIn.difference));
+      showToast(acct.name + ": " + differenceText(plan.checkIn.difference, acct.class === "liability"));
       break;
     }
     case "count-basis": ui.form.basis = id; renderSheet(); break;
+    case "count-paid": {   // the card owes less than the ledger: log the payment (a draft move from the account that backs the card), then the count matches
+      const acct = S().accounts.find((x) => x.id === ui.sheet.id), a = M.parsePesos(ui.form.amount);
+      const q = a.ok && acct ? M.planCheckIn(S(), { ...checkInInput(acct, a.centavos), id: "probe", transaction_id: "probe" }) : null;
+      const less = q && q.checkIn.difference < 0 ? -q.checkIn.difference : 0;
+      if (!less) break;
+      const payer = M.payerFor(S(), acct.id);
+      if (!payer) { ui.sheet = { type: "cardpay", id: acct.id, view: "main" }; ui.form = { from_id: null, amount: (less / 100).toFixed(2) }; renderSheet(); refreshSave(); break; }   // no account backs the card: choose where it came from
+      const r = M.planCardPayment(S(), { card_id: acct.id, from_id: payer, amount: less, date: logDay(), newId: () => newId("tx") });
+      if (!r.ok) { showToast("Could not save: " + r.message); break; }
+      const over = M.overdrawOf(S(), { account_id: payer, amount: less });
+      if (over && !(await askOverdraw(over, "payment"))) break;
+      const keep = ui.form;
+      if (await commit(r.state)) { ui.form = keep; renderSheet(); refreshSave(); showToast(peso(less) + " card payment waits in Verify"); }
+      break;
+    }
     case "count-tick": { const t = new Set(ui.form.ticked ?? []); t.has(id) ? t.delete(id) : t.add(id); ui.form.ticked = [...t]; renderSheet(); break; }
     case "open-correct": ui.correctAt = 0; ui.sheet = { type: "correct" }; ui.form = {}; renderSheet(); break;
     case "pick-correct": ui.correctAt = document.querySelector("#sheet .sheet")?.scrollTop ?? 0; ui.sheet = { type: "correct", id }; renderSheet(); break;   // remember the place in the list
