@@ -2500,8 +2500,8 @@ function renderSheet() {
       ].join("");
       body = `<div class="gview"><h3>${esc(g.name)}</h3>${goalRing(g, f.percent)}
         <div class="gfig">${peso(f.balance)}</div><div class="gsub">${f.target != null ? "Target " + peso(f.target) : "No target, a place to build up"}</div>
-        ${acct ? `<p><button class="primary" data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button></p>` : `<p><button class="primary" data-action="open-goal-account" data-id="${esc(g.id)}">Choose an account</button></p>`}
-        <div class="seg" role="group" aria-label="Goal pages">${[["overview", "Overview"], ["moves", "Moves"]].map(([v, t]) => `<button data-action="goal-tab" data-id="${v}" aria-pressed="${tab === v}">${t}</button>`).join("")}</div>
+        ${acct ? `<p><button class="primary" data-action="open-deposit" data-id="${esc(g.id)}">Put money in</button></p><p><button data-action="goal-takeout" data-id="${esc(g.id)}" style="width:100%">Take money out</button></p>` : `<p><button class="primary" data-action="open-goal-account" data-id="${esc(g.id)}">Choose an account</button></p>`}
+        <div class="seg" role="group" aria-label="Goal pages">${[["overview", "Overview"], ["moves", "History"]].map(([v, t]) => `<button data-action="goal-tab" data-id="${v}" aria-pressed="${tab === v}">${t}</button>`).join("")}</div>
         ${tab === "overview" ? `<div class="card gv">${overview}</div>${f.ef ? `<p class="note">Target = ${f.ef.months} months of ${esc(f.ef.basis.join(", "))} from ${f.ef.source === "budgets" ? "your budgets" : "your plan"} (${peso(f.ef.monthlyBasis)} a month). It changes when ${f.ef.source === "budgets" ? "your budgets do" : "your plan does"}.${f.ef.missing.length ? " Your plan has no line named " + esc(f.ef.missing.join(", ")) + "." : ""}</p>` : ""}` : `<div class="card gv">${moves.length ? moves.map((t) => `<div class="gvrow"><span>${esc(t.payee || "Entry")}<small>${esc(longDate(t.date))}</small></span><b>${amtOn(t) < 0 ? "-" : "+"}${peso(Math.abs(amtOn(t)))}</b></div>`).join("") : `<p class="note">Nothing in or out of this account yet.</p>`}</div>`}
 </div>`;
     }
@@ -3415,6 +3415,7 @@ async function onClick(el) {
       if (r.ok && await commit(r.state)) showToast(g.role === "emergency" ? "No goal is marked as your emergency fund now." : g.name + " is your emergency fund.");
       break;
     }
+    case "goal-takeout": { const g = S().goals.find((x) => x.id === id); ui.sheet = { type: "move" }; ui.form = { amount: "", from_id: g?.account_id ?? null, to_id: null, fee: "" }; renderSheet(); break; }   // the usual Move money window, From already the goal's account; nothing is saved until Save
     case "open-deposit": ui.sheet = { type: "deposit", id }; ui.form = { amount: "", account_id: accountsFor(null).find((a) => a.id !== S().goals.find((g) => g.id === id)?.account_id)?.id ?? null }; renderSheet(); break;
     case "open-goal-account": ui.sheet = { type: "goal-account", id }; ui.form = { account_id: null }; renderSheet(); break;
     case "view-goal": ui.sheet = { type: "goal-view", id, tab: "overview" }; ui.form = {}; renderSheet(); break;
