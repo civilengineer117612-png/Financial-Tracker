@@ -1761,6 +1761,15 @@ check(await page.locator("#v-wave.on").count() === 0, "and the sound bars go awa
 check(await page.evaluate(() => { const s = document.querySelector("#sheet .sheet"); return s.scrollWidth <= s.clientWidth && document.documentElement.scrollWidth <= innerWidth; }), "neither the window nor the page is wider than the screen");
 await page.click("#f-save");
 check(await seen(page, "#toast", "Saved") && (await text(page, "#toast")).toLowerCase().includes("sample burger"), "the joined sentence is saved as one draft");
+// the same lunch said again: same amount, same account, same day as the draft just saved, so it asks instead of adding a second
+// (said with no amount, so the check-what-I-heard form opens and the amount is typed there)
+await page.click('button[aria-label="Say an entry out loud"]'); await page.fill("#v-text", "lunch at sample burger using gcash"); await page.click('#sheet [data-action="use-spoken"]');
+await page.waitForSelector("#sheet #f-amount"); await page.fill("#f-amount", "95");
+const lunchesBefore = JSON.parse((await stored(page)).local).state.transactions.length;
+await page.click("#f-save");
+check(await seen(page, "#sheet", "This looks like one you already have") && await page.locator('#sheet button[data-action="link-dup"]').count() === 0, "a second entry like one already logged (same amount, account and day) is caught, even with no reference number; a spoken one offers no photo link");
+await page.click('#sheet button:has-text("It is that one: add nothing")'); await page.waitForTimeout(300);
+check(JSON.parse((await stored(page)).local).state.transactions.length === lunchesBefore && await page.locator("#sheet .sheet").count() === 0, "It is that one: nothing is added and the window closes");
 check(errors.length === 0, "no script errors" + (errors.length ? " -> " + errors[0] : ""));
 await ctx.close();
 
