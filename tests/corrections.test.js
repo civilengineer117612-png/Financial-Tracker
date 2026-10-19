@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planExpense, verifyDraft, applyDrafts, correctable, planCorrection, applyCorrection, isReversed, correctionTag, naturalBalance, countedEntries, cardOutstanding, editDraftFields, planTransfer, editTransfer } from "../src/model/index.js";
+import { planExpense, verifyDraft, applyDrafts, correctable, groupByDay, planCorrection, applyCorrection, isReversed, correctionTag, naturalBalance, countedEntries, cardOutstanding, editDraftFields, planTransfer, editTransfer } from "../src/model/index.js";
 import { makeState } from "./fixtures.js";
 
 // Invented data. A checking account of 1,000.00 and one verified lunch of 120.00 on the 8th.
@@ -24,6 +24,18 @@ test("a verified entry from the last two weeks can be corrected; drafts, count g
     const odd = { ...s, transactions: s.transactions.map((t) => ({ ...t, source })) };
     assert.deepEqual(correctable(odd, TODAY), [], source);
   }
+});
+
+test("the list is newest ENTRY date first, whatever the order they were verified in", () => {
+  let s = ledger();   // lunch, dated the 8th, verified first
+  for (const [id, date] of [["old", "2025-03-02"], ["new", "2026-10-09"]]) {
+    s = applyDrafts(s, planExpense(s, { transaction_id: id, date, payee: id, category_id: "food", amount: 100, account_id: "chk" }, NOW).drafts);
+    s = verifyDraft(s, id, NOW).state;   // the oldest-dated one is verified last
+  }
+  assert.deepEqual(correctable(s, TODAY).map((t) => t.id), ["new", "lunch", "old"]);
+  s = applyDrafts(s, planExpense(s, { transaction_id: "new2", date: "2026-10-09", payee: "new2", category_id: "food", amount: 100, account_id: "chk" }, NOW).drafts);
+  s = verifyDraft(s, "new2", NOW).state;
+  assert.deepEqual(groupByDay(correctable(s, TODAY)).map((g) => g.map((t) => t.id).sort()), [["new", "new2"], ["lunch"], ["old"]], "one group per day");
 });
 
 test("a correction cancels the old entry with a new one and leaves the old rows exactly as they were", () => {
