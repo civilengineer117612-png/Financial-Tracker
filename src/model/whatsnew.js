@@ -2,6 +2,7 @@
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
   { id: "2026-10-20-count-why", date: "2026-10-20", text: "Counting a bank or wallet with a gap now asks where the difference went, with Not sure, just match it as the easy choice, and found money no longer lowers your spending." },
+  { id: "2026-10-20-scan-names", date: "2026-10-20", text: "The Scan window now has two parts, One receipt and Multiple transactions at once (a statement, notes screenshot, CSV or Excel file), instead of Import old spending." },
   { id: "2026-10-20-month-card", date: "2026-10-20", text: "On Log, tapping This month now opens what you spent this month, by category, instead of the budget." },
   { id: "2026-10-20-draft-move", date: "2026-10-20", text: "In Verify, Edit has Move to my own account: a spending draft that was really a withdrawal or a move between your accounts becomes a move, not spending." },
   { id: "2026-10-20-count-paid", date: "2026-10-20", text: "Counting a card that owes less than the app says now offers I paid the card, and a count saved by mistake can be cancelled under Put right." },
