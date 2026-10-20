@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-20-spent-today-fix", date: "2026-10-20", text: "Fixed: cancelling a Weekly review count that found money no longer shows that money as spent today." },
   { id: "2026-10-20-scan-names", date: "2026-10-20", text: "The Scan window now has two parts, One receipt and Multiple transactions at once (a statement, notes screenshot, CSV or Excel file), instead of Import old spending." },
   { id: "2026-10-20-month-card", date: "2026-10-20", text: "On Log, tapping This month now opens what you spent this month, by category, instead of the budget." },
   { id: "2026-10-20-draft-move", date: "2026-10-20", text: "In Verify, Edit has Move to my own account: a spending draft that was really a withdrawal or a move between your accounts becomes a move, not spending." },
