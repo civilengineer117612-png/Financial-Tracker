@@ -2265,8 +2265,8 @@ console.log("What's new and how-tos");
   check(/spent today/i.test(await text(page, "#screen")), "the big number on Log says what it is (SPENT TODAY, small, above it)");
   check((await text(page, "#glance")).includes("This month") && !(await text(page, "#glance")).includes("left of") && (await page.getAttribute("#glance", "aria-label")).includes("left of") && await page.locator("#glance .bar span").count() === 1, "Log shows this month as an amount and a bar; the words are only read aloud");
   await page.click("#glance"); await page.waitForTimeout(400);
-  check((await text(page, "#top")).includes("Buckets") && (await page.locator("#screen .hub button").allInnerTexts()).join() === "Buckets,Goals,Pay plan", "tapping it opens Buckets, with Goals and Pay plan in the strip on top");
-  await page.click('#screen .hub button[data-tab="goals"]'); await page.waitForTimeout(400);
+  check(await page.locator('#screen button[data-view="category"][aria-pressed="true"]').count() === 1 && await page.locator("#screen .hub").count() === 0, "tapping it opens what was spent this month, by category (not the budget)");
+  await menuGo(page, "Goals"); await page.waitForTimeout(400);
   check((await text(page, "#top")).includes("Goals") && await page.getAttribute('#screen .hub button[data-tab="goals"]', "aria-current") === "page", "one tap on the strip moves to Goals");
   await page.click("#menuBtn"); await page.waitForSelector("#menu .item"); await page.waitForTimeout(500);
   check((await page.locator("#menu .glabel").allInnerTexts()).join("|") === "Your money|Tools", "the menu has two groups");
@@ -4109,6 +4109,90 @@ console.log("\n-- Card statement --");
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.length === 2, null, { timeout: 5000 });
   const cs = JSON.parse((await stored(page)).local).state;
   check(cs.transactions.map((x) => x.date).sort().join() === "2026-10-01,2026-10-02" && cs.transactions.every((x) => x.status === "draft" && cs.entries.some((e) => e.transaction_id === x.id && e.account_id === "cc")), "two purchase drafts dated by the transaction day, on the card; nothing for the cashback");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== The This month card on Log opens what was spent, by category =====
+console.log("\n-- This month card --");
+{ const acc = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-09-01" };
+  const TS = "2026-10-02T09:00:00.000+08:00";
+  const lunch = { id: "lunch", date: "2026-10-02", payee: "Lunch", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc], transactions: [lunch], entries: [{ transaction_id: "lunch", category_id: "cat-food", amount: 50000 }, { transaction_id: "lunch", account_id: "w", amount: -50000 }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await page.click('#nav button[data-tab="log"]'); await page.waitForSelector("#glance");
+  await page.click("#glance"); await page.waitForTimeout(400);
+  const t = await text(page, "#screen");
+  check(t.includes("spent in October") && t.includes("Food") && t.includes("\u20B1500.00") && await page.locator('#screen button[data-view="category"][aria-pressed="true"]').count() === 1, "tapping This month opens what was spent in October by category, with Food");
+  check(await page.locator("#screen .hub").count() === 0 && !t.includes("Buckets"), "it does not open the budget");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== A count that found money brings the month down: its minus row is shown, so the rows add up =====
+console.log("\n-- Minus row in Category --");
+{ const acc = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-09-01" };
+  const TS = "2026-10-02T09:00:00.000+08:00";
+  const lunch = { id: "lunch", date: "2026-10-02", payee: "Lunch", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS };
+  const count = { id: "cnt", date: "2026-10-02", payee: "Weekly check-in", memo: "", status: "verified", source: "reconciliation", created_at: TS, verified_at: TS };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc], transactions: [lunch, count],
+    entries: [{ transaction_id: "lunch", category_id: "cat-food", amount: 50000 }, { transaction_id: "lunch", account_id: "w", amount: -50000 },
+              { transaction_id: "cnt", account_id: "w", amount: 20000 }, { transaction_id: "cnt", category_id: "cat-unlogged", amount: -20000 }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Spending");
+  const t = await text(page, "#screen");
+  check(t.includes("\u20B1300.00") && t.includes("Food") && t.includes("\u20B1500.00"), "the month says 300.00 spent, with Food at 500.00");
+  check(t.includes("Unlogged") && t.includes("\u2212\u20B1200.00") && t.includes("brings the total down"), "the count that found 200.00 shows as its own minus row, so the rows add up");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== A card counted after it was paid: one tap logs the payment; a count gap can be put right =====
+console.log("\n-- Card count after paying --");
+{ const bank = { id: "b", name: "Test Bank", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 2000000, opening_date: "2026-09-01", reserve_for: "cc" };
+  const card = { id: "cc", name: "Test Card", class: "liability", role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-09-01" };
+  const TS = "2026-09-20T09:00:00.000+08:00";
+  const buy = { id: "buy", date: "2026-09-20", payee: "Sample Mart", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [bank, card], transactions: [buy],
+    entries: [{ transaction_id: "buy", category_id: "cat-shopping", amount: 1000000 }, { transaction_id: "buy", account_id: "cc", amount: -1000000, card_state: "posted" }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Weekly review"); await page.waitForTimeout(300);
+  await page.click('button[data-action="open-checkin"][data-id="cc"]'); await page.waitForSelector("#sheet .sheet");
+  check(!(await text(page, "#sheet")).includes("Type everything you owe") && !(await text(page, "#sheet")).includes("Type the posted amount"), "the card count has no extra notes");
+  await page.click('button[data-action="count-basis"][data-id="owed"]'); await page.fill("#f-amount", "0");
+  const t = (await text(page, "#sheet")).replace(/\s+/g, " ");
+  check(t.includes("Ledger: \u20B110,000.00 \u00b7 \u20B110,000.00 less") && t.includes("I paid the card: log \u20B110,000.00"), "owing less than the ledger offers one button to log the payment");
+  await page.click('#sheet button[data-action="count-paid"]');
+  check(await seen(page, "#toast", "card payment waits in Verify") && await seen(page, "#f-diff", "matches"), "the payment waits in Verify and the count now matches");
+  let d = JSON.parse((await stored(page)).local).state;
+  const pay = d.transactions.find((x) => x.payee === "Card payment"), pes = d.entries.filter((e) => e.transaction_id === pay?.id);
+  check(pay && pay.status === "draft" && pes.some((e) => e.account_id === "cc" && e.amount === 1000000) && pes.some((e) => e.account_id === "b" && e.amount === -1000000), "one draft move of 10,000.00 from the bank that backs the card into the card");
+  await page.click("#f-save"); await page.waitForTimeout(600);
+  d = JSON.parse((await stored(page)).local).state;
+  check(!d.entries.some((e) => e.category_id === "cat-unlogged"), "nothing went to Unlogged, so the month's spending did not drop");
+  check((await text(page, ".choice:has-text('Test Card')")).includes("Matches the ledger"), "the card reads Matches the ledger");
+  // a count saved WITHOUT logging the payment can be put right at the Weekly review
+  await page.click('button[data-action="open-checkin"][data-id="b"]'); await page.waitForSelector("#sheet .sheet");
+  await page.fill("#f-amount", "25000"); await page.click("#f-save"); await page.waitForTimeout(600);
+  check((await text(page, ".choice:has-text('Test Bank')")).includes("more than logged"), "a count that found money is saved");
+  await page.click('button[data-action="open-correct"]');
+  check(await seen(page, "#sheet", "Weekly check-in"), "the count's entry is offered under Put right a verified entry");
+  await page.click('#sheet button[data-action="pick-correct"]:has-text("Weekly check-in")');
+  check((await text(page, "#sheet")).includes("A count is cancelled only. Log what explains it"), "it is cancelled only, nothing is made again, and it says what to do next");
+  await page.click('#sheet button[data-action="do-correct"]'); await page.waitForTimeout(600);
+  d = JSON.parse((await stored(page)).local).state;
+  const unl = d.entries.filter((e) => e.category_id === "cat-unlogged").reduce((n, e) => n + e.amount, 0);
+  check(unl === 0 && d.transactions.some((x) => x.reverses && x.payee === "Weekly check-in"), "the count gap is cancelled: Unlogged is back to zero");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== A count that found money brings the month down: its minus row is shown, so the rows add up =====
+console.log("\n-- Minus row in Category --");
+{ const acc = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-09-01" };
+  const TS = "2026-10-02T09:00:00.000+08:00";
+  const lunch = { id: "lunch", date: "2026-10-02", payee: "Lunch", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS };
+  const count = { id: "cnt", date: "2026-10-02", payee: "Weekly check-in", memo: "", status: "verified", source: "reconciliation", created_at: TS, verified_at: TS };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc], transactions: [lunch, count],
+    entries: [{ transaction_id: "lunch", category_id: "cat-food", amount: 50000 }, { transaction_id: "lunch", account_id: "w", amount: -50000 },
+              { transaction_id: "cnt", account_id: "w", amount: 20000 }, { transaction_id: "cnt", category_id: "cat-unlogged", amount: -20000 }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Spending");
+  const t = await text(page, "#screen");
+  check(t.includes("\u20B1300.00") && t.includes("Food") && t.includes("\u20B1500.00"), "the month says 300.00 spent, with Food at 500.00");
+  check(t.includes("Unlogged") && t.includes("\u2212\u20B1200.00") && t.includes("brings the total down"), "the count that found 200.00 shows as its own minus row, so the rows add up");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
 // ===== A spending draft that was really a move to your own account =====
