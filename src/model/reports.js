@@ -30,7 +30,7 @@ export function spendingByRange(state, { from, to, categoryMaps = [], asOf }) {
   for (const e of state.entries) {
     if (e.category_id == null || !expense.has(e.category_id)) continue;
     const t = txById.get(e.transaction_id);
-    if (!t || t.date < from || t.date > to) continue;
+    if (!t || t.adjustment || t.date < from || t.date > to) continue;   // a matched count that found money is not spending, up or down
     if (t.status !== "verified") { pending += e.amount; continue; }
     const id = reportingCategory(categoryMaps, e.category_id, asOf ?? to);
     totals.set(id, (totals.get(id) ?? 0) + e.amount);
@@ -60,7 +60,7 @@ export function spendingByAccount(state, { month, from, to }) {
   for (const e of state.entries) {
     if (e.account_id == null || !spendingTx.has(e.transaction_id)) continue;
     const t = txById.get(e.transaction_id);
-    if (!t || t.status !== "verified" || t.date < lo || t.date > hi) continue;
+    if (!t || t.adjustment || t.status !== "verified" || t.date < lo || t.date > hi) continue;
     totals.set(e.account_id, (totals.get(e.account_id) ?? 0) - e.amount);   // money out = a credit, stored negative
   }
   const rows = [...totals].filter(([, amount]) => amount !== 0)

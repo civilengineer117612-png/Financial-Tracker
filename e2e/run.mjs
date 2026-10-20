@@ -4286,6 +4286,47 @@ console.log("\n-- Minus row in Category --");
   check(t.includes("Unlogged") && t.includes("\u2212\u20B1200.00") && t.includes("brings the total down"), "the count that found 200.00 shows as its own minus row, so the rows add up");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
+// ===== A bank count with a gap: where did it come from, or go? =====
+console.log("\n-- Count with a gap --");
+{ const bank = { id: "b", name: "Test Bank", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 520000, opening_date: "2026-09-01" };
+  const cash = { id: "cash", name: "Cash", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-09-01" };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [bank, cash] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Weekly review"); await page.waitForTimeout(300);
+  await page.click('button[data-action="open-checkin"][data-id="b"]'); await page.waitForSelector("#sheet .sheet");
+  await page.fill("#f-amount", "8996.94");
+  check(await seen(page, "#sheet", "Where did the extra \u20B13,796.94 come from?"), "more money than the app asks where the extra came from");
+  const t = (await text(page, "#sheet")).replace(/\s+/g, " ");
+  check(t.includes("Moved in from another account of mine") && t.includes("Money I received") && t.includes("Not sure: just match it") && t.includes("Matching it does not count as spending."), "with its three choices; just match it is the default, and says it is not spending");
+  check(await page.getAttribute('#sheet button[data-action="count-why"][data-id="match"]', "aria-pressed") === "true", "just match it is picked already");
+  await page.click("#f-save"); await page.waitForTimeout(600);
+  let d = JSON.parse((await stored(page)).local).state;
+  const tx = d.transactions.find((x) => x.source === "reconciliation");
+  check(tx && tx.adjustment === true && d.checkIns[0].matched === true && d.checkIns[0].difference === 379694, "just match it saved the count as an adjustment");
+  check((await text(page, "#screen")).includes("Matched to your bank. Log the moves when you can."), "Weekly review shows the quiet reminder");
+  await menuGo(page, "Spending");
+  const sp = await text(page, "#screen");
+  check(!sp.includes("brings the total down") && !sp.includes("\u2212\u20B1"), "the found money is not spending going down: no minus row");
+  await menuGo(page, "Weekly review");
+  await page.click('button[data-action="open-checkin"][data-id="cash"]'); await page.waitForSelector("#sheet .sheet");
+  await page.fill("#f-amount", "3796.94");
+  check(await seen(page, "#sheet", "Where did the extra"), "Cash counted higher asks too");
+  await page.click('#sheet button[data-action="count-why"][data-id="move"]');
+  check(await page.locator("#f-save").isDisabled(), "moved in from another account waits until the account is chosen");
+  await page.click('#sheet .chip[data-action="pick-count-other"]:has-text("Test Bank")');
+  check(!(await page.locator("#f-save").isDisabled()), "choosing it turns Save on");
+  await page.click("#f-save");
+  check(await seen(page, "#toast", "The move waits in Verify"), "it says the move waits in Verify");
+  d = JSON.parse((await stored(page)).local).state;
+  const mv = d.transactions.find((x) => x.payee.startsWith("Moved in")), es = d.entries.filter((e) => e.transaction_id === mv?.id);
+  check(mv && mv.status === "draft" && es.some((e) => e.account_id === "cash" && e.amount === 379694) && es.some((e) => e.account_id === "b" && e.amount === -379694), "a draft move from the bank into Cash was made");
+  check(d.checkIns.length === 2 && d.checkIns[1].difference === 0 && d.transactions.filter((x) => x.source === "reconciliation").length === 1, "the count matches, with no second gap entry");
+  await menuGo(page, "Weekly review");
+  await page.click('button[data-action="open-checkin"][data-id="b"]'); await page.waitForSelector("#sheet .sheet");
+  await page.fill("#f-amount", "3000");   // the bank's ledger is 5,200.00 after the move out
+  check(await seen(page, "#sheet", "Where did the missing") && (await text(page, "#sheet")).includes("I spent some of it") && (await text(page, "#sheet")).includes("Not sure counts as spending you did not log."), "less money than the app asks where it went, and says not sure counts as spending");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 // ===== A cancelled count does not show as spent today =====
 console.log("\n-- Cancelled count and Spent today --");
 { const bank = { id: "b", name: "Test Bank", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 1000000, opening_date: "2026-09-01" };
