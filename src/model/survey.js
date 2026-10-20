@@ -21,10 +21,11 @@ export function weekEndingOn(date) {
 export function autoFillSurvey(state, { unlogged_category_id, week_start, week_end }) {
   const txById = new Map(state.transactions.map((t) => [t.id, t]));
   let count = 0, amount = 0;
+  const cancelled = new Set(state.transactions.filter((t) => t.reverses != null).map((t) => t.reverses));   // a count that was put right is not a missed entry
   for (const e of state.entries) {
     if (e.category_id !== unlogged_category_id || e.amount <= 0) continue;
     const t = txById.get(e.transaction_id);
-    if (t && t.source === "reconciliation" && t.date >= week_start && t.date <= week_end) { count += 1; amount += e.amount; }
+    if (t && t.source === "reconciliation" && !cancelled.has(t.id) && t.date >= week_start && t.date <= week_end) { count += 1; amount += e.amount; }
   }
   const corrections = state.transactions.filter((t) =>
     (t.source === "photo" || t.source === "voice") && t.status === "verified" && t.edited_before_verify === true &&

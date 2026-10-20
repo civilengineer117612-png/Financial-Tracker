@@ -4327,6 +4327,21 @@ console.log("\n-- Count with a gap --");
   check(await seen(page, "#sheet", "Where did the missing") && (await text(page, "#sheet")).includes("I spent some of it") && (await text(page, "#sheet")).includes("Not sure counts as spending you did not log."), "less money than the app asks where it went, and says not sure counts as spending");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
+// ===== A cancelled count does not show as spent today =====
+console.log("\n-- Cancelled count and Spent today --");
+{ const bank = { id: "b", name: "Test Bank", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 1000000, opening_date: "2026-09-01" };
+  const TS = "2026-10-03T09:00:00.000+08:00";
+  const cnt = { id: "cnt", date: "2026-10-03", payee: "Weekly check-in", memo: "Reconciliation: counted 2100000, ledger 1000000", status: "verified", source: "reconciliation", created_at: TS, verified_at: TS };
+  const rev = { id: "rev:cnt", date: "2026-10-03", payee: "Weekly check-in", memo: "Correction of Weekly check-in", status: "verified", source: "correction", reverses: "cnt", created_at: TS, verified_at: TS };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [bank], transactions: [cnt, rev],
+    entries: [{ transaction_id: "cnt", account_id: "b", amount: 1100000 }, { transaction_id: "cnt", category_id: "cat-unlogged", amount: -1100000 },
+              { transaction_id: "rev:cnt", account_id: "b", amount: -1100000 }, { transaction_id: "rev:cnt", category_id: "cat-unlogged", amount: 1100000 }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await page.click('#nav button[data-tab="log"]'); await page.waitForSelector("#glance");
+  const t = await text(page, "#screen");
+  check(/spent today/i.test(t) && t.includes("\u20B10.00") && !t.includes("11,000.00"), "a cancelled count that found 11,000.00 shows nothing as spent today");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 // ===== A line repeated inside one picture or file is left out until asked for =====
 console.log("\n-- Repeated lines --");
 { const acc = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-04-01" };
