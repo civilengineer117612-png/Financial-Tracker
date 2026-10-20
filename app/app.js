@@ -1292,13 +1292,13 @@ const STM_OK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stro
 const STM_NO = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><path d="M6 12h12"/></svg>';
 function statementsHtml() {
   const accts = stmAccounts();
-  if (!accts.length) return `<p class="note">No statements yet. In Scan, Import old spending, pick a bank statement (PDF) and keep it. Oldest month first is easiest.</p>`;
+  if (!accts.length) return `<p class="note">No statements yet. In Scan, Multiple transactions at once, pick a bank statement (PDF) and keep it. Oldest month first is easiest.</p>`;
   return accts.map((a) => {
     const rows = M.proveMonths(S(), a.id), good = rows.filter(stmGood).length, pct = rows.length ? Math.round((100 * good) / rows.length) : 0;
     return `<div class="card" style="padding:16px"><div class="note" style="margin:0 0 4px">${esc(a.name)}</div><div class="stbig">${pairFig(good, rows.length, { fmt: (n) => String(n), tail: rows.length === 1 ? "month" : "months", left: "to prove", doneWord: "All proved", big: true, label: "Months proved" })}</div>
       <div class="stbar" role="img" aria-label="${good} of ${rows.length} months proved"><i style="width:${pct}%"></i></div><div class="note" style="margin:0">proved by the bank's own statements</div></div>
       <div class="setlist">${rows.map((r) => `<button class="setrow" data-action="st-month" data-acct="${esc(a.id)}" data-month="${r.month}"><div class="st"><b>${monthLabel(r.month)}</b><small>${stmGood(r) ? `${peso(r.opening)} to ${peso(r.closing)}` : esc(r.reason)}</small></div><span style="white-space:nowrap">${stmGood(r) ? STM_OK : STM_NO} ${r.accepted ? "Accepted" : STM_WORD[r.status]}</span><span class="chev">\u203a</span></button>`).join("")}</div>${keptHtml(a)}`;
-  }).join("") + movesHtml() + `<p class="note">Add a statement from Scan, Import old spending. Oldest month first is easiest.</p>`;
+  }).join("") + movesHtml() + `<p class="note">Add a statement from Scan, Multiple transactions at once. Oldest month first is easiest.</p>`;
 }
 // The statements kept for an account, each with a way to remove it (a wrong account, or kept twice). Removing touches no entry and no draft; a statement with an accepted month stays.
 function keptHtml(a) {
@@ -2666,17 +2666,17 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>${sh.editId ? "Save changes" : "Save payslip"}</button></p>
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
   } else if (sh.type === "scanpick") {
-    body = `<h3>Scan</h3><p class="note">A receipt, payment screen or payslip. Take a photo or choose one. If the app is sure, it saves a draft; otherwise it asks.</p>${photoButtons("quick")}
-      <p class="note">Old spending from somewhere else: a bank statement (PDF), a screenshot of your notes, or a CSV or Excel (.xlsx) file. Every line waits in Verify.</p>
-      <label class="filebtn alt" id="imp-pick">Import old spending<input type="file" accept="image/*,.pdf,application/pdf,.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-import="1" hidden></label>`;
+    body = `<h3>Scan</h3><h4 class="dayhead">One receipt</h4><p class="note">A receipt, payment screen or payslip. If the app is sure, it saves one draft; otherwise it asks.</p>${photoButtons("quick")}
+      <h4 class="dayhead">Multiple transactions at once</h4><p class="note">A bank statement (PDF), a screenshot of your notes, or a CSV or Excel file. Every line waits in Verify.</p>
+      <label class="filebtn alt" id="imp-pick">Choose a statement or list<input type="file" accept="image/*,.pdf,application/pdf,.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-import="1" hidden></label>`;
   } else if (sh.type === "import") {
     const f = ui.form;
-    if (f.askPassword) body = `<h3>Import old spending</h3><p class="note">${f.wrong ? "That password did not open it. Try again." : "This PDF is locked. Type its password; it is used once to open the file and is not kept."}</p>
+    if (f.askPassword) body = `<h3>Multiple transactions at once</h3><p class="note">${f.wrong ? "That password did not open it. Try again." : "This PDF is locked. Type its password; it is used once to open the file and is not kept."}</p>
       <label for="pdf-pw">Password</label><input id="pdf-pw" type="password" autocomplete="off" autocapitalize="off" enterkeyhint="go">
       <p><button class="primary" data-action="pdf-open" style="margin-top:14px">Open</button></p>
       <p><button data-action="pdf-cancel" style="width:100%">Cancel</button></p>`;
-    else if (f.busy) body = `<h3>Import old spending</h3><p class="note" id="imp-msg" role="status">${esc(f.busy)}</p>`;
-    else if (f.error) body = `<h3>Import old spending</h3><p class="note" role="alert"><b>${esc(f.error)}</b></p>`;
+    else if (f.busy) body = `<h3>Multiple transactions at once</h3><p class="note" id="imp-msg" role="status">${esc(f.busy)}</p>`;
+    else if (f.error) body = `<h3>Multiple transactions at once</h3><p class="note" role="alert"><b>${esc(f.error)}</b></p>`;
     else {
       const kept = importKept(f), waiting = f.items.filter((x) => x.meaning === "unsure" && !f.choice?.[x.id]).length, held = !!f.statement && !f.statement.check.ok && !f.looked;
       const p = f.order ? M.previewImport(S(), kept, f.order, ledger.settings.payee_book, { includeRepeats: f.repeatsIn === true }) : null, acct = S().accounts.find((a) => a.id === f.account_id) ?? (f.account_id === NEW_POCKET && f.newPocket ? newPocketAccount(f.newPocket) : undefined);
@@ -2690,7 +2690,7 @@ function renderSheet() {
         ${unsure.length ? `<label>Which is it?</label><p class="note small">Money out that does not say what it was, one row per person. Each waits until you choose.</p>${M.unsureByPerson(unsure).map((g) => { const all = (v) => g.ids.every((i) => f.choice?.[i] === v), n = g.ids.length;
           return `<div class="mrow mimp ask"><span class="mn">${esc(g.name)}<small>${n} ${n === 1 ? "line" : "lines"} \u00b7 ${peso(g.total)}</small></span><span class="chips"><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="spending" aria-pressed="${all("spending")}">Spending</button><button class="chip" data-action="stm-choose" data-id="${esc(g.key)}" data-pick="not" aria-pressed="${all("not")}">Not spending</button></span>
           ${n > 1 ? `<button class="link small" data-action="stm-show" data-id="${esc(g.key)}">${f.open?.[g.key] ? "Hide the lines" : `Show the ${n} lines`}</button>${f.open?.[g.key] ? `<div class="stmlines">${g.lines.map((x) => `<div class="mrow mline mimp"><span class="mn">${esc(yearDate(x.dateRaw))}</span><span class="mv">${peso(x.amount)}</span></div>`).join("")}</div>` : ""}` : `<small class="hiddennote">${esc(yearDate(g.lines[0].dateRaw))}</small>`}</div>`; }).join("")}` : ""}` : "";
-      body = `<h3>Import old spending</h3>${stBlock}${st ? `<p><button class="chip wide" data-action="stm-keep" aria-pressed="${f.keep !== false}">Keep this statement to prove your months</button></p><p class="note small">It stays on this phone, in Setup, Statements.</p>` : ""}${orderLine}
+      body = `<h3>Multiple transactions at once</h3>${stBlock}${st ? `<p><button class="chip wide" data-action="stm-keep" aria-pressed="${f.keep !== false}">Keep this statement to prove your months</button></p><p class="note small">It stays on this phone, in Setup, Statements.</p>` : ""}${orderLine}
         ${f.statement?.pocket ? `<p class="note" id="stm-pocket"><b>This is a Go Save pocket, not your main ${esc(f.statement.bank ?? "bank")} account.</b> ${f.newPocket ? `A pocket called \u201C${esc(newPocketAccount(f.newPocket).name.replace(" (new)", ""))}\u201D is made for it when you tap Add. Rename it in Setup once you know which pocket it is.` : "Choose the savings pocket it is from."}</p>` : ""}<label>${f.statement ? "Which account is this statement from?" : "Paid from"}${f.autoAccount && f.account_id === f.autoAccount ? ` <span class="labelnote">chosen for you</span>` : ""}${REQ}</label>${paidChips(f.account_id, !!f.statement, f.newPocket ? [newPocketAccount(f.newPocket)] : [])}${REQNOTE}${f.statement && f.linkedCount > 1 && !f.account_id ? `<p class="note small">More than one of your accounts is linked to ${esc(f.statement.bank ?? "this bank")}. Choose the one this statement is from.</p>` : ""}
         ${p ? `<p class="note" id="imp-count"><b>${p.lines.length} ${p.lines.length === 1 ? "line" : "lines"}</b> to add as drafts${waiting ? `. <b>${waiting} ${waiting === 1 ? "line needs" : "lines need"} your choice</b>: left out until you choose` : ""}${p.duplicates.length ? `; ${p.duplicates.length} already logged, left out` : ""}${p.undated.length + f.notRead.length ? `; ${p.undated.length + f.notRead.length} not read` : ""}.</p>
           ${p.repeats.length ? `<p class="note small" id="imp-repeats">${p.repeats.length} repeated ${p.repeats.length === 1 ? "line" : "lines"} ${f.repeatsIn ? "added" : "left out"} \u00b7 <button class="link small" data-action="imp-repeats">${f.repeatsIn ? "Leave out" : p.repeats.length === 1 ? "Add it" : "Add them"}</button></p>` : ""}

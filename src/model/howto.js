@@ -15,7 +15,7 @@ export const HOWTOS = [
   { id: "checks", label: "Check your card reserve", caption: "Card spending goes up; Checks says if the reserve still covers it." },
   { id: "buffer", label: "Cover an overrun", caption: "When a category runs over, the buffer pays the gap and records it." },
   { id: "goals", label: "Save toward a goal", caption: "Tap a goal, tap Put money in, type the amount, Save: its bar grows." },
-  { id: "import", label: "Import old spending", caption: "Tap the camera, Import old spending, pick a file: every line waits in Verify." },
+  { id: "import", label: "Multiple transactions at once", caption: "Tap the camera, Choose a statement or list: every line waits in Verify." },
   { id: "scheduled", label: "Schedule a payment", caption: "A due payment waits in Verify as a draft: check it, then tap Correct." },
   { id: "backup", label: "Back up your data", caption: "Back up now, set a password, save the file off this phone." },
 ];
@@ -153,7 +153,7 @@ export function howtoClip(id, raw) {
     return phone("import", `<div class="hw-screen"><div class="hw-ex">Example</div><div class="hw-top"><div class="hw-h">Log</div><div class="hw-cam" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></div></div>
       <div class="hw-date">${esc(d.date)}</div><div class="hw-note">A photo of your notes, a CSV or an Excel file</div></div><div class="hw-nav"><div>Log</div><div>Verify</div></div>
       ${sheet(`<div class="hw-row"><span>Paid from</span>${acct(d.account)}</div><div class="hw-row"><span><b>12 lines</b> to add as drafts</span><span>2 already logged, left out</span></div>`, "Add 10 drafts to Verify")}${tick}`,
-      `A finger taps the camera and Import old spending, a file is read, the window shows 12 lines with 2 already logged left out, and the finger taps Add 10 drafts to Verify.`);
+      `A finger taps the camera and Choose a statement or list, a file is read, the window shows 12 lines with 2 already logged left out, and the finger taps Add 10 drafts to Verify.`);
   }
   if (id === "backup") {   // Setup's Backup block: tap Back up now, set a password, save the file off the phone; "Last backup" turns to today
     const last = (c) => `<span class="${c}">${c === "hw-t0" ? "No backup yet" : "Last backup today"}</span>`;
