@@ -45,7 +45,7 @@ export function spendingByPayee(state, book, { from, to }) {
   for (const e of state.entries) {
     if (!e.category_id || !expense.has(e.category_id)) continue;
     const t = tx.get(e.transaction_id);
-    if (!t || t.status !== "verified" || t.date < from || t.date > to) continue;
+    if (!t || t.adjustment || t.status !== "verified" || t.date < from || t.date > to) continue;
     const key = payeeKey(t.payee) || "(no name)";
     const m = byKey.get(key) ?? { key, label: payeeLabel(t.payee), total: 0, count: 0, txs: new Set(), cats: new Map() };
     m.total += e.amount;

@@ -8,6 +8,7 @@ import { validateShape } from "./schema.js";
 import { naturalBalance, cardOutstanding, countedEntries } from "./balances.js";
 import { checkTransactionSave } from "./index.js";
 import { phTimestamp } from "./util.js";
+import { planTransfer } from "./transfers.js";
 
 const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }] });
 
@@ -64,9 +65,13 @@ export function planCheckIn(state, input, now = new Date()) {
   }
   const ledger = isCard && input.basis === "owed" ? cardOutstanding(account, countedEntries(basisState)).total : ledgerBalanceFor(account, countedEntries(basisState));
   const difference = input.counted_balance - ledger;   // + means you hold more than the ledger says
+  // "Not sure: just match it" (owner, Oct 20): a bank or wallet count with a gap nobody explained. Found money (more than the ledger) is never
+  // spending going down, so that entry is an `adjustment` the spending reports skip; money missing stays unlogged spending, as before.
+  const matched = !isCard && input.why === "match" && difference !== 0;
   const checkIn = {
     id: input.id, date: input.date, account_id: account.id,
     counted_balance: input.counted_balance, ledger_balance: ledger, difference,
+    ...(matched ? { matched: true } : {}),
   };
   const shape = validateShape("CheckIn", checkIn);
   if (shape.length) return { ok: false, violations: shape, checkIn, transaction: null, entries: [], posting };
@@ -82,6 +87,7 @@ export function planCheckIn(state, input, now = new Date()) {
     memo: "Reconciliation: counted " + input.counted_balance + ", ledger " + ledger,
     // Counting the money is the owner's deliberate look (spec 8.2), so it is verified.
     status: "verified", source: "reconciliation", created_at: stamp, verified_at: stamp,
+    ...(matched && difference > 0 ? { adjustment: true } : {}),
   };
   const entries = [
     { transaction_id: transaction.id, account_id: account.id, amount: accountLeg,
@@ -100,4 +106,20 @@ export function unloggedTotal(state, unloggedCategoryId, from, to) {
     .filter((e) => e.category_id === unloggedCategoryId)
     .filter((e) => { const d = dates.get(e.transaction_id); return d >= from && d <= to; })
     .reduce((s, e) => s + e.amount, 0);
+}
+
+// A count of a bank, wallet or cash account that shows a gap the owner can explain as a MOVE to or from another of their own accounts (owner, Oct 20):
+// the move is made as a DRAFT first (money in when the count is higher, out when lower), so the count then matches and no gap is recorded.
+// input: the planCheckIn input. other: {account_id, move_id}. Returns {ok, violations, state, plan, move_id}.
+export function planCheckInWithMove(state, input, other, now = new Date()) {
+  const account = state.accounts.find((a) => a.id === input.account_id), from = state.accounts.find((a) => a.id === other.account_id);
+  if (!account || account.class !== "asset") return fail("NOT_AN_ASSET", "a move needs a bank, wallet or cash account");
+  if (!from || from.class !== "asset" || from.id === account.id) return fail("BAD_OTHER", "choose a different bank, wallet or cash account");
+  const gap = input.counted_balance - ledgerBalanceFor(account, countedEntries(state));
+  if (gap === 0) return fail("NO_GAP", "the count already matches");
+  const moved = planTransfer(state, { transaction_id: other.move_id, date: input.date, from_account_id: gap > 0 ? from.id : account.id, to_account_id: gap > 0 ? account.id : from.id,
+    amount: Math.abs(gap), payee: gap > 0 ? "Moved in (found at count)" : "Moved out (found at count)", source: "manual" }, now);
+  if (!moved.ok) return { ok: false, violations: moved.violations };
+  const plan = planCheckIn(moved.state, { ...input, why: "move" }, now);
+  return { ok: plan.ok, violations: plan.violations, state: moved.state, plan, move_id: other.move_id };
 }

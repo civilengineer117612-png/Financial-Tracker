@@ -49,7 +49,7 @@ export function checkRulesSave(previousRules, nextRules) {
 }
 export { ruleInEffect, rulesInEffect, reportingCategory, checkCategoryMapSave } from "./rules.js";
 export { validateRatchetParams, wasMet, nextRatchet, ratchetSchedule, splitRatchet } from "./ratchet.js";
-export { planCheckIn, ledgerBalanceFor, unloggedTotal, pendingPurchases } from "./checkin.js";
+export { planCheckIn, planCheckInWithMove, ledgerBalanceFor, unloggedTotal, pendingPurchases } from "./checkin.js";
 export { formatSize, picturesNote, readerStatus, usageLine, picturesBackupLine } from "./storage.js";
 export { KEEP_MONTHS, SHRINK_MAX_SIDE, SHRINK_BATCH, monthsBefore, shrinkDue, shrinkProgress, targetSize } from "./pictures.js";
 export { MAX_FORM_LINES, KIND_NAMES, newPlanForm, planTextFromForm, planFormStatus, formFromPlan, planFormLines, withListedLines, planFormSuggestion, planFormFill, payslipDayNotes, ordinal, amountText } from "./planform.js";

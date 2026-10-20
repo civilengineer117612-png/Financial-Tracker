@@ -18,7 +18,7 @@ export function dailySpending(state, { from, to }) {
   for (const e of state.entries) {
     if (e.category_id == null || !expense.has(e.category_id)) continue;
     const t = tx.get(e.transaction_id);
-    if (!t || t.status !== "verified" || t.date < from || t.date > to) continue;
+    if (!t || t.adjustment || t.status !== "verified" || t.date < from || t.date > to) continue;
     out.set(t.date, (out.get(t.date) ?? 0) + e.amount);
   }
   return out;

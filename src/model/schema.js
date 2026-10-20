@@ -51,6 +51,7 @@ export const SCHEMAS = {
     trip_out: optional(id),      // ADDED (version 4): taken off this trip by hand although its date falls inside the trip
     created_at: timestamp, verified_at: optional(timestamp),
     edited_before_verify: optional(bool),   // ADDED (addendum 3): photo/voice drafts only, feeds survey Q4
+    adjustment: optional(bool),   // ADDED (owner, Oct 20, no version change): a count that found MORE money and was matched with no explanation; spending reports skip it
   },
   Entry: {
     transaction_id: id,
@@ -85,7 +86,7 @@ export const SCHEMAS = {
     last4: optional({ type: "last4" }) },   // the last four digits of the bank account a line names ("ending in 6588"), so a move between your own accounts can be matched
   StatementAccept: { id, account_id: id, month: { type: "month" }, made: count, verified: count, accepted_at: timestamp },
   Subscription: { id, name, card: id, currency: name, amount: centavos, renewal_day: { type: "day" }, exit_condition: text, review_date: date },
-  CheckIn: { id, date, account_id: id, counted_balance: centavos, ledger_balance: centavos, difference: centavos },
+  CheckIn: { id, date, account_id: id, counted_balance: centavos, ledger_balance: centavos, difference: centavos, matched: optional(bool) },
   Attachment: { id, transaction_id: id, type: name, file: name, file_timestamp: timestamp },
   Tag: { id, name, budget: optional(centavos),
     start: optional(date), end: optional(date) },   // ADDED (data version 4): the trip's first and last day, inclusive; entries on those days belong to it, worked out when shown
