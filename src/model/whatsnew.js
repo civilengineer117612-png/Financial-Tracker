@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-20-scan-names", date: "2026-10-20", text: "The Scan window now has two parts, One receipt and Multiple transactions at once (a statement, notes screenshot, CSV or Excel file), instead of Import old spending." },
   { id: "2026-10-20-count-paid", date: "2026-10-20", text: "Counting a card that owes less than the app says now offers I paid the card, and a count saved by mistake can be cancelled under Put right." },
   { id: "2026-10-20-minus-row", date: "2026-10-20", text: "Cash flow, Category now shows a category below zero (like a count that found money) with its minus, so the rows add up to the total." },
   { id: "2026-10-19-correct-list", date: "2026-10-19", text: "Put right a verified entry now lists entries by day, newest first, with the year on each date, and after you cancel one it stays in the list at the same place." },

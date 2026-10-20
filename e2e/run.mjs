@@ -2273,7 +2273,7 @@ console.log("What's new and how-tos");
   check(await page.locator("#menu-backup").count() === 0, "the menu does not repeat the backup line");
   await page.click('#menu .item[data-tab="help"]'); await page.waitForFunction(() => !document.querySelector("#menu .drawer"));
   await page.click('button[data-action="open-howto"][data-id="import"]');
-  check(await seen(page, "#sheet", "Import old spending") && (await text(page, "#sheet")).includes("Add 10 drafts to Verify") && /example/i.test(await text(page, "#sheet")), "the Import how-to can be played from Help");
+  check(await seen(page, "#sheet", "Multiple transactions at once") && (await text(page, "#sheet")).includes("Add 10 drafts to Verify") && /example/i.test(await text(page, "#sheet")), "the Import how-to can be played from Help");
   await page.click('#sheet button:has-text("Close")');
   await page.click('button[data-action="open-howto"][data-id="scan"]');
   check(await seen(page, "#sheet", "Scan a receipt"), "a how-to can be played from Help too");
@@ -2944,7 +2944,7 @@ console.log("Name and icon");
   await ctx.close(); }
 
 // ===== 5u. importing old spending from a spreadsheet =====
-console.log("Import old spending");
+console.log("Multiple transactions at once");
 { const { deflateRawSync } = await import("node:zlib");
   const zipOf = (files) => { const parts = [], central = []; let off = 0;
     for (const [name, text] of files) { const raw = Buffer.from(text), data = deflateRawSync(raw), n = Buffer.from(name);
@@ -2956,7 +2956,7 @@ console.log("Import old spending");
   const acct = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-10-02" };
   ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acct] } } }));
   await page.click('button[data-action="open-scan-pick"]');
-  check(await seen(page, "#sheet", "Import old spending"), "the Scan window offers Import old spending");
+  check(await seen(page, "#sheet", "Multiple transactions at once"), "the Scan window offers Multiple transactions at once");
   const csv = "Daily Expenses\n\nExpense,Amount,Date,Category\nJeep,\u20B126,09/20/2026,Lakat/Date\nLunch,130,09/20/2026,Food\n\"Dinner, with friends\",\"\u20B11,545\",09/26/2026,Lakat/Date\nBad row,x,09/27/2026,Food\n";
   await page.setInputFiles('input[data-import]', { name: "expenses.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
   check(await seen(page, "#sheet", "3 lines"), "a CSV is read: 3 lines");
@@ -4171,7 +4171,8 @@ console.log("\n-- Repeated lines --");
   ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc] } } }));
   await page.click('button[data-action="open-scan-pick"]');
   await page.setInputFiles("input[data-import]", { name: "dups.csv", mimeType: "text/csv", buffer: Buffer.from("Date,Expense,Amount\n2026-10-02,Sample Cafe,150\n2026-10-02,Sample Cafe,150\n2026-10-03,Sample Mart,500\n") });
-  await seen(page, "#sheet", "Import old spending"); await page.click('#sheet .chip:has-text("Test Wallet")');
+  await seen(page, "#sheet", "Multiple transactions at once"); await page.waitForSelector("#imp-count");   // the file is read after the window opens: choosing the account before then raced the redraw (it closed the list again)
+  await page.click('#sheet .chip:has-text("Test Wallet")');
   check((await text(page, "#imp-repeats")).includes("1 repeated line left out") && (await text(page, "#imp-count")).includes("2 lines"), "a line shown twice in one file is left out and said once: 2 lines to add");
   await page.click('#sheet button[data-action="imp-repeats"]');
   check((await text(page, "#imp-repeats")).includes("1 repeated line added") && (await text(page, "#imp-count")).includes("3 lines") && (await text(page, "#f-save")).includes("Add 3 drafts"), "Add it puts it in: 3 lines, the button says 3");
