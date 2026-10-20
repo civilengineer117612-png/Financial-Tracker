@@ -3750,10 +3750,10 @@ console.log("\n-- Card count --");
   let t = (await text(page, "#sheet")).replace(/\s+/g, " ");
   check(t.includes("What the bank posted") && t.includes("All I owe") && t.includes("Sample Grocer") && t.includes("Sample Cinema"), "counting a card offers the two ways to compare and lists its pending purchases");
   await page.fill("#f-amount", "1750.00");
-  check((await text(page, "#sheet")).includes("The ledger says \u20B10.00"), "nothing is posted yet, so the posted part is zero");
+  check((await text(page, "#sheet")).includes("Ledger: \u20B10.00"), "nothing is posted yet, so the posted part is zero");
   await page.click('button[data-action="count-tick"][data-id="p1"]'); await page.click('button[data-action="count-tick"][data-id="p2"]');
   t = (await text(page, "#sheet")).replace(/\s+/g, " ");
-  check(t.includes("The ledger says \u20B11,750.00") && /matches|nothing/i.test(t.split("The ledger says")[1] ?? ""), "ticking the two purchases the bank lists makes the count match: no gap");
+  check(t.includes("Ledger: \u20B11,750.00") && /matches/i.test(t.split("Ledger:")[1] ?? ""), "ticking the two purchases the bank lists makes the count match: no gap");
   await page.click("#f-save"); await page.waitForTimeout(700);
   { const d = JSON.parse((await stored(page)).local).state, card = d.accounts.find((a) => a.id === "k"), mine = d.entries.filter((e) => e.account_id === "k");
     const posted = -mine.filter((e) => e.card_state === "posted").reduce((a, e) => a + e.amount, 0), pend = -mine.filter((e) => e.card_state === "pending").reduce((a, e) => a + e.amount, 0);
@@ -3762,7 +3762,7 @@ console.log("\n-- Card count --");
   await page.click('button[data-action="open-checkin"][data-id="k"]'); await page.waitForSelector("#sheet .sheet");
   check(!(await text(page, "#sheet")).includes("Sample Grocer") && (await text(page, "#sheet")).includes("Sample Cinema"), "a purchase that moved to posted is not offered again");
   await page.click('button[data-action="count-basis"][data-id="owed"]'); await page.fill("#f-amount", "2150.00");
-  check(!(await text(page, "#sheet")).includes("Tick the purchases") && (await text(page, "#sheet")).includes("The ledger says \u20B12,150.00"), "'All I owe' compares with everything owed, pending included");
+  check(!(await text(page, "#sheet")).includes("Tick the purchases") && (await text(page, "#sheet")).includes("Ledger: \u20B12,150.00"), "'All I owe' compares with everything owed, pending included");
   check(errors.length === 0, "no script errors in the card count: " + errors.join("; ")); await ctx.close(); }
 // ===== Two goals on one account share it: each counts only its own part =====
 console.log("\n-- Goals sharing an account --");
@@ -4141,13 +4141,68 @@ console.log("\n-- Minus row in Category --");
   check(t.includes("Unlogged") && t.includes("\u2212\u20B1200.00") && t.includes("brings the total down"), "the count that found 200.00 shows as its own minus row, so the rows add up");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
 
+// ===== A card counted after it was paid: one tap logs the payment; a count gap can be put right =====
+console.log("\n-- Card count after paying --");
+{ const bank = { id: "b", name: "Test Bank", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 2000000, opening_date: "2026-09-01", reserve_for: "cc" };
+  const card = { id: "cc", name: "Test Card", class: "liability", role: "", hidden_by_default: false, archived: false, opening_balance: 0, opening_date: "2026-09-01" };
+  const TS = "2026-09-20T09:00:00.000+08:00";
+  const buy = { id: "buy", date: "2026-09-20", payee: "Sample Mart", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [bank, card], transactions: [buy],
+    entries: [{ transaction_id: "buy", category_id: "cat-shopping", amount: 1000000 }, { transaction_id: "buy", account_id: "cc", amount: -1000000, card_state: "posted" }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Weekly review"); await page.waitForTimeout(300);
+  await page.click('button[data-action="open-checkin"][data-id="cc"]'); await page.waitForSelector("#sheet .sheet");
+  check(!(await text(page, "#sheet")).includes("Type everything you owe") && !(await text(page, "#sheet")).includes("Type the posted amount"), "the card count has no extra notes");
+  await page.click('button[data-action="count-basis"][data-id="owed"]'); await page.fill("#f-amount", "0");
+  const t = (await text(page, "#sheet")).replace(/\s+/g, " ");
+  check(t.includes("Ledger: \u20B110,000.00 \u00b7 \u20B110,000.00 less") && t.includes("I paid the card: log \u20B110,000.00"), "owing less than the ledger offers one button to log the payment");
+  await page.click('#sheet button[data-action="count-paid"]');
+  check(await seen(page, "#toast", "card payment waits in Verify") && await seen(page, "#f-diff", "matches"), "the payment waits in Verify and the count now matches");
+  let d = JSON.parse((await stored(page)).local).state;
+  const pay = d.transactions.find((x) => x.payee === "Card payment"), pes = d.entries.filter((e) => e.transaction_id === pay?.id);
+  check(pay && pay.status === "draft" && pes.some((e) => e.account_id === "cc" && e.amount === 1000000) && pes.some((e) => e.account_id === "b" && e.amount === -1000000), "one draft move of 10,000.00 from the bank that backs the card into the card");
+  await page.click("#f-save"); await page.waitForTimeout(600);
+  d = JSON.parse((await stored(page)).local).state;
+  check(!d.entries.some((e) => e.category_id === "cat-unlogged"), "nothing went to Unlogged, so the month's spending did not drop");
+  check((await text(page, ".choice:has-text('Test Card')")).includes("Matches the ledger"), "the card reads Matches the ledger");
+  // a count saved WITHOUT logging the payment can be put right at the Weekly review
+  await page.click('button[data-action="open-checkin"][data-id="b"]'); await page.waitForSelector("#sheet .sheet");
+  await page.fill("#f-amount", "25000"); await page.click("#f-save"); await page.waitForTimeout(600);
+  check((await text(page, ".choice:has-text('Test Bank')")).includes("more than logged"), "a count that found money is saved");
+  await page.click('button[data-action="open-correct"]');
+  check(await seen(page, "#sheet", "Weekly check-in"), "the count's entry is offered under Put right a verified entry");
+  await page.click('#sheet button[data-action="pick-correct"]:has-text("Weekly check-in")');
+  check((await text(page, "#sheet")).includes("A count is cancelled only. Log what explains it"), "it is cancelled only, nothing is made again, and it says what to do next");
+  await page.click('#sheet button[data-action="do-correct"]'); await page.waitForTimeout(600);
+  d = JSON.parse((await stored(page)).local).state;
+  const unl = d.entries.filter((e) => e.category_id === "cat-unlogged").reduce((n, e) => n + e.amount, 0);
+  check(unl === 0 && d.transactions.some((x) => x.reverses && x.payee === "Weekly check-in"), "the count gap is cancelled: Unlogged is back to zero");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+// ===== A count that found money brings the month down: its minus row is shown, so the rows add up =====
+console.log("\n-- Minus row in Category --");
+{ const acc = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-09-01" };
+  const TS = "2026-10-02T09:00:00.000+08:00";
+  const lunch = { id: "lunch", date: "2026-10-02", payee: "Lunch", memo: "", status: "verified", source: "manual", created_at: TS, verified_at: TS };
+  const count = { id: "cnt", date: "2026-10-02", payee: "Weekly check-in", memo: "", status: "verified", source: "reconciliation", created_at: TS, verified_at: TS };
+  const seed = { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc], transactions: [lunch, count],
+    entries: [{ transaction_id: "lunch", category_id: "cat-food", amount: 50000 }, { transaction_id: "lunch", account_id: "w", amount: -50000 },
+              { transaction_id: "cnt", account_id: "w", amount: 20000 }, { transaction_id: "cnt", category_id: "cat-unlogged", amount: -20000 }] } };
+  ({ ctx, page, errors } = await open({ blockSw: true, seed }));
+  await menuGo(page, "Spending");
+  const t = await text(page, "#screen");
+  check(t.includes("\u20B1300.00") && t.includes("Food") && t.includes("\u20B1500.00"), "the month says 300.00 spent, with Food at 500.00");
+  check(t.includes("Unlogged") && t.includes("\u2212\u20B1200.00") && t.includes("brings the total down"), "the count that found 200.00 shows as its own minus row, so the rows add up");
+  check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
 // ===== A line repeated inside one picture or file is left out until asked for =====
 console.log("\n-- Repeated lines --");
 { const acc = { id: "w", name: "Test Wallet", class: "asset", role: "", hidden_by_default: false, archived: false, opening_balance: 500000, opening_date: "2026-04-01" };
   ({ ctx, page, errors } = await open({ blockSw: true, seed: { ...OWNER_STYLE, state: { ...OWNER_STYLE.state, accounts: [acc] } } }));
   await page.click('button[data-action="open-scan-pick"]');
   await page.setInputFiles("input[data-import]", { name: "dups.csv", mimeType: "text/csv", buffer: Buffer.from("Date,Expense,Amount\n2026-10-02,Sample Cafe,150\n2026-10-02,Sample Cafe,150\n2026-10-03,Sample Mart,500\n") });
-  await seen(page, "#sheet", "Import old spending"); await page.click('#sheet .chip:has-text("Test Wallet")');
+  await seen(page, "#sheet", "Import old spending"); await page.waitForSelector("#imp-count");   // the file is read after the window opens: choosing the account before then raced the redraw (it closed the list again)
+  await page.click('#sheet .chip:has-text("Test Wallet")');
   check((await text(page, "#imp-repeats")).includes("1 repeated line left out") && (await text(page, "#imp-count")).includes("2 lines"), "a line shown twice in one file is left out and said once: 2 lines to add");
   await page.click('#sheet button[data-action="imp-repeats"]');
   check((await text(page, "#imp-repeats")).includes("1 repeated line added") && (await text(page, "#imp-count")).includes("3 lines") && (await text(page, "#f-save")).includes("Add 3 drafts"), "Add it puts it in: 3 lines, the button says 3");
