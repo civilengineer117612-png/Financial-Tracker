@@ -77,6 +77,7 @@ A verified entry is FINAL: never edited, never deleted. A mistake in one is put 
 
 The correction list (owner, Oct 19; data version unchanged) is newest ENTRY date first and cut into days (`groupByDay`; a small grey heading with the date and year, its entries indented under it, no boxes); after a cancel it stays on the list at the same place (`ui.correctAt`).
 
+SPENDING DRAFT TO A MOVE (owner, Oct 20; data version unchanged, `draftToMove` in transfers.js): Verify, Edit of a plain spending draft (not scheduled, not a split) has one row "Move to my own account · Not spending" with an Off/On chip; On swaps Category and Paid from for From and To, and Save reads "Save as a move". The draft becomes a move draft with the same id, date, name, note, photo and `corrects` link; still a draft.
 A category BELOW ZERO in Cash flow, Category (owner, Oct 20: a card count after an unlogged card payment made Unlogged -10,443.37, hidden, so the rows did not add up) is listed last with its minus, "brings the total down" and no bar.
 
 ## CATEGORY EDITING, REQUIRED MARKS, WELCOME CARD (owner's rules, Oct 13, data version unchanged)
