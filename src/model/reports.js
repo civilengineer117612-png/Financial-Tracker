@@ -113,10 +113,13 @@ export function dayTotal(state, date) {
   const expense = new Set(state.categories.filter((c) => c.kind === "expense").map((c) => c.id));
   const txById = new Map(state.transactions.map((t) => [t.id, t]));
   let verified = 0, draft = 0, drafts = 0;
+  // A count's gap and the entry that CANCELS it are both left out (owner, Oct 20: only the count was skipped, so cancelling a count that found money
+  // showed that money as spending today, once more each time it was cancelled).
+  const notSpending = (t) => t.source === "reconciliation" || (t.reverses != null && txById.get(t.reverses)?.source === "reconciliation");
   for (const e of state.entries) {
     if (e.category_id == null || !expense.has(e.category_id)) continue;
     const t = txById.get(e.transaction_id);
-    if (!t || t.date !== date || t.source === "reconciliation") continue;
+    if (!t || t.date !== date || notSpending(t)) continue;
     if (t.status === "verified") verified += e.amount; else { draft += e.amount; drafts += 1; }
   }
   return { total: verified + draft, verified, draft, drafts };
