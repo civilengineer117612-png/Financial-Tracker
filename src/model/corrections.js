@@ -7,7 +7,11 @@ import { isFeeId, planTransfer, feeOf } from "./transfers.js";
 import { phTimestamp } from "./util.js";
 
 export const CORRECTION_DAYS = 14;   // an entry verified in the last 14 days (this week and the one before) can be corrected
-const NOT_CORRECTABLE = ["reconciliation", "correction", "template"];   // a count gap, a correction itself, and scheduled payments (they have their own "new amount")
+const NOT_CORRECTABLE = ["correction", "template"];   // a correction itself, and scheduled payments (they have their own "new amount")
+// A Weekly review count's gap CAN be cancelled (owner, Oct 20: a card counted before its payment was logged made the payment look like money found).
+// Only the count's own entry; the "Posted by the bank" pair a card count makes is not a mistake to put right. Cancelled only: no draft is made again.
+const isCountGap = (t) => t.source === "reconciliation" && String(t.memo ?? "").startsWith("Reconciliation:");
+const correctableSource = (t) => (t.source === "reconciliation" ? isCountGap(t) : !NOT_CORRECTABLE.includes(t.source));
 const partnerIds = (id) => ["rsv:" + id, "fee:" + id];
 const isGenerated = (t) => t.id.startsWith("rsv:") || isFeeId(t.id);
 const fail = (code, message) => ({ ok: false, violations: [{ code, severity: "error", message }], transactions: [], entries: [], redo: null });
@@ -20,7 +24,7 @@ export const isReversed = (state, id) => state.transactions.some((t) => t.revers
 export function correctable(state, today) {
   const from = addDays(today, 1 - CORRECTION_DAYS);
   return state.transactions
-    .filter((t) => t.status === "verified" && !isGenerated(t) && !NOT_CORRECTABLE.includes(t.source) && !isReversed(state, t.id) && dayOf(t.verified_at) >= from)
+    .filter((t) => t.status === "verified" && !isGenerated(t) && correctableSource(t) && !isReversed(state, t.id) && dayOf(t.verified_at) >= from)
     .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : a.verified_at < b.verified_at ? 1 : a.verified_at > b.verified_at ? -1 : 0));
 }
 
@@ -54,7 +58,7 @@ export function planCorrection(state, input, now = new Date()) {
   }
   const mine = state.entries.filter((e) => e.transaction_id === original.id);
   const cat = mine.find((e) => e.category_id != null), acct = mine.find((e) => e.account_id != null);
-  const plain = mine.length === 2 && cat && acct && cat.amount > 0 && acct.amount < 0
+  const plain = !isCountGap(original) && mine.length === 2 && cat && acct && cat.amount > 0 && acct.amount < 0
     && (probe.categories.find((c) => c.id === cat.category_id)?.kind === "expense");
   let redo = null;
   const moved = mine.length === 2 && mine.every((e) => e.account_id != null);   // a move between two of the owner's accounts, with its fee when it had one
