@@ -1,6 +1,9 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-22-spending-details", date: "2026-10-22", text: "Tap a Category or Accounts row in Spending to see the entries behind its total for the selected period." },
+  { id: "2026-10-22-reserve-history", date: "2026-10-22", text: "Card-reserve warnings now use the same current balances as Cards, so older history is not counted again after an account starts." },
+  { id: "2026-10-22-single-pdf", date: "2026-10-22", text: "One receipt and Add income now read PDFs, including password-protected payslips, on your phone; check the figures before saving, and the password is never kept." },
   { id: "2026-10-20-count-why", date: "2026-10-20", text: "Counting a bank or wallet with a gap now asks where the difference went, with Not sure, just match it as the easy choice, and found money no longer lowers your spending." },
   { id: "2026-10-20-spent-today-fix", date: "2026-10-20", text: "Fixed: cancelling a Weekly review count that found money no longer shows that money as spent today." },
   { id: "2026-10-20-scan-names", date: "2026-10-20", text: "The Scan window now has two parts, One receipt and Multiple transactions at once (a statement, notes screenshot, CSV or Excel file), instead of Import old spending." },

@@ -69,6 +69,30 @@ export function spendingByAccount(state, { month, from, to }) {
   return { total: rows.reduce((n, r) => n + r.amount, 0), rows };
 }
 
+// Exact contributions behind one Spending row. Refunds keep their signs;
+// splits contribute only the selected category's part. Nothing is saved.
+export function spendingTransactions(state, { from, to, category_id, account_id, categoryMaps = [], asOf = to }) {
+  if (!category_id && !account_id) return { total: 0, rows: [] };
+  const expense = new Set(state.categories.filter((c) => c.kind === "expense").map((c) => c.id));
+  const byTx = new Map();
+  for (const e of state.entries) {
+    const list = byTx.get(e.transaction_id) ?? [];
+    list.push(e); byTx.set(e.transaction_id, list);
+  }
+  const rows = [];
+  for (const transaction of state.transactions) {
+    if (transaction.adjustment || transaction.status !== "verified" || transaction.date < from || transaction.date > to) continue;
+    const entries = byTx.get(transaction.id) ?? [];
+    if (!entries.some((e) => expense.has(e.category_id))) continue;
+    const amount = entries.reduce((sum, e) => sum + (category_id
+      ? expense.has(e.category_id) && reportingCategory(categoryMaps, e.category_id, asOf) === category_id ? e.amount : 0
+      : e.account_id === account_id ? -e.amount : 0), 0);
+    if (amount !== 0) rows.push({ transaction, amount });
+  }
+  rows.sort((a, b) => b.transaction.date.localeCompare(a.transaction.date) || b.transaction.created_at.localeCompare(a.transaction.created_at) || a.transaction.id.localeCompare(b.transaction.id));
+  return { total: rows.reduce((sum, row) => sum + row.amount, 0), rows };
+}
+
 // Each credit card: what was spent on it in the range, what was paid toward it (money moved onto the card with no spending category),
 // and what is owed on it now. Only verified entries count for spent and paid.
 export function cardsSummary(state, { from, to }) {

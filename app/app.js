@@ -4,7 +4,7 @@ import * as M from "../src/model/index.js";
 import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto, useTrialStorage, clearTrialStorage, readCopies, writeCopies } from "./store.js";
 import { preparePhoto, readPage, evenedCopy } from "./ocr.js";
 import { speechSupported, listen, firstLanguage, other } from "./voice.js";
-import { readPdfPages, PdfCancelled } from "./pdftext.js";
+import { readPdfPages, readPdfScan, PdfCancelled } from "./pdftext.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -510,10 +510,11 @@ function entriesListHtml() {
   const shown = ui.showCancelled ? list : list.filter((t) => !gone.has(t.id)), nGone = list.length - list.filter((t) => !gone.has(t.id)).length;
   return `${nGone ? `<p class="note"><button class="link" data-action="toggle-cancelled">${ui.showCancelled ? "Hide" : "Show"} ${nGone} cancelled ${nGone === 1 ? "entry" : "entries"}</button></p>` : ""}${shown.length ? shown.map(rowFor).join("") : `<p class="note">Nothing logged in this period.</p>`}`;
 }
-function rowFor(t, withDate = false) {
+function rowFor(t, withDate = false, spendingAmount = null) {
+  spendingAmount = Number.isFinite(spendingAmount) ? spendingAmount : null;
   const d = describe(t);
   const acct = d.kind === "expense" ? S().accounts.find((a) => a.id === d.account_id) : null;
-  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${withDate ? esc(listDate(t.date)) + " · " : ""}${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${M.correctionTag(S(), t) === "Corrected" ? " · cancelled" : ""}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${signed(d)}</div></button>`;
+  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${withDate ? esc(listDate(t.date)) + " · " : ""}${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${M.correctionTag(S(), t) === "Corrected" ? " · cancelled" : ""}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${spendingAmount !== null ? peso(spendingAmount) : signed(d)}</div></button>`;
 }
 
 // Everything waiting, oldest first. Nothing has to wait for tomorrow: verify whenever you have the time.
@@ -646,12 +647,12 @@ const payslipDefaults = () => ({
 // A payslip photo, read line by line: opens the payslip window already filled in. The owner checks every figure (the same four checks as
 // for a typed payslip point out what does not add up), chooses where it landed, and saves. The photo stays with the pay.
 const knownEmployers = () => [...new Set([...(S().payslips ?? []).map((p) => p.employer), ledger.settings.last_employer].filter(Boolean))];
-function openPayslipFromPhoto(blob, text, queueId) {
-  const r = M.readPayslip(text, today()), d = payslipDefaults(), two = (c) => (c / 100).toFixed(2);
+function openPayslipFromPhoto(blob, text, queueId, source = "photo") {
+  const r = M.readPayslip(text, today(), { allowHistorical: source === "PDF" }), d = payslipDefaults(), two = (c) => (c / 100).toFixed(2);
   const employer = r.employer ? M.snapEmployer(r.employer, knownEmployers()) : d.employer;
   // One short line: everything was read from the photo and none of it is confirmed (a right employer does not make the figures right).
   // Only what needs action is added after it.
-  const f = { ...d, account_id: null, employer, text, notes: ["Read from the photo, the employer too. Check each figure against the paper.", ...r.notes.filter((n) => /could not|total deductions/i.test(n)), ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."])] };
+  const f = { ...d, account_id: null, employer, text, notes: [source === "PDF" ? "Read from the PDF. Check each figure against the paper." : "Read from the photo, the employer too. Check each figure against the paper.", ...r.notes.filter((n) => /could not|total deductions/i.test(n)), ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the paper."])] };
   // A date the reader could not find is left EMPTY, not filled with today: a payslip must never land in the wrong month by default.
   f.period_from = r.period_from ?? ""; f.period_to = r.period_to ?? ""; f.pay_date = r.pay_date ?? "";
   if (!r.period_from && r.pay_date) f.notes = [...f.notes, "I could not find the pay period. Choose the dates."];
@@ -825,7 +826,7 @@ const askPdfPassword = (wrong) => new Promise((resolve) => { pdfPasswordResolve 
 const importKept = (f) => f.items.filter((x) => x.meaning !== "unsure" || f.choice?.[x.id] === "spending");
 const tableOrThrow = (rows) => { const t = M.parseTable(rows); if (!t.ok) throw new Error(t.message); return t; };
 const photoButtons = (mode, busy = false) => `<label class="filebtn" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="12.5" r="3.5"/></svg>&nbsp;${busy ? "Reading..." : "Take a photo"}<input type="file" accept="image/*" capture="environment" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>
-  <label class="filebtn alt" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>&nbsp;Choose from photos or files<input type="file" accept="image/*" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>`;
+  <label class="filebtn alt" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>&nbsp;Choose from photos or files<input type="file" accept="image/*,.pdf,application/pdf" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>`;
 
 function viewScan() {
   const s = ui.scan, busy = s?.busy === true;
@@ -900,6 +901,7 @@ async function readPhoto(blob, progress, forcePayslip = false) {
 
 async function startScan(file, asPayslip = false) {
   if (!file) return;
+  if (isPdf(file)) return startPdfScan(file, asPayslip);
   const say = (msg) => { if (ui.scan) ui.scan.msg = msg; const el = $("scan-msg"); if (el) el.textContent = msg; };
   ui.scan = { busy: true, msg: "Preparing the photo..." }; renderScreen();
   let blob, text = "", failed = null;
@@ -911,6 +913,27 @@ async function startScan(file, asPayslip = false) {
   ui.scan = null; renderScreen();
   if (asPayslip) { openPayslipFromPhoto(blob, text, null); return; }   // chosen as a payslip: the payslip window, whatever the reader thought it was
   openScanSheet(blob, text, failed, null);
+}
+
+const isPdf = (file) => file && (/\.pdf$/i.test(file.name) || file.type === "application/pdf");
+async function startPdfScan(file, asPayslip = false) {
+  const sheet = { type: "pdfscan" };
+  ui.sheet = sheet;
+  const say = (busy) => { if (ui.sheet === sheet) { ui.form = { busy }; renderSheet(); } };
+  ui.scan = { busy: true, msg: "Opening the PDF..." }; renderScreen(); say("Opening the PDF...");
+  try {
+    const { blob, text } = await readPdfScan(file,
+      (wrong) => ui.sheet === sheet ? askPdfPassword(wrong) : null,
+      (image) => readPhoto(image, (fraction, what) => say(what + (fraction ? " " + Math.round(fraction * 100) + "%" : "...")), asPayslip), say);
+    if (ui.sheet !== sheet) return;
+    ui.sheet = null;
+    if (asPayslip || M.readScan(text, today()).kind === "payslip") openPayslipFromPhoto(blob, text, null, "PDF");
+    else openScanSheet(blob, text, null, null);
+  } catch (err) {
+    if (ui.sheet !== sheet) return;
+    if (err instanceof PdfCancelled) { ui.sheet = null; renderSheet(); }
+    else { ui.form = { error: String(err?.message ?? err) }; renderSheet(); }
+  } finally { ui.scan = null; renderScreen(); }
 }
 
 // The window for checking a guess: for a photo just taken, or for one kept in the queue because the app could not be sure.
@@ -993,6 +1016,7 @@ function readWithin(blob, progress) {
 
 async function quickCapture(file) {
   if (!file) return;
+  if (isPdf(file)) return startPdfScan(file);
   ui.scan = { busy: true, msg: "Keeping the photo..." }; renderScreen();
   const id = newId("photo");
   try { await putPhoto(id, await preparePhoto(file)); }
@@ -1495,10 +1519,10 @@ const barRow = (r) => { const tag = r.action ? "button" : "div", attrs = r.actio
 const barCard = (rows) => `<div class="card catcard">${rows.map(barRow).join("")}</div>`;
 // Rows of {label, amount} as bars scaled to the largest, folded after SHOWN_BARS.
 function shareBars(rows, total) {
-  const shown = foldRows(rows.filter((r) => r.amount > 0), total);
+  const shown = rows.some((r) => r.action) ? rows : foldRows(rows.filter((r) => r.amount > 0), total);
   if (!shown.length) return `<p class="note">Nothing verified in this period.</p>`;
   const top = Math.max(...shown.map((r) => r.amount), 1);
-  return barCard(shown.map((r) => ({ name: r.label, fig: peso(r.amount), pct: Math.max(2, Math.round((r.amount * 100) / top)), label: `${r.plain ?? r.label}: ${Math.round((r.amount * 100) / top)}% of the largest` })));
+  return barCard(shown.map((r) => ({ id: r.id, action: r.action, name: r.label, fig: peso(r.amount), pct: r.amount > 0 ? Math.max(2, Math.round((r.amount * 100) / top)) : null, label: `${r.plain ?? r.label}: ${Math.round((r.amount * 100) / top)}% of the largest` })));
 }
 
 // A small arrow beside an amount: up is money spent, down is money paid in (the words are read aloud, not shown).
@@ -1680,8 +1704,8 @@ function viewMoney() {
     const acc = M.spendingByAccount(S(), { from, to });
     if (!acc.rows.length) return empty();
     const pct = (a) => (acc.total > 0 && a > 0 ? Math.round((a * 1000) / acc.total) / 10 : 0);
-    const rows = acc.rows.map((r) => ({ id: r.account_id, label: withIcon(S().accounts.find((a) => a.id === r.account_id) ?? { name: r.name }, 24), plain: accountName(r.account_id), amount: r.amount, percent: pct(r.amount) }));
-    if (ui.asList) return done(listTable(["Account", "Spent", "Share"], rows.map((r) => [esc(accountName(r.id)), peso(r.amount), r.percent + "%"]), "Total", acc.total));
+    const rows = acc.rows.map((r) => ({ id: r.account_id, action: "spending-account", label: withIcon(S().accounts.find((a) => a.id === r.account_id) ?? { name: r.name }, 24), plain: accountName(r.account_id), amount: r.amount, percent: pct(r.amount) }));
+    if (ui.asList) return done(listTable(["Account", "Spent", "Share"], rows.map((r) => [`<button class="link" data-action="spending-account" data-id="${esc(r.id)}">${esc(accountName(r.id))}</button>`, peso(r.amount), r.percent + "%"]), "Total", acc.total));
     return done(shareBars(rows, acc.total));
   }
 
@@ -1692,8 +1716,8 @@ function viewMoney() {
   });
   const top = Math.max(...rows.map((r) => r.amount), 1);   // each bar is scaled to the largest category, so the list is its own twin
   // A row below zero (a count that found money) is shown last with its minus and no bar, so the rows add up to the total.
-  const minus = rows.filter((r) => r.amount < 0).map((r) => ({ name: r.label, sub: "brings the total down", fig: "\u2212" + peso(-r.amount) }));
-  return hero + barCard(rows.filter((r) => r.amount > 0).map((r) => ({ name: r.label, fig: peso(r.amount), pct: Math.max(2, Math.round((r.amount * 100) / top)), label: `${r.name}: ${Math.round((r.amount * 100) / top)}% of the largest` })).concat(minus)) + `
+  const minus = rows.filter((r) => r.amount < 0).map((r) => ({ id: r.id, action: "spending-category", name: r.label, sub: "brings the total down", fig: "\u2212" + peso(-r.amount) }));
+  return hero + barCard(rows.filter((r) => r.amount > 0).map((r) => ({ id: r.id, action: "spending-category", name: r.label, fig: peso(r.amount), pct: Math.max(2, Math.round((r.amount * 100) / top)), label: `${r.name}: ${Math.round((r.amount * 100) / top)}% of the largest` })).concat(minus)) + `
     <p class="entrylink"><button class="link" data-action="open-entries">See every entry</button></p>`;
 }
 
@@ -2667,17 +2691,18 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>${sh.editId ? "Save changes" : "Save payslip"}</button></p>
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
   } else if (sh.type === "scanpick") {
-    body = `<h3>Scan</h3><h4 class="dayhead">One receipt</h4><p class="note">A receipt, payment screen or payslip. If the app is sure, it saves one draft; otherwise it asks.</p>${photoButtons("quick")}
+    body = `<h3>Scan</h3><h4 class="dayhead">One receipt</h4><p class="note">A receipt, payment screen or payslip, as a photo or PDF. If the app is sure, it saves one draft; otherwise it asks.</p>${photoButtons("quick")}
       <h4 class="dayhead">Multiple transactions at once</h4><p class="note">A bank statement (PDF), a screenshot of your notes, or a CSV or Excel file. Every line waits in Verify.</p>
       <label class="filebtn alt" id="imp-pick">Choose a statement or list<input type="file" accept="image/*,.pdf,application/pdf,.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-import="1" hidden></label>`;
-  } else if (sh.type === "import") {
+  } else if (sh.type === "import" || sh.type === "pdfscan") {
     const f = ui.form;
-    if (f.askPassword) body = `<h3>Multiple transactions at once</h3><p class="note">${f.wrong ? "That password did not open it. Try again." : "This PDF is locked. Type its password; it is used once to open the file and is not kept."}</p>
+    const title = sh.type === "pdfscan" ? "Read a PDF" : "Multiple transactions at once";
+    if (f.askPassword) body = `<h3>${title}</h3><p class="note">${f.wrong ? "That password did not open it. Try again." : "This PDF is locked. Type its password; it is used once to open the file and is not kept."}</p>
       <label for="pdf-pw">Password</label><input id="pdf-pw" type="password" autocomplete="off" autocapitalize="off" enterkeyhint="go">
       <p><button class="primary" data-action="pdf-open" style="margin-top:14px">Open</button></p>
       <p><button data-action="pdf-cancel" style="width:100%">Cancel</button></p>`;
-    else if (f.busy) body = `<h3>Multiple transactions at once</h3><p class="note" id="imp-msg" role="status">${esc(f.busy)}</p>`;
-    else if (f.error) body = `<h3>Multiple transactions at once</h3><p class="note" role="alert"><b>${esc(f.error)}</b></p>`;
+    else if (f.busy) body = `<h3>${title}</h3><p class="note" id="imp-msg" role="status">${esc(f.busy)}</p>`;
+    else if (f.error) body = `<h3>${title}</h3><p class="note" role="alert"><b>${esc(f.error)}</b></p>`;
     else {
       const kept = importKept(f), waiting = f.items.filter((x) => x.meaning === "unsure" && !f.choice?.[x.id]).length, held = !!f.statement && !f.statement.check.ok && !f.looked;
       const p = f.order ? M.previewImport(S(), kept, f.order, ledger.settings.payee_book, { includeRepeats: f.repeatsIn === true }) : null, acct = S().accounts.find((a) => a.id === f.account_id) ?? (f.account_id === NEW_POCKET && f.newPocket ? newPocketAccount(f.newPocket) : undefined);
@@ -2705,7 +2730,7 @@ function renderSheet() {
     body = `<h3>Add income</h3>
       <p class="note">A payslip:</p>
       <p><button class="primary" data-action="open-payslip">Type a payslip</button></p>
-      <p class="note">Or read it from a photo (you check every figure before it is saved):</p>${photoButtons("payslip")}
+      <p class="note">Or read it from a photo or PDF (you check every figure before it is saved):</p>${photoButtons("payslip")}
       <p class="note">Something else:</p>
       <p><button data-action="open-income" style="width:100%">Other income</button></p>`;
   } else if (sh.type === "voice") {
@@ -2749,7 +2774,7 @@ function renderSheet() {
       const rows = [["Date", fullDate(t.date)], ["Status", t.status === "draft" ? "Draft, waiting in Verify" : "Verified"], ["How it was entered", source],
         ...(d.kind === "split" ? d.parts.map((x) => [x.name, peso(x.amount)]) : d.category_id ? [["Category", categoryName(d.category_id)]] : []),
         ...(d.kind === "transfer" ? [["Between", d.detail], ...(M.feeOf(S(), t.id).amount ? [["Fee", peso(M.feeOf(S(), t.id).amount)]] : []), ...(M.foreignOf(S(), t.id) ? [["Foreign amount", foreignText(M.foreignOf(S(), t.id))]] : [])] : []), ...(t.memo ? [["What was said or noted", "\u201C" + t.memo + "\u201D"]] : [])];
-      body = `<h3>${esc(d.title)}</h3><p class="bigamt">${peso(d.amount)}</p>
+      body = `${sh.back ? `<p><button class="link" data-action="spending-back">Back to the spending list</button></p>` : ""}<h3>${esc(d.title)}</h3><p class="bigamt">${peso(d.amount)}</p>
         <dl class="txdl">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}${acct ? `<dt>${d.kind === "income" ? "Arrived in" : "Paid from"}</dt><dd class="who">${withIcon(acct, 22)}</dd>` : ""}</dl>
         ${shot ? `<p><button class="primary" data-action="open-photo" data-id="${esc(shot.id)}">See the photo</button></p>` : ""}`;
     }
@@ -2888,6 +2913,13 @@ function renderSheet() {
   } else if (sh.type === "howto") {
     const h = M.HOWTOS.find((x) => x.id === sh.id);
     body = `<h3>${esc(h.label)}</h3>${clipFor(h.id)}<p class="hwcap">${esc(h.caption)}</p>`;
+  } else if (sh.type === "spending-entries") {
+    const state = sh.by === "category" ? SV() : S();
+    const r = M.spendingTransactions(state, { from: sh.from, to: sh.to, categoryMaps: S().categoryMaps, asOf: sh.asOf, [sh.by + "_id"]: sh.id });
+    const name = sh.by === "category" ? categoryName(sh.id) : accountName(sh.id);
+    body = `<h3>${esc(name)}</h3><p class="sub">${esc(sh.label)}</p><p class="bigamt">${peso(r.total)}</p>
+      <p class="note">Verified spending in this total. Refunds bring it down; split entries show only the part counted here. Tap an entry to check its details.</p>
+      ${r.rows.length ? r.rows.map((row) => rowFor(row.transaction, true, row.amount)).join("") : `<p class="note">No spending in this period.</p>`}`;
   } else if (sh.type === "entries") {
     const p = period();
     body = `<h3>Every entry${(ui.form.scope ?? "period") === "all" ? "" : " in " + esc(periodLabel(p))}</h3>
@@ -3009,7 +3041,7 @@ function renderSheet() {
       <p class="note">Anything entered since this backup was made will be gone.${sh.all ? "" : ` Pictures are not in a backup, so those entries will say "picture not on this phone".`}</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "register" || sh.type === "goal-view" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" || sh.type === "networth" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "register" || sh.type === "goal-view" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" || sh.type === "spending-entries" || sh.type === "networth" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
   $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || sh.type === "planform" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
@@ -4053,7 +4085,13 @@ async function onClick(el) {
     case "save-scan": await saveScan(); break;
     case "view-shot": if (pendingPhoto) viewShot(pendingPhoto.url); break;
     case "open-payslips": ui.confirmDelSlip = null; ui.confirmDelInc = null; ui.sheet = { type: "payslips" }; renderSheet(); break;
-    case "open-tx": ui.sheet = { type: "txdetail", id }; renderSheet(); break;
+    case "spending-category":
+    case "spending-account": {
+      const p = period(), [from, to] = periodBounds(p);
+      ui.sheet = { type: "spending-entries", by: action === "spending-category" ? "category" : "account", id, from, to, asOf: today(), label: periodLabel(p) }; renderSheet(); break;
+    }
+    case "spending-back": ui.sheet = ui.sheet.back; renderSheet(); break;
+    case "open-tx": ui.sheet = { type: "txdetail", id, ...(ui.sheet?.type === "spending-entries" ? { back: ui.sheet } : {}) }; renderSheet(); break;
     case "open-photo": { const u = photoUrls.get(id) ?? (await getPhoto(id).then((b) => b && URL.createObjectURL(b))); if (u) { photoUrls.set(id, u); viewShot(u); } else showToast("Picture not on this phone. Pictures are not part of the backup file."); break; }
     case "pick-acct": if (ui.sheet) ui.sheet.pick = null; form.account_id = id; renderSheet(); break;
     case "own-yes": form.own = "yes"; renderSheet(); break;
@@ -4101,7 +4139,7 @@ async function onClick(el) {
       break;
     }
     case "plan-cancel": ui.planDraft = null; ui.sheet = null; renderSheet(); break;
-    case "close-sheet": { voiceListener?.stop(); if (ui.sheet?.type === "planform") ui.planDraft = ui.form;
+    case "close-sheet": { voiceListener?.stop(); if (pdfPasswordResolve) { const go = pdfPasswordResolve; pdfPasswordResolve = null; go(null); } if (ui.sheet?.type === "planform") ui.planDraft = ui.form;
       if (ui.sheet?.type === "intro") { const sh = ui.sheet; await commit(S(), M.markIntro(ledger.settings, sh.id, ui.introOff === true, !sh.manual), { quiet: true }); if (sh.back) { ui.sheet = sh.back; renderSheet(); break; } }   // a tap outside the popup counts as seen, too   // a tap outside the plan keeps the work for next time; Cancel throws it away
       if (ui.sheet?.type === "budget-suggest") await savePinsFromForm(); const wasNotice = ui.sheet?.type === "notice"; ui.sheet = null; renderSheet(); if (wasNotice) maybeWelcome(); break; }
     case "cat-card-later": ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, cat_card_seen: M.phTimestamp() }, { quiet: true }); break;
