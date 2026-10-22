@@ -2,9 +2,9 @@
 // Plain and firm, never harsh: facts are stated once, nothing is red, nothing blocks logging.
 import * as M from "../src/model/index.js";
 import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto, useTrialStorage, clearTrialStorage, readCopies, writeCopies } from "./store.js";
-import { preparePhoto, readPage, evenedCopy } from "./ocr.js";
+import { preparePhoto, readPage, readPlain, evenedCopy } from "./ocr.js";
 import { speechSupported, listen, firstLanguage, other } from "./voice.js";
-import { readPdfPages, PdfCancelled } from "./pdftext.js";
+import { readPdfPages, readPdfScan, PdfCancelled } from "./pdftext.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -646,12 +646,12 @@ const payslipDefaults = () => ({
 // A payslip photo, read line by line: opens the payslip window already filled in. The owner checks every figure (the same four checks as
 // for a typed payslip point out what does not add up), chooses where it landed, and saves. The photo stays with the pay.
 const knownEmployers = () => [...new Set([...(S().payslips ?? []).map((p) => p.employer), ledger.settings.last_employer].filter(Boolean))];
-function openPayslipFromPhoto(blob, text, queueId) {
+function openPayslipFromPhoto(blob, text, queueId, source = "photo") {
   const r = M.readPayslip(text, today()), d = payslipDefaults(), two = (c) => (c / 100).toFixed(2);
   const employer = r.employer ? M.snapEmployer(r.employer, knownEmployers()) : d.employer;
   // One short line: everything was read from the photo and none of it is confirmed (a right employer does not make the figures right).
   // Only what needs action is added after it.
-  const f = { ...d, account_id: null, employer, text, notes: ["Read from the photo, the employer too. Check each figure against the paper.", ...r.notes.filter((n) => /could not|total deductions/i.test(n)), ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the photo."])] };
+  const f = { ...d, account_id: null, employer, text, notes: [source === "PDF" ? "Read from the PDF. Check each figure against the paper." : "Read from the photo, the employer too. Check each figure against the paper.", ...r.notes.filter((n) => /could not|total deductions/i.test(n)), ...(r.earnings.length || r.deductions.length ? [] : ["I could not read any lines. Type them from the paper."])] };
   // A date the reader could not find is left EMPTY, not filled with today: a payslip must never land in the wrong month by default.
   f.period_from = r.period_from ?? ""; f.period_to = r.period_to ?? ""; f.pay_date = r.pay_date ?? "";
   if (!r.period_from && r.pay_date) f.notes = [...f.notes, "I could not find the pay period. Choose the dates."];
@@ -825,7 +825,7 @@ const askPdfPassword = (wrong) => new Promise((resolve) => { pdfPasswordResolve 
 const importKept = (f) => f.items.filter((x) => x.meaning !== "unsure" || f.choice?.[x.id] === "spending");
 const tableOrThrow = (rows) => { const t = M.parseTable(rows); if (!t.ok) throw new Error(t.message); return t; };
 const photoButtons = (mode, busy = false) => `<label class="filebtn" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="12.5" r="3.5"/></svg>&nbsp;${busy ? "Reading..." : "Take a photo"}<input type="file" accept="image/*" capture="environment" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>
-  <label class="filebtn alt" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>&nbsp;Choose from photos or files<input type="file" accept="image/*" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>`;
+  <label class="filebtn alt" aria-disabled="${busy}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>&nbsp;Choose from photos or files<input type="file" accept="image/*,.pdf,application/pdf" data-scan="${mode}" hidden${busy ? " disabled" : ""}></label>`;
 
 function viewScan() {
   const s = ui.scan, busy = s?.busy === true;
@@ -900,6 +900,7 @@ async function readPhoto(blob, progress, forcePayslip = false) {
 
 async function startScan(file, asPayslip = false) {
   if (!file) return;
+  if (isPdf(file)) return startPdfScan(file, asPayslip);
   const say = (msg) => { if (ui.scan) ui.scan.msg = msg; const el = $("scan-msg"); if (el) el.textContent = msg; };
   ui.scan = { busy: true, msg: "Preparing the photo..." }; renderScreen();
   let blob, text = "", failed = null;
@@ -911,6 +912,38 @@ async function startScan(file, asPayslip = false) {
   ui.scan = null; renderScreen();
   if (asPayslip) { openPayslipFromPhoto(blob, text, null); return; }   // chosen as a payslip: the payslip window, whatever the reader thought it was
   openScanSheet(blob, text, failed, null);
+}
+
+const isPdf = (file) => file && (/\.pdf$/i.test(file.name) || file.type === "application/pdf");
+async function startPdfScan(file, asPayslip = false) {
+  const sheet = { type: "pdfscan" };
+  ui.sheet = sheet;
+  const say = (busy) => { if (ui.sheet === sheet) { ui.form = { busy }; renderSheet(); } };
+  ui.scan = { busy: true, msg: "Opening the PDF..." }; renderScreen(); say("Opening the PDF...");
+  try {
+    const { blob, text } = await readPdfScan(file,
+      (wrong) => ui.sheet === sheet ? askPdfPassword(wrong) : null,
+      async (image) => {
+        const progress = (fraction, what) => say(what + (fraction ? " " + Math.round(fraction * 100) + "%" : "..."));
+        const text = await readPhoto(image, progress, asPayslip);
+        const lines = text.split(/[\r\n]+/).map((line) => line.trim()).filter(Boolean);
+        // Some scanned PDFs make the stronger reader split lines into individual
+        // letters. Retry with the already bundled plain reader in that case.
+        if (!lines.length || (lines.length > 10 && lines.filter((line) => line.length <= 2).length > lines.length / 2)) {
+          const plain = await readPlain(image, progress);
+          return plain.text || M.linesFromWords(plain.words) || text;
+        }
+        return text;
+      }, say);
+    if (ui.sheet !== sheet) return;
+    ui.sheet = null;
+    if (asPayslip || M.readScan(text, today()).kind === "payslip") openPayslipFromPhoto(blob, text, null, "PDF");
+    else openScanSheet(blob, text, null, null);
+  } catch (err) {
+    if (ui.sheet !== sheet) return;
+    if (err instanceof PdfCancelled) { ui.sheet = null; renderSheet(); }
+    else { ui.form = { error: String(err?.message ?? err) }; renderSheet(); }
+  } finally { ui.scan = null; renderScreen(); }
 }
 
 // The window for checking a guess: for a photo just taken, or for one kept in the queue because the app could not be sure.
@@ -993,6 +1026,7 @@ function readWithin(blob, progress) {
 
 async function quickCapture(file) {
   if (!file) return;
+  if (isPdf(file)) return startPdfScan(file);
   ui.scan = { busy: true, msg: "Keeping the photo..." }; renderScreen();
   const id = newId("photo");
   try { await putPhoto(id, await preparePhoto(file)); }
@@ -2667,17 +2701,18 @@ function renderSheet() {
       <p><button class="primary" id="f-save" data-action="save-payslip" style="margin-top:14px" disabled>${sh.editId ? "Save changes" : "Save payslip"}</button></p>
       ${sh.queueId ? `<p><button data-action="discard-scan" data-id="${esc(sh.queueId)}" style="width:100%">Throw this photo away</button></p>` : ""}`;
   } else if (sh.type === "scanpick") {
-    body = `<h3>Scan</h3><h4 class="dayhead">One receipt</h4><p class="note">A receipt, payment screen or payslip. If the app is sure, it saves one draft; otherwise it asks.</p>${photoButtons("quick")}
+    body = `<h3>Scan</h3><h4 class="dayhead">One receipt</h4><p class="note">A receipt, payment screen or payslip, as a photo or PDF. If the app is sure, it saves one draft; otherwise it asks.</p>${photoButtons("quick")}
       <h4 class="dayhead">Multiple transactions at once</h4><p class="note">A bank statement (PDF), a screenshot of your notes, or a CSV or Excel file. Every line waits in Verify.</p>
       <label class="filebtn alt" id="imp-pick">Choose a statement or list<input type="file" accept="image/*,.pdf,application/pdf,.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-import="1" hidden></label>`;
-  } else if (sh.type === "import") {
+  } else if (sh.type === "import" || sh.type === "pdfscan") {
     const f = ui.form;
-    if (f.askPassword) body = `<h3>Multiple transactions at once</h3><p class="note">${f.wrong ? "That password did not open it. Try again." : "This PDF is locked. Type its password; it is used once to open the file and is not kept."}</p>
+    const title = sh.type === "pdfscan" ? "Read a PDF" : "Multiple transactions at once";
+    if (f.askPassword) body = `<h3>${title}</h3><p class="note">${f.wrong ? "That password did not open it. Try again." : "This PDF is locked. Type its password; it is used once to open the file and is not kept."}</p>
       <label for="pdf-pw">Password</label><input id="pdf-pw" type="password" autocomplete="off" autocapitalize="off" enterkeyhint="go">
       <p><button class="primary" data-action="pdf-open" style="margin-top:14px">Open</button></p>
       <p><button data-action="pdf-cancel" style="width:100%">Cancel</button></p>`;
-    else if (f.busy) body = `<h3>Multiple transactions at once</h3><p class="note" id="imp-msg" role="status">${esc(f.busy)}</p>`;
-    else if (f.error) body = `<h3>Multiple transactions at once</h3><p class="note" role="alert"><b>${esc(f.error)}</b></p>`;
+    else if (f.busy) body = `<h3>${title}</h3><p class="note" id="imp-msg" role="status">${esc(f.busy)}</p>`;
+    else if (f.error) body = `<h3>${title}</h3><p class="note" role="alert"><b>${esc(f.error)}</b></p>`;
     else {
       const kept = importKept(f), waiting = f.items.filter((x) => x.meaning === "unsure" && !f.choice?.[x.id]).length, held = !!f.statement && !f.statement.check.ok && !f.looked;
       const p = f.order ? M.previewImport(S(), kept, f.order, ledger.settings.payee_book, { includeRepeats: f.repeatsIn === true }) : null, acct = S().accounts.find((a) => a.id === f.account_id) ?? (f.account_id === NEW_POCKET && f.newPocket ? newPocketAccount(f.newPocket) : undefined);
@@ -2705,7 +2740,7 @@ function renderSheet() {
     body = `<h3>Add income</h3>
       <p class="note">A payslip:</p>
       <p><button class="primary" data-action="open-payslip">Type a payslip</button></p>
-      <p class="note">Or read it from a photo (you check every figure before it is saved):</p>${photoButtons("payslip")}
+      <p class="note">Or read it from a photo or PDF (you check every figure before it is saved):</p>${photoButtons("payslip")}
       <p class="note">Something else:</p>
       <p><button data-action="open-income" style="width:100%">Other income</button></p>`;
   } else if (sh.type === "voice") {
@@ -4101,7 +4136,7 @@ async function onClick(el) {
       break;
     }
     case "plan-cancel": ui.planDraft = null; ui.sheet = null; renderSheet(); break;
-    case "close-sheet": { voiceListener?.stop(); if (ui.sheet?.type === "planform") ui.planDraft = ui.form;
+    case "close-sheet": { voiceListener?.stop(); if (pdfPasswordResolve) { const go = pdfPasswordResolve; pdfPasswordResolve = null; go(null); } if (ui.sheet?.type === "planform") ui.planDraft = ui.form;
       if (ui.sheet?.type === "intro") { const sh = ui.sheet; await commit(S(), M.markIntro(ledger.settings, sh.id, ui.introOff === true, !sh.manual), { quiet: true }); if (sh.back) { ui.sheet = sh.back; renderSheet(); break; } }   // a tap outside the popup counts as seen, too   // a tap outside the plan keeps the work for next time; Cancel throws it away
       if (ui.sheet?.type === "budget-suggest") await savePinsFromForm(); const wasNotice = ui.sheet?.type === "notice"; ui.sheet = null; renderSheet(); if (wasNotice) maybeWelcome(); break; }
     case "cat-card-later": ui.sheet = null; renderSheet(); await commit(S(), { ...ledger.settings, cat_card_seen: M.phTimestamp() }, { quiet: true }); break;

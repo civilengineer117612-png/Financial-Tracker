@@ -35,6 +35,7 @@ jobs:
       - name: Run the full e2e suite
         shell: bash
         run: |
+          node e2e/pdf-scan.mjs
           node e2e/run.mjs 2>&1 | tee e2e.log
       - name: Pass count
         if: always()
