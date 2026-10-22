@@ -271,7 +271,7 @@ export function categoryFromHistory(state, payee) {
 // window, where the same four checks as for a typed payslip (src/model/income.js) point out what does not add up.
 // Payslips often print two columns (this pay, and the year so far): the FIRST figure on a line is taken, and nothing after a
 // "year to date" heading.
-const EARNING_LABELS = [["basic", /basic|monthly\s*(salary|rate)/], ["rice", /rice/], ["skills", /skill/], ["clothing", /cloth|uniform/], ["transport", /transport/],
+const EARNING_LABELS = [["basic", /basic|monthly\s*(salary|rate)|^regular\s+(?:[\d,]+\.\d{2})\s*$/], ["rice", /rice/], ["skills", /skill/], ["clothing", /cloth|uniform/], ["transport", /transport/],
   ["overtime", /over\s*-?time|\bot\b/], ["thirteenth", /13\s*th|thirteenth/], ["bonus", /bonus/]];
 const DEDUCTION_LABELS = [["loan", /\bloans?\b|advance/], ["tax", /with\w*ding|w\/\s*tax|\bwtax\b|\b[t1]ax\b(?!able)/], ["sss", /\b(?:sss|5ss|s5s|555)\b/], ["philhealth", /phil\s*-?health|\bphic\b|\bph[a-z]{1,5}ea/],
   ["pagibig", /p[a-z]{1,2}\s*-?\s*[il1]?\s*b[il1]g|pagibig|hdmf/], ["absences", /a[bh]sen|1\/2\s*day|half\s*-?\s*day/], ["lates", /\blates?\b|undertime|tardi/]];
@@ -346,6 +346,59 @@ export function readPayslip(text, today) {
   const named = top.map(clean).find((l) => letters(l) >= 5 && letters(l) >= l.length * 0.6 && l.length <= 45);
   const employer = (labelled ? clean(labelled) : null) || company || named || null;
   return { employer, period_from, period_to, pay_date, printed_gross, printed_net, printed_deductions, earnings, deductions, notes };
+}
+
+// PDF text has positions but no reading order. Keep the two sides of a payslip
+// apart, and pair a summary/date table's headings with the values below them.
+// This reads column titles, never an employer name or a particular set of figures.
+export function pdfScanText(items) {
+  const rows = [];
+  for (const item of [...items].filter((i) => String(i.str ?? "").trim()).sort((a, b) => b.y - a.y || a.x - b.x)) {
+    const row = rows.find((r) => Math.abs(r.y - item.y) <= 2);
+    if (row) row.items.push(item); else rows.push({ y: item.y, items: [item] });
+  }
+  for (const row of rows) row.items.sort((a, b) => a.x - b.x);
+  const out = [];
+  let numberColumns = [];
+  const right = (i) => i.x + i.w;
+  const headings = /^(?:gross|pre-tax|taxes|deductions|net pay|payment date|pay begin date|pay end date|hours|amount)$/i;
+  const headersIn = (row) => {
+    const headers = [];
+    for (let j = 0; j < row.items.length; j++) {
+      for (let k = Math.min(j + 3, row.items.length - 1); k >= j; k--) {
+        const str = row.items.slice(j, k + 1).map((i) => i.str).join(" ").trim();
+        if (headings.test(str)) { const a = row.items[j], b = row.items[k]; headers.push({ ...a, str, w: right(b) - a.x }); j = k; break; }
+      }
+    }
+    return headers;
+  };
+  for (let n = 0; n < rows.length; n++) {
+    const row = rows[n], headers = headersIn(row), next = rows[n + 1];
+    const summary = headers.some((h) => /^gross$/i.test(h.str)) && headers.some((h) => /^net pay$/i.test(h.str));
+    const dates = ["payment date", "pay begin date", "pay end date"].every((key) => headers.some((h) => h.str.toLowerCase() === key));
+    if ((summary || dates) && next && row.y - next.y < Math.max(30, 3 * (row.items[0].h || 10))) {
+      const cells = new Map();
+      for (const value of next.items) {
+        if (summary ? !/^[\d,.]+$/.test(value.str.trim()) : !datesIn(value.str.replace(/(\d{1,2})-([A-Za-z]{3,9})-(\d{4})/g, "$1 $2 $3")).length) continue;
+        const header = [...headers].sort((a, b) => Math.abs(right(a) - right(value)) - Math.abs(right(b) - right(value)))[0];
+        cells.set(header.str.toLowerCase(), value.str);
+      }
+      if (summary && cells.has("gross") && cells.has("net pay")) {
+        out.push("Gross pay " + cells.get("gross"), "Net pay " + cells.get("net pay")); n++; continue;
+      }
+      if (dates && ["payment date", "pay begin date", "pay end date"].every((key) => cells.has(key))) {
+        out.push("Pay date " + cells.get("payment date"), "Pay period " + cells.get("pay begin date") + " to " + cells.get("pay end date")); n++; continue;
+      }
+    }
+    if (headers.some((h) => /^hours$/i.test(h.str)) && headers.some((h) => /^amount$/i.test(h.str))) numberColumns = headers.filter((h) => /^(hours|amount)$/i.test(h.str));
+    const kept = row.items.filter((i) => {
+      if (!numberColumns.length || !/^\d[\d,.]*$/.test(i.str.trim())) return true;
+      const nearest = [...numberColumns].sort((a, b) => Math.abs(right(a) - right(i)) - Math.abs(right(b) - right(i)))[0];
+      return !/^hours$/i.test(nearest.str);
+    });
+    out.push(linesFromWords(kept.map((i) => ({ text: i.str, x0: i.x, x1: right(i), y0: -i.y - (i.h || 10), y1: -i.y }))));
+  }
+  return out.join("\n").replace(/\b(\d{1,2})-([A-Za-z]{3,9})-(\d{4})\b/g, "$1 $2 $3");
 }
 
 // ---------- text from where the words sit on the page ----------
