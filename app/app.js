@@ -2,7 +2,7 @@
 // Plain and firm, never harsh: facts are stated once, nothing is red, nothing blocks logging.
 import * as M from "../src/model/index.js";
 import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto, useTrialStorage, clearTrialStorage, readCopies, writeCopies } from "./store.js";
-import { preparePhoto, readPage, evenedCopy } from "./ocr.js";
+import { preparePhoto, readPage, readPlain, evenedCopy } from "./ocr.js";
 import { speechSupported, listen, firstLanguage, other } from "./voice.js";
 import { readPdfPages, readPdfScan, PdfCancelled } from "./pdftext.js";
 
@@ -924,7 +924,18 @@ async function startPdfScan(file, asPayslip = false) {
   try {
     const { blob, text } = await readPdfScan(file,
       (wrong) => ui.sheet === sheet ? askPdfPassword(wrong) : null,
-      (image) => readPhoto(image, (fraction, what) => say(what + (fraction ? " " + Math.round(fraction * 100) + "%" : "...")), asPayslip), say);
+      async (image) => {
+        const progress = (fraction, what) => say(what + (fraction ? " " + Math.round(fraction * 100) + "%" : "..."));
+        const text = await readPhoto(image, progress, asPayslip);
+        const lines = text.split(/[\r\n]+/).map((line) => line.trim()).filter(Boolean);
+        // Some scanned PDFs make the stronger reader split lines into individual
+        // letters. Retry with the already bundled plain reader in that case.
+        if (!lines.length || (lines.length > 10 && lines.filter((line) => line.length <= 2).length > lines.length / 2)) {
+          const plain = await readPlain(image, progress);
+          return plain.text || M.linesFromWords(plain.words) || text;
+        }
+        return text;
+      }, say);
     if (ui.sheet !== sheet) return;
     ui.sheet = null;
     if (asPayslip || M.readScan(text, today()).kind === "payslip") openPayslipFromPhoto(blob, text, null, "PDF");

@@ -73,7 +73,7 @@ export async function readPage(blob, progress = () => {}) {
   return readPlain(blob, progress);
 }
 
-async function readPlain(blob, progress = () => {}) {
+export async function readPlain(blob, progress = () => {}) {
   onProgress = progress;
   await loadScript();
   worker ??= await window.Tesseract.createWorker("eng", 1, {
