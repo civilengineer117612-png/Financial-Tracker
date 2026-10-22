@@ -2,6 +2,7 @@
 // nothing is written here. The caller persists only if result.ok is true.
 import { validateShape } from "./schema.js";
 import { checkEntriesBalance, checkReferences, checkReserve, checkDuplicate, checkRulesAppendOnly } from "./invariants.js";
+import { countedEntries } from "./balances.js";
 
 export { SCHEMAS, validateShape } from "./schema.js";
 export { COLLECTION_NAMES, MIGRATIONS, selfCheck, fingerprint, upgradeLedger, rotateCopies, restorableCopy } from "./migrate.js";
@@ -31,12 +32,12 @@ export function checkTransactionSave(state, { transaction, entries }) {
   if (shape.length) return result(shape);
 
   // Stage 2: the invariants, in the order the spec lists them.
-  const entriesBefore = state.entries;
   const entriesAfter = [...state.entries.filter((e) => e.transaction_id !== transaction.id), ...entries];
+  const after = { ...state, transactions: [...state.transactions.filter((t) => t.id !== transaction.id), transaction], entries: entriesAfter };
   return result([
     ...checkEntriesBalance(entries),
     ...checkReferences(state, transaction, entries),
-    ...checkReserve(state.accounts, entriesBefore, entriesAfter),
+    ...checkReserve(state.accounts, countedEntries(state), countedEntries(after)),
     ...checkDuplicate(state, transaction, entries),
   ]);
 }
@@ -75,7 +76,7 @@ export { parsePesos, formatPesos, formatPesosWhole } from "./money.js";
 export { defaultCategories, defaultPresets, UNLOGGED_CATEGORY_ID, categoryByRole, categoriesByRole, categoriesOfKind, LEGACY_ROLES, addCategory, renameCategory, ensureIncomeCategories, dropUnusedCardCategory, INCOME_CATEGORIES, CATEGORY_ROLES, ROLE_LABELS, roleNoticeRows, setCategoryRole } from "./seed.js";
 export { applyDrafts, planExpense, discardDraft, verifyDraft, editDraftFields, setAccountIcon, planAttachment, attachmentsFor, planSplitExpense, splitCategoryEntry, sameAmountElsewhere } from "./drafts.js";
 export { LEDGER_VERSION, emptyState, emptyLedger, nextLedger, parseLedger, chooseLedger, restoreLedger, summarizeLedger, backupFileName, daysSinceBackup, saveOutcome, ledgerBytes, formatBytes } from "./persist.js";
-export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByRange, spendingByAccount, cardsSummary, accountsOverview, monthlySpending, dayTotal } from "./reports.js";
+export { monthOf, addMonths, monthLabel, spendingByCategory, spendingByRange, spendingByAccount, spendingTransactions, cardsSummary, accountsOverview, monthlySpending, dayTotal } from "./reports.js";
 export { parsePlan, addPlan, planInEffect, planTotals, planEmergencyTarget, emergencyFundStatus, emergencyFundFromBudgets, DEFAULT_EF, cutoffFor, planProgress, planIncome, planPayReceived } from "./plan.js";
 export { planTag, planTripDates, planTripOverride, tripMembership, tripEntries, tagSummary, overlappingTrip, tripDays, niceDay, AUTO_TAG_SKIPS } from "./trips.js";
 export { BANKS, CASH, pickerBanks, bankById, bankForName, planAccount, isPocket, setAccountPocket, linkAccountBank, setBankIconUrl, bankPicture, isPlaceholderAddress, dropPlaceholderAddresses } from "./banks.js";

@@ -277,7 +277,7 @@ const DEDUCTION_LABELS = [["loan", /\bloans?\b|advance/], ["tax", /with\w*ding|w
   ["pagibig", /p[a-z]{1,2}\s*-?\s*[il1]?\s*b[il1]g|pagibig|hdmf/], ["absences", /a[bh]sen|1\/2\s*day|half\s*-?\s*day/], ["lates", /\blates?\b|undertime|tardi/]];
 const SKIP_LINE = /total\s*(earnings|deductions|pay)|taxable|net\s*taxable|ytd|year\s*-?\s*to\s*-?\s*date|balance|leave/;
 
-export function readPayslip(text, today) {
+export function readPayslip(text, today, { allowHistorical = false } = {}) {
   const lines = String(text ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const notes = [], earnings = [], deductions = [];
   let printed_gross = null, printed_net = null, total_salary = null, printed_deductions = null;
@@ -309,7 +309,7 @@ export function readPayslip(text, today) {
 
   // dates: the pay period (two dates on a line that says period), and the pay date
   let period_from = null, period_to = null, pay_date = null;
-  const ok = (iso) => iso <= addDaysIso(today, 1) && iso >= addDaysIso(today, -366);
+  const ok = (iso) => isPhDate(iso) && iso <= addDaysIso(today, 1) && (allowHistorical || iso >= addDaysIso(today, -366));
   // "Apr 16-30, 2026": a month, two days and a year
   const range = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\s*(?:-|–|to)\s*(\d{1,2}),?\s*(\d{4})\b/i.exec(cleanDigits(lines.join("\n")));
   if (range) {

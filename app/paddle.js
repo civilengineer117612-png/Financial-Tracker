@@ -33,7 +33,7 @@ async function load(progress) {
   const opts = { executionProviders: ["wasm"], graphOptimizationLevel: "all" };
   det ??= await ort.InferenceSession.create(BASE + "ch_PP-OCRv4_det_infer.onnx", opts);
   rec ??= await ort.InferenceSession.create(BASE + "ch_PP-OCRv4_rec_infer.onnx", opts);
-  dict ??= ["", ...(await (await fetch(BASE + "ppocr_keys_v1.txt")).text()).split("\n").filter((x) => x.length), " "];
+  dict ??= ["", ...(await (await fetch(BASE + "ppocr_keys_v1.txt")).text()).split(/\r?\n/).filter((x) => x.length), " "];
 }
 
 async function toCanvas(blob) {

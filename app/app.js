@@ -510,10 +510,11 @@ function entriesListHtml() {
   const shown = ui.showCancelled ? list : list.filter((t) => !gone.has(t.id)), nGone = list.length - list.filter((t) => !gone.has(t.id)).length;
   return `${nGone ? `<p class="note"><button class="link" data-action="toggle-cancelled">${ui.showCancelled ? "Hide" : "Show"} ${nGone} cancelled ${nGone === 1 ? "entry" : "entries"}</button></p>` : ""}${shown.length ? shown.map(rowFor).join("") : `<p class="note">Nothing logged in this period.</p>`}`;
 }
-function rowFor(t, withDate = false) {
+function rowFor(t, withDate = false, spendingAmount = null) {
+  spendingAmount = Number.isFinite(spendingAmount) ? spendingAmount : null;
   const d = describe(t);
   const acct = d.kind === "expense" ? S().accounts.find((a) => a.id === d.account_id) : null;
-  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${withDate ? esc(listDate(t.date)) + " · " : ""}${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${M.correctionTag(S(), t) === "Corrected" ? " · cancelled" : ""}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${signed(d)}</div></button>`;
+  return `<button class="row rowbtn" data-action="open-tx" data-id="${esc(t.id)}" aria-label="Details of ${esc(d.title)}, ${d.kind === "income" ? "money in " : d.kind === "expense" || d.kind === "split" ? "money out " : ""}${peso(d.amount)}"><div>${esc(d.title)}<small class="who" style="gap:6px">${acct ? iconOf(acct, 16) : ""}<span>${withDate ? esc(listDate(t.date)) + " · " : ""}${esc(d.detail)}${t.status === "draft" ? " · draft" : " · verified"}${M.correctionTag(S(), t) === "Corrected" ? " · cancelled" : ""}</span></small></div><div class="amt${d.kind === "income" ? " in" : ""}">${spendingAmount !== null ? peso(spendingAmount) : signed(d)}</div></button>`;
 }
 
 // Everything waiting, oldest first. Nothing has to wait for tomorrow: verify whenever you have the time.
@@ -647,7 +648,7 @@ const payslipDefaults = () => ({
 // for a typed payslip point out what does not add up), chooses where it landed, and saves. The photo stays with the pay.
 const knownEmployers = () => [...new Set([...(S().payslips ?? []).map((p) => p.employer), ledger.settings.last_employer].filter(Boolean))];
 function openPayslipFromPhoto(blob, text, queueId, source = "photo") {
-  const r = M.readPayslip(text, today()), d = payslipDefaults(), two = (c) => (c / 100).toFixed(2);
+  const r = M.readPayslip(text, today(), { allowHistorical: source === "PDF" }), d = payslipDefaults(), two = (c) => (c / 100).toFixed(2);
   const employer = r.employer ? M.snapEmployer(r.employer, knownEmployers()) : d.employer;
   // One short line: everything was read from the photo and none of it is confirmed (a right employer does not make the figures right).
   // Only what needs action is added after it.
@@ -1529,10 +1530,10 @@ const barRow = (r) => { const tag = r.action ? "button" : "div", attrs = r.actio
 const barCard = (rows) => `<div class="card catcard">${rows.map(barRow).join("")}</div>`;
 // Rows of {label, amount} as bars scaled to the largest, folded after SHOWN_BARS.
 function shareBars(rows, total) {
-  const shown = foldRows(rows.filter((r) => r.amount > 0), total);
+  const shown = rows.some((r) => r.action) ? rows : foldRows(rows.filter((r) => r.amount > 0), total);
   if (!shown.length) return `<p class="note">Nothing verified in this period.</p>`;
   const top = Math.max(...shown.map((r) => r.amount), 1);
-  return barCard(shown.map((r) => ({ name: r.label, fig: peso(r.amount), pct: Math.max(2, Math.round((r.amount * 100) / top)), label: `${r.plain ?? r.label}: ${Math.round((r.amount * 100) / top)}% of the largest` })));
+  return barCard(shown.map((r) => ({ id: r.id, action: r.action, name: r.label, fig: peso(r.amount), pct: r.amount > 0 ? Math.max(2, Math.round((r.amount * 100) / top)) : null, label: `${r.plain ?? r.label}: ${Math.round((r.amount * 100) / top)}% of the largest` })));
 }
 
 // A small arrow beside an amount: up is money spent, down is money paid in (the words are read aloud, not shown).
@@ -1714,8 +1715,8 @@ function viewMoney() {
     const acc = M.spendingByAccount(S(), { from, to });
     if (!acc.rows.length) return empty();
     const pct = (a) => (acc.total > 0 && a > 0 ? Math.round((a * 1000) / acc.total) / 10 : 0);
-    const rows = acc.rows.map((r) => ({ id: r.account_id, label: withIcon(S().accounts.find((a) => a.id === r.account_id) ?? { name: r.name }, 24), plain: accountName(r.account_id), amount: r.amount, percent: pct(r.amount) }));
-    if (ui.asList) return done(listTable(["Account", "Spent", "Share"], rows.map((r) => [esc(accountName(r.id)), peso(r.amount), r.percent + "%"]), "Total", acc.total));
+    const rows = acc.rows.map((r) => ({ id: r.account_id, action: "spending-account", label: withIcon(S().accounts.find((a) => a.id === r.account_id) ?? { name: r.name }, 24), plain: accountName(r.account_id), amount: r.amount, percent: pct(r.amount) }));
+    if (ui.asList) return done(listTable(["Account", "Spent", "Share"], rows.map((r) => [`<button class="link" data-action="spending-account" data-id="${esc(r.id)}">${esc(accountName(r.id))}</button>`, peso(r.amount), r.percent + "%"]), "Total", acc.total));
     return done(shareBars(rows, acc.total));
   }
 
@@ -1726,8 +1727,8 @@ function viewMoney() {
   });
   const top = Math.max(...rows.map((r) => r.amount), 1);   // each bar is scaled to the largest category, so the list is its own twin
   // A row below zero (a count that found money) is shown last with its minus and no bar, so the rows add up to the total.
-  const minus = rows.filter((r) => r.amount < 0).map((r) => ({ name: r.label, sub: "brings the total down", fig: "\u2212" + peso(-r.amount) }));
-  return hero + barCard(rows.filter((r) => r.amount > 0).map((r) => ({ name: r.label, fig: peso(r.amount), pct: Math.max(2, Math.round((r.amount * 100) / top)), label: `${r.name}: ${Math.round((r.amount * 100) / top)}% of the largest` })).concat(minus)) + `
+  const minus = rows.filter((r) => r.amount < 0).map((r) => ({ id: r.id, action: "spending-category", name: r.label, sub: "brings the total down", fig: "\u2212" + peso(-r.amount) }));
+  return hero + barCard(rows.filter((r) => r.amount > 0).map((r) => ({ id: r.id, action: "spending-category", name: r.label, fig: peso(r.amount), pct: Math.max(2, Math.round((r.amount * 100) / top)), label: `${r.name}: ${Math.round((r.amount * 100) / top)}% of the largest` })).concat(minus)) + `
     <p class="entrylink"><button class="link" data-action="open-entries">See every entry</button></p>`;
 }
 
@@ -2784,7 +2785,7 @@ function renderSheet() {
       const rows = [["Date", fullDate(t.date)], ["Status", t.status === "draft" ? "Draft, waiting in Verify" : "Verified"], ["How it was entered", source],
         ...(d.kind === "split" ? d.parts.map((x) => [x.name, peso(x.amount)]) : d.category_id ? [["Category", categoryName(d.category_id)]] : []),
         ...(d.kind === "transfer" ? [["Between", d.detail], ...(M.feeOf(S(), t.id).amount ? [["Fee", peso(M.feeOf(S(), t.id).amount)]] : []), ...(M.foreignOf(S(), t.id) ? [["Foreign amount", foreignText(M.foreignOf(S(), t.id))]] : [])] : []), ...(t.memo ? [["What was said or noted", "\u201C" + t.memo + "\u201D"]] : [])];
-      body = `<h3>${esc(d.title)}</h3><p class="bigamt">${peso(d.amount)}</p>
+      body = `${sh.back ? `<p><button class="link" data-action="spending-back">Back to the spending list</button></p>` : ""}<h3>${esc(d.title)}</h3><p class="bigamt">${peso(d.amount)}</p>
         <dl class="txdl">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}${acct ? `<dt>${d.kind === "income" ? "Arrived in" : "Paid from"}</dt><dd class="who">${withIcon(acct, 22)}</dd>` : ""}</dl>
         ${shot ? `<p><button class="primary" data-action="open-photo" data-id="${esc(shot.id)}">See the photo</button></p>` : ""}`;
     }
@@ -2923,6 +2924,13 @@ function renderSheet() {
   } else if (sh.type === "howto") {
     const h = M.HOWTOS.find((x) => x.id === sh.id);
     body = `<h3>${esc(h.label)}</h3>${clipFor(h.id)}<p class="hwcap">${esc(h.caption)}</p>`;
+  } else if (sh.type === "spending-entries") {
+    const state = sh.by === "category" ? SV() : S();
+    const r = M.spendingTransactions(state, { from: sh.from, to: sh.to, categoryMaps: S().categoryMaps, asOf: sh.asOf, [sh.by + "_id"]: sh.id });
+    const name = sh.by === "category" ? categoryName(sh.id) : accountName(sh.id);
+    body = `<h3>${esc(name)}</h3><p class="sub">${esc(sh.label)}</p><p class="bigamt">${peso(r.total)}</p>
+      <p class="note">Verified spending in this total. Refunds bring it down; split entries show only the part counted here. Tap an entry to check its details.</p>
+      ${r.rows.length ? r.rows.map((row) => rowFor(row.transaction, true, row.amount)).join("") : `<p class="note">No spending in this period.</p>`}`;
   } else if (sh.type === "entries") {
     const p = period();
     body = `<h3>Every entry${(ui.form.scope ?? "period") === "all" ? "" : " in " + esc(periodLabel(p))}</h3>
@@ -3044,7 +3052,7 @@ function renderSheet() {
       <p class="note">Anything entered since this backup was made will be gone.${sh.all ? "" : ` Pictures are not in a backup, so those entries will say "picture not on this phone".`}</p>
       <p><button class="primary" id="f-save" data-action="restore-now">${ui.form.confirmRestore ? "Tap again to replace" : "Replace this phone's data"}</button></p>`;
   }
-  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "register" || sh.type === "goal-view" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" || sh.type === "networth" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
+  const closer = sh.type === "notice" ? "" : sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || (sh.type === "planform" && (ui.form.view ?? "main") !== "main") ? "" : sh.type === "planform" ? `<p><button data-action="plan-cancel" style="width:100%">Cancel</button></p>` : `<p><button data-action="close-sheet" style="width:100%">${sh.type === "photo" || sh.type === "register" || sh.type === "goal-view" || sh.type === "txdetail" || sh.type === "payslips" || sh.type === "howto" || sh.type === "whatsnew" || sh.type === "entries" || sh.type === "spending-entries" || sh.type === "networth" ? "Close" : "Cancel"}</button></p>`;   // the first-run notice has one answer, I understand
   $("sheet").innerHTML = `<div id="scrim"${opening ? ' class="enter"' : ""} data-action="close-sheet"></div><div class="sheet${opening ? " enter" : ""}${sh.type === "welcome" || sh.type === "stmonth" || sh.type === "stcompare" || sh.type === "cardpay" || sh.type === "catcard" || sh.type === "intro" || sh.type === "planform" ? " center" : ""}" role="dialog">${body}${closer}</div>`;
   const box = document.querySelector("#sheet .sheet"); if (box && keepAt) box.scrollTop = keepAt;
   if (voiceListener && sh.type === "voice") { const b = $("v-mic"); if (b) b.innerHTML = micLabel("Listening in " + LANG_NAME[ui.form.lang ?? firstLanguage()] + "... tap to stop"); setWave(true); }
@@ -4088,7 +4096,13 @@ async function onClick(el) {
     case "save-scan": await saveScan(); break;
     case "view-shot": if (pendingPhoto) viewShot(pendingPhoto.url); break;
     case "open-payslips": ui.confirmDelSlip = null; ui.confirmDelInc = null; ui.sheet = { type: "payslips" }; renderSheet(); break;
-    case "open-tx": ui.sheet = { type: "txdetail", id }; renderSheet(); break;
+    case "spending-category":
+    case "spending-account": {
+      const p = period(), [from, to] = periodBounds(p);
+      ui.sheet = { type: "spending-entries", by: action === "spending-category" ? "category" : "account", id, from, to, asOf: today(), label: periodLabel(p) }; renderSheet(); break;
+    }
+    case "spending-back": ui.sheet = ui.sheet.back; renderSheet(); break;
+    case "open-tx": ui.sheet = { type: "txdetail", id, ...(ui.sheet?.type === "spending-entries" ? { back: ui.sheet } : {}) }; renderSheet(); break;
     case "open-photo": { const u = photoUrls.get(id) ?? (await getPhoto(id).then((b) => b && URL.createObjectURL(b))); if (u) { photoUrls.set(id, u); viewShot(u); } else showToast("Picture not on this phone. Pictures are not part of the backup file."); break; }
     case "pick-acct": if (ui.sheet) ui.sheet.pick = null; form.account_id = id; renderSheet(); break;
     case "own-yes": form.own = "yes"; renderSheet(); break;

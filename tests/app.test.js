@@ -167,7 +167,7 @@ test("hubs: screens that belong together share one menu row and a picture strip;
 test("signs, folded entries, Budget bars, one date link: money out has a minus, money in a plus; the day's entries are hidden until the heading is tapped", () => {
   const js = read("app/app.js");
   assert.match(js, /const signed = \(d\) => \(d\.kind === "income" \? "\+" : d\.kind === "expense" \|\| d\.kind === "split" \? "-" : ""\) \+ peso\(d\.amount\);/, "out is minus, in is plus, a move between your accounts has neither");
-  assert.match(js, /<div class="amt\$\{d\.kind === "income" \? " in" : ""\}">\$\{signed\(d\)\}<\/div>/, "rows show the sign");
+  assert.match(js, /<div class="amt\$\{d\.kind === "income" \? " in" : ""\}">\$\{spendingAmount !== null \? peso\(spendingAmount\) : signed\(d\)\}<\/div>/, "rows show the sign");
   assert.ok(js.includes('"money in "') && js.includes('"money out "'), "a screen reader hears the direction in words");
   assert.match(js, /<div id="entries-list"\$\{open \? "" : " hidden"\}\$\{anim && open/, "the list is hidden unless opened");
   assert.match(js, /const logOpen = \(\) => \{ try \{ return sessionStorage\.getItem\("logOpen"\) === "1"; \} catch \{ return false; \} \};/, "closed by default, even if storage fails");

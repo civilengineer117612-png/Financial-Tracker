@@ -34,3 +34,11 @@ test("a PDF receipt still reads the total and its date", () => {
   assert.equal(receipt.date, "2026-10-20");
   assert.equal(pdfScanText([]), "");
 });
+
+test("a PDF payslip can keep explicitly printed dates from previous years", () => {
+  const text = "Payslip\nPay period Jan 1, 2023 to Jan 15, 2023\nPay date Jan 20, 2023\nNet pay 1000.00";
+  const slip = readPayslip(text, "2026-10-22", { allowHistorical: true });
+  assert.equal(slip.period_from, "2023-01-01");
+  assert.equal(slip.period_to, "2023-01-15");
+  assert.equal(slip.pay_date, "2023-01-20");
+});
