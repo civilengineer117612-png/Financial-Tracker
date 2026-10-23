@@ -2,6 +2,7 @@
 //   python3 -m http.server 8124 &   node e2e/run.mjs
 // It is not part of `npm test`; CI runs it as its own job, "e2e", in the Tests workflow (.github/workflows/test.yml).
 import { createRequire } from "node:module";
+import { protectionChecks } from "./protection.mjs";
 import { execSync } from "node:child_process";
 import { readFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,7 +36,7 @@ let iconServe = (r) => r.abort();
 const iconAsked = [];   // every address the app asked an icon service or bank site for
 const dismissNotice = async (page) => { try { await page.waitForSelector('#sheet button:has-text("I understand")', { timeout: 2500 }); await page.click('#sheet button:has-text("I understand")'); } catch { /* an old ledger shows no notice */ }
   try { await page.waitForSelector('#sheet button:has-text("Skip for now")', { timeout: 700 }); await page.click('#sheet button:has-text("Skip for now")'); } catch { /* the welcome card only shows on a new install */ } };
-async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false, keepCatCard = false, keepIntro = false, keepWarn = false } = {}) {
+async function open({ storageMode = null, logOpen = true, setupFlat = true, ua = IPHONE, standalone = true, blockSw = false, url = BASE, noSpeech = false, fakeSpeech = false, seed = undefined, routes = [], keepNotice = false, styled = true, whatsNew = false, keepCatCard = false, keepIntro = false, keepWarn = false } = {}) {
   if (seed === undefined) seed = styled ? OWNER_STYLE : null;
   if (seed && !whatsNew) seed = { ...seed, settings: { ...(seed.settings ?? {}), whatsnew_seen: seed.settings?.whatsnew_seen ?? CHANGES[0].id, start_rule_seen: seed.settings?.start_rule_seen ?? "2026-10-01T08:00:00.000+08:00" } };   // the What's new pop-up is tested on its own
   if (seed && !keepIntro) seed = { ...seed, settings: { ...(seed.settings ?? {}), intro_off: { ...Object.fromEntries(["plan", "money", "income", "cards", "budget", "goals", "scheduled", "checkin", "scan", "trips", "buffer", "setup"].map((id) => [id, true])), ...(seed.settings?.intro_off ?? {}) } } };   // the small "what is this screen" popup is tested on its own
@@ -54,6 +55,17 @@ async function open({ logOpen = true, setupFlat = true, ua = IPHONE, standalone 
   for (const [pattern, change] of routes) await ctx.route(pattern, async (route) => { const r = await route.fetch(); route.fulfill({ response: r, body: change(await r.text()) }); });
   if (noSpeech) await ctx.addInitScript(() => { window.webkitSpeechRecognition = undefined; window.SpeechRecognition = undefined; });
   await ctx.route(/icon\.horse|faviconkit\.com|gstatic\.com|duckduckgo\.com|apple-touch-icon\.png|wikipedia\.org|wikimedia\.org/, (r) => { iconAsked.push(r.request().url()); iconServe(r); });
+  if (storageMode) await ctx.addInitScript(mode => {
+    window.__persistCalls = 0; let protectedNow = false;
+    const storage = { estimate: async () => ({ usage: 0 }), persisted: async () => protectedNow };
+    if (mode !== "missing") storage.persist = async () => {
+      window.__persistCalls++;
+      if (mode === "pending") return new Promise(() => {});
+      if (mode === "throws") throw new Error("invented API failure");
+      protectedNow = mode === "granted"; return protectedNow;
+    };
+    Object.defineProperty(navigator, "storage", { configurable: true, value: storage });
+  }, storageMode);
   const page = await ctx.newPage();
   // Category, Paid from and "It looks like" are dropdown rows now: a test that taps a choice by its text first opens the list that holds it.
   const rawClick = page.click.bind(page);
@@ -4380,6 +4392,8 @@ console.log("\n-- Appearance --");
   await page.click('button[data-action="set-appearance"][data-id="auto"]'); await page.waitForTimeout(300);
   check(await ground() === "#F5F3EE" && await page.evaluate(() => document.documentElement.dataset.theme === undefined), "Match my phone goes back to following the phone");
   check(errors.length === 0, "no script errors: " + errors.join("; ")); await ctx.close(); }
+
+await protectionChecks({ browser, base: BASE, open, addAccount, menuGo, check });
 
 await browser.close();
 console.log(failures ? "\n" + failures + " check(s) FAILED" : "\nAll checks passed");

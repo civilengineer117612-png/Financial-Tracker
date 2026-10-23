@@ -108,3 +108,22 @@ export async function writeCopies(copies) {
   try { await idbCopies("readwrite", (st) => st.put(copies, "copies")); result.idb = true; } catch { /* reported below */ }
   return result;
 }
+
+// Claim once per browser storage bucket, in the existing database (no ledger
+// field/version change). An IndexedDB transaction also serializes other tabs.
+export async function claimPersistenceRequest() {
+  const db = await openDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite"), st = tx.objectStore(STORE);
+      let claimed = false;
+      const request = st.get("persistence-requested");
+      request.onsuccess = () => {
+        if (request.result === true) return;
+        st.put(true, "persistence-requested"); claimed = true;
+      };
+      tx.oncomplete = () => resolve(claimed);
+      tx.onerror = tx.onabort = () => reject(tx.error);
+    });
+  } finally { db.close(); }
+}

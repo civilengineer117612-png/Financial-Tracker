@@ -1,6 +1,7 @@
 // The screens. All money rules live in ../src/model; this file only draws and handles taps.
 // Plain and firm, never harsh: facts are stated once, nothing is red, nothing blocks logging.
 import * as M from "../src/model/index.js";
+import { requestStorageProtection, storageProtected } from "./protection.js";
 import { readBoth, writeBoth, putPhoto, getPhoto, deletePhoto, useTrialStorage, clearTrialStorage, readCopies, writeCopies } from "./store.js";
 import { preparePhoto, readPage, readPlain, evenedCopy } from "./ocr.js";
 import { speechSupported, listen, firstLanguage, other } from "./voice.js";
@@ -250,6 +251,7 @@ async function commit(state, settings = ledger.settings, { quiet = false } = {})
   // A background save (the logos) must not rebuild an open window and lose what is being done in it.
   if (!quiet) renderAll(); else { renderBanner(); if (!document.activeElement?.matches("input, textarea, select")) renderScreen(); if (ui.sheet?.type === "banks") renderSheet(); }   // the screen behind a window may change; the window stays
   if (!ledger.settings.bankLogosTried && !logoRun && failed.length === 0) loadBankLogos();   // a new install: logos after the first save
+  if (out.ok && !quiet) void requestStorageProtection();
   return failed.length === 0;
 }
 
@@ -1435,6 +1437,7 @@ function viewSetup() {
   const aboutHtml = `    <h2>This app</h2>
     <p class="note">${M.isDevBuild() ? "Version: a development copy." : "Version " + esc(M.APP_BUILD) + ", updated " + esc(fullDate(M.APP_BUILT_ON)) + "."} Your data format: ${ledger.v}.</p>
     ${ui.ledgerBytes ? `<p class="note" id="about-size">Your ledger: ${esc(M.formatBytes(ui.ledgerBytes))}. ${ui.mirror === false ? "The spare copy is full. The main copy is safe." : "Saved twice: a main copy and a spare."}</p>` : ""}
+    <p class="note" id="about-protection">Storage protected: no</p>
     <h2>Photo reader and space</h2>
     <p class="note" id="about-reader">Checking the photo reader\u2026</p>
     <p><button data-action="warm-reader" id="warm-btn" style="width:100%" hidden>Download the photo reader now</button></p>
@@ -2189,6 +2192,8 @@ const emptyMoney = () => `<p class="note">Nothing verified for this month yet. V
 
 // The two lines under "Photo reader and space" are filled in after the screen is drawn (the phone answers a moment later), straight into their places.
 async function refreshAbout() {
+  const protectedNow = await storageProtected(), protection = document.getElementById("about-protection");
+  if (protection) protection.textContent = "Storage protected: " + (protectedNow ? "yes" : "no");
   const reader = document.getElementById("about-reader"); if (!reader) return;
   const { readerStored, READER_FILES } = await import("./paddle.js");
   const st = M.readerStatus(await readerStored(), READER_FILES.length), el = document.getElementById("about-reader");
