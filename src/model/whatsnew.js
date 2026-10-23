@@ -1,6 +1,7 @@
 // "What's new": one plain sentence per update, newest first. The app shows the latest three once after an update (until "Got it"), and Help keeps
 // the whole list. Every PR that changes what a user sees or does adds its sentence at the TOP of this list (owner's rule: even small fixes).
 export const CHANGES = [
+  { id: "2026-10-23-payroll-tables", date: "2026-10-23", text: "Payslip PDF tables now include all earnings and check each deduction total and net pay before filling the form." },
   { id: "2026-10-22-spending-details", date: "2026-10-22", text: "Tap a Category or Accounts row in Spending to see the entries behind its total for the selected period." },
   { id: "2026-10-22-reserve-history", date: "2026-10-22", text: "Card-reserve warnings now use the same current balances as Cards, so older history is not counted again after an account starts." },
   { id: "2026-10-22-single-pdf", date: "2026-10-22", text: "One receipt and Add income now read PDFs, including password-protected payslips, on your phone; check the figures before saving, and the password is never kept." },

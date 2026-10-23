@@ -649,6 +649,7 @@ const payslipDefaults = () => ({
 const knownEmployers = () => [...new Set([...(S().payslips ?? []).map((p) => p.employer), ledger.settings.last_employer].filter(Boolean))];
 function openPayslipFromPhoto(blob, text, queueId, source = "photo") {
   const r = M.readPayslip(text, today(), { allowHistorical: source === "PDF" }), d = payslipDefaults(), two = (c) => (c / 100).toFixed(2);
+  if (r.error) { ui.sheet = { type: "pdfscan" }; ui.form = { error: r.error }; renderSheet(); return; }
   const employer = r.employer ? M.snapEmployer(r.employer, knownEmployers()) : d.employer;
   // One short line: everything was read from the photo and none of it is confirmed (a right employer does not make the figures right).
   // Only what needs action is added after it.
@@ -660,7 +661,7 @@ function openPayslipFromPhoto(blob, text, queueId, source = "photo") {
   for (const l of r.earnings) f["e_" + l.kind] = two(l.amount);
   for (const l of r.deductions) f["d_" + l.kind] = two(l.amount);
   if (r.printed_gross) f.gross = two(r.printed_gross);
-  if (r.printed_net) { f.net = two(r.printed_net); f.deposit = f.net; }
+  if (r.printed_net) { f.net = two(r.printed_net); f.deposit = r.deposit != null ? two(r.deposit) : f.net; }
   if (r.printed_deductions) f.ded = two(r.printed_deductions);
   ui.linesOpen = true;   // a photo's figures are unconfirmed: they stay in view to be checked against the paper
   if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.url);

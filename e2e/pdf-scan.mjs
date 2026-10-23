@@ -1,5 +1,6 @@
 // Serve the repo on port 8124, then node e2e/pdf-scan.mjs. All documents are invented.
 import assert from "node:assert/strict";
+import { payrollItems, payrollPdf } from "./payroll-table.mjs";
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -39,6 +40,7 @@ try {
   await page.clock.setFixedTime(new Date("2026-10-22T03:00:00Z"));
   await page.goto(base); await visible("#nav button");
   const seed = emptyLedger(); seed.rev = 1; seed.saved_at = "2026-10-22T03:00:00Z";
+  seed.state.accounts.push({ id: "example-bank", name: "Example Bank", class: "asset", role: "bank", opening_balance: 0, opening_date: "2026-01-01", hidden_by_default: false, archived: false });
   seed.settings = { notice_seen_at: seed.saved_at, whatsnew_seen: CHANGES[0].id, welcome_off: true,
     start_rule_seen: seed.saved_at, cat_card_seen: seed.saved_at, intro_off: { scan: true, income: true, log: true, money: true } };
   await page.evaluate(async (seed) => {
@@ -83,6 +85,56 @@ try {
   await page.locator('#sheet [data-action="close-sheet"]').last().click();
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("financialTracker.ledger")).state.transactions.length), 0);
   console.log("ok: Add income accepts the encrypted PDF too; reading and cancellation add no ledger entries");
+  // A text-based payroll PDF is generated in memory, never committed as a file.
+  await page.locator('#nav [data-tab="log"]').click();
+  const payrollScan = async (options) => {
+    await page.locator('[data-action="open-scan-pick"]').first().click();
+    await page.locator('input[data-scan="quick"]:not([capture])').setInputFiles({ name: 'invented-payroll.pdf', mimeType: 'application/pdf', buffer: payrollPdf(payrollItems(options)) });
+  };
+  const extracted = await page.evaluate(async (bytes) => {
+    const { readPdfScan } = await import('./pdftext.js');
+    const { readPayslip } = await import('../src/model/scan.js');
+    let ocr = 0;
+    const r = await readPdfScan(new File([new Uint8Array(bytes)],'invented.pdf'), async()=>null, async()=>{ocr++;return '';});
+    return { ocr, slip: readPayslip(r.text,'2026-10-23',{allowHistorical:true}) };
+  }, [...payrollPdf()]);
+  assert.equal(extracted.ocr,0);
+  assert.equal(extracted.slip.earnings.reduce((n,l)=>n+l.amount,0),1700000);
+  assert.equal(extracted.slip.deposit,1520000);
+  console.log('ok: a text payroll PDF uses its text layer, counts every earnings line, and reads the distribution independently');
+  await payrollScan();
+  await page.locator('#p-net').waitFor({state:'attached'});
+  for (const [field, expected] of [['gross','17000.00'],['net','15200.00'],['ded','1800.00'],['deposit','15200.00'],['e_basic','12000.00'],['e_other','2500.00'],['e_overtime','2500.00']]) {
+    assert.equal(await page.locator(`[data-field="${field}"]`).inputValue(),expected);
+  }
+  assert.equal(await page.locator('#p-emp').inputValue(),'Example Employer Ltd');
+  const paid = page.locator('#sheet button[data-id="example-bank"]');
+  if (!(await paid.isVisible())) await paid.locator('xpath=ancestor::div[@class="pick"][1]').locator('.pickrow').click();
+  await paid.click();
+  assert.equal(await page.locator('#f-save').isDisabled(),false);
+  await page.locator('#f-save').click();
+  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('financialTracker.ledger')).state.payslips.length===1);
+  const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('financialTracker.ledger')));
+  assert.equal(saved.state.payslipLines.filter(l=>l.side==='earning').reduce((n,l)=>n+l.amount,0),1700000);
+  assert.equal(saved.state.payslipLines.filter(l=>l.side==='deduction').reduce((n,l)=>n+l.amount,0),180000);
+  assert.equal(saved.state.payslips[0].deposit,1520000);
+  assert.equal(saved.v,seed.v);
+  console.log('ok: the actual scan form saves reconciled earnings and deductions in the unchanged ledger format');
+  for (const [name, change] of [
+    ['gross',a=>{a.find(i=>i.y===640&&i.str==='17,000.00').str='18,000.00';}],
+    ['deductions',a=>{a.find(i=>i.y===580&&i.str==='100.00').str='200.00';}],
+    ['net',a=>{a.find(i=>i.y===640&&i.str==='15,200.00').str='15,300.00';}],
+    ['distribution',a=>{a.find(i=>i.y===345&&i.str==='15,200.00').str='15,100.00';}],
+  ]) {
+    await payrollScan({change});
+    await page.locator('#sheet [role="alert"]').waitFor();
+    assert.match(await page.locator('#sheet').innerText(),/Nothing was filled in/);
+    assert.equal(await page.locator('#f-save').count(),0);
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('financialTracker.ledger')).state.payslips.length),1);
+    await page.locator('#sheet [data-action="close-sheet"]').last().click();
+    console.log(`ok: inconsistent ${name} is refused before a save form opens and the ledger is unchanged`);
+  }
+
   const bankDomains = new Set(BANKS.flatMap((bank) => [bank.domain, ...(bank.alt ?? [])]));
   for (const request of external) {
     const host = new URL(request.url).hostname.replace(/^www\./, "");
