@@ -345,7 +345,7 @@ export function readPayslip(text, today, { allowHistorical = false } = {}) {
   const company = top.map(clean).find((l) => COMPANY_WORD.test(l) && letters(l) >= 5);
   const named = top.map(clean).find((l) => letters(l) >= 5 && letters(l) >= l.length * 0.6 && l.length <= 45);
   const employer = (labelled ? clean(labelled) : null) || company || named || null;
-  return { employer, period_from, period_to, pay_date, printed_gross, printed_net, printed_deductions, earnings, deductions, notes };
+  return { employer, period_from, period_to, pay_date, printed_gross, printed_net, printed_deductions, earnings, deductions, notes, ...(lines.includes("Payslip table") ? readPayrollTable(lines) : {}) };
 }
 
 // PDF text has positions but no reading order. Keep the two sides of a payslip
@@ -372,6 +372,8 @@ export function pdfScanText(items) {
     }
     return headers;
   };
+  const payroll = payrollTableText(rows, headersIn);
+  if (payroll !== null) return payroll;
   for (let n = 0; n < rows.length; n++) {
     const row = rows[n], headers = headersIn(row), next = rows[n + 1];
     const summary = headers.some((h) => /^gross$/i.test(h.str)) && headers.some((h) => /^net pay$/i.test(h.str));
@@ -400,6 +402,121 @@ export function pdfScanText(items) {
   }
   return out.join("\n").replace(/\b(\d{1,2})-([A-Za-z]{3,9})-(\d{4})\b/g, "$1 $2 $3");
 }
+
+// Table PDF rows are normalized before the general photo reader sees them. Columns
+// are located by headings, never by employer, stream order, or a fixed page size.
+function payrollTableText(rows, headersIn) {
+  const joined = (r) => r.items.map(i => i.str.trim()).join(" ");
+  const start = rows.findIndex(r => /Hours and Earnings/i.test(joined(r)));
+  if (start < 0) return null;
+  const right = i => i.x + i.w;
+  const find = (items, re) => {
+    for (let j = 0; j < items.length; j++) for (let k = j; k < Math.min(items.length, j + 5); k++) {
+      const str = items.slice(j, k + 1).map(i => i.str.trim()).join(" ");
+      if (re.test(str)) return { ...items[j], str, w: right(items[k]) - items[j].x, end: k };
+    }
+    return null;
+  };
+  const pre = find(rows[start].items, /^Pre[- ]Tax Deductions$/i);
+  const out = ["Payslip table"];
+  // An incomplete recognized table must fail closed, not fall back to label guesses.
+  if (!pre) return out.join("\n");
+  const split = pre.x;
+  const emit = (key, value) => out.push(key + "\t" + value);
+  for (let n = 0; n < start; n++) {
+    const row = rows[n], next = rows[n + 1], headers = headersIn(row);
+    const employer = find(row.items, /^Employer Name$/i);
+    if (employer) out.push("Employer: " + row.items.slice(employer.end + 1).map(i => i.str).join(" "));
+    const summary = headers.some(h => /^gross$/i.test(h.str)) && headers.some(h => /^net pay$/i.test(h.str));
+    const dates = ["payment date", "pay begin date", "pay end date"].every(k => headers.some(h => h.str.toLowerCase() === k));
+    if ((!summary && !dates) || !next || row.y - next.y > 30) continue;
+    const cells = new Map();
+    for (const v of next.items) {
+      if (summary ? /^current$/i.test(v.str.trim()) : !datesIn(v.str.replace(/-/g, " ")).length) continue;
+      const h = [...headers].sort((a,b) => Math.abs(right(a)-right(v)) - Math.abs(right(b)-right(v)))[0];
+      const key = h.str.toLowerCase();
+      cells.set(key, cells.has(key) ? "unreadable" : v.str.trim());
+    }
+    if (summary) for (const k of ["gross", "pre-tax", "taxes", "deductions", "net pay"]) emit("Summary " + k, cells.get(k) ?? (k === "deductions" ? "0.00" : "unreadable"));
+    if (dates) {
+      out.push("Pay date " + (cells.get("payment date") ?? ""));
+      out.push("Pay period " + (cells.get("pay begin date") ?? "") + " to " + (cells.get("pay end date") ?? ""));
+    }
+  }
+  for (const side of ["left", "right"]) {
+    let section = null, amount = null, hours = null;
+    for (const row of rows.slice(start)) {
+      const items = row.items.filter(i => side === "left" ? i.x < split : i.x >= split);
+      if (!items.length) continue;
+      const title = items.map(i => i.str.trim()).join(" ");
+      if (/^(Accruals|Absences|Net Pay Distribution|Other Information)\b/i.test(title)) break;
+      const key = /^Hours and Earnings$/i.test(title) ? "earning" : /^Pre[- ]Tax Deductions$/i.test(title) ? "pre-tax" : /^Tax Deductions$/i.test(title) ? "taxes" : /^After Tax Deductions$/i.test(title) ? "deductions" : null;
+      if (key) { section = key; amount = hours = null; emit("Section", key); continue; }
+      const hs = headersIn({items});
+      if (hs.some(h => /^amount$/i.test(h.str))) { amount = hs.find(h => /^amount$/i.test(h.str)); hours = hs.find(h => /^hours$/i.test(h.str)); continue; }
+      if (!section || !amount) { emit("Unreadable", "table heading"); continue; }
+      // Only the amount column supplies money; zero hours are still a paid line.
+      const value = [...items].sort((a,b) => Math.abs(right(a)-right(amount)) - Math.abs(right(b)-right(amount)))[0];
+      const label = items.filter(i => i !== value && (!hours || right(i) < hours.x)).map(i => i.str).join(" ").trim();
+      if (!label || Math.abs(right(value)-right(amount)) > 20) { emit("Unreadable", "table row"); continue; }
+      out.push(["Line " + section, label, value.str.trim()].join("\t"));
+    }
+  }
+  const dist = rows.findIndex(r => /^Net Pay Distribution$/i.test(joined(r)));
+  if (dist >= 0) {
+    let amount = null;
+    emit("Section", "distribution");
+    for (const row of rows.slice(dist + 1)) {
+      if (/^(Other Information|Message|Accruals|Absences)/i.test(joined(row))) break;
+      const h = headersIn(row).find(i => /^amount$/i.test(i.str));
+      if (h) { amount = h; continue; }
+      if (!amount) continue; // wrapped column headings, before the Amount heading
+      const value = [...row.items].sort((a,b)=>Math.abs(right(a)-right(amount))-Math.abs(right(b)-right(amount)))[0];
+      if (Math.abs(right(value)-right(amount)) > 20) { emit("Unreadable", "distribution row"); continue; }
+      emit("Distribution", value.str.trim());
+    }
+  }
+  return out.join("\n").replace(/\b(\d{1,2})-([A-Za-z]{3,9})-(\d{4})\b/g, "$1 $2 $3");
+}
+
+function readPayrollTable(lines) {
+  const fail = (reason) => ({ error: reason + " Nothing was filled in. Type the payslip from the paper instead.", earnings: [], deductions: [], printed_gross: null, printed_net: null, printed_deductions: null, deposit: null });
+  if (lines.filter(l => l === "Payslip table").length !== 1) return fail("I could not read more than one payroll table together.");
+  const money = s => /^(?:\d{1,3}(?:,\d{3})*|\d+)\.\d{2}$/.test(s ?? "") ? amountsIn(s)[0] ?? (s === "0.00" ? 0 : null) : null;
+  const summary = new Map(), sections = new Set(), amounts = { earning: 0, "pre-tax": 0, taxes: 0, deductions: 0 }, earnings = new Map(), deductions = new Map();
+  let deposit = 0, distributions = 0;
+  for (const line of lines) {
+    const [key, label, value] = line.split("\t");
+    if (key === "Unreadable") return fail("I could not read every payroll table row.");
+    if (key === "Section") { if (sections.has(label)) return fail("I could not separate repeated payroll sections."); sections.add(label); }
+    if (key.startsWith("Summary ")) {
+      const n = money(label);
+      if (n === null || summary.has(key.slice(8))) return fail("I could not read the payroll summary.");
+      summary.set(key.slice(8), n);
+    }
+    if (key === "Distribution") { const n = money(label); if (n === null) return fail("I could not read the net pay distribution."); deposit += n; distributions++; }
+    if (key.startsWith("Line ")) {
+      const section = key.slice(5), n = money(value);
+      if (n === null || !(section in amounts)) return fail("I could not read an earnings or deduction amount.");
+      amounts[section] += n;
+      const earning = section === "earning", low = label.toLowerCase();
+      // Back pay is included in Other earnings, not today's basic rate or an
+      // overtime transfer. All other unclassified lines are included as Other.
+      const kind = earning ? (/^retro\b/.test(low) ? "other" : EARNING_LABELS.find(([,re]) => re.test(low + " " + value))?.[0] ?? "other") : DEDUCTION_LABELS.find(([,re]) => re.test(low))?.[0] ?? "other";
+      const dest = earning ? earnings : deductions;
+      dest.set(kind, (dest.get(kind) ?? 0) + n);
+    }
+  }
+  if (!["earning", "pre-tax", "taxes", "deductions", "distribution"].every(k => sections.has(k)) || summary.size !== 5 || !distributions) return fail("I could not find all the payroll sections and totals.");
+  if (amounts.earning !== summary.get("gross")) return fail("The earnings lines do not match the printed gross pay.");
+  if (["pre-tax", "taxes", "deductions"].some(k => amounts[k] !== summary.get(k))) return fail("The deduction lines do not match the printed deduction totals.");
+  const totalDed = amounts["pre-tax"] + amounts.taxes + amounts.deductions;
+  if (amounts.earning - totalDed !== summary.get("net pay")) return fail("Gross minus deductions does not match the printed net pay.");
+  if (deposit !== summary.get("net pay")) return fail("The net pay distribution does not match the printed net pay.");
+  const entries = m => [...m].filter(([,amount]) => amount > 0).map(([kind,amount]) => ({kind,amount}));
+  return { earnings: entries(earnings), deductions: entries(deductions), printed_gross: summary.get("gross"), printed_net: summary.get("net pay"), printed_deductions: totalDed, deposit, notes: [] };
+}
+
 
 // ---------- text from where the words sit on the page ----------
 // A payslip prints its earnings on the left and its deductions on the right, and a photo of paper is tilted. Reading order from the
